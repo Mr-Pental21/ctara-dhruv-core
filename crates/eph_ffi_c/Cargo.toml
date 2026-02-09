@@ -1,0 +1,7 @@
+[package]
+name = "eph_ffi_c"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eph_core = { path = "../eph_core" }
