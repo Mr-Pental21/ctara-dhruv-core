@@ -9,7 +9,7 @@ pub mod precession;
 pub mod rotation;
 pub mod spherical;
 
-pub use nutation::nutation_iau2000b;
+pub use nutation::{fundamental_arguments, nutation_iau2000b};
 pub use obliquity::{COS_OBL, OBLIQUITY_J2000_DEG, OBLIQUITY_J2000_RAD, SIN_OBL};
 pub use precession::{general_precession_longitude_arcsec, general_precession_longitude_deg};
 pub use rotation::{ecliptic_to_icrf, icrf_to_ecliptic};

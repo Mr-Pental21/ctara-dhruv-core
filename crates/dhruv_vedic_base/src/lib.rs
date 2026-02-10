@@ -14,6 +14,7 @@ pub mod ayanamsha;
 pub mod bhava;
 pub mod bhava_types;
 pub mod error;
+pub mod lunar_nodes;
 pub mod riseset;
 pub mod riseset_types;
 
@@ -27,5 +28,9 @@ pub use bhava_types::{
     Bhava, BhavaConfig, BhavaReferenceMode, BhavaResult, BhavaStartingPoint, BhavaSystem,
 };
 pub use error::VedicError;
+pub use lunar_nodes::{
+    LunarNode, NodeMode, lunar_node_deg, mean_ketu_deg, mean_rahu_deg, true_ketu_deg,
+    true_rahu_deg,
+};
 pub use riseset::{approximate_local_noon_jd, compute_all_events, compute_rise_set};
 pub use riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb};

@@ -6,13 +6,14 @@ use std::ptr;
 use dhruv_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query, StateVector};
 use dhruv_vedic_base::{
     AyanamshaSystem, BhavaConfig, BhavaReferenceMode, BhavaStartingPoint, BhavaSystem,
-    GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb, VedicError,
-    ayanamsha_deg, ayanamsha_mean_deg, ayanamsha_true_deg, approximate_local_noon_jd,
-    compute_all_events, compute_bhavas, compute_rise_set, jd_tdb_to_centuries,
+    GeoLocation, LunarNode, NodeMode, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb,
+    VedicError, ayanamsha_deg, ayanamsha_mean_deg, ayanamsha_true_deg,
+    approximate_local_noon_jd, compute_all_events, compute_bhavas, compute_rise_set,
+    jd_tdb_to_centuries, lunar_node_deg,
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 5;
+pub const DHRUV_API_VERSION: u32 = 6;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -1427,6 +1428,83 @@ pub unsafe extern "C" fn dhruv_mc_deg(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Lunar node constants
+// ---------------------------------------------------------------------------
+
+/// Node code: Rahu (ascending node).
+pub const DHRUV_NODE_RAHU: i32 = 0;
+/// Node code: Ketu (descending node).
+pub const DHRUV_NODE_KETU: i32 = 1;
+
+/// Node mode: mean (polynomial only).
+pub const DHRUV_NODE_MODE_MEAN: i32 = 0;
+/// Node mode: true (mean + perturbation corrections).
+pub const DHRUV_NODE_MODE_TRUE: i32 = 1;
+
+/// Map integer code to LunarNode enum.
+fn lunar_node_from_code(code: i32) -> Option<LunarNode> {
+    let nodes = LunarNode::all();
+    let idx = usize::try_from(code).ok()?;
+    nodes.get(idx).copied()
+}
+
+/// Map integer code to NodeMode enum.
+fn node_mode_from_code(code: i32) -> Option<NodeMode> {
+    let modes = NodeMode::all();
+    let idx = usize::try_from(code).ok()?;
+    modes.get(idx).copied()
+}
+
+/// Compute lunar node longitude in degrees [0, 360).
+///
+/// Pure math, no engine needed.
+///
+/// # Arguments
+/// * `node_code` — 0 = Rahu, 1 = Ketu
+/// * `mode_code` — 0 = Mean, 1 = True
+/// * `jd_tdb` — Julian Date in TDB
+/// * `out_deg` — output longitude in degrees
+///
+/// # Safety
+/// `out_deg` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_lunar_node_deg(
+    node_code: i32,
+    mode_code: i32,
+    jd_tdb: f64,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let node = match lunar_node_from_code(node_code) {
+            Some(n) => n,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let mode = match node_mode_from_code(mode_code) {
+            Some(m) => m,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let t = jd_tdb_to_centuries(jd_tdb);
+        let deg = lunar_node_deg(node, t, mode);
+
+        // SAFETY: Pointer is checked for null; write one value.
+        unsafe { *out_deg = deg };
+        DhruvStatus::Ok
+    })
+}
+
+/// Number of supported lunar node variants (Rahu, Ketu).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_lunar_node_count() -> u32 {
+    LunarNode::all().len() as u32
+}
+
 fn ffi_boundary(f: impl FnOnce() -> DhruvStatus) -> DhruvStatus {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(status) => status,
@@ -1836,5 +1914,68 @@ mod tests {
             dhruv_mc_deg(ptr::null(), ptr::null(), ptr::null(), 0.0, &mut out)
         };
         assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    // --- Lunar node tests ---
+
+    #[test]
+    fn ffi_lunar_node_rejects_invalid_node_code() {
+        let mut out: f64 = 0.0;
+        // SAFETY: Valid output pointer, invalid node code.
+        let status = unsafe { dhruv_lunar_node_deg(99, DHRUV_NODE_MODE_MEAN, 2_451_545.0, &mut out) };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_lunar_node_rejects_invalid_mode_code() {
+        let mut out: f64 = 0.0;
+        // SAFETY: Valid output pointer, invalid mode code.
+        let status = unsafe { dhruv_lunar_node_deg(DHRUV_NODE_RAHU, 99, 2_451_545.0, &mut out) };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_lunar_node_rejects_null() {
+        // SAFETY: Null output pointer is intentional for validation.
+        let status = unsafe { dhruv_lunar_node_deg(DHRUV_NODE_RAHU, DHRUV_NODE_MODE_MEAN, 2_451_545.0, ptr::null_mut()) };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_lunar_node_rahu_at_j2000() {
+        let mut out: f64 = 0.0;
+        // SAFETY: Valid pointers.
+        let status = unsafe { dhruv_lunar_node_deg(DHRUV_NODE_RAHU, DHRUV_NODE_MODE_MEAN, 2_451_545.0, &mut out) };
+        assert_eq!(status, DhruvStatus::Ok);
+        assert!(
+            (out - 125.04).abs() < 0.1,
+            "mean Rahu at J2000 = {out}, expected ~125.04"
+        );
+    }
+
+    #[test]
+    fn ffi_lunar_node_ketu_opposite_rahu() {
+        let mut rahu: f64 = 0.0;
+        let mut ketu: f64 = 0.0;
+        // SAFETY: Valid pointers.
+        let s1 = unsafe { dhruv_lunar_node_deg(DHRUV_NODE_RAHU, DHRUV_NODE_MODE_MEAN, 2_451_545.0, &mut rahu) };
+        let s2 = unsafe { dhruv_lunar_node_deg(DHRUV_NODE_KETU, DHRUV_NODE_MODE_MEAN, 2_451_545.0, &mut ketu) };
+        assert_eq!(s1, DhruvStatus::Ok);
+        assert_eq!(s2, DhruvStatus::Ok);
+        let diff = ((ketu - rahu) % 360.0 + 360.0) % 360.0;
+        assert!(
+            (diff - 180.0).abs() < 1e-10,
+            "Ketu - Rahu = {diff}, expected 180"
+        );
+    }
+
+    #[test]
+    fn ffi_lunar_node_count() {
+        assert_eq!(dhruv_lunar_node_count(), 2);
+    }
+
+    #[test]
+    fn ffi_api_version_is_6() {
+        assert_eq!(dhruv_api_version(), 6);
     }
 }

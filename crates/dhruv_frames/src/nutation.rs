@@ -24,7 +24,7 @@ const AS2RAD: f64 = TAU / 1_296_000.0;
 /// - `Ω`  = mean longitude of the ascending node of the Moon
 ///
 /// Polynomial coefficients from IERS Conventions 2010, Table 5.2e.
-fn fundamental_arguments(t: f64) -> [f64; 5] {
+pub fn fundamental_arguments(t: f64) -> [f64; 5] {
     let t2 = t * t;
     let t3 = t2 * t;
     let t4 = t3 * t;
