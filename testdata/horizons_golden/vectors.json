@@ -1,0 +1,118 @@
+{
+  "metadata": {
+    "source": "JPL Horizons API v1.2",
+    "fetched": "2026-02-10",
+    "horizons_ephemeris": "DE441",
+    "output_type": "GEOMETRIC cartesian states",
+    "reference_frame": "ICRF",
+    "units": { "position": "km", "velocity": "km/s" },
+    "notes": [
+      "Horizons uses DE441; our engine uses DE442s — expect sub-km cross-kernel differences.",
+      "Mars/Jupiter/Saturn body centers (499/599/699) use separate planet ephemerides (mar099/jup365/sat441l).",
+      "Our engine falls back to barycenters (4/5/6) for these bodies; barycenter references provided separately.",
+      "No aberrations or light-time corrections applied."
+    ]
+  },
+  "cases": [
+    {
+      "id": "earth_ssb_j2000",
+      "description": "Earth body center wrt SSB at J2000.0",
+      "target": 399,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [-2.756674048281145e+07, 1.323613811535491e+08, 5.741865328625385e+07],
+      "velocity_km_s": [-2.978494749851088e+01, -5.029753814928081e+00, -2.180645069035755e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "sun_ssb_j2000",
+      "description": "Sun wrt SSB at J2000.0",
+      "target": 10,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [-1.067706805380953e+06, -3.960361847959462e+05, -1.380651842868809e+05],
+      "velocity_km_s": [9.312571926520472e-03, -1.170150612817771e-02, -5.251266205200356e-03],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "mercury_ssb_j2000",
+      "description": "Mercury body center wrt SSB at J2000.0",
+      "target": 199,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [-2.052943316123468e+07, -6.032400395827633e+07, -3.013083786411830e+07],
+      "velocity_km_s": [3.700430442920571e+01, -8.541376789510446e+00, -8.398372409672424e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "venus_ssb_j2000",
+      "description": "Venus body center wrt SSB at J2000.0",
+      "target": 299,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [-1.085242008575715e+08, -7.318564959678600e+06, 3.548121861333776e+06],
+      "velocity_km_s": [1.391218601189967e+00, -3.202951993781091e+01, -1.449708673947320e+01],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "moon_earth_j2000",
+      "description": "Moon wrt Earth body center at J2000.0",
+      "target": 301,
+      "observer": 399,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [-2.916083841877129e+05, -2.667168338540655e+05, -7.610248730658794e+04],
+      "velocity_km_s": [6.435313889889519e-01, -6.660876829565195e-01, -3.013257046610932e-01],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "mars_bary_ssb_j2000",
+      "description": "Mars barycenter wrt SSB at J2000.0 (our engine returns bary for Body::Mars)",
+      "target": 4,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [2.069804338364514e+08, -1.864170114371795e+05, -5.667227497526179e+06],
+      "velocity_km_s": [1.171985008531777e+00, 2.390670819417074e+01, 1.093392063330765e+01],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "jupiter_bary_ssb_j2000",
+      "description": "Jupiter barycenter wrt SSB at J2000.0 (our engine returns bary for Body::Jupiter)",
+      "target": 5,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [5.974998767925479e+08, 4.089903139317586e+08, 1.607562819387201e+08],
+      "velocity_km_s": [-7.900525116640771e+00, 1.017179630923791e+01, 4.552467787262923e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "saturn_bary_ssb_j2000",
+      "description": "Saturn barycenter wrt SSB at J2000.0 (our engine returns bary for Body::Saturn)",
+      "target": 6,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [9.573174174143425e+08, 9.233196218969914e+08, 3.401628003886153e+08],
+      "velocity_km_s": [-7.422709426014511e+00, 6.097474815228996e+00, 2.837682288255575e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "earth_ssb_2460000",
+      "description": "Earth body center wrt SSB at JD 2460000.5 (2023-Feb-25)",
+      "target": 399,
+      "observer": 0,
+      "epoch_tdb_jd": 2460000.5,
+      "position_km": [-1.363822333172446e+08, 5.563795761699516e+07, 2.415399443522515e+07],
+      "velocity_km_s": [-1.268994499649647e+01, -2.505446050905924e+01, -1.086195937816694e+01],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "moon_earth_2460000",
+      "description": "Moon wrt Earth body center at JD 2460000.5 (2023-Feb-25)",
+      "target": 301,
+      "observer": 399,
+      "epoch_tdb_jd": 2460000.5,
+      "position_km": [2.996603954771215e+05, 2.166072841835021e+05, 9.569516645455429e+04],
+      "velocity_km_s": [-5.758810685692292e-01, 7.395419176970628e-01, 4.199150072161020e-01],
+      "horizons_source": "DE441"
+    }
+  ]
+}

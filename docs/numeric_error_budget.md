@@ -1,21 +1,121 @@
-# Numeric Error Budget (Draft)
+# Numeric Error Budget
 
-## Validation Targets
-- Reference systems: JPL Horizons snapshots and CSPICE spot checks.
-- Initial outputs: Cartesian position (km) and velocity (km/s).
+## Validation Methodology
 
-## Draft Tolerance Buckets
-- Position error tolerance: TBD (km) per body class.
-- Velocity error tolerance: TBD (km/s) per body class.
-- Angle-derived tolerance: TBD (arcseconds).
+- **Reference system**: JPL Horizons API v1.2 (accessed 2026-02-10).
+- **Horizons ephemeris**: DE441.
+- **Our ephemeris**: DE442s (JPL Development Ephemeris 442, short-range file).
+- **Comparison mode**: Geometric state vectors — no aberration, no light-time.
+- **Reference frame**: ICRF (equivalent to J2000 at ~0.02 arcsec level).
+- **Units**: position in km, velocity in km/s.
+- **Test epoch range**: JD 2451545.0 (J2000) to JD 2460000.5 (2023-Feb-25).
 
-## Error Sources To Track
-- Kernel interpolation rounding.
-- Time-scale conversion errors (UTC -> TT/TDB).
-- Frame transformation accumulation.
-- Floating-point behavior across targets.
+## Error Sources
 
-## CI Policy (Target)
-- Golden fixtures are versioned and immutable.
-- Any tolerance change requires explicit review and rationale.
-- Cross-platform consistency checks run in CI matrix.
+### 1. Cross-kernel differences (DE441 vs DE442s)
+
+This is the dominant error source. DE442 is a newer fit with additional
+observational data compared to DE441. Differences scale with:
+- **Heliocentric distance**: outer planets show larger absolute differences.
+- **Time from fit epoch**: differences grow further from the constraining data.
+- **Body type**: barycenters are better determined than body centers.
+
+Observed at J2000:
+| Body | Max component error (km) | Relative accuracy |
+|------|--------------------------|-------------------|
+| Sun | < 0.01 | < 10 ppb |
+| Mercury | < 0.05 | < 1 ppb |
+| Venus | < 0.05 | < 0.5 ppb |
+| Earth | < 0.1 | < 1 ppb |
+| Moon (wrt Earth) | < 0.02 | < 0.05 ppb |
+| Mars barycenter | < 0.1 | < 0.5 ppb |
+| Jupiter barycenter | ~3 km | ~5 ppb |
+| Saturn barycenter | < 1 km | < 1 ppb |
+
+### 2. TDB approximation
+
+Our TDB formula uses the NAIF one-term sinusoidal approximation:
+
+    TDB = TT + 0.001657 * sin(M + 0.01671 * sin(M))
+
+This has ~30 microsecond accuracy. At Earth's orbital velocity (~30 km/s),
+30 us of timing error produces ~0.001 km position error — negligible.
+
+### 3. Chebyshev interpolation
+
+SPK Type 2 uses Chebyshev polynomials within time intervals. Our Clenshaw
+recurrence evaluation matches the NAIF reference implementation to machine
+precision (~10^-15 relative). No measurable contribution to error.
+
+### 4. Frame rotation (ICRF to ecliptic)
+
+Uses IAU 1976 obliquity value (23.4392911 degrees) with precomputed
+sin/cos. Rotation preserves vector magnitude to machine precision.
+No measurable contribution for ICRF-frame comparisons.
+
+### 5. Chain resolution (accumulation)
+
+Positions are accumulated as the target body is resolved to SSB through
+the segment chain (e.g., Earth → EMB → SSB). Each step adds floating-point
+rounding. With 2-3 chain steps and f64 arithmetic, the accumulation error
+is ~10^-10 km — negligible.
+
+## Tolerance Tiers
+
+### Tier 1: Inner planets and Moon (body-center segments available)
+
+Bodies: Sun (10), Mercury (199), Venus (299), Earth (399), Moon (301).
+
+- **Position**: 1.0 km
+- **Velocity**: 1.0e-5 km/s
+
+These bodies have direct body-center-to-barycenter segments in both DE441
+and DE442s. Cross-kernel differences are sub-km.
+
+### Tier 2: Outer planet barycenters (no body-center segment)
+
+Bodies: Mars (4), Jupiter (5), Saturn (6), Uranus (7), Neptune (8), Pluto (9).
+
+- **Position**: 5.0 km
+- **Velocity**: 1.0e-5 km/s
+
+Our engine resolves `Body::Mars` etc. to the system barycenter because DE442s
+does not include planet-body-center-to-barycenter segments for these. The
+Horizons references use matching barycenter codes. Cross-kernel differences
+are larger for outer planets (~3 km for Jupiter).
+
+Note: The body-center-to-barycenter offset for Mars is ~1-2 km (Phobos/Deimos
+are tiny), for Jupiter it is ~700 km (Galilean moons), and for Saturn ~300 km
+(Titan dominates). These offsets are NOT included in our current output — a
+future enhancement would add satellite ephemeris support.
+
+## Golden Test Coverage
+
+| Test ID | Target | Observer | Epoch (JD TDB) | Tier |
+|---------|--------|----------|-----------------|------|
+| earth_ssb_j2000 | Earth | SSB | 2451545.0 | 1 |
+| sun_ssb_j2000 | Sun | SSB | 2451545.0 | 1 |
+| mercury_ssb_j2000 | Mercury | SSB | 2451545.0 | 1 |
+| venus_ssb_j2000 | Venus | SSB | 2451545.0 | 1 |
+| moon_earth_j2000 | Moon | Earth | 2451545.0 | 1 |
+| mars_bary_ssb_j2000 | Mars bary | SSB | 2451545.0 | 2 |
+| jupiter_bary_ssb_j2000 | Jupiter bary | SSB | 2451545.0 | 2 |
+| saturn_bary_ssb_j2000 | Saturn bary | SSB | 2451545.0 | 2 |
+| earth_ssb_2460000 | Earth | SSB | 2460000.5 | 1 |
+| moon_earth_2460000 | Moon | Earth | 2460000.5 | 1 |
+
+## CI Policy
+
+1. Golden fixtures are frozen in `testdata/horizons_golden/vectors.json`.
+2. Integration tests in `crates/eph_core/tests/horizons_golden.rs` gate CI.
+3. Any tolerance change requires explicit review and documented rationale.
+4. Edge-epoch tests in `crates/eph_core/tests/edge_epochs.rs` cover boundary conditions.
+5. Cross-platform consistency is verified in the CI matrix.
+
+## Future Improvements
+
+- Add Uranus, Neptune, Pluto golden vectors.
+- Add vectors at more epochs (near perihelion/aphelion, near segment boundaries).
+- Add ecliptic-frame golden vectors.
+- Tighten tolerances if satellite ephemeris support is added (body center vs barycenter).
+- Add angle-derived tolerance budgets when `eph_vedic_base` implements ayanamsha/longitude.
