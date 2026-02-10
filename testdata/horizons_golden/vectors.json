@@ -113,6 +113,98 @@
       "position_km": [2.996603954771215e+05, 2.166072841835021e+05, 9.569516645455429e+04],
       "velocity_km_s": [-5.758810685692292e-01, 7.395419176970628e-01, 4.199150072161020e-01],
       "horizons_source": "DE441"
+    },
+    {
+      "id": "uranus_bary_ssb_j2000",
+      "description": "Uranus barycenter wrt SSB at J2000.0",
+      "target": 7,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [2.157907312953845e+09, -1.871306838939559e+09, -8.501068000312823e+08],
+      "velocity_km_s": [4.646336807878125e+00, 4.251152675974153e+00, 1.796172785811120e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "neptune_bary_ssb_j2000",
+      "description": "Neptune barycenter wrt SSB at J2000.0",
+      "target": 8,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [2.513978721723721e+09, -3.438170140316856e+09, -1.469851523010959e+09],
+      "velocity_km_s": [4.475214621751308e+00, 2.877104855637858e+00, 1.066200548145841e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "pluto_bary_ssb_j2000",
+      "description": "Pluto barycenter wrt SSB at J2000.0",
+      "target": 9,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "position_km": [-1.478399372814445e+09, -4.185975131407770e+09, -8.608780505448110e+08],
+      "velocity_km_s": [5.253463931238531e+00, -1.964080598078450e+00, -2.195768154117838e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "earth_ssb_perihelion_2000",
+      "description": "Earth body center wrt SSB near perihelion ~2000-Jan-03 (JD 2451547.5)",
+      "target": 399,
+      "observer": 0,
+      "epoch_tdb_jd": 2451547.5,
+      "position_km": [-3.397284323497809e+07, 1.311456801171707e+08, 5.689165248748644e+07],
+      "velocity_km_s": [-2.952071985026669e+01, -6.225163734600710e+00, -2.698334382892904e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "earth_ssb_aphelion_2000",
+      "description": "Earth body center wrt SSB near aphelion ~2000-Jul-04 (JD 2451729.5)",
+      "target": 399,
+      "observer": 0,
+      "epoch_tdb_jd": 2451729.5,
+      "position_km": [3.158414406251957e+07, -1.368957899466802e+08, -5.932137581809016e+07],
+      "velocity_km_s": [2.863841553760020e+01, 5.732534994102708e+00, 2.483777856120810e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "earth_ssb_1900",
+      "description": "Earth body center wrt SSB at 1900-Jan-01 (JD 2415020.5)",
+      "target": 399,
+      "observer": 0,
+      "epoch_tdb_jd": 2415020.5,
+      "position_km": [-2.897775951745683e+07, 1.330905598177084e+08, 5.771987399553914e+07],
+      "velocity_km_s": [-2.969865396388122e+01, -5.566731997519346e+00, -2.416569298496656e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "earth_ssb_2050",
+      "description": "Earth body center wrt SSB at 2050-Jan-01 (JD 2469807.5)",
+      "target": 399,
+      "observer": 0,
+      "epoch_tdb_jd": 2469807.5,
+      "position_km": [-2.555298989163721e+07, 1.324404880438156e+08, 5.740434242455620e+07],
+      "velocity_km_s": [-2.980297244737971e+01, -4.880549291210277e+00, -2.114264436207796e+00],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "earth_ssb_j2000_ecliptic",
+      "description": "Earth body center wrt SSB at J2000.0, ecliptic J2000 frame",
+      "target": 399,
+      "observer": 0,
+      "epoch_tdb_jd": 2451545.0,
+      "reference_frame": "ECLIPJ2000",
+      "position_km": [-2.756674048281145e+07, 1.442790215207299e+08, 3.025066782881320e+04],
+      "velocity_km_s": [-2.978494749851088e+01, -5.482119695478543e+00, 1.843295986780902e-05],
+      "horizons_source": "DE441"
+    },
+    {
+      "id": "moon_earth_j2000_ecliptic",
+      "description": "Moon wrt Earth body center at J2000.0, ecliptic J2000 frame",
+      "target": 301,
+      "observer": 399,
+      "epoch_tdb_jd": 2451545.0,
+      "reference_frame": "ECLIPJ2000",
+      "position_km": [-2.916083841877129e+05, -2.749797416731504e+05, 3.627119662699287e+04],
+      "velocity_km_s": [6.435313889889519e-01, -7.309839826871004e-01, -1.150646473918648e-02],
+      "horizons_source": "DE441"
     }
   ]
 }

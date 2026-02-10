@@ -72,9 +72,9 @@ Bodies: Sun (10), Mercury (199), Venus (299), Earth (399), Moon (301).
 These bodies have direct body-center-to-barycenter segments in both DE441
 and DE442s. Cross-kernel differences are sub-km.
 
-### Tier 2: Outer planet barycenters (no body-center segment)
+### Tier 2: Gas-giant barycenters (no body-center segment)
 
-Bodies: Mars (4), Jupiter (5), Saturn (6), Uranus (7), Neptune (8), Pluto (9).
+Bodies: Mars (4), Jupiter (5), Saturn (6).
 
 - **Position**: 5.0 km
 - **Velocity**: 1.0e-5 km/s
@@ -89,20 +89,46 @@ are tiny), for Jupiter it is ~700 km (Galilean moons), and for Saturn ~300 km
 (Titan dominates). These offsets are NOT included in our current output — a
 future enhancement would add satellite ephemeris support.
 
+### Tier 3: Ice-giant / TNO barycenters
+
+Bodies: Uranus (7), Neptune (8), Pluto (9).
+
+- **Position**: 250.0 km
+- **Velocity**: 1.0e-5 km/s
+
+At 2–6 billion km distance, cross-kernel differences reach ~220 km for Uranus
+and ~52 km for Neptune. The relative accuracy remains excellent (<0.1 ppm).
+
+Observed at J2000:
+| Body | Max component error (km) | Distance (km) | Relative accuracy |
+|------|--------------------------|---------------|-------------------|
+| Uranus bary | ~220 | ~2.9e9 | ~76 ppb |
+| Neptune bary | ~52 | ~4.5e9 | ~12 ppb |
+| Pluto bary | <5 | ~4.4e9 | <1 ppb |
+
 ## Golden Test Coverage
 
-| Test ID | Target | Observer | Epoch (JD TDB) | Tier |
-|---------|--------|----------|-----------------|------|
-| earth_ssb_j2000 | Earth | SSB | 2451545.0 | 1 |
-| sun_ssb_j2000 | Sun | SSB | 2451545.0 | 1 |
-| mercury_ssb_j2000 | Mercury | SSB | 2451545.0 | 1 |
-| venus_ssb_j2000 | Venus | SSB | 2451545.0 | 1 |
-| moon_earth_j2000 | Moon | Earth | 2451545.0 | 1 |
-| mars_bary_ssb_j2000 | Mars bary | SSB | 2451545.0 | 2 |
-| jupiter_bary_ssb_j2000 | Jupiter bary | SSB | 2451545.0 | 2 |
-| saturn_bary_ssb_j2000 | Saturn bary | SSB | 2451545.0 | 2 |
-| earth_ssb_2460000 | Earth | SSB | 2460000.5 | 1 |
-| moon_earth_2460000 | Moon | Earth | 2460000.5 | 1 |
+| Test ID | Target | Observer | Epoch (JD TDB) | Frame | Tier |
+|---------|--------|----------|-----------------|-------|------|
+| earth_ssb_j2000 | Earth | SSB | 2451545.0 | ICRF | 1 |
+| sun_ssb_j2000 | Sun | SSB | 2451545.0 | ICRF | 1 |
+| mercury_ssb_j2000 | Mercury | SSB | 2451545.0 | ICRF | 1 |
+| venus_ssb_j2000 | Venus | SSB | 2451545.0 | ICRF | 1 |
+| moon_earth_j2000 | Moon | Earth | 2451545.0 | ICRF | 1 |
+| mars_bary_ssb_j2000 | Mars bary | SSB | 2451545.0 | ICRF | 2 |
+| jupiter_bary_ssb_j2000 | Jupiter bary | SSB | 2451545.0 | ICRF | 2 |
+| saturn_bary_ssb_j2000 | Saturn bary | SSB | 2451545.0 | ICRF | 2 |
+| earth_ssb_2460000 | Earth | SSB | 2460000.5 | ICRF | 1 |
+| moon_earth_2460000 | Moon | Earth | 2460000.5 | ICRF | 1 |
+| uranus_bary_ssb_j2000 | Uranus bary | SSB | 2451545.0 | ICRF | 3 |
+| neptune_bary_ssb_j2000 | Neptune bary | SSB | 2451545.0 | ICRF | 3 |
+| pluto_bary_ssb_j2000 | Pluto bary | SSB | 2451545.0 | ICRF | 3 |
+| earth_ssb_perihelion | Earth | SSB | 2451547.5 | ICRF | 1 |
+| earth_ssb_aphelion | Earth | SSB | 2451729.5 | ICRF | 1 |
+| earth_ssb_1900 | Earth | SSB | 2415020.5 | ICRF | 1 |
+| earth_ssb_2050 | Earth | SSB | 2469807.5 | ICRF | 1 |
+| earth_ssb_j2000_ecliptic | Earth | SSB | 2451545.0 | Ecliptic | 1 |
+| moon_earth_j2000_ecliptic | Moon | Earth | 2451545.0 | Ecliptic | 1 |
 
 ## CI Policy
 
@@ -114,8 +140,5 @@ future enhancement would add satellite ephemeris support.
 
 ## Future Improvements
 
-- Add Uranus, Neptune, Pluto golden vectors.
-- Add vectors at more epochs (near perihelion/aphelion, near segment boundaries).
-- Add ecliptic-frame golden vectors.
 - Tighten tolerances if satellite ephemeris support is added (body center vs barycenter).
 - Add angle-derived tolerance budgets when `eph_vedic_base` implements ayanamsha/longitude.

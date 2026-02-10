@@ -4,9 +4,10 @@
 //! Horizons uses DE441; our engine uses DE442s.
 //! All vectors are geometric (no aberration/light-time), ICRF frame, km and km/s.
 //!
-//! Tolerance policy:
-//! - Position: 1.0 km (accounts for DE441 vs DE442s cross-kernel differences)
-//! - Velocity: 1.0e-5 km/s (proportional to position tolerance / orbital period)
+//! Tolerance policy (position / velocity):
+//! - Inner planets/Moon/Sun: 1.0 km / 1e-5 km/s
+//! - Gas-giant barycenters (Mars/Jupiter/Saturn): 5.0 km / 1e-5 km/s
+//! - Ice-giant/TNO barycenters (Uranus/Neptune/Pluto): 250 km / 1e-5 km/s
 //!
 //! For Mars/Jupiter/Saturn, our engine returns the system barycenter position
 //! (code 4/5/6) since DE442s does not include planet-body-center-to-barycenter
@@ -28,11 +29,17 @@ use eph_core::{Body, Engine, EngineConfig, Frame, Observer, Query, StateVector};
 /// DE441 vs DE442s differences are sub-km for these.
 const POS_TOL_INNER_KM: f64 = 1.0;
 
-/// Outer-planet barycenter position tolerance in km.
-/// Bodies where DE442s has only barycenter segments (4, 5, 6, 7, 8, 9).
+/// Gas-giant barycenter position tolerance in km.
+/// Bodies where DE442s has only barycenter segments (4, 5, 6).
 /// Cross-kernel differences are larger for outer barycenters (~3 km for Jupiter).
 /// 5 km at Jupiter's ~750M km distance is still <10 ppb relative accuracy.
 const POS_TOL_BARY_KM: f64 = 5.0;
+
+/// Ice-giant / TNO barycenter position tolerance in km.
+/// Uranus (7), Neptune (8), Pluto (9) at 2-6 billion km distance show
+/// larger absolute cross-kernel differences (~50-220 km) while maintaining
+/// excellent relative accuracy (<0.1 ppm).
+const POS_TOL_ICE_BARY_KM: f64 = 250.0;
 
 /// Velocity tolerance in km/s (uniform across all bodies).
 const VEL_TOL_KM_S: f64 = 1.0e-5;
@@ -352,6 +359,247 @@ fn golden_moon_earth_2460000() {
         &state,
         [2.996603954771215e+05, 2.166072841835021e+05, 9.569516645455429e+04],
         [-5.758810685692292e-01, 7.395419176970628e-01, 4.199150072161020e-01],
+        POS_TOL_INNER_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+// ===========================================================================
+// Outer planet barycenters: Uranus, Neptune, Pluto at J2000
+// ===========================================================================
+
+#[test]
+fn golden_uranus_bary_ssb_j2000() {
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Uranus,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_451_545.0,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Uranus (bary) wrt SSB @ J2000",
+        &state,
+        [2.157907312953845e+09, -1.871306838939559e+09, -8.501068000312823e+08],
+        [4.646336807878125e+00, 4.251152675974153e+00, 1.796172785811120e+00],
+        POS_TOL_ICE_BARY_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+#[test]
+fn golden_neptune_bary_ssb_j2000() {
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Neptune,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_451_545.0,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Neptune (bary) wrt SSB @ J2000",
+        &state,
+        [2.513978721723721e+09, -3.438170140316856e+09, -1.469851523010959e+09],
+        [4.475214621751308e+00, 2.877104855637858e+00, 1.066200548145841e+00],
+        POS_TOL_ICE_BARY_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+#[test]
+fn golden_pluto_bary_ssb_j2000() {
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Pluto,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_451_545.0,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Pluto (bary) wrt SSB @ J2000",
+        &state,
+        [-1.478399372814445e+09, -4.185975131407770e+09, -8.608780505448110e+08],
+        [5.253463931238531e+00, -1.964080598078450e+00, -2.195768154117838e+00],
+        POS_TOL_ICE_BARY_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+// ===========================================================================
+// Multi-epoch: Earth near perihelion, aphelion, and distant years
+// ===========================================================================
+
+#[test]
+fn golden_earth_ssb_perihelion_2000() {
+    // Earth near perihelion ~2000-Jan-03 (JD 2451547.5)
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Earth,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_451_547.5,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Earth wrt SSB @ perihelion 2000",
+        &state,
+        [-3.397284323497809e+07, 1.311456801171707e+08, 5.689165248748644e+07],
+        [-2.952071985026669e+01, -6.225163734600710e+00, -2.698334382892904e+00],
+        POS_TOL_INNER_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+#[test]
+fn golden_earth_ssb_aphelion_2000() {
+    // Earth near aphelion ~2000-Jul-04 (JD 2451729.5)
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Earth,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_451_729.5,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Earth wrt SSB @ aphelion 2000",
+        &state,
+        [3.158414406251957e+07, -1.368957899466802e+08, -5.932137581809016e+07],
+        [2.863841553760020e+01, 5.732534994102708e+00, 2.483777856120810e+00],
+        POS_TOL_INNER_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+#[test]
+fn golden_earth_ssb_1900() {
+    // Earth wrt SSB at 1900-Jan-01 (JD 2415020.5) — near kernel boundary region
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Earth,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_415_020.5,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Earth wrt SSB @ 1900",
+        &state,
+        [-2.897775951745683e+07, 1.330905598177084e+08, 5.771987399553914e+07],
+        [-2.969865396388122e+01, -5.566731997519346e+00, -2.416569298496656e+00],
+        POS_TOL_INNER_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+#[test]
+fn golden_earth_ssb_2050() {
+    // Earth wrt SSB at 2050-Jan-01 (JD 2469807.5)
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Earth,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_469_807.5,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Earth wrt SSB @ 2050",
+        &state,
+        [-2.555298989163721e+07, 1.324404880438156e+08, 5.740434242455620e+07],
+        [-2.980297244737971e+01, -4.880549291210277e+00, -2.114264436207796e+00],
+        POS_TOL_INNER_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+// ===========================================================================
+// Ecliptic J2000 frame
+// ===========================================================================
+
+#[test]
+fn golden_earth_ssb_j2000_ecliptic() {
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Earth,
+            observer: Observer::SolarSystemBarycenter,
+            frame: Frame::EclipticJ2000,
+            epoch_tdb_jd: 2_451_545.0,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Earth wrt SSB @ J2000 (ecliptic)",
+        &state,
+        [-2.756674048281145e+07, 1.442790215207299e+08, 3.025066782881320e+04],
+        [-2.978494749851088e+01, -5.482119695478543e+00, 1.843295986780902e-05],
+        POS_TOL_INNER_KM,
+        VEL_TOL_KM_S,
+    );
+}
+
+#[test]
+fn golden_moon_earth_j2000_ecliptic() {
+    let engine = match engine() {
+        Some(e) => e,
+        None => return,
+    };
+    let state = engine
+        .query(Query {
+            target: Body::Moon,
+            observer: Observer::Body(Body::Earth),
+            frame: Frame::EclipticJ2000,
+            epoch_tdb_jd: 2_451_545.0,
+        })
+        .expect("query should succeed");
+
+    assert_state_within_tolerance(
+        "Moon wrt Earth @ J2000 (ecliptic)",
+        &state,
+        [-2.916083841877129e+05, -2.749797416731504e+05, 3.627119662699287e+04],
+        [6.435313889889519e-01, -7.309839826871004e-01, -1.150646473918648e-02],
         POS_TOL_INNER_KM,
         VEL_TOL_KM_S,
     );
