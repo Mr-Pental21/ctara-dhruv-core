@@ -1,0 +1,15 @@
+[package]
+name = "dhruv_rs"
+description = "Convenience wrapper for ctara-dhruv ephemeris engine"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dhruv_core   = { path = "../dhruv_core" }
+dhruv_time   = { path = "../dhruv_time" }
+dhruv_frames = { path = "../dhruv_frames" }
+
+[lints]
+workspace = true

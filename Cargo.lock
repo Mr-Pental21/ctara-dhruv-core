@@ -194,6 +194,15 @@ name = "dhruv_frames"
 version = "0.1.0"
 
 [[package]]
+name = "dhruv_rs"
+version = "0.1.0"
+dependencies = [
+ "dhruv_core",
+ "dhruv_frames",
+ "dhruv_time",
+]
+
+[[package]]
 name = "dhruv_time"
 version = "0.1.0"
 
