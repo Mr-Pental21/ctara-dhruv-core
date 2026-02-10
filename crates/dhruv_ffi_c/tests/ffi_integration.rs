@@ -819,3 +819,195 @@ fn ffi_center_mode_between_limbs() {
     unsafe { dhruv_lsk_free(lsk_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };
 }
+
+// ---------------------------------------------------------------------------
+// Bhava (house) integration tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ffi_bhava_equal_new_delhi() {
+    if !all_kernels_available() {
+        eprintln!("Skipping: not all kernel files available");
+        return;
+    }
+
+    let engine_ptr = make_engine().unwrap();
+    let lsk_path = lsk_path_cstr().unwrap();
+    let eop_path = eop_path_cstr().unwrap();
+
+    let mut lsk_ptr: *mut DhruvLskHandle = ptr::null_mut();
+    let status = unsafe { dhruv_lsk_load(lsk_path.as_ptr() as *const u8, &mut lsk_ptr) };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    let mut eop_ptr: *mut DhruvEopHandle = ptr::null_mut();
+    let status = unsafe { dhruv_eop_load(eop_path.as_ptr() as *const u8, &mut eop_ptr) };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    let loc = DhruvGeoLocation {
+        latitude_deg: 28.6139,
+        longitude_deg: 77.209,
+        altitude_m: 0.0,
+    };
+
+    let jd_utc = calendar_to_jd(2024, 3, 20.0) + 0.5; // noon UT
+    let cfg = dhruv_bhava_config_default();
+
+    let mut result = DhruvBhavaResult {
+        bhavas: [DhruvBhava {
+            number: 0,
+            cusp_deg: 0.0,
+            start_deg: 0.0,
+            end_deg: 0.0,
+        }; 12],
+        ascendant_deg: 0.0,
+        mc_deg: 0.0,
+    };
+
+    // SAFETY: All pointers are valid.
+    let status = unsafe {
+        dhruv_compute_bhavas(
+            engine_ptr, lsk_ptr, eop_ptr, &loc, jd_utc, &cfg, &mut result,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    // Ascendant should be in [0, 360)
+    assert!(
+        result.ascendant_deg >= 0.0 && result.ascendant_deg < 360.0,
+        "Asc = {} deg",
+        result.ascendant_deg
+    );
+
+    // Equal cusps: each 30 deg apart
+    for i in 0..12 {
+        let next = (i + 1) % 12;
+        let diff = (result.bhavas[next].cusp_deg - result.bhavas[i].cusp_deg).rem_euclid(360.0);
+        assert!(
+            (diff - 30.0).abs() < 0.01,
+            "cusp diff [{i}->{next}] = {diff}, expected 30",
+        );
+    }
+
+    // Cusp 1 ≈ Ascendant
+    assert!(
+        (result.bhavas[0].cusp_deg - result.ascendant_deg).abs() < 0.01,
+        "cusp 1 = {}, Asc = {}",
+        result.bhavas[0].cusp_deg,
+        result.ascendant_deg
+    );
+
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_lsk_free(lsk_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_ascendant_deg_new_delhi() {
+    if !all_kernels_available() {
+        eprintln!("Skipping: not all kernel files available");
+        return;
+    }
+
+    let lsk_path = lsk_path_cstr().unwrap();
+    let eop_path = eop_path_cstr().unwrap();
+
+    let mut lsk_ptr: *mut DhruvLskHandle = ptr::null_mut();
+    let status = unsafe { dhruv_lsk_load(lsk_path.as_ptr() as *const u8, &mut lsk_ptr) };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    let mut eop_ptr: *mut DhruvEopHandle = ptr::null_mut();
+    let status = unsafe { dhruv_eop_load(eop_path.as_ptr() as *const u8, &mut eop_ptr) };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    let loc = DhruvGeoLocation {
+        latitude_deg: 28.6139,
+        longitude_deg: 77.209,
+        altitude_m: 0.0,
+    };
+
+    let jd_utc = calendar_to_jd(2024, 3, 20.0) + 0.5;
+    let mut asc: f64 = 0.0;
+
+    // SAFETY: All pointers are valid.
+    let status = unsafe { dhruv_ascendant_deg(lsk_ptr, eop_ptr, &loc, jd_utc, &mut asc) };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!(
+        asc >= 0.0 && asc < 360.0,
+        "Ascendant = {} deg, out of range",
+        asc
+    );
+
+    // MC should also work
+    let mut mc: f64 = 0.0;
+    let status = unsafe { dhruv_mc_deg(lsk_ptr, eop_ptr, &loc, jd_utc, &mut mc) };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!(mc >= 0.0 && mc < 360.0, "MC = {} deg, out of range", mc);
+
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_lsk_free(lsk_ptr) };
+}
+
+#[test]
+fn ffi_bhava_body_starting_point() {
+    if !all_kernels_available() {
+        eprintln!("Skipping: not all kernel files available");
+        return;
+    }
+
+    let engine_ptr = make_engine().unwrap();
+    let lsk_path = lsk_path_cstr().unwrap();
+    let eop_path = eop_path_cstr().unwrap();
+
+    let mut lsk_ptr: *mut DhruvLskHandle = ptr::null_mut();
+    let status = unsafe { dhruv_lsk_load(lsk_path.as_ptr() as *const u8, &mut lsk_ptr) };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    let mut eop_ptr: *mut DhruvEopHandle = ptr::null_mut();
+    let status = unsafe { dhruv_eop_load(eop_path.as_ptr() as *const u8, &mut eop_ptr) };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    let loc = DhruvGeoLocation {
+        latitude_deg: 28.6139,
+        longitude_deg: 77.209,
+        altitude_m: 0.0,
+    };
+
+    let jd_utc = calendar_to_jd(2024, 3, 20.0) + 0.5;
+
+    // Use Sun as starting point (body code = 10)
+    let cfg = DhruvBhavaConfig {
+        system: DHRUV_BHAVA_EQUAL,
+        starting_point: 10, // Sun's NAIF code
+        custom_start_deg: 0.0,
+        reference_mode: DHRUV_BHAVA_REF_START,
+    };
+
+    let mut result = DhruvBhavaResult {
+        bhavas: [DhruvBhava {
+            number: 0,
+            cusp_deg: 0.0,
+            start_deg: 0.0,
+            end_deg: 0.0,
+        }; 12],
+        ascendant_deg: 0.0,
+        mc_deg: 0.0,
+    };
+
+    let status = unsafe {
+        dhruv_compute_bhavas(
+            engine_ptr, lsk_ptr, eop_ptr, &loc, jd_utc, &cfg, &mut result,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    // Near equinox, Sun ≈ 0 deg ecliptic, so cusp 1 should be near 0/360
+    assert!(
+        result.bhavas[0].cusp_deg < 10.0 || result.bhavas[0].cusp_deg > 350.0,
+        "cusp 1 = {} deg, expected near 0 (equinox Sun)",
+        result.bhavas[0].cusp_deg
+    );
+
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_lsk_free(lsk_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}

@@ -50,7 +50,13 @@ This repository is clean-room and permissive-license only.
 - **Integration tests** (`tests/`): anything that loads kernel files (`.bsp`, `.tls`) or other external data from disk.
 - Never put kernel-dependent tests in `src/`. Always place them in the crate's `tests/` directory.
 - Integration tests that need kernels should skip gracefully (early return) when files are absent.
+- After all Rust code changes, run the full test suite (`cargo test`) and report the number of passing tests. Do not claim tests pass without actually running them.
+
 
 ## Git
 - Short commit messages, imperative mood
 - No boilerplate, signatures, or Co-Authored-By lines
+
+
+## General Rules 
+- Always verify changes against the actual codebase before making claims. Never fabricate CI status, tool versions, or test results. If you can't verify something, say so explicitly.

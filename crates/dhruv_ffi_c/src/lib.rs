@@ -5,13 +5,14 @@ use std::ptr;
 
 use dhruv_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query, StateVector};
 use dhruv_vedic_base::{
-    AyanamshaSystem, GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb,
-    VedicError, ayanamsha_deg, ayanamsha_mean_deg, ayanamsha_true_deg,
-    approximate_local_noon_jd, compute_all_events, compute_rise_set, jd_tdb_to_centuries,
+    AyanamshaSystem, BhavaConfig, BhavaReferenceMode, BhavaStartingPoint, BhavaSystem,
+    GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb, VedicError,
+    ayanamsha_deg, ayanamsha_mean_deg, ayanamsha_true_deg, approximate_local_noon_jd,
+    compute_all_events, compute_bhavas, compute_rise_set, jd_tdb_to_centuries,
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 4;
+pub const DHRUV_API_VERSION: u32 = 5;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -1160,6 +1161,272 @@ pub unsafe extern "C" fn dhruv_riseset_result_to_utc(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Bhava (house) system constants
+// ---------------------------------------------------------------------------
+
+pub const DHRUV_BHAVA_EQUAL: i32 = 0;
+pub const DHRUV_BHAVA_SURYA_SIDDHANTA: i32 = 1;
+pub const DHRUV_BHAVA_SRIPATI: i32 = 2;
+pub const DHRUV_BHAVA_KP: i32 = 3;
+pub const DHRUV_BHAVA_KOCH: i32 = 4;
+pub const DHRUV_BHAVA_REGIOMONTANUS: i32 = 5;
+pub const DHRUV_BHAVA_CAMPANUS: i32 = 6;
+pub const DHRUV_BHAVA_AXIAL_ROTATION: i32 = 7;
+pub const DHRUV_BHAVA_TOPOCENTRIC: i32 = 8;
+pub const DHRUV_BHAVA_ALCABITUS: i32 = 9;
+
+pub const DHRUV_BHAVA_REF_START: i32 = 0;
+pub const DHRUV_BHAVA_REF_MIDDLE: i32 = 1;
+
+/// Starting point: use the Ascendant.
+pub const DHRUV_BHAVA_START_ASCENDANT: i32 = -1;
+/// Starting point: use a custom ecliptic degree (see `custom_start_deg`).
+pub const DHRUV_BHAVA_START_CUSTOM: i32 = -2;
+// Positive values = NAIF body codes for BodyLongitude starting point.
+
+// ---------------------------------------------------------------------------
+// Bhava C-compatible types
+// ---------------------------------------------------------------------------
+
+/// C-compatible bhava configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvBhavaConfig {
+    /// House system code (0-9, see DHRUV_BHAVA_* constants).
+    pub system: i32,
+    /// Starting point: -1=Ascendant, -2=custom deg, or positive NAIF body code.
+    pub starting_point: i32,
+    /// Custom ecliptic degree, used only when starting_point == -2.
+    pub custom_start_deg: f64,
+    /// Reference mode: 0=start of first, 1=middle of first.
+    pub reference_mode: i32,
+}
+
+/// C-compatible single bhava result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvBhava {
+    pub number: u8,
+    pub cusp_deg: f64,
+    pub start_deg: f64,
+    pub end_deg: f64,
+}
+
+/// C-compatible full bhava result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvBhavaResult {
+    pub bhavas: [DhruvBhava; 12],
+    pub ascendant_deg: f64,
+    pub mc_deg: f64,
+}
+
+/// Map integer code 0..9 to BhavaSystem enum variant.
+fn bhava_system_from_code(code: i32) -> Option<BhavaSystem> {
+    let systems = BhavaSystem::all();
+    let idx = usize::try_from(code).ok()?;
+    systems.get(idx).copied()
+}
+
+/// Convert C config to Rust BhavaConfig.
+fn bhava_config_from_ffi(cfg: &DhruvBhavaConfig) -> Result<BhavaConfig, DhruvStatus> {
+    let system = bhava_system_from_code(cfg.system).ok_or(DhruvStatus::InvalidQuery)?;
+
+    let starting_point = match cfg.starting_point {
+        DHRUV_BHAVA_START_ASCENDANT => BhavaStartingPoint::Ascendant,
+        DHRUV_BHAVA_START_CUSTOM => BhavaStartingPoint::CustomDeg(cfg.custom_start_deg),
+        code if code > 0 => {
+            let body = Body::from_code(code).ok_or(DhruvStatus::InvalidQuery)?;
+            BhavaStartingPoint::BodyLongitude(body)
+        }
+        _ => return Err(DhruvStatus::InvalidQuery),
+    };
+
+    let reference_mode = match cfg.reference_mode {
+        DHRUV_BHAVA_REF_START => BhavaReferenceMode::StartOfFirst,
+        DHRUV_BHAVA_REF_MIDDLE => BhavaReferenceMode::MiddleOfFirst,
+        _ => return Err(DhruvStatus::InvalidQuery),
+    };
+
+    Ok(BhavaConfig {
+        system,
+        starting_point,
+        reference_mode,
+    })
+}
+
+/// Returns default bhava configuration (Equal, Ascendant, StartOfFirst).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_bhava_config_default() -> DhruvBhavaConfig {
+    DhruvBhavaConfig {
+        system: DHRUV_BHAVA_EQUAL,
+        starting_point: DHRUV_BHAVA_START_ASCENDANT,
+        custom_start_deg: 0.0,
+        reference_mode: DHRUV_BHAVA_REF_START,
+    }
+}
+
+/// Number of supported bhava (house) systems.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_bhava_system_count() -> u32 {
+    BhavaSystem::all().len() as u32
+}
+
+/// Compute bhava (house) cusps.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_compute_bhavas(
+    engine: *const DhruvEngineHandle,
+    lsk: *const DhruvLskHandle,
+    eop: *const DhruvEopHandle,
+    location: *const DhruvGeoLocation,
+    jd_utc: f64,
+    config: *const DhruvBhavaConfig,
+    out_result: *mut DhruvBhavaResult,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null()
+            || lsk.is_null()
+            || eop.is_null()
+            || location.is_null()
+            || config.is_null()
+            || out_result.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+
+        // SAFETY: All pointers checked for null above.
+        let engine_ref = unsafe { &*engine };
+        let lsk_ref = unsafe { &*lsk };
+        let eop_ref = unsafe { &*eop };
+        let loc_ref = unsafe { &*location };
+        let cfg_ref = unsafe { &*config };
+
+        let geo = GeoLocation::new(
+            loc_ref.latitude_deg,
+            loc_ref.longitude_deg,
+            loc_ref.altitude_m,
+        );
+
+        let rust_config = match bhava_config_from_ffi(cfg_ref) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
+
+        match compute_bhavas(engine_ref, lsk_ref, eop_ref, &geo, jd_utc, &rust_config) {
+            Ok(result) => {
+                let mut ffi_bhavas = [DhruvBhava {
+                    number: 0,
+                    cusp_deg: 0.0,
+                    start_deg: 0.0,
+                    end_deg: 0.0,
+                }; 12];
+                for (i, b) in result.bhavas.iter().enumerate() {
+                    ffi_bhavas[i] = DhruvBhava {
+                        number: b.number,
+                        cusp_deg: b.cusp_deg,
+                        start_deg: b.start_deg,
+                        end_deg: b.end_deg,
+                    };
+                }
+                // SAFETY: Pointer checked for null.
+                unsafe {
+                    *out_result = DhruvBhavaResult {
+                        bhavas: ffi_bhavas,
+                        ascendant_deg: result.ascendant_deg,
+                        mc_deg: result.mc_deg,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute the Ascendant ecliptic longitude in degrees.
+///
+/// Requires LSK, EOP, and location (no engine needed).
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ascendant_deg(
+    lsk: *const DhruvLskHandle,
+    eop: *const DhruvEopHandle,
+    location: *const DhruvGeoLocation,
+    jd_utc: f64,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if lsk.is_null() || eop.is_null() || location.is_null() || out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        // SAFETY: Pointers checked for null above.
+        let lsk_ref = unsafe { &*lsk };
+        let eop_ref = unsafe { &*eop };
+        let loc_ref = unsafe { &*location };
+
+        let geo = GeoLocation::new(
+            loc_ref.latitude_deg,
+            loc_ref.longitude_deg,
+            loc_ref.altitude_m,
+        );
+
+        match dhruv_vedic_base::ascendant_longitude_rad(lsk_ref, eop_ref, &geo, jd_utc) {
+            Ok(rad) => {
+                // SAFETY: Pointer checked for null.
+                unsafe { *out_deg = rad.to_degrees() };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute the MC (Midheaven) ecliptic longitude in degrees.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_mc_deg(
+    lsk: *const DhruvLskHandle,
+    eop: *const DhruvEopHandle,
+    location: *const DhruvGeoLocation,
+    jd_utc: f64,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if lsk.is_null() || eop.is_null() || location.is_null() || out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        // SAFETY: Pointers checked for null above.
+        let lsk_ref = unsafe { &*lsk };
+        let eop_ref = unsafe { &*eop };
+        let loc_ref = unsafe { &*location };
+
+        let geo = GeoLocation::new(
+            loc_ref.latitude_deg,
+            loc_ref.longitude_deg,
+            loc_ref.altitude_m,
+        );
+
+        match dhruv_vedic_base::mc_longitude_rad(lsk_ref, eop_ref, &geo, jd_utc) {
+            Ok(rad) => {
+                // SAFETY: Pointer checked for null.
+                unsafe { *out_deg = rad.to_degrees() };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
 fn ffi_boundary(f: impl FnOnce() -> DhruvStatus) -> DhruvStatus {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(status) => status,
@@ -1480,6 +1747,93 @@ mod tests {
                 2024, 3, 20, 12, 0, 0.0,
                 &mut out,
             )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    // --- Bhava tests ---
+
+    #[test]
+    fn ffi_bhava_config_default_values() {
+        let cfg = dhruv_bhava_config_default();
+        assert_eq!(cfg.system, DHRUV_BHAVA_EQUAL);
+        assert_eq!(cfg.starting_point, DHRUV_BHAVA_START_ASCENDANT);
+        assert_eq!(cfg.reference_mode, DHRUV_BHAVA_REF_START);
+        assert!((cfg.custom_start_deg - 0.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn ffi_bhava_system_count_is_10() {
+        assert_eq!(dhruv_bhava_system_count(), 10);
+    }
+
+    #[test]
+    fn ffi_compute_bhavas_rejects_null() {
+        let mut out = DhruvBhavaResult {
+            bhavas: [DhruvBhava {
+                number: 0,
+                cusp_deg: 0.0,
+                start_deg: 0.0,
+                end_deg: 0.0,
+            }; 12],
+            ascendant_deg: 0.0,
+            mc_deg: 0.0,
+        };
+        // SAFETY: Null pointers intentional for validation.
+        let status = unsafe {
+            dhruv_compute_bhavas(
+                ptr::null(),
+                ptr::null(),
+                ptr::null(),
+                ptr::null(),
+                0.0,
+                ptr::null(),
+                &mut out,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_bhava_config_invalid_system() {
+        let cfg = DhruvBhavaConfig {
+            system: 99,
+            starting_point: DHRUV_BHAVA_START_ASCENDANT,
+            custom_start_deg: 0.0,
+            reference_mode: DHRUV_BHAVA_REF_START,
+        };
+        let result = bhava_config_from_ffi(&cfg);
+        assert_eq!(result, Err(DhruvStatus::InvalidQuery));
+    }
+
+    #[test]
+    fn ffi_bhava_config_invalid_starting_point() {
+        let cfg = DhruvBhavaConfig {
+            system: DHRUV_BHAVA_EQUAL,
+            starting_point: -99,
+            custom_start_deg: 0.0,
+            reference_mode: DHRUV_BHAVA_REF_START,
+        };
+        let result = bhava_config_from_ffi(&cfg);
+        assert_eq!(result, Err(DhruvStatus::InvalidQuery));
+    }
+
+    #[test]
+    fn ffi_ascendant_deg_rejects_null() {
+        let mut out: f64 = 0.0;
+        // SAFETY: Null pointers intentional for validation.
+        let status = unsafe {
+            dhruv_ascendant_deg(ptr::null(), ptr::null(), ptr::null(), 0.0, &mut out)
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_mc_deg_rejects_null() {
+        let mut out: f64 = 0.0;
+        // SAFETY: Null pointers intentional for validation.
+        let status = unsafe {
+            dhruv_mc_deg(ptr::null(), ptr::null(), ptr::null(), 0.0, &mut out)
         };
         assert_eq!(status, DhruvStatus::NullPointer);
     }
