@@ -151,18 +151,28 @@ pub fn evaluate_type2(
     // Read coefficients for X, Y, Z and evaluate.
     let coeff_base = record_byte + 16; // skip MID + RADIUS
 
+    // Stack-allocate coefficient buffer. DE442s uses 14 coefficients;
+    // 32 covers all foreseeable Type 2 segments without heap allocation.
+    const MAX_COEFFS: usize = 32;
+    if n_coeffs > MAX_COEFFS {
+        return Err(KernelError::BadSegmentData(format!(
+            "n_coeffs {n_coeffs} exceeds MAX_COEFFS {MAX_COEFFS}"
+        )));
+    }
+
     let mut position_km = [0.0f64; 3];
     let mut velocity_km_s = [0.0f64; 3];
 
     for axis in 0..3 {
         let axis_offset = coeff_base + axis * n_coeffs * 8;
-        let mut coeffs = Vec::with_capacity(n_coeffs);
-        for c in 0..n_coeffs {
-            coeffs.push(read_f64(data, axis_offset + c * 8, endian));
+        let mut buf = [0.0f64; MAX_COEFFS];
+        for (c, slot) in buf[..n_coeffs].iter_mut().enumerate() {
+            *slot = read_f64(data, axis_offset + c * 8, endian);
         }
+        let coeffs = &buf[..n_coeffs];
 
-        position_km[axis] = chebyshev::clenshaw(&coeffs, s);
-        velocity_km_s[axis] = chebyshev::clenshaw_derivative(&coeffs, s) / radius;
+        position_km[axis] = chebyshev::clenshaw(coeffs, s);
+        velocity_km_s[axis] = chebyshev::clenshaw_derivative(coeffs, s) / radius;
     }
 
     Ok(SpkEvaluation {

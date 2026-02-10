@@ -5,3 +5,10 @@ license = "Apache-2.0"
 edition = "2024"
 
 [dependencies]
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "eval_bench"
+harness = false

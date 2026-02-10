@@ -4,6 +4,7 @@
 //! kernels and evaluates ephemeris queries by chaining SPK segments
 //! through the NAIF body hierarchy.
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
@@ -241,12 +242,57 @@ pub trait DerivedComputation: Send + Sync {
     ) -> Result<DerivedValue, EngineError>;
 }
 
+/// Telemetry from a query or batch of queries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct QueryStats {
+    pub evaluations: u32,
+    pub cache_hits: u32,
+}
+
+/// Per-request memoization context.
+///
+/// Created at the start of each query/batch, threaded through chain
+/// resolution, dropped at the end. Keys use `epoch_tdb_s.to_bits()`
+/// because epochs within one request are bit-identical from the same
+/// `jd_to_tdb_seconds()` call.
+struct ComputationContext {
+    /// Cache key: (target, center, epoch_bits) -> evaluation result.
+    cache: HashMap<(i32, i32, u64), SpkEvaluation>,
+    evaluations: u32,
+    cache_hits: u32,
+}
+
+impl ComputationContext {
+    fn new() -> Self {
+        Self {
+            cache: HashMap::with_capacity(8),
+            evaluations: 0,
+            cache_hits: 0,
+        }
+    }
+
+    fn stats(&self) -> QueryStats {
+        QueryStats {
+            evaluations: self.evaluations,
+            cache_hits: self.cache_hits,
+        }
+    }
+}
+
 /// Core query engine.
 ///
-/// Loads one or more SPK kernels and an LSK kernel at construction time
-/// and evaluates ephemeris queries by chaining SPK segments through the
-/// body hierarchy. When multiple kernels are loaded, they are searched
-/// in priority order (first listed = highest priority).
+/// `Engine` is [`Send`] + [`Sync`], so it can be shared across threads
+/// via `Arc<Engine>`. Each query creates its own short-lived
+/// [`ComputationContext`] for memoization — no cross-request locking.
+///
+/// ```rust,ignore
+/// let engine = Arc::new(Engine::new(config)?);
+/// // Spawn threads that share the same engine:
+/// let handle = std::thread::spawn({
+///     let engine = Arc::clone(&engine);
+///     move || engine.query(query)
+/// });
+/// ```
 pub struct Engine {
     config: EngineConfig,
     spk_kernels: Vec<SpkKernel>,
@@ -304,16 +350,27 @@ impl Engine {
     }
 
     /// Evaluate (target, center) at epoch from the first kernel with a
-    /// matching segment.
+    /// matching segment. Uses the computation context for memoization.
     fn evaluate_across(
         &self,
         target: i32,
         center: i32,
         epoch_tdb_s: f64,
+        ctx: &mut ComputationContext,
     ) -> Result<SpkEvaluation, KernelError> {
+        let key = (target, center, epoch_tdb_s.to_bits());
+        if let Some(cached) = ctx.cache.get(&key) {
+            ctx.cache_hits += 1;
+            return Ok(*cached);
+        }
+
         for kernel in &self.spk_kernels {
             match kernel.evaluate(target, center, epoch_tdb_s) {
-                Ok(eval) => return Ok(eval),
+                Ok(eval) => {
+                    ctx.evaluations += 1;
+                    ctx.cache.insert(key, eval);
+                    return Ok(eval);
+                }
                 Err(KernelError::EpochOutOfRange { .. }) => continue,
                 Err(e) => return Err(e),
             }
@@ -341,6 +398,7 @@ impl Engine {
         &self,
         body_code: i32,
         epoch_tdb_s: f64,
+        ctx: &mut ComputationContext,
     ) -> Result<[f64; 6], KernelError> {
         let mut code = body_code;
         let mut state = [0.0f64; 6];
@@ -361,7 +419,7 @@ impl Engine {
                 }
             };
 
-            let eval = self.evaluate_across(code, center, epoch_tdb_s)?;
+            let eval = self.evaluate_across(code, center, epoch_tdb_s, ctx)?;
             state[0] += eval.position_km[0];
             state[1] += eval.position_km[1];
             state[2] += eval.position_km[2];
@@ -377,6 +435,26 @@ impl Engine {
 
     /// Evaluate an ephemeris query, returning a Cartesian state vector.
     pub fn query(&self, query: Query) -> Result<StateVector, EngineError> {
+        let mut ctx = ComputationContext::new();
+        self.query_with_ctx(query, &mut ctx)
+    }
+
+    /// Evaluate a query and return telemetry alongside the result.
+    pub fn query_with_stats(
+        &self,
+        query: Query,
+    ) -> Result<(StateVector, QueryStats), EngineError> {
+        let mut ctx = ComputationContext::new();
+        let state = self.query_with_ctx(query, &mut ctx)?;
+        Ok((state, ctx.stats()))
+    }
+
+    /// Internal query implementation that threads a memoization context.
+    fn query_with_ctx(
+        &self,
+        query: Query,
+        ctx: &mut ComputationContext,
+    ) -> Result<StateVector, EngineError> {
         if !query.epoch_tdb_jd.is_finite() {
             return Err(EngineError::InvalidQuery("epoch_tdb_jd must be finite"));
         }
@@ -393,14 +471,14 @@ impl Engine {
 
         // Resolve target to SSB across all loaded kernels.
         let target_ssb = self
-            .resolve_to_ssb_across(query.target.code(), epoch_tdb_s)
+            .resolve_to_ssb_across(query.target.code(), epoch_tdb_s, ctx)
             .map_err(|e| EngineError::Internal(e.to_string()))?;
 
         // Resolve observer to SSB across all loaded kernels.
         let observer_ssb = match query.observer {
             Observer::SolarSystemBarycenter => [0.0f64; 6],
             Observer::Body(body) => self
-                .resolve_to_ssb_across(body.code(), epoch_tdb_s)
+                .resolve_to_ssb_across(body.code(), epoch_tdb_s, ctx)
                 .map_err(|e| EngineError::Internal(e.to_string()))?,
         };
 
@@ -425,6 +503,67 @@ impl Engine {
         }
 
         Ok(state)
+    }
+
+    /// Evaluate multiple queries, sharing memoization across queries at the
+    /// same epoch. Returns results in input order.
+    pub fn query_batch(
+        &self,
+        queries: &[Query],
+    ) -> Vec<Result<StateVector, EngineError>> {
+        self.query_batch_with_stats(queries).0
+    }
+
+    /// Evaluate multiple queries with telemetry. Shares memoization across
+    /// queries at the same epoch.
+    pub fn query_batch_with_stats(
+        &self,
+        queries: &[Query],
+    ) -> (Vec<Result<StateVector, EngineError>>, QueryStats) {
+        let mut results: Vec<Result<StateVector, EngineError>> =
+            Vec::with_capacity(queries.len());
+
+        // Group by epoch bits to share context across same-epoch queries.
+        // Build index groups, process each group with a shared context,
+        // then scatter results back into the output vec.
+
+        // Pre-fill results with placeholder errors.
+        results.resize_with(queries.len(), || {
+            Err(EngineError::Internal("unprocessed".into()))
+        });
+
+        // Collect (epoch_bits, original_index) and sort by epoch to group.
+        let mut indexed: Vec<(u64, usize)> = queries
+            .iter()
+            .enumerate()
+            .map(|(i, q)| (q.epoch_tdb_jd.to_bits(), i))
+            .collect();
+        indexed.sort_unstable_by_key(|(bits, _)| *bits);
+
+        let mut total_stats = QueryStats::default();
+
+        // Process groups of same-epoch queries.
+        let mut group_start = 0;
+        while group_start < indexed.len() {
+            let epoch_bits = indexed[group_start].0;
+            let mut group_end = group_start + 1;
+            while group_end < indexed.len() && indexed[group_end].0 == epoch_bits {
+                group_end += 1;
+            }
+
+            let mut ctx = ComputationContext::new();
+            for &(_, idx) in &indexed[group_start..group_end] {
+                results[idx] = self.query_with_ctx(queries[idx], &mut ctx);
+            }
+
+            let group_stats = ctx.stats();
+            total_stats.evaluations += group_stats.evaluations;
+            total_stats.cache_hits += group_stats.cache_hits;
+
+            group_start = group_end;
+        }
+
+        (results, total_stats)
     }
 
     pub fn query_with_derived<D: DerivedComputation>(
@@ -684,6 +823,124 @@ mod tests {
         );
     }
 
+    #[test]
+    fn context_avoids_redundant_evaluations() {
+        let engine = match real_engine() {
+            Some(e) => e,
+            None => return,
+        };
+        // Moon wrt Earth: both resolve through EMB(3)->SSB(0),
+        // so the second resolution should get cache hits.
+        let query = Query {
+            target: Body::Moon,
+            observer: Observer::Body(Body::Earth),
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_451_545.0,
+        };
+        let (state, stats) = engine.query_with_stats(query).expect("should succeed");
+
+        // Verify result is still correct.
+        let r = (state.position_km[0].powi(2)
+            + state.position_km[1].powi(2)
+            + state.position_km[2].powi(2))
+        .sqrt();
+        assert!(r > 340_000.0 && r < 420_000.0, "Moon-Earth distance {r:.0} km");
+
+        // Moon chain: 301->3, 3->0 (2 evals)
+        // Earth chain: 399->3 (1 eval, but 3->0 is cached = 1 hit)
+        assert!(
+            stats.cache_hits > 0,
+            "expected cache hits for shared EMB->SSB hop, got {stats:?}"
+        );
+    }
+
+    #[test]
+    fn query_batch_matches_individual() {
+        let engine = match real_engine() {
+            Some(e) => e,
+            None => return,
+        };
+        let bodies = [
+            Body::Sun,
+            Body::Mercury,
+            Body::Venus,
+            Body::Earth,
+            Body::Moon,
+            Body::Mars,
+            Body::Jupiter,
+            Body::Saturn,
+            Body::Uranus,
+            Body::Neptune,
+            Body::Pluto,
+        ];
+        let epoch = 2_451_545.0;
+        let queries: Vec<Query> = bodies
+            .iter()
+            .map(|&b| Query {
+                target: b,
+                observer: Observer::SolarSystemBarycenter,
+                frame: Frame::IcrfJ2000,
+                epoch_tdb_jd: epoch,
+            })
+            .collect();
+
+        let batch_results = engine.query_batch(&queries);
+        assert_eq!(batch_results.len(), queries.len());
+
+        for (i, q) in queries.iter().enumerate() {
+            let individual = engine.query(*q).expect("individual query should succeed");
+            let batch = batch_results[i].as_ref().expect("batch query should succeed");
+            assert_eq!(
+                individual, *batch,
+                "mismatch for body {:?}",
+                q.target
+            );
+        }
+    }
+
+    #[test]
+    fn query_batch_empty() {
+        let engine = match real_engine() {
+            Some(e) => e,
+            None => return,
+        };
+        let results = engine.query_batch(&[]);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn query_batch_mixed_epochs() {
+        let engine = match real_engine() {
+            Some(e) => e,
+            None => return,
+        };
+        let queries = vec![
+            Query {
+                target: Body::Earth,
+                observer: Observer::SolarSystemBarycenter,
+                frame: Frame::IcrfJ2000,
+                epoch_tdb_jd: 2_451_545.0,
+            },
+            Query {
+                target: Body::Mars,
+                observer: Observer::SolarSystemBarycenter,
+                frame: Frame::IcrfJ2000,
+                epoch_tdb_jd: 2_460_000.5,
+            },
+            Query {
+                target: Body::Moon,
+                observer: Observer::Body(Body::Earth),
+                frame: Frame::IcrfJ2000,
+                epoch_tdb_jd: 2_451_545.0,
+            },
+        ];
+        let results = engine.query_batch(&queries);
+        assert_eq!(results.len(), 3);
+        for (i, r) in results.iter().enumerate() {
+            assert!(r.is_ok(), "query {i} failed: {:?}", r.as_ref().err());
+        }
+    }
+
     struct DummyDerived;
 
     impl DerivedComputation for DummyDerived {
@@ -768,5 +1025,42 @@ mod tests {
         assert_eq!(config.spk_paths.len(), 1);
         assert_eq!(config.cache_capacity, 256);
         assert!(config.strict_validation);
+    }
+
+    // Compile-time assertion: Engine must be Send + Sync.
+    #[allow(dead_code)]
+    const _: () = {
+        fn assert_send_sync<T: Send + Sync>() {}
+        fn check() {
+            assert_send_sync::<Engine>();
+        }
+    };
+
+    #[test]
+    fn concurrent_queries_produce_identical_results() {
+        let engine = match real_engine() {
+            Some(e) => std::sync::Arc::new(e),
+            None => return,
+        };
+        let query = Query {
+            target: Body::Moon,
+            observer: Observer::Body(Body::Earth),
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: 2_451_545.0,
+        };
+        let expected = engine.query(query).expect("baseline should succeed");
+
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let engine = std::sync::Arc::clone(&engine);
+                std::thread::spawn(move || engine.query(query))
+            })
+            .collect();
+
+        for handle in handles {
+            let result = handle.join().expect("thread should not panic");
+            let state = result.expect("concurrent query should succeed");
+            assert_eq!(state, expected, "concurrent result differs from baseline");
+        }
     }
 }
