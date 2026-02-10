@@ -2,7 +2,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use eph_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
+use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
 
 fn load_engine() -> Option<Engine> {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../kernels/data");

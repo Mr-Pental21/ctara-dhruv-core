@@ -167,45 +167,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "either"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
-
-[[package]]
-name = "eph_cli"
+name = "dhruv_cli"
 version = "0.1.0"
 
 [[package]]
-name = "eph_core"
+name = "dhruv_core"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "eph_frames",
- "eph_time",
+ "dhruv_frames",
+ "dhruv_time",
  "jpl_kernel",
 ]
 
 [[package]]
-name = "eph_ffi_c"
+name = "dhruv_ffi_c"
 version = "0.1.0"
 dependencies = [
- "eph_core",
- "eph_frames",
- "eph_time",
+ "dhruv_core",
+ "dhruv_frames",
+ "dhruv_time",
 ]
 
 [[package]]
-name = "eph_frames"
+name = "dhruv_frames"
 version = "0.1.0"
 
 [[package]]
-name = "eph_time"
+name = "dhruv_time"
 version = "0.1.0"
 
 [[package]]
-name = "eph_vedic_base"
+name = "dhruv_vedic_base"
 version = "0.1.0"
+
+[[package]]
+name = "either"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "half"

@@ -18,7 +18,7 @@
 
 use std::path::PathBuf;
 
-use eph_core::{Body, Engine, EngineConfig, Frame, Observer, Query, StateVector};
+use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query, StateVector};
 
 // ---------------------------------------------------------------------------
 // Tolerances (per-body tier)

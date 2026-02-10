@@ -9,7 +9,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
-use eph_time::{self, LeapSecondKernel};
+use dhruv_time::{self, LeapSecondKernel};
 use jpl_kernel::{KernelError, SpkEvaluation, SpkKernel};
 
 /// Engine configuration used at startup time.
@@ -64,7 +64,7 @@ impl EngineConfig {
 ///
 /// These are physical bodies that exist as SPK segments in the kernel file.
 /// Computed points (e.g. lunar nodes) are NOT included here — they belong
-/// in downstream crates like `eph_vedic_base` via the `DerivedComputation` trait.
+/// in downstream crates like `dhruv_vedic_base` via the `DerivedComputation` trait.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Body {
     Sun,
@@ -230,7 +230,7 @@ pub enum DerivedValue {
 
 /// Extension seam that downstream crates can implement without tight coupling.
 ///
-/// This is the primary mechanism for `eph_vedic_base` and `eph_pro` to add
+/// This is the primary mechanism for `dhruv_vedic_base` and `dhruv_pro` to add
 /// derived quantities (ayanamsha, lunar nodes, etc.) without modifying core.
 pub trait DerivedComputation: Send + Sync {
     fn name(&self) -> &'static str;
@@ -467,7 +467,7 @@ impl Engine {
         }
 
         // Convert JD TDB to TDB seconds past J2000.
-        let epoch_tdb_s = eph_time::jd_to_tdb_seconds(query.epoch_tdb_jd);
+        let epoch_tdb_s = dhruv_time::jd_to_tdb_seconds(query.epoch_tdb_jd);
 
         // Resolve target to SSB across all loaded kernels.
         let target_ssb = self
@@ -496,10 +496,10 @@ impl Engine {
             ],
         };
 
-        // Frame rotation via eph_frames.
+        // Frame rotation via dhruv_frames.
         if query.frame == Frame::EclipticJ2000 {
-            state.position_km = eph_frames::icrf_to_ecliptic(&state.position_km);
-            state.velocity_km_s = eph_frames::icrf_to_ecliptic(&state.velocity_km_s);
+            state.position_km = dhruv_frames::icrf_to_ecliptic(&state.position_km);
+            state.velocity_km_s = dhruv_frames::icrf_to_ecliptic(&state.velocity_km_s);
         }
 
         Ok(state)
@@ -790,7 +790,7 @@ mod tests {
         );
 
         // Ecliptic latitude of Earth should be ~0 (Earth orbits in the ecliptic plane).
-        let spherical = eph_frames::cartesian_to_spherical(&s_ecl.position_km);
+        let spherical = dhruv_frames::cartesian_to_spherical(&s_ecl.position_km);
         assert!(
             spherical.lat_rad.abs() < 0.01,
             "Earth ecliptic latitude {:.4} rad should be ~0",

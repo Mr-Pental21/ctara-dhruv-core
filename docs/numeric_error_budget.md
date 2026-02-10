@@ -133,12 +133,12 @@ Observed at J2000:
 ## CI Policy
 
 1. Golden fixtures are frozen in `testdata/horizons_golden/vectors.json`.
-2. Integration tests in `crates/eph_core/tests/horizons_golden.rs` gate CI.
+2. Integration tests in `crates/dhruv_core/tests/horizons_golden.rs` gate CI.
 3. Any tolerance change requires explicit review and documented rationale.
-4. Edge-epoch tests in `crates/eph_core/tests/edge_epochs.rs` cover boundary conditions.
+4. Edge-epoch tests in `crates/dhruv_core/tests/edge_epochs.rs` cover boundary conditions.
 5. Cross-platform consistency is verified in the CI matrix.
 
 ## Future Improvements
 
 - Tighten tolerances if satellite ephemeris support is added (body center vs barycenter).
-- Add angle-derived tolerance budgets when `eph_vedic_base` implements ayanamsha/longitude.
+- Add angle-derived tolerance budgets when `dhruv_vedic_base` implements ayanamsha/longitude.

@@ -1,13 +1,13 @@
 [package]
-name = "eph_core"
+name = "dhruv_core"
 version = "0.1.0"
 license = "Apache-2.0"
 edition = "2024"
 
 [dependencies]
 jpl_kernel = { path = "../jpl_kernel" }
-eph_time = { path = "../eph_time" }
-eph_frames = { path = "../eph_frames" }
+dhruv_time = { path = "../dhruv_time" }
+dhruv_frames = { path = "../dhruv_frames" }
 
 [dev-dependencies]
 criterion = { workspace = true }

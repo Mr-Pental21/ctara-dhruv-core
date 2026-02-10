@@ -1,5 +1,5 @@
 [package]
-name = "eph_vedic_base"
+name = "dhruv_time"
 version = "0.1.0"
 license = "Apache-2.0"
 edition = "2024"

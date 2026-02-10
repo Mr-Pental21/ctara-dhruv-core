@@ -1,4 +1,4 @@
-# Claude Agent Instructions (Core Repo)
+# Claude Agent Instructions (`ctara-dhruv-core`)
 
 This repository is clean-room and permissive-license only.
 
@@ -24,7 +24,7 @@ This repository is clean-room and permissive-license only.
 
 ## Core/Pro Separation
 
-- Do not add dependency edges from core to pro.
+- `ctara-dhruv-core` must not depend on `ctara-dhruv-pro`.
 - Do not leak proprietary logic into core through flags, generated code, or shared files.
 
 ## Dependency Rules
@@ -36,6 +36,13 @@ This repository is clean-room and permissive-license only.
 
 - Produce policy-compliant patches only.
 - If requested work conflicts with policy, refuse that path and propose a compliant alternative.
+
+## Naming Convention
+
+- Crate names: `dhruv_*` prefix (e.g., `dhruv_core`, `dhruv_time`). Exception: `jpl_kernel` (domain-specific, not project-branded).
+- FFI constants: `DHRUV_*` (e.g., `DHRUV_API_VERSION`)
+- FFI types: `Dhruv*` (e.g., `DhruvStatus`, `DhruvEngineConfig`)
+- FFI functions: `dhruv_*` (e.g., `dhruv_engine_new`, `dhruv_lsk_load`)
 
 ## Git
 - Short commit messages, imperative mood

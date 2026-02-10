@@ -63,7 +63,7 @@ This project accepts only permissively licensed code and original implementation
 
 ## Core / Pro Separation Rule
 
-- `ctara-eph-core` must not depend on `ctara-eph-pro`.
+- `ctara-dhruv-core` must not depend on `ctara-dhruv-pro`.
 - Proprietary logic must not be introduced into core via shared files, feature flags, conditional compilation, build scripts, or generated artifacts.
 
 ## Provenance Record

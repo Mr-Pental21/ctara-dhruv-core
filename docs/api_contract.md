@@ -30,7 +30,7 @@ impl Engine {
 
 ## ABI Principles (Draft)
 - No panics across FFI boundaries.
-- Versioned ABI surface (`EPH_API_VERSION`).
+- Versioned ABI surface (`DHRUV_API_VERSION`).
 - Caller-allocated buffers or explicit release functions.
 - Numeric units and frames are explicit in function names or structs.
 

@@ -1,6 +1,6 @@
-# AI Agent Operating Rules (Core Repo)
+# AI Agent Operating Rules (`ctara-dhruv-core`)
 
-Scope: this file governs AI agent behavior in `ctara-eph-core`.
+Scope: this file governs AI agent behavior in `ctara-dhruv-core`.
 
 ## Mandatory Policy Sources
 
@@ -32,7 +32,7 @@ Scope: this file governs AI agent behavior in `ctara-eph-core`.
 
 ## Core Boundary Rule
 
-- `ctara-eph-core` must not depend on `ctara-eph-pro`.
+- `ctara-dhruv-core` must not depend on `ctara-dhruv-pro`.
 - Do not introduce proprietary behavior through feature flags, shared files, generated artifacts, or build-time hooks.
 
 ## Required Workflow For Agent Changes
@@ -49,6 +49,13 @@ Scope: this file governs AI agent behavior in `ctara-eph-core`.
   - source/license status is ambiguous,
   - requested approach requires denylisted/source-available reference code,
   - a change risks violating core/pro separation.
+
+## Naming Convention
+
+- Crate names: `dhruv_*` prefix (e.g., `dhruv_core`, `dhruv_time`). Exception: `jpl_kernel` (domain-specific, not project-branded).
+- FFI constants: `DHRUV_*` (e.g., `DHRUV_API_VERSION`)
+- FFI types: `Dhruv*` (e.g., `DhruvStatus`, `DhruvEngineConfig`)
+- FFI functions: `dhruv_*` (e.g., `dhruv_engine_new`, `dhruv_lsk_load`)
 
 ## Git
 - Short commit messages, imperative mood

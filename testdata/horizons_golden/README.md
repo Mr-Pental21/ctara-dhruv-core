@@ -19,7 +19,7 @@ Frozen validation vectors used to compare engine output against JPL Horizons.
 
 ## Usage
 
-Integration tests in `crates/eph_core/tests/horizons_golden.rs` embed these
+Integration tests in `crates/dhruv_core/tests/horizons_golden.rs` embed these
 reference values directly and compare against our DE442s engine output.
 
 ## Tolerance rationale

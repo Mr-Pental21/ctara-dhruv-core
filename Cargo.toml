@@ -1,12 +1,12 @@
 [workspace]
 members = [
   "crates/jpl_kernel",
-  "crates/eph_time",
-  "crates/eph_frames",
-  "crates/eph_core",
-  "crates/eph_vedic_base",
-  "crates/eph_ffi_c",
-  "crates/eph_cli",
+  "crates/dhruv_time",
+  "crates/dhruv_frames",
+  "crates/dhruv_core",
+  "crates/dhruv_vedic_base",
+  "crates/dhruv_ffi_c",
+  "crates/dhruv_cli",
 ]
 resolver = "2"
 

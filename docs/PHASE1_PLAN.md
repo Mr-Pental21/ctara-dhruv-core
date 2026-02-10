@@ -6,16 +6,16 @@ Phase 1 delivers the first real end-to-end ephemeris query: binary SPK parsing, 
 
 **Dependency order:**
 1. `jpl_kernel` (no crate dependencies)
-2. `eph_time` (no crate dependencies, parallel with 1)
-3. `eph_frames` (no crate dependencies, parallel with 1 and 2)
-4. End-to-end wiring in `eph_core` (depends on 1 + 2 + 3)
+2. `dhruv_time` (no crate dependencies, parallel with 1)
+3. `dhruv_frames` (no crate dependencies, parallel with 1 and 2)
+4. End-to-end wiring in `dhruv_core` (depends on 1 + 2 + 3)
 5. Golden test fixtures (depends on 4)
 
 **Crate dependency graph after Phase 1:**
 ```
-eph_core  →  jpl_kernel
-          →  eph_time
-          →  eph_frames
+dhruv_core  →  jpl_kernel
+          →  dhruv_time
+          →  dhruv_frames
 ```
 
 ---
@@ -34,24 +34,24 @@ Phase 2+ features (lunar nodes, eclipses, ayanamshas, sunrise/sunset, house syst
 | **Sunrise/Sunset** | Sun geocentric position + Earth rotation angle (GMST/ERA) + geographic coordinates + atmospheric refraction. Root-finding over time. |
 | **House systems** | Local Sidereal Time (GMST + geographic longitude), obliquity, Ascendant/MC. Geographic coordinates. |
 
-### Decision 1: `eph_frames` is a real crate in Phase 1 (not deferred)
+### Decision 1: `dhruv_frames` is a real crate in Phase 1 (not deferred)
 
-Almost every downstream feature needs ecliptic longitude/latitude. Frame transforms must live in `eph_frames` from day one — not inline in `eph_core`.
+Almost every downstream feature needs ecliptic longitude/latitude. Frame transforms must live in `dhruv_frames` from day one — not inline in `dhruv_core`.
 
-`eph_frames` provides:
+`dhruv_frames` provides:
 - ICRF ↔ Ecliptic J2000 rotation
 - Cartesian ↔ Spherical conversion (longitude, latitude, distance)
 - J2000 obliquity constant (and later: obliquity-of-date polynomial)
 
-`eph_core` delegates all frame math to `eph_frames`.
+`dhruv_core` delegates all frame math to `dhruv_frames`.
 
-### Decision 2: `eph_time` module structure anticipates sidereal time
+### Decision 2: `dhruv_time` module structure anticipates sidereal time
 
 Sunrise/sunset and house systems need GMST/ERA. Phase 1 implements UTC→TDB only, but the module layout includes a `sidereal.rs` stub so the API surface is ready.
 
 ### Decision 3: Lunar nodes are NOT in the `Body` enum
 
-They are computed points, not SPK targets. They belong in `eph_vedic_base` as functions that take Moon/Earth state vectors and return node positions. The existing `DerivedComputation` trait is the extension seam.
+They are computed points, not SPK targets. They belong in `dhruv_vedic_base` as functions that take Moon/Earth state vectors and return node positions. The existing `DerivedComputation` trait is the extension seam.
 
 The `Body` enum stays SPK-only: physical bodies that exist as segments in the kernel file.
 
@@ -238,7 +238,7 @@ impl SpkKernel {
 
 ---
 
-## 2. UTC->TDB Conversion in `eph_time`
+## 2. UTC->TDB Conversion in `dhruv_time`
 
 ### The Time Scale Chain
 
@@ -321,7 +321,7 @@ Where `day` can be fractional.
 ### Module Structure
 
 ```
-eph_time/src/
+dhruv_time/src/
 ├── lib.rs          — public API: Epoch, LeapSecondKernel
 ├── lsk.rs          — LSK file parser
 ├── julian.rs       — calendar_to_jd, jd_to_calendar
@@ -354,7 +354,7 @@ impl LeapSecondKernel {
 
 ---
 
-## 3. Frame Transforms in `eph_frames`
+## 3. Frame Transforms in `dhruv_frames`
 
 ### Why this is a Phase 1 deliverable
 
@@ -364,12 +364,12 @@ Ecliptic longitude/latitude extraction is needed by nearly every downstream feat
 - **House systems**: ecliptic longitude of Ascendant/MC
 - **Vedic charts**: all planetary positions expressed in sidereal ecliptic longitude
 
-Putting frame math in a standalone crate ensures `eph_core`, `eph_vedic_base`, and `eph_pro` all share the same rotation/conversion code without circular dependencies.
+Putting frame math in a standalone crate ensures `dhruv_core`, `dhruv_vedic_base`, and `dhruv_pro` all share the same rotation/conversion code without circular dependencies.
 
 ### Module Structure
 
 ```
-eph_frames/src/
+dhruv_frames/src/
 ├── lib.rs          — re-exports
 ├── rotation.rs     — ICRF ↔ Ecliptic J2000 rotation
 ├── spherical.rs    — Cartesian ↔ Spherical (lon, lat, distance)
@@ -432,7 +432,7 @@ pub fn spherical_to_cartesian(s: &SphericalCoords) -> [f64; 3];
 
 **Usage pattern for ecliptic longitude** (the most common downstream need):
 ```rust
-use eph_frames::{icrf_to_ecliptic, cartesian_to_spherical};
+use dhruv_frames::{icrf_to_ecliptic, cartesian_to_spherical};
 
 let ecl_pos = icrf_to_ecliptic(&state.position_km);
 let spherical = cartesian_to_spherical(&ecl_pos);
@@ -456,7 +456,7 @@ pub const OBLIQUITY_J2000_DEG: f64 = 23.4392911111;
 
 ---
 
-## 4. End-to-End Query Wiring in `eph_core`
+## 4. End-to-End Query Wiring in `dhruv_core`
 
 ### The Query Pipeline
 
@@ -466,7 +466,7 @@ pub const OBLIQUITY_J2000_DEG: f64 = 23.4392911111;
 3. For each link, evaluate the SPK segment
 4. Accumulate vectors: state_target_ssb, state_observer_ssb
 5. Subtract: result = target_ssb - observer_ssb
-6. If frame != ICRF, apply rotation via eph_frames
+6. If frame != ICRF, apply rotation via dhruv_frames
 7. Return StateVector
 ```
 
@@ -525,8 +525,8 @@ result = mars_ssb - earth_ssb
 
 ```rust
 use jpl_kernel::SpkKernel;
-use eph_time::LeapSecondKernel;
-use eph_frames;
+use dhruv_time::LeapSecondKernel;
+use dhruv_frames;
 
 pub struct Engine {
     config: EngineConfig,
@@ -564,10 +564,10 @@ impl Engine {
                 target_ssb[5] - observer_ssb[5],
             ],
         };
-        // Frame rotation delegated to eph_frames
+        // Frame rotation delegated to dhruv_frames
         if query.frame == Frame::EclipticJ2000 {
-            state.position_km = eph_frames::icrf_to_ecliptic(&state.position_km);
-            state.velocity_km_s = eph_frames::icrf_to_ecliptic(&state.velocity_km_s);
+            state.position_km = dhruv_frames::icrf_to_ecliptic(&state.position_km);
+            state.velocity_km_s = dhruv_frames::icrf_to_ecliptic(&state.velocity_km_s);
         }
         Ok(state)
     }
@@ -689,7 +689,7 @@ Fixture files are committed. Tests never call Horizons at runtime.
 ### Integration Test
 
 ```rust
-// crates/eph_core/tests/golden_horizons.rs
+// crates/dhruv_core/tests/golden_horizons.rs
 #[test]
 fn golden_horizons_ssb() {
     let fixtures = load_fixtures("de441_ssb_icrf.json");
@@ -709,9 +709,9 @@ Gate with `#[ignore]` when kernel files aren't present.
 
 ```
 Week 1:  jpl_kernel  (DAF parsing + SPK Type 2 + Chebyshev eval)
-         eph_time    (LSK parsing + UTC->TDB chain + sidereal stub)  [parallel]
-         eph_frames  (rotation + spherical + obliquity)              [parallel]
-Week 2:  eph_core    (chain resolution + Engine wiring, depends on week 1)
+         dhruv_time    (LSK parsing + UTC->TDB chain + sidereal stub)  [parallel]
+         dhruv_frames  (rotation + spherical + obliquity)              [parallel]
+Week 2:  dhruv_core    (chain resolution + Engine wiring, depends on week 1)
          Golden fixtures (Horizons fetch + JSON + integration tests)
 ```
 
@@ -723,9 +723,9 @@ This table shows where each future feature will be implemented, using Phase 1 fo
 
 | Feature | Crate | Uses from Phase 1 |
 |---|---|---|
-| Lunar nodes (Rahu/Ketu) | `eph_vedic_base` | `Engine::query(Moon)` + `eph_frames::cartesian_to_spherical` |
-| Ayanamsha (Lahiri, etc.) | `eph_vedic_base` | `eph_frames::cartesian_to_spherical` for ecliptic lon |
-| Eclipses | `eph_core` or `eph_vedic_base` | `Engine::query()` for Sun/Moon/Earth positions |
-| Sunrise/Sunset | `eph_vedic_base` or new crate | `Engine::query(Sun, observer: Earth)` + `eph_time::sidereal` (Phase 2) |
-| House systems | `eph_vedic_base` | `eph_time::sidereal` + `eph_frames::obliquity` |
-| Topocentric observer | New layer above `eph_core` | `Engine::query(observer: Earth)` + Earth rotation |
+| Lunar nodes (Rahu/Ketu) | `dhruv_vedic_base` | `Engine::query(Moon)` + `dhruv_frames::cartesian_to_spherical` |
+| Ayanamsha (Lahiri, etc.) | `dhruv_vedic_base` | `dhruv_frames::cartesian_to_spherical` for ecliptic lon |
+| Eclipses | `dhruv_core` or `dhruv_vedic_base` | `Engine::query()` for Sun/Moon/Earth positions |
+| Sunrise/Sunset | `dhruv_vedic_base` or new crate | `Engine::query(Sun, observer: Earth)` + `dhruv_time::sidereal` (Phase 2) |
+| House systems | `dhruv_vedic_base` | `dhruv_time::sidereal` + `dhruv_frames::obliquity` |
+| Topocentric observer | New layer above `dhruv_core` | `Engine::query(observer: Earth)` + Earth rotation |

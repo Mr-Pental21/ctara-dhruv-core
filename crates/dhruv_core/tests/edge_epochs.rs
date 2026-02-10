@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use eph_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query};
+use dhruv_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query};
 
 fn kernel_paths() -> (PathBuf, PathBuf) {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../kernels/data");
