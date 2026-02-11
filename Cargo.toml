@@ -8,6 +8,7 @@ members = [
   "crates/dhruv_ffi_c",
   "crates/dhruv_cli",
   "crates/dhruv_rs",
+  "crates/dhruv_search",
 ]
 resolver = "2"
 

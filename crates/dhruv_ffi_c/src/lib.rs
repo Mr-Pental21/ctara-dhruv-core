@@ -4,6 +4,12 @@ use std::path::PathBuf;
 use std::ptr;
 
 use dhruv_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query, StateVector};
+use dhruv_search::{
+    ConjunctionConfig, ConjunctionEvent, EclipseConfig, LunarEclipse, LunarEclipseType,
+    SearchError, SolarEclipse, SolarEclipseType, next_conjunction, next_lunar_eclipse,
+    next_solar_eclipse, prev_conjunction, prev_lunar_eclipse, prev_solar_eclipse,
+    search_conjunctions, search_lunar_eclipses, search_solar_eclipses,
+};
 use dhruv_vedic_base::{
     AyanamshaSystem, BhavaConfig, BhavaReferenceMode, BhavaStartingPoint, BhavaSystem,
     GeoLocation, LunarNode, NodeMode, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb,
@@ -13,7 +19,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 6;
+pub const DHRUV_API_VERSION: u32 = 7;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -37,6 +43,7 @@ pub enum DhruvStatus {
     EopOutOfRange = 9,
     InvalidLocation = 10,
     NoConvergence = 11,
+    InvalidSearchConfig = 12,
     Internal = 255,
 }
 
@@ -65,6 +72,17 @@ impl From<&VedicError> for DhruvStatus {
             VedicError::Time(_) => Self::TimeConversion,
             VedicError::InvalidLocation(_) => Self::InvalidLocation,
             VedicError::NoConvergence(_) => Self::NoConvergence,
+            _ => Self::Internal,
+        }
+    }
+}
+
+impl From<&SearchError> for DhruvStatus {
+    fn from(value: &SearchError) -> Self {
+        match value {
+            SearchError::Engine(e) => Self::from(e),
+            SearchError::InvalidConfig(_) => Self::InvalidSearchConfig,
+            SearchError::NoConvergence(_) => Self::NoConvergence,
             _ => Self::Internal,
         }
     }
@@ -1505,6 +1523,656 @@ pub extern "C" fn dhruv_lunar_node_count() -> u32 {
     LunarNode::all().len() as u32
 }
 
+// ---------------------------------------------------------------------------
+// Conjunction/aspect search
+// ---------------------------------------------------------------------------
+
+/// C-compatible conjunction search configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvConjunctionConfig {
+    /// Target ecliptic longitude separation in degrees [0, 360).
+    /// 0 = conjunction, 180 = opposition, 90 = square, etc.
+    pub target_separation_deg: f64,
+    /// Coarse scan step size in days.
+    pub step_size_days: f64,
+    /// Maximum bisection iterations.
+    pub max_iterations: u32,
+    /// Convergence threshold in days.
+    pub convergence_days: f64,
+}
+
+/// C-compatible conjunction event result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvConjunctionEvent {
+    /// Event time as Julian Date (TDB).
+    pub jd_tdb: f64,
+    /// Actual ecliptic longitude separation at peak, in degrees.
+    pub actual_separation_deg: f64,
+    /// Body 1 ecliptic longitude in degrees.
+    pub body1_longitude_deg: f64,
+    /// Body 2 ecliptic longitude in degrees.
+    pub body2_longitude_deg: f64,
+    /// Body 1 ecliptic latitude in degrees.
+    pub body1_latitude_deg: f64,
+    /// Body 2 ecliptic latitude in degrees.
+    pub body2_latitude_deg: f64,
+    /// Body 1 NAIF code.
+    pub body1_code: i32,
+    /// Body 2 NAIF code.
+    pub body2_code: i32,
+}
+
+impl From<&ConjunctionEvent> for DhruvConjunctionEvent {
+    fn from(e: &ConjunctionEvent) -> Self {
+        Self {
+            jd_tdb: e.jd_tdb,
+            actual_separation_deg: e.actual_separation_deg,
+            body1_longitude_deg: e.body1_longitude_deg,
+            body2_longitude_deg: e.body2_longitude_deg,
+            body1_latitude_deg: e.body1_latitude_deg,
+            body2_latitude_deg: e.body2_latitude_deg,
+            body1_code: e.body1.code(),
+            body2_code: e.body2.code(),
+        }
+    }
+}
+
+fn conjunction_config_from_ffi(cfg: &DhruvConjunctionConfig) -> ConjunctionConfig {
+    ConjunctionConfig {
+        target_separation_deg: cfg.target_separation_deg,
+        step_size_days: cfg.step_size_days,
+        max_iterations: cfg.max_iterations,
+        convergence_days: cfg.convergence_days,
+    }
+}
+
+/// Returns default conjunction configuration (0 deg, step=0.5 days).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_conjunction_config_default() -> DhruvConjunctionConfig {
+    DhruvConjunctionConfig {
+        target_separation_deg: 0.0,
+        step_size_days: 0.5,
+        max_iterations: 50,
+        convergence_days: 1e-8,
+    }
+}
+
+/// Find the next conjunction/aspect event after `jd_tdb`.
+///
+/// Returns Ok with `found` set to 1 if an event was found, 0 otherwise.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_conjunction(
+    engine: *const DhruvEngineHandle,
+    body1_code: i32,
+    body2_code: i32,
+    jd_tdb: f64,
+    config: *const DhruvConjunctionConfig,
+    out_event: *mut DhruvConjunctionEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let body1 = match Body::from_code(body1_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let body2 = match Body::from_code(body2_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        // SAFETY: All pointers checked for null above.
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = conjunction_config_from_ffi(cfg_ref);
+
+        match next_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
+            Ok(Some(event)) => {
+                // SAFETY: Pointers checked for null.
+                unsafe {
+                    *out_event = DhruvConjunctionEvent::from(&event);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => {
+                unsafe { *out_found = 0 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the previous conjunction/aspect event before `jd_tdb`.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_conjunction(
+    engine: *const DhruvEngineHandle,
+    body1_code: i32,
+    body2_code: i32,
+    jd_tdb: f64,
+    config: *const DhruvConjunctionConfig,
+    out_event: *mut DhruvConjunctionEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let body1 = match Body::from_code(body1_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let body2 = match Body::from_code(body2_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        // SAFETY: All pointers checked for null above.
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = conjunction_config_from_ffi(cfg_ref);
+
+        match prev_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
+            Ok(Some(event)) => {
+                unsafe {
+                    *out_event = DhruvConjunctionEvent::from(&event);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => {
+                unsafe { *out_found = 0 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Search for all conjunction/aspect events in a time range.
+///
+/// Caller provides `out_events` pointing to an array of at least `max_count`
+/// elements. The actual number found is written to `out_count`.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+/// `out_events` must point to at least `max_count` contiguous `DhruvConjunctionEvent`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_search_conjunctions(
+    engine: *const DhruvEngineHandle,
+    body1_code: i32,
+    body2_code: i32,
+    jd_start: f64,
+    jd_end: f64,
+    config: *const DhruvConjunctionConfig,
+    out_events: *mut DhruvConjunctionEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null()
+            || config.is_null()
+            || out_events.is_null()
+            || out_count.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+
+        let body1 = match Body::from_code(body1_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let body2 = match Body::from_code(body2_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        // SAFETY: All pointers checked for null above.
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = conjunction_config_from_ffi(cfg_ref);
+
+        match search_conjunctions(engine_ref, body1, body2, jd_start, jd_end, &rust_config) {
+            Ok(events) => {
+                let count = events.len().min(max_count as usize);
+                // SAFETY: out_events points to at least max_count elements.
+                let out_slice = unsafe {
+                    std::slice::from_raw_parts_mut(out_events, max_count as usize)
+                };
+                for (i, e) in events.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvConjunctionEvent::from(e);
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Eclipse search
+// ---------------------------------------------------------------------------
+
+/// Sentinel value for absent optional JD fields in eclipse results.
+pub const DHRUV_JD_ABSENT: f64 = -1.0;
+
+/// Lunar eclipse type: penumbral only.
+pub const DHRUV_LUNAR_ECLIPSE_PENUMBRAL: i32 = 0;
+/// Lunar eclipse type: partial (umbral).
+pub const DHRUV_LUNAR_ECLIPSE_PARTIAL: i32 = 1;
+/// Lunar eclipse type: total.
+pub const DHRUV_LUNAR_ECLIPSE_TOTAL: i32 = 2;
+
+/// Solar eclipse type: partial.
+pub const DHRUV_SOLAR_ECLIPSE_PARTIAL: i32 = 0;
+/// Solar eclipse type: annular.
+pub const DHRUV_SOLAR_ECLIPSE_ANNULAR: i32 = 1;
+/// Solar eclipse type: total.
+pub const DHRUV_SOLAR_ECLIPSE_TOTAL: i32 = 2;
+/// Solar eclipse type: hybrid.
+pub const DHRUV_SOLAR_ECLIPSE_HYBRID: i32 = 3;
+
+/// C-compatible eclipse search configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvEclipseConfig {
+    /// Include penumbral-only lunar eclipses: 1 = yes, 0 = no.
+    pub include_penumbral: u8,
+    /// Include ecliptic latitude and angular separation at peak: 1 = yes, 0 = no.
+    pub include_peak_details: u8,
+}
+
+/// Returns default eclipse configuration.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_eclipse_config_default() -> DhruvEclipseConfig {
+    DhruvEclipseConfig {
+        include_penumbral: 1,
+        include_peak_details: 1,
+    }
+}
+
+fn eclipse_config_from_ffi(cfg: &DhruvEclipseConfig) -> EclipseConfig {
+    EclipseConfig {
+        include_penumbral: cfg.include_penumbral != 0,
+        include_peak_details: cfg.include_peak_details != 0,
+    }
+}
+
+fn lunar_eclipse_type_to_code(t: LunarEclipseType) -> i32 {
+    match t {
+        LunarEclipseType::Penumbral => DHRUV_LUNAR_ECLIPSE_PENUMBRAL,
+        LunarEclipseType::Partial => DHRUV_LUNAR_ECLIPSE_PARTIAL,
+        LunarEclipseType::Total => DHRUV_LUNAR_ECLIPSE_TOTAL,
+    }
+}
+
+fn solar_eclipse_type_to_code(t: SolarEclipseType) -> i32 {
+    match t {
+        SolarEclipseType::Partial => DHRUV_SOLAR_ECLIPSE_PARTIAL,
+        SolarEclipseType::Annular => DHRUV_SOLAR_ECLIPSE_ANNULAR,
+        SolarEclipseType::Total => DHRUV_SOLAR_ECLIPSE_TOTAL,
+        SolarEclipseType::Hybrid => DHRUV_SOLAR_ECLIPSE_HYBRID,
+    }
+}
+
+fn option_jd(opt: Option<f64>) -> f64 {
+    opt.unwrap_or(DHRUV_JD_ABSENT)
+}
+
+/// C-compatible lunar eclipse result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvLunarEclipseResult {
+    /// Eclipse type code (see DHRUV_LUNAR_ECLIPSE_* constants).
+    pub eclipse_type: i32,
+    /// Umbral magnitude.
+    pub magnitude: f64,
+    /// Penumbral magnitude.
+    pub penumbral_magnitude: f64,
+    /// Time of greatest eclipse (JD TDB).
+    pub greatest_eclipse_jd: f64,
+    /// P1: First penumbral contact (JD TDB).
+    pub p1_jd: f64,
+    /// U1: First umbral contact (JD TDB). -1.0 if absent.
+    pub u1_jd: f64,
+    /// U2: Start of totality (JD TDB). -1.0 if absent.
+    pub u2_jd: f64,
+    /// U3: End of totality (JD TDB). -1.0 if absent.
+    pub u3_jd: f64,
+    /// U4: Last umbral contact (JD TDB). -1.0 if absent.
+    pub u4_jd: f64,
+    /// P4: Last penumbral contact (JD TDB).
+    pub p4_jd: f64,
+    /// Moon's ecliptic latitude at greatest eclipse, in degrees.
+    pub moon_ecliptic_lat_deg: f64,
+    /// Angular separation at greatest eclipse, in degrees.
+    pub angular_separation_deg: f64,
+}
+
+impl From<&LunarEclipse> for DhruvLunarEclipseResult {
+    fn from(e: &LunarEclipse) -> Self {
+        Self {
+            eclipse_type: lunar_eclipse_type_to_code(e.eclipse_type),
+            magnitude: e.magnitude,
+            penumbral_magnitude: e.penumbral_magnitude,
+            greatest_eclipse_jd: e.greatest_eclipse_jd,
+            p1_jd: e.p1_jd,
+            u1_jd: option_jd(e.u1_jd),
+            u2_jd: option_jd(e.u2_jd),
+            u3_jd: option_jd(e.u3_jd),
+            u4_jd: option_jd(e.u4_jd),
+            p4_jd: e.p4_jd,
+            moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
+            angular_separation_deg: e.angular_separation_deg,
+        }
+    }
+}
+
+/// C-compatible solar eclipse result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSolarEclipseResult {
+    /// Eclipse type code (see DHRUV_SOLAR_ECLIPSE_* constants).
+    pub eclipse_type: i32,
+    /// Magnitude: ratio of apparent Moon diameter to Sun diameter.
+    pub magnitude: f64,
+    /// Time of greatest eclipse (JD TDB).
+    pub greatest_eclipse_jd: f64,
+    /// C1: First external contact (JD TDB). -1.0 if absent.
+    pub c1_jd: f64,
+    /// C2: First internal contact (JD TDB). -1.0 if absent.
+    pub c2_jd: f64,
+    /// C3: Last internal contact (JD TDB). -1.0 if absent.
+    pub c3_jd: f64,
+    /// C4: Last external contact (JD TDB). -1.0 if absent.
+    pub c4_jd: f64,
+    /// Moon's ecliptic latitude at greatest eclipse, in degrees.
+    pub moon_ecliptic_lat_deg: f64,
+    /// Angular separation at greatest eclipse, in degrees.
+    pub angular_separation_deg: f64,
+}
+
+impl From<&SolarEclipse> for DhruvSolarEclipseResult {
+    fn from(e: &SolarEclipse) -> Self {
+        Self {
+            eclipse_type: solar_eclipse_type_to_code(e.eclipse_type),
+            magnitude: e.magnitude,
+            greatest_eclipse_jd: e.greatest_eclipse_jd,
+            c1_jd: option_jd(e.c1_jd),
+            c2_jd: option_jd(e.c2_jd),
+            c3_jd: option_jd(e.c3_jd),
+            c4_jd: option_jd(e.c4_jd),
+            moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
+            angular_separation_deg: e.angular_separation_deg,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Lunar eclipse FFI functions
+// ---------------------------------------------------------------------------
+
+/// Find the next lunar eclipse after `jd_tdb`.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_lunar_eclipse(
+    engine: *const DhruvEngineHandle,
+    jd_tdb: f64,
+    config: *const DhruvEclipseConfig,
+    out_result: *mut DhruvLunarEclipseResult,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        // SAFETY: All pointers checked for null above.
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = eclipse_config_from_ffi(cfg_ref);
+
+        match next_lunar_eclipse(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(eclipse)) => {
+                unsafe {
+                    *out_result = DhruvLunarEclipseResult::from(&eclipse);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => {
+                unsafe { *out_found = 0 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the previous lunar eclipse before `jd_tdb`.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_lunar_eclipse(
+    engine: *const DhruvEngineHandle,
+    jd_tdb: f64,
+    config: *const DhruvEclipseConfig,
+    out_result: *mut DhruvLunarEclipseResult,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = eclipse_config_from_ffi(cfg_ref);
+
+        match prev_lunar_eclipse(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(eclipse)) => {
+                unsafe {
+                    *out_result = DhruvLunarEclipseResult::from(&eclipse);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => {
+                unsafe { *out_found = 0 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Search for all lunar eclipses in a time range.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+/// `out_results` must point to at least `max_count` contiguous `DhruvLunarEclipseResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_search_lunar_eclipses(
+    engine: *const DhruvEngineHandle,
+    jd_start: f64,
+    jd_end: f64,
+    config: *const DhruvEclipseConfig,
+    out_results: *mut DhruvLunarEclipseResult,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null()
+            || config.is_null()
+            || out_results.is_null()
+            || out_count.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = eclipse_config_from_ffi(cfg_ref);
+
+        match search_lunar_eclipses(engine_ref, jd_start, jd_end, &rust_config) {
+            Ok(eclipses) => {
+                let count = eclipses.len().min(max_count as usize);
+                let out_slice = unsafe {
+                    std::slice::from_raw_parts_mut(out_results, max_count as usize)
+                };
+                for (i, e) in eclipses.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvLunarEclipseResult::from(e);
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Solar eclipse FFI functions
+// ---------------------------------------------------------------------------
+
+/// Find the next solar eclipse after `jd_tdb`.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_solar_eclipse(
+    engine: *const DhruvEngineHandle,
+    jd_tdb: f64,
+    config: *const DhruvEclipseConfig,
+    out_result: *mut DhruvSolarEclipseResult,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = eclipse_config_from_ffi(cfg_ref);
+
+        match next_solar_eclipse(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(eclipse)) => {
+                unsafe {
+                    *out_result = DhruvSolarEclipseResult::from(&eclipse);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => {
+                unsafe { *out_found = 0 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the previous solar eclipse before `jd_tdb`.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_solar_eclipse(
+    engine: *const DhruvEngineHandle,
+    jd_tdb: f64,
+    config: *const DhruvEclipseConfig,
+    out_result: *mut DhruvSolarEclipseResult,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = eclipse_config_from_ffi(cfg_ref);
+
+        match prev_solar_eclipse(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(eclipse)) => {
+                unsafe {
+                    *out_result = DhruvSolarEclipseResult::from(&eclipse);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => {
+                unsafe { *out_found = 0 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Search for all solar eclipses in a time range.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+/// `out_results` must point to at least `max_count` contiguous `DhruvSolarEclipseResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_search_solar_eclipses(
+    engine: *const DhruvEngineHandle,
+    jd_start: f64,
+    jd_end: f64,
+    config: *const DhruvEclipseConfig,
+    out_results: *mut DhruvSolarEclipseResult,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null()
+            || config.is_null()
+            || out_results.is_null()
+            || out_count.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let cfg_ref = unsafe { &*config };
+        let rust_config = eclipse_config_from_ffi(cfg_ref);
+
+        match search_solar_eclipses(engine_ref, jd_start, jd_end, &rust_config) {
+            Ok(eclipses) => {
+                let count = eclipses.len().min(max_count as usize);
+                let out_slice = unsafe {
+                    std::slice::from_raw_parts_mut(out_results, max_count as usize)
+                };
+                for (i, e) in eclipses.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvSolarEclipseResult::from(e);
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
 fn ffi_boundary(f: impl FnOnce() -> DhruvStatus) -> DhruvStatus {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(status) => status,
@@ -1975,7 +2643,263 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_6() {
-        assert_eq!(dhruv_api_version(), 6);
+    fn ffi_api_version_is_7() {
+        assert_eq!(dhruv_api_version(), 7);
+    }
+
+    // --- Search error mapping ---
+
+    #[test]
+    fn ffi_search_error_invalid_config() {
+        let err = SearchError::InvalidConfig("bad config");
+        assert_eq!(DhruvStatus::from(&err), DhruvStatus::InvalidSearchConfig);
+    }
+
+    #[test]
+    fn ffi_search_error_no_convergence() {
+        let err = SearchError::NoConvergence("stuck");
+        assert_eq!(DhruvStatus::from(&err), DhruvStatus::NoConvergence);
+    }
+
+    #[test]
+    fn ffi_search_error_engine() {
+        let err = SearchError::Engine(EngineError::EpochOutOfRange {
+            epoch_tdb_jd: 0.0,
+        });
+        assert_eq!(DhruvStatus::from(&err), DhruvStatus::EpochOutOfRange);
+    }
+
+    // --- Conjunction FFI tests ---
+
+    #[test]
+    fn ffi_conjunction_config_default_values() {
+        let cfg = dhruv_conjunction_config_default();
+        assert!((cfg.target_separation_deg - 0.0).abs() < 1e-15);
+        assert!((cfg.step_size_days - 0.5).abs() < 1e-15);
+        assert_eq!(cfg.max_iterations, 50);
+        assert!((cfg.convergence_days - 1e-8).abs() < 1e-20);
+    }
+
+    #[test]
+    fn ffi_next_conjunction_rejects_null() {
+        let cfg = dhruv_conjunction_config_default();
+        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
+        let mut found: u8 = 0;
+        // SAFETY: Null engine pointer is intentional for validation.
+        let status = unsafe {
+            dhruv_next_conjunction(
+                ptr::null(),
+                10,
+                301,
+                2_460_000.5,
+                &cfg,
+                event.as_mut_ptr(),
+                &mut found,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_prev_conjunction_rejects_null() {
+        let cfg = dhruv_conjunction_config_default();
+        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_prev_conjunction(
+                ptr::null(),
+                10,
+                301,
+                2_460_000.5,
+                &cfg,
+                event.as_mut_ptr(),
+                &mut found,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_search_conjunctions_rejects_null() {
+        let cfg = dhruv_conjunction_config_default();
+        let mut count: u32 = 0;
+        let status = unsafe {
+            dhruv_search_conjunctions(
+                ptr::null(),
+                10,
+                301,
+                2_460_000.5,
+                2_460_100.5,
+                &cfg,
+                ptr::null_mut(),
+                10,
+                &mut count,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_next_conjunction_rejects_invalid_body() {
+        // Use a dangling engine pointer — function should reject body code first.
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let cfg = dhruv_conjunction_config_default();
+        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_next_conjunction(
+                fake_engine as *const _,
+                999999,
+                301,
+                2_460_000.5,
+                &cfg,
+                event.as_mut_ptr(),
+                &mut found,
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    // --- Eclipse FFI tests ---
+
+    #[test]
+    fn ffi_eclipse_config_default_values() {
+        let cfg = dhruv_eclipse_config_default();
+        assert_eq!(cfg.include_penumbral, 1);
+        assert_eq!(cfg.include_peak_details, 1);
+    }
+
+    #[test]
+    fn ffi_next_lunar_eclipse_rejects_null() {
+        let cfg = dhruv_eclipse_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvLunarEclipseResult>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_next_lunar_eclipse(
+                ptr::null(),
+                2_460_000.5,
+                &cfg,
+                result.as_mut_ptr(),
+                &mut found,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_prev_lunar_eclipse_rejects_null() {
+        let cfg = dhruv_eclipse_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvLunarEclipseResult>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_prev_lunar_eclipse(
+                ptr::null(),
+                2_460_000.5,
+                &cfg,
+                result.as_mut_ptr(),
+                &mut found,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_search_lunar_eclipses_rejects_null() {
+        let cfg = dhruv_eclipse_config_default();
+        let mut count: u32 = 0;
+        let status = unsafe {
+            dhruv_search_lunar_eclipses(
+                ptr::null(),
+                2_460_000.5,
+                2_460_400.5,
+                &cfg,
+                ptr::null_mut(),
+                10,
+                &mut count,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_next_solar_eclipse_rejects_null() {
+        let cfg = dhruv_eclipse_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvSolarEclipseResult>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_next_solar_eclipse(
+                ptr::null(),
+                2_460_000.5,
+                &cfg,
+                result.as_mut_ptr(),
+                &mut found,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_prev_solar_eclipse_rejects_null() {
+        let cfg = dhruv_eclipse_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvSolarEclipseResult>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_prev_solar_eclipse(
+                ptr::null(),
+                2_460_000.5,
+                &cfg,
+                result.as_mut_ptr(),
+                &mut found,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_search_solar_eclipses_rejects_null() {
+        let cfg = dhruv_eclipse_config_default();
+        let mut count: u32 = 0;
+        let status = unsafe {
+            dhruv_search_solar_eclipses(
+                ptr::null(),
+                2_460_000.5,
+                2_460_400.5,
+                &cfg,
+                ptr::null_mut(),
+                10,
+                &mut count,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_lunar_eclipse_type_constants() {
+        assert_eq!(DHRUV_LUNAR_ECLIPSE_PENUMBRAL, 0);
+        assert_eq!(DHRUV_LUNAR_ECLIPSE_PARTIAL, 1);
+        assert_eq!(DHRUV_LUNAR_ECLIPSE_TOTAL, 2);
+    }
+
+    #[test]
+    fn ffi_solar_eclipse_type_constants() {
+        assert_eq!(DHRUV_SOLAR_ECLIPSE_PARTIAL, 0);
+        assert_eq!(DHRUV_SOLAR_ECLIPSE_ANNULAR, 1);
+        assert_eq!(DHRUV_SOLAR_ECLIPSE_TOTAL, 2);
+        assert_eq!(DHRUV_SOLAR_ECLIPSE_HYBRID, 3);
+    }
+
+    #[test]
+    fn ffi_jd_absent_sentinel() {
+        assert!((DHRUV_JD_ABSENT - (-1.0)).abs() < 1e-15);
+    }
+
+    #[test]
+    fn ffi_option_jd_some() {
+        assert!((option_jd(Some(2_460_000.5)) - 2_460_000.5).abs() < 1e-15);
+    }
+
+    #[test]
+    fn ffi_option_jd_none() {
+        assert!((option_jd(None) - DHRUV_JD_ABSENT).abs() < 1e-15);
     }
 }

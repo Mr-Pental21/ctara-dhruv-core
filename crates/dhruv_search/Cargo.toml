@@ -1,0 +1,10 @@
+[package]
+name = "dhruv_search"
+version = "0.1.0"
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+dhruv_core   = { path = "../dhruv_core" }
+dhruv_time   = { path = "../dhruv_time" }
+dhruv_frames = { path = "../dhruv_frames" }
