@@ -16,8 +16,8 @@ use dhruv_search::{
     prev_sankranti, prev_solar_eclipse, prev_specific_sankranti, prev_stationary,
     search_amavasyas, search_conjunctions, search_lunar_eclipses, search_max_speed,
     search_purnimas, search_sankrantis, search_solar_eclipses, search_stationary,
-    sidereal_sum_at, tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises,
-    varsha_for_date, vedic_day_sunrises, yoga_at, yoga_for_date,
+    sidereal_sum_at, special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date,
+    vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, yoga_at, yoga_for_date,
 };
 use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
@@ -31,7 +31,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 14;
+pub const DHRUV_API_VERSION: u32 = 15;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -5918,6 +5918,167 @@ pub extern "C" fn dhruv_kunda(lagna: f64, moon: f64, mars: f64) -> f64 {
     dhruv_vedic_base::kunda(lagna, moon, mars)
 }
 
+// ---------------------------------------------------------------------------
+// Special Lagnas
+// ---------------------------------------------------------------------------
+
+/// Number of special lagnas.
+pub const DHRUV_SPECIAL_LAGNA_COUNT: u32 = 8;
+
+/// C-compatible result for all 8 special lagnas.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvSpecialLagnas {
+    pub bhava_lagna: f64,
+    pub hora_lagna: f64,
+    pub ghati_lagna: f64,
+    pub vighati_lagna: f64,
+    pub varnada_lagna: f64,
+    pub sree_lagna: f64,
+    pub pranapada_lagna: f64,
+    pub indu_lagna: f64,
+}
+
+/// Return the name of a special lagna by 0-based index.
+///
+/// Returns null for invalid indices (>= 8).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_special_lagna_name(index: u32) -> *const std::ffi::c_char {
+    if index >= 8 {
+        return ptr::null();
+    }
+    let name = dhruv_vedic_base::ALL_SPECIAL_LAGNAS[index as usize].name();
+    name.as_ptr().cast()
+}
+
+/// Compute a single special lagna: Bhava Lagna (pure math).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_bhava_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::bhava_lagna(sun_lon, ghatikas)
+}
+
+/// Compute a single special lagna: Hora Lagna (pure math).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_hora_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::hora_lagna(sun_lon, ghatikas)
+}
+
+/// Compute a single special lagna: Ghati Lagna (pure math).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_ghati_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::ghati_lagna(sun_lon, ghatikas)
+}
+
+/// Compute a single special lagna: Vighati Lagna (pure math).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_vighati_lagna(lagna_lon: f64, vighatikas: f64) -> f64 {
+    dhruv_vedic_base::vighati_lagna(lagna_lon, vighatikas)
+}
+
+/// Compute a single special lagna: Varnada Lagna (pure math).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_varnada_lagna(lagna_lon: f64, hora_lagna_lon: f64) -> f64 {
+    dhruv_vedic_base::varnada_lagna(lagna_lon, hora_lagna_lon)
+}
+
+/// Compute a single special lagna: Sree Lagna (pure math).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_sree_lagna(moon_lon: f64, lagna_lon: f64) -> f64 {
+    dhruv_vedic_base::sree_lagna(moon_lon, lagna_lon)
+}
+
+/// Compute a single special lagna: Pranapada Lagna (pure math).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_pranapada_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::pranapada_lagna(sun_lon, ghatikas)
+}
+
+/// Compute a single special lagna: Indu Lagna (pure math).
+///
+/// `lagna_lord` and `moon_9th_lord` are graha indices (0-8, per ALL_GRAHAS order).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_indu_lagna(moon_lon: f64, lagna_lord: u32, moon_9th_lord: u32) -> f64 {
+    if lagna_lord >= 9 || moon_9th_lord >= 9 {
+        return -1.0;
+    }
+    let ll = dhruv_vedic_base::ALL_GRAHAS[lagna_lord as usize];
+    let m9l = dhruv_vedic_base::ALL_GRAHAS[moon_9th_lord as usize];
+    dhruv_vedic_base::indu_lagna(moon_lon, ll, m9l)
+}
+
+/// Compute all 8 special lagnas for a given date and location (engine-dependent).
+///
+/// # Safety
+/// All pointers must be valid. Returns `NullPointer` if any is null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_special_lagnas_for_date(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    out: *mut DhruvSpecialLagnas,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null()
+        || riseset_config.is_null() || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*utc };
+    let loc_c = unsafe { &*location };
+    let rs_c = unsafe { &*riseset_config };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let sun_limb = match rs_c.sun_limb {
+        1 => SunLimb::Center,
+        2 => SunLimb::LowerLimb,
+        _ => SunLimb::UpperLimb,
+    };
+    let rs_config = RiseSetConfig {
+        sun_limb,
+        use_refraction: rs_c.use_refraction != 0,
+        altitude_correction: rs_c.altitude_correction != 0,
+    };
+
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+
+    match special_lagnas_for_date(engine, eop, &utc_time, &location, &rs_config, &aya_config) {
+        Ok(result) => {
+            unsafe {
+                (*out).bhava_lagna = result.bhava_lagna;
+                (*out).hora_lagna = result.hora_lagna;
+                (*out).ghati_lagna = result.ghati_lagna;
+                (*out).vighati_lagna = result.vighati_lagna;
+                (*out).varnada_lagna = result.varnada_lagna;
+                (*out).sree_lagna = result.sree_lagna;
+                (*out).pranapada_lagna = result.pranapada_lagna;
+                (*out).indu_lagna = result.indu_lagna;
+            }
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6355,8 +6516,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_14() {
-        assert_eq!(dhruv_api_version(), 14);
+    fn ffi_api_version_is_15() {
+        assert_eq!(dhruv_api_version(), 15);
     }
 
     // --- Search error mapping ---
@@ -7559,11 +7720,6 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_14() {
-        assert_eq!(DHRUV_API_VERSION, 14);
-    }
-
-    #[test]
     fn ffi_graha_name_valid() {
         let name = dhruv_graha_name(0);
         assert!(!name.is_null());
@@ -7649,5 +7805,87 @@ mod tests {
         // Avayoga: complement of yoga
         let as_ = dhruv_avayoga_sphuta(100.0, 200.0);
         assert!((as_ - 60.0).abs() < 1e-10);
+    }
+
+    // --- Special Lagnas ---
+
+    #[test]
+    fn ffi_special_lagna_count() {
+        assert_eq!(DHRUV_SPECIAL_LAGNA_COUNT, 8);
+    }
+
+    #[test]
+    fn ffi_special_lagna_name_valid() {
+        let name = dhruv_special_lagna_name(0);
+        assert!(!name.is_null());
+        let name = dhruv_special_lagna_name(7);
+        assert!(!name.is_null());
+    }
+
+    #[test]
+    fn ffi_special_lagna_name_invalid() {
+        let name = dhruv_special_lagna_name(8);
+        assert!(name.is_null());
+        let name = dhruv_special_lagna_name(u32::MAX);
+        assert!(name.is_null());
+    }
+
+    #[test]
+    fn ffi_bhava_lagna_value() {
+        let bl = dhruv_bhava_lagna(45.0, 5.0);
+        assert!((bl - 75.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ffi_hora_lagna_value() {
+        let hl = dhruv_hora_lagna(100.0, 2.5);
+        assert!((hl - 130.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ffi_ghati_lagna_value() {
+        let gl = dhruv_ghati_lagna(100.0, 1.0);
+        assert!((gl - 130.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ffi_vighati_lagna_value() {
+        let vl = dhruv_vighati_lagna(100.0, 60.0);
+        assert!((vl - 130.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ffi_sree_lagna_at_nakshatra_start() {
+        let sl = dhruv_sree_lagna(0.0, 100.0);
+        assert!((sl - 100.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ffi_indu_lagna_invalid_lord() {
+        let il = dhruv_indu_lagna(100.0, 99, 0);
+        assert!((il - (-1.0)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ffi_indu_lagna_valid() {
+        // Sun=30, Moon=16 → total=46, remainder=10 → Moon + 9*30 = 50 + 270 = 320
+        let il = dhruv_indu_lagna(50.0, 0, 1); // Surya=0, Chandra=1
+        assert!((il - 320.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ffi_special_lagnas_for_date_null() {
+        let mut out = DhruvSpecialLagnas {
+            bhava_lagna: 0.0, hora_lagna: 0.0, ghati_lagna: 0.0,
+            vighati_lagna: 0.0, varnada_lagna: 0.0, sree_lagna: 0.0,
+            pranapada_lagna: 0.0, indu_lagna: 0.0,
+        };
+        let s = unsafe {
+            dhruv_special_lagnas_for_date(
+                ptr::null(), ptr::null(), ptr::null(), ptr::null(),
+                ptr::null(), 0, 0, &mut out,
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
     }
 }

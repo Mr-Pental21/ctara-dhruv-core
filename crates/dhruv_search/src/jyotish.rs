@@ -5,14 +5,20 @@
 //! epoch and converts to sidereal longitudes.
 
 use dhruv_core::{Body, Engine};
+use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{
-    AyanamshaSystem, Graha, LunarNode, NodeMode, ALL_GRAHAS,
-    ayanamsha_deg, jd_tdb_to_centuries, lunar_node_deg,
+    AllSpecialLagnas, AyanamshaSystem, Graha, LunarNode, NodeMode, ALL_GRAHAS,
+    ascendant_longitude_rad, ayanamsha_deg, ghatikas_since_sunrise, jd_tdb_to_centuries,
+    lunar_node_deg, nth_rashi_from, rashi_lord_by_index,
 };
+use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
+use dhruv_vedic_base::special_lagna::all_special_lagnas;
 
 use crate::conjunction::body_ecliptic_lon_lat;
 use crate::error::SearchError;
 use crate::jyotish_types::GrahaLongitudes;
+use crate::panchang::vedic_day_sunrises;
+use crate::sankranti_types::SankrantiConfig;
 
 /// Map a Graha to its dhruv_core::Body for engine queries.
 fn graha_to_body(graha: Graha) -> Option<Body> {
@@ -64,6 +70,73 @@ pub fn graha_sidereal_longitudes(
     }
 
     Ok(GrahaLongitudes { longitudes })
+}
+
+/// Compute all 8 special lagnas for a given moment and location.
+///
+/// Orchestrates engine queries for Sun/Moon, Lagna computation, sunrise
+/// determination, and delegates to the pure-math `all_special_lagnas()`.
+pub fn special_lagnas_for_date(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+) -> Result<AllSpecialLagnas, SearchError> {
+    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let t = jd_tdb_to_centuries(jd_tdb);
+    let aya = ayanamsha_deg(aya_config.ayanamsha_system, t, aya_config.use_nutation);
+
+    // Get Sun and Moon sidereal longitudes
+    let (sun_tropical, _) = body_ecliptic_lon_lat(engine, Body::Sun, jd_tdb)?;
+    let (moon_tropical, _) = body_ecliptic_lon_lat(engine, Body::Moon, jd_tdb)?;
+    let sun_sid = normalize(sun_tropical - aya);
+    let moon_sid = normalize(moon_tropical - aya);
+
+    // Compute Lagna (Ascendant) sidereal longitude
+    let jd_utc = utc_to_jd_utc(utc);
+    let lagna_rad = ascendant_longitude_rad(engine.lsk(), eop, location, jd_utc)?;
+    let lagna_tropical = lagna_rad.to_degrees();
+    let lagna_sid = normalize(lagna_tropical - aya);
+
+    // Get sunrise pair for ghatikas
+    let (jd_sunrise, jd_next_sunrise) = vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
+    let ghatikas = ghatikas_since_sunrise(jd_tdb, jd_sunrise, jd_next_sunrise);
+
+    // Determine lords for Indu Lagna
+    let lagna_rashi_idx = (lagna_sid / 30.0) as u8;
+    let lagna_lord = rashi_lord_by_index(lagna_rashi_idx).unwrap_or(Graha::Surya);
+
+    let moon_rashi_idx = (moon_sid / 30.0) as u8;
+    let moon_9th_rashi_idx = nth_rashi_from(moon_rashi_idx, 9);
+    let moon_9th_lord = rashi_lord_by_index(moon_9th_rashi_idx).unwrap_or(Graha::Surya);
+
+    Ok(all_special_lagnas(
+        sun_sid,
+        moon_sid,
+        lagna_sid,
+        ghatikas,
+        lagna_lord,
+        moon_9th_lord,
+    ))
+}
+
+/// Convert UtcTime to JD UTC (calendar only, no TDB conversion).
+fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
+    // Julian Day from calendar date (Meeus algorithm)
+    let y = utc.year as f64;
+    let m = utc.month as f64;
+    let d = utc.day as f64
+        + utc.hour as f64 / 24.0
+        + utc.minute as f64 / 1440.0
+        + utc.second / 86400.0;
+
+    let (y2, m2) = if m <= 2.0 { (y - 1.0, m + 12.0) } else { (y, m) };
+    let a = (y2 / 100.0).floor();
+    let b = 2.0 - a + (a / 4.0).floor();
+
+    (365.25 * (y2 + 4716.0)).floor() + (30.6001 * (m2 + 1.0)).floor() + d + b - 1524.5
 }
 
 /// Normalize longitude to [0, 360).

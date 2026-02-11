@@ -32,8 +32,8 @@ pub mod global;
 pub use convenience::{
     ayana, ghatika, graha_longitudes, hora, karana, longitude, masa, nakshatra, nakshatra28,
     next_amavasya, next_purnima, next_sankranti, panchang, position, position_full, prev_amavasya,
-    prev_purnima, prev_sankranti, query, query_batch, rashi, sidereal_longitude, sphutas, tithi,
-    vaar, varsha, yoga,
+    prev_purnima, prev_sankranti, query, query_batch, rashi, sidereal_longitude, special_lagnas,
+    sphutas, tithi, vaar, varsha, yoga,
 };
 pub use date::UtcDate;
 pub use error::DhruvError;
@@ -52,7 +52,7 @@ pub use dhruv_vedic_base::{
     deg_to_dms,
 };
 pub use dhruv_vedic_base::riseset_types::GeoLocation;
-pub use dhruv_vedic_base::{Graha, Sphuta, SphutalInputs};
+pub use dhruv_vedic_base::{AllSpecialLagnas, Graha, SpecialLagna, Sphuta, SphutalInputs};
 pub use dhruv_search::GrahaLongitudes;
 
 // Re-export EopKernel for sunrise-based panchang functions.

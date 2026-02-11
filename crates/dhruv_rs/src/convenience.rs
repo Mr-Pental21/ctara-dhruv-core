@@ -436,3 +436,20 @@ pub fn sphutas(
 ) -> [(dhruv_vedic_base::Sphuta, f64); 16] {
     dhruv_vedic_base::all_sphutas(inputs)
 }
+
+/// Compute all 8 special lagnas for a given date and location.
+///
+/// Requires EOP kernel for sidereal time and sunrise computation.
+pub fn special_lagnas(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<dhruv_vedic_base::AllSpecialLagnas, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let rs_config = RiseSetConfig::default();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::special_lagnas_for_date(eng, eop, &utc, location, &rs_config, &config)?)
+}

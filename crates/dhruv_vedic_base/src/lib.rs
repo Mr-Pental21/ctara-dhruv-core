@@ -32,6 +32,7 @@ pub mod rashi;
 pub mod riseset;
 pub mod riseset_types;
 pub mod samvatsara;
+pub mod special_lagna;
 pub mod sphuta;
 pub mod tithi;
 pub mod util;
@@ -76,6 +77,11 @@ pub use samvatsara::{
 pub use graha::{
     ALL_GRAHAS, Graha, GRAHA_KAKSHA_VALUES, SAPTA_GRAHAS, nth_rashi_from, rashi_lord,
     rashi_lord_by_index,
+};
+pub use special_lagna::{
+    ALL_SPECIAL_LAGNAS, AllSpecialLagnas, SpecialLagna, all_special_lagnas, bhava_lagna,
+    ghati_lagna, ghatikas_since_sunrise, hora_lagna, indu_lagna, pranapada_lagna, sree_lagna,
+    varnada_lagna, vighati_lagna,
 };
 pub use sphuta::{
     ALL_SPHUTAS, Sphuta, SphutalInputs, all_sphutas, avayoga_sphuta, beeja_sphuta, bhrigu_bindu,

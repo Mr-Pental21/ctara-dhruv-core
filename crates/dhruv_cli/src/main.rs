@@ -309,6 +309,36 @@ enum Commands {
         #[arg(long)]
         eop: PathBuf,
     },
+    /// Compute all 8 special lagnas for a date and location
+    SpecialLagnas {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
     /// Combined panchang: tithi, karana, yoga, vaar, hora, ghatika
     Panchang {
         /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
@@ -889,6 +919,42 @@ fn main() {
             }
             println!("\nNote: Gulika=0° (placeholder until upagraha computation is available).");
             println!("  TriSphuta, ChatusSphuta, PanchaSphuta, SookshmaTrisphuta depend on Gulika.");
+        }
+
+        Commands::SpecialLagnas {
+            date,
+            lat,
+            lon,
+            alt,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let system = aya_system_from_code(ayanamsha)
+                .unwrap_or_else(|| panic!("Invalid ayanamsha code: {ayanamsha}"));
+            let utc = parse_utc(&date).unwrap_or_else(|e| panic!("Invalid date: {e}"));
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let rs_config = RiseSetConfig::default();
+            let config = SankrantiConfig::new(system, nutation);
+
+            let result = dhruv_search::special_lagnas_for_date(
+                &engine, &eop_kernel, &utc, &location, &rs_config, &config,
+            )
+            .unwrap_or_else(|e| panic!("special_lagnas_for_date failed: {e}"));
+
+            println!("Special Lagnas for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("  Bhava Lagna:     {:>10.4}°", result.bhava_lagna);
+            println!("  Hora Lagna:      {:>10.4}°", result.hora_lagna);
+            println!("  Ghati Lagna:     {:>10.4}°", result.ghati_lagna);
+            println!("  Vighati Lagna:   {:>10.4}°", result.vighati_lagna);
+            println!("  Varnada Lagna:   {:>10.4}°", result.varnada_lagna);
+            println!("  Sree Lagna:      {:>10.4}°", result.sree_lagna);
+            println!("  Pranapada Lagna: {:>10.4}°", result.pranapada_lagna);
+            println!("  Indu Lagna:      {:>10.4}°", result.indu_lagna);
         }
 
         Commands::Panchang {

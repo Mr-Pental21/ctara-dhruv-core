@@ -34,3 +34,12 @@ impl From<EngineError> for SearchError {
         Self::Engine(e)
     }
 }
+
+impl From<dhruv_vedic_base::VedicError> for SearchError {
+    fn from(e: dhruv_vedic_base::VedicError) -> Self {
+        match e {
+            dhruv_vedic_base::VedicError::Engine(eng) => Self::Engine(eng),
+            _ => Self::NoConvergence("vedic calculation failed"),
+        }
+    }
+}

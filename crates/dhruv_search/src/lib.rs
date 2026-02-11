@@ -61,5 +61,5 @@ pub use stationary::{
 pub use stationary_types::{
     MaxSpeedEvent, MaxSpeedType, StationaryConfig, StationaryEvent, StationType,
 };
-pub use jyotish::graha_sidereal_longitudes;
+pub use jyotish::{graha_sidereal_longitudes, special_lagnas_for_date};
 pub use jyotish_types::GrahaLongitudes;
