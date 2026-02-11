@@ -1,7 +1,9 @@
 //! Types for panchang classification results.
 
 use dhruv_time::UtcTime;
-use dhruv_vedic_base::{Ayana, Masa, Samvatsara};
+use dhruv_vedic_base::{
+    Ayana, Hora, Karana, Masa, Paksha, Samvatsara, Tithi, Vaar, Yoga,
+};
 
 /// Masa (lunar month) classification result.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,5 +39,83 @@ pub struct VarshaInfo {
     /// Start of the Vedic year (Chaitra Pratipada).
     pub start: UtcTime,
     /// End of the Vedic year (next Chaitra Pratipada).
+    pub end: UtcTime,
+}
+
+/// Tithi (lunar day) classification result with start/end times.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TithiInfo {
+    /// The tithi.
+    pub tithi: Tithi,
+    /// 0-based tithi index (0..29).
+    pub tithi_index: u8,
+    /// Paksha (Shukla or Krishna).
+    pub paksha: Paksha,
+    /// 1-based tithi number within the paksha (1-15).
+    pub tithi_in_paksha: u8,
+    /// Start of this tithi (UTC).
+    pub start: UtcTime,
+    /// End of this tithi (UTC).
+    pub end: UtcTime,
+}
+
+/// Karana (half-tithi) classification result with start/end times.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KaranaInfo {
+    /// The karana name.
+    pub karana: Karana,
+    /// 0-based karana sequence index within the synodic month (0..59).
+    pub karana_index: u8,
+    /// Start of this karana (UTC).
+    pub start: UtcTime,
+    /// End of this karana (UTC).
+    pub end: UtcTime,
+}
+
+/// Yoga (luni-solar yoga) classification result with start/end times.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct YogaInfo {
+    /// The yoga.
+    pub yoga: Yoga,
+    /// 0-based yoga index (0..26).
+    pub yoga_index: u8,
+    /// Start of this yoga (UTC).
+    pub start: UtcTime,
+    /// End of this yoga (UTC).
+    pub end: UtcTime,
+}
+
+/// Vaar (weekday) classification result with sunrise boundaries.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VaarInfo {
+    /// The vaar (weekday).
+    pub vaar: Vaar,
+    /// Start of this Vedic day (sunrise).
+    pub start: UtcTime,
+    /// End of this Vedic day (next sunrise).
+    pub end: UtcTime,
+}
+
+/// Hora (planetary hour) classification result with start/end times.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HoraInfo {
+    /// The hora lord (planet).
+    pub hora: Hora,
+    /// 0-based hora index within the Vedic day (0..23).
+    pub hora_index: u8,
+    /// Start of this hora (UTC).
+    pub start: UtcTime,
+    /// End of this hora (UTC).
+    pub end: UtcTime,
+}
+
+/// Ghatika classification result with start/end times.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GhatikaInfo {
+    /// Ghatika value (1-60).
+    pub value: u8,
+    /// Start of this ghatika (UTC).
+    pub start: UtcTime,
+    /// End of this ghatika (UTC).
     pub end: UtcTime,
 }

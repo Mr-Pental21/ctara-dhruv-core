@@ -8,12 +8,14 @@ use dhruv_search::{
     ConjunctionConfig, ConjunctionEvent, EclipseConfig, LunarEclipse, LunarEclipseType,
     LunarPhase, MaxSpeedEvent, MaxSpeedType, SankrantiConfig, SearchError, SolarEclipse,
     SolarEclipseType, StationaryConfig, StationaryEvent, StationType, ayana_for_date,
-    masa_for_date, next_amavasya, next_conjunction, next_lunar_eclipse, next_max_speed,
-    next_purnima, next_sankranti, next_solar_eclipse, next_specific_sankranti, next_stationary,
-    prev_amavasya, prev_conjunction, prev_lunar_eclipse, prev_max_speed, prev_purnima,
-    prev_sankranti, prev_solar_eclipse, prev_specific_sankranti, prev_stationary,
-    search_amavasyas, search_conjunctions, search_lunar_eclipses, search_max_speed,
-    search_purnimas, search_sankrantis, search_solar_eclipses, search_stationary, varsha_for_date,
+    ghatika_for_date, hora_for_date, karana_for_date, masa_for_date, next_amavasya,
+    next_conjunction, next_lunar_eclipse, next_max_speed, next_purnima, next_sankranti,
+    next_solar_eclipse, next_specific_sankranti, next_stationary, prev_amavasya,
+    prev_conjunction, prev_lunar_eclipse, prev_max_speed, prev_purnima, prev_sankranti,
+    prev_solar_eclipse, prev_specific_sankranti, prev_stationary, search_amavasyas,
+    search_conjunctions, search_lunar_eclipses, search_max_speed, search_purnimas,
+    search_sankrantis, search_solar_eclipses, search_stationary, tithi_for_date,
+    vaar_for_date, varsha_for_date, yoga_for_date,
 };
 use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
@@ -27,7 +29,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 11;
+pub const DHRUV_API_VERSION: u32 = 12;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -4946,6 +4948,424 @@ fn decode_c_utf8(buffer: &[u8; DHRUV_PATH_CAPACITY]) -> Result<&str, std::str::U
     std::str::from_utf8(&buffer[..end])
 }
 
+// ---------------------------------------------------------------------------
+// Tithi / Karana / Yoga / Vaar / Hora / Ghatika FFI
+// ---------------------------------------------------------------------------
+
+/// C-compatible Tithi info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvTithiInfo {
+    /// 0-based tithi index (0=Shukla Pratipada .. 29=Amavasya).
+    pub tithi_index: i32,
+    /// Paksha: 0=Shukla, 1=Krishna.
+    pub paksha: i32,
+    /// 1-based tithi number within the paksha (1-15).
+    pub tithi_in_paksha: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// C-compatible Karana info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvKaranaInfo {
+    /// 0-based karana sequence index (0-59) within the synodic month.
+    pub karana_index: i32,
+    /// Karana name index in ALL_KARANAS (0=Bava .. 10=Kinstugna).
+    pub karana_name_index: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// C-compatible Yoga info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvYogaInfo {
+    /// 0-based yoga index (0=Vishkumbha .. 26=Vaidhriti).
+    pub yoga_index: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// C-compatible Vaar info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvVaarInfo {
+    /// 0-based vaar index (0=Ravivaar/Sunday .. 6=Shanivaar/Saturday).
+    pub vaar_index: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// C-compatible Hora info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvHoraInfo {
+    /// Hora lord index in CHALDEAN_SEQUENCE (0=Surya .. 6=Mangal).
+    pub hora_index: i32,
+    /// 0-based hora position within the Vedic day (0-23).
+    pub hora_position: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// C-compatible Ghatika info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvGhatikaInfo {
+    /// Ghatika value (1-60).
+    pub value: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// Determine the Tithi for a given UTC date.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tithi_for_date(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    out: *mut DhruvTithiInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        match tithi_for_date(engine_ref, &t) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvTithiInfo {
+                        tithi_index: info.tithi_index as i32,
+                        paksha: info.paksha as i32,
+                        tithi_in_paksha: info.tithi_in_paksha as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Karana for a given UTC date.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_karana_for_date(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    out: *mut DhruvKaranaInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        match karana_for_date(engine_ref, &t) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvKaranaInfo {
+                        karana_index: info.karana_index as i32,
+                        karana_name_index: info.karana.index() as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Yoga for a given UTC date.
+///
+/// Requires SankrantiConfig for ayanamsha (sum does not cancel).
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_yoga_for_date(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out: *mut DhruvYogaInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match yoga_for_date(engine_ref, &t, &cfg) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvYogaInfo {
+                        yoga_index: info.yoga_index as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Vaar (weekday) for a given UTC date and location.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_vaar_for_date(
+    engine: *const DhruvEngineHandle,
+    eop: *const DhruvEopHandle,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
+    out: *mut DhruvVaarInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || eop.is_null() || utc.is_null()
+            || location.is_null() || riseset_config.is_null() || out.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let eop_ref = unsafe { &*eop };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let loc_ref = unsafe { &*location };
+        let cfg_ref = unsafe { &*riseset_config };
+        let geo = GeoLocation::new(loc_ref.latitude_deg, loc_ref.longitude_deg, loc_ref.altitude_m);
+        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
+            Some(l) => l,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let rs_config = RiseSetConfig {
+            use_refraction: cfg_ref.use_refraction != 0,
+            sun_limb,
+            altitude_correction: cfg_ref.altitude_correction != 0,
+        };
+        match vaar_for_date(engine_ref, eop_ref, &t, &geo, &rs_config) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvVaarInfo {
+                        vaar_index: info.vaar.index() as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Hora (planetary hour) for a given UTC date and location.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_hora_for_date(
+    engine: *const DhruvEngineHandle,
+    eop: *const DhruvEopHandle,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
+    out: *mut DhruvHoraInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || eop.is_null() || utc.is_null()
+            || location.is_null() || riseset_config.is_null() || out.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let eop_ref = unsafe { &*eop };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let loc_ref = unsafe { &*location };
+        let cfg_ref = unsafe { &*riseset_config };
+        let geo = GeoLocation::new(loc_ref.latitude_deg, loc_ref.longitude_deg, loc_ref.altitude_m);
+        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
+            Some(l) => l,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let rs_config = RiseSetConfig {
+            use_refraction: cfg_ref.use_refraction != 0,
+            sun_limb,
+            altitude_correction: cfg_ref.altitude_correction != 0,
+        };
+        match hora_for_date(engine_ref, eop_ref, &t, &geo, &rs_config) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvHoraInfo {
+                        hora_index: info.hora.index() as i32,
+                        hora_position: info.hora_index as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Ghatika for a given UTC date and location.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ghatika_for_date(
+    engine: *const DhruvEngineHandle,
+    eop: *const DhruvEopHandle,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
+    out: *mut DhruvGhatikaInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || eop.is_null() || utc.is_null()
+            || location.is_null() || riseset_config.is_null() || out.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let eop_ref = unsafe { &*eop };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let loc_ref = unsafe { &*location };
+        let cfg_ref = unsafe { &*riseset_config };
+        let geo = GeoLocation::new(loc_ref.latitude_deg, loc_ref.longitude_deg, loc_ref.altitude_m);
+        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
+            Some(l) => l,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let rs_config = RiseSetConfig {
+            use_refraction: cfg_ref.use_refraction != 0,
+            sun_limb,
+            altitude_correction: cfg_ref.altitude_correction != 0,
+        };
+        match ghatika_for_date(engine_ref, eop_ref, &t, &geo, &rs_config) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvGhatikaInfo {
+                        value: info.value as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Return the name of a tithi by index (0-29).
+///
+/// Returns a NUL-terminated static string, or null for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_tithi_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 30] = [
+        "Shukla Pratipada\0", "Shukla Dwitiya\0", "Shukla Tritiya\0",
+        "Shukla Chaturthi\0", "Shukla Panchami\0", "Shukla Shashthi\0",
+        "Shukla Saptami\0", "Shukla Ashtami\0", "Shukla Navami\0",
+        "Shukla Dashami\0", "Shukla Ekadashi\0", "Shukla Dwadashi\0",
+        "Shukla Trayodashi\0", "Shukla Chaturdashi\0", "Purnima\0",
+        "Krishna Pratipada\0", "Krishna Dwitiya\0", "Krishna Tritiya\0",
+        "Krishna Chaturthi\0", "Krishna Panchami\0", "Krishna Shashthi\0",
+        "Krishna Saptami\0", "Krishna Ashtami\0", "Krishna Navami\0",
+        "Krishna Dashami\0", "Krishna Ekadashi\0", "Krishna Dwadashi\0",
+        "Krishna Trayodashi\0", "Krishna Chaturdashi\0", "Amavasya\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Return the name of a karana by name-index (0-10, per ALL_KARANAS).
+///
+/// Returns a NUL-terminated static string, or null for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_karana_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 11] = [
+        "Bava\0", "Balava\0", "Kaulava\0", "Taitilla\0", "Garija\0",
+        "Vanija\0", "Vishti\0", "Shakuni\0", "Chatuspad\0", "Naga\0",
+        "Kinstugna\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Return the name of a yoga by index (0-26).
+///
+/// Returns a NUL-terminated static string, or null for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_yoga_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 27] = [
+        "Vishkumbha\0", "Priti\0", "Ayushman\0", "Saubhagya\0",
+        "Shobhana\0", "Atiganda\0", "Sukarma\0", "Dhriti\0",
+        "Shula\0", "Ganda\0", "Vriddhi\0", "Dhruva\0",
+        "Vyaghata\0", "Harshana\0", "Vajra\0", "Siddhi\0",
+        "Vyatipata\0", "Variyan\0", "Parigha\0", "Shiva\0",
+        "Siddha\0", "Sadhya\0", "Shubha\0", "Shukla\0",
+        "Brahma\0", "Indra\0", "Vaidhriti\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Return the name of a vaar by index (0-6).
+///
+/// Returns a NUL-terminated static string, or null for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_vaar_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 7] = [
+        "Ravivaar\0", "Somvaar\0", "Mangalvaar\0", "Budhvaar\0",
+        "Guruvaar\0", "Shukravaar\0", "Shanivaar\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Return the name of a hora lord by Chaldean index (0-6).
+///
+/// Returns a NUL-terminated static string, or null for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_hora_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 7] = [
+        "Surya\0", "Shukra\0", "Buddh\0", "Chandra\0",
+        "Shani\0", "Guru\0", "Mangal\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5383,8 +5803,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_11() {
-        assert_eq!(dhruv_api_version(), 11);
+    fn ffi_api_version_is_12() {
+        assert_eq!(dhruv_api_version(), 12);
     }
 
     // --- Search error mapping ---

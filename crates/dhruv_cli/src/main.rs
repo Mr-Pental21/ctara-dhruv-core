@@ -3,12 +3,13 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::sankranti_types::SankrantiConfig;
-use dhruv_time::UtcTime;
+use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{
     AyanamshaSystem, ayanamsha_deg, deg_to_dms, jd_tdb_to_centuries, nakshatra28_from_longitude,
     nakshatra28_from_tropical, nakshatra_from_longitude, nakshatra_from_tropical,
     rashi_from_longitude, rashi_from_tropical,
 };
+use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
 
 #[derive(Parser)]
 #[command(name = "dhruv", about = "Dhruv ephemeris CLI")]
@@ -164,6 +165,120 @@ enum Commands {
         #[arg(long)]
         lsk: PathBuf,
     },
+    /// Determine the Tithi (lunar day) for a date
+    Tithi {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Determine the Karana (half-tithi) for a date
+    Karana {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Determine the Yoga (luni-solar yoga) for a date
+    Yoga {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Determine the Vaar (Vedic weekday) for a date and location
+    Vaar {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
+    /// Determine the Hora (planetary hour) for a date and location
+    Hora {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
+    /// Determine the Ghatika (1-60) for a date and location
+    Ghatika {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -204,6 +319,13 @@ fn load_engine(bsp: &PathBuf, lsk: &PathBuf) -> Engine {
 fn require_aya_system(code: i32) -> AyanamshaSystem {
     aya_system_from_code(code).unwrap_or_else(|| {
         eprintln!("Invalid ayanamsha code: {code} (0-19)");
+        std::process::exit(1);
+    })
+}
+
+fn load_eop(path: &PathBuf) -> EopKernel {
+    EopKernel::load(path).unwrap_or_else(|e| {
+        eprintln!("Failed to load EOP: {e}");
         std::process::exit(1);
     })
 }
@@ -462,6 +584,162 @@ fn main() {
             match dhruv_search::varsha_for_date(&engine, &utc, &config) {
                 Ok(info) => {
                     println!("Samvatsara: {} (#{} in 60-year cycle)", info.samvatsara.name(), info.order);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Tithi { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::tithi_for_date(&engine, &utc) {
+                Ok(info) => {
+                    println!("Tithi: {} (index {})", info.tithi.name(), info.tithi_index);
+                    println!("  Paksha: {}  Tithi in paksha: {}", info.paksha.name(), info.tithi_in_paksha);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Karana { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::karana_for_date(&engine, &utc) {
+                Ok(info) => {
+                    println!("Karana: {} (sequence index {})", info.karana.name(), info.karana_index);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Yoga {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::yoga_for_date(&engine, &utc, &config) {
+                Ok(info) => {
+                    println!("Yoga: {} (index {})", info.yoga.name(), info.yoga_index);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Vaar {
+            date,
+            lat,
+            lon,
+            alt,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let rs_config = RiseSetConfig::default();
+            match dhruv_search::vaar_for_date(&engine, &eop_kernel, &utc, &location, &rs_config) {
+                Ok(info) => {
+                    println!("Vaar: {}", info.vaar.name());
+                    println!("  Start (sunrise): {}", info.start);
+                    println!("  End (next sunrise): {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Hora {
+            date,
+            lat,
+            lon,
+            alt,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let rs_config = RiseSetConfig::default();
+            match dhruv_search::hora_for_date(&engine, &eop_kernel, &utc, &location, &rs_config) {
+                Ok(info) => {
+                    println!("Hora: {} (position {} of 24)", info.hora.name(), info.hora_index);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Ghatika {
+            date,
+            lat,
+            lon,
+            alt,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let rs_config = RiseSetConfig::default();
+            match dhruv_search::ghatika_for_date(&engine, &eop_kernel, &utc, &location, &rs_config) {
+                Ok(info) => {
+                    println!("Ghatika: {}/60", info.value);
                     println!("  Start: {}", info.start);
                     println!("  End:   {}", info.end);
                 }

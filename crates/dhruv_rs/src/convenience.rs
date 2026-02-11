@@ -2,15 +2,19 @@ use dhruv_core::{Body, Frame, Observer, Query, StateVector};
 use dhruv_frames::{
     SphericalCoords, SphericalState, cartesian_state_to_spherical_state, cartesian_to_spherical,
 };
-use dhruv_search::panchang_types::{AyanaInfo, MasaInfo, VarshaInfo};
+use dhruv_search::panchang_types::{
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, TithiInfo, VaarInfo, VarshaInfo,
+    YogaInfo,
+};
 use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use dhruv_search::{LunarPhaseEvent, SearchError};
-use dhruv_time::{Epoch, UtcTime};
+use dhruv_time::{EopKernel, Epoch, UtcTime};
 use dhruv_vedic_base::{
     AyanamshaSystem, Nakshatra28Info, NakshatraInfo, RashiInfo, ayanamsha_deg,
     jd_tdb_to_centuries, nakshatra28_from_longitude, nakshatra_from_longitude,
     rashi_from_longitude,
 };
+use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
 
 use crate::date::UtcDate;
 use crate::error::DhruvError;
@@ -310,4 +314,83 @@ pub fn varsha(
     let utc: UtcTime = date.into();
     let config = SankrantiConfig::new(system, use_nutation);
     Ok(dhruv_search::varsha_for_date(eng, &utc, &config)?)
+}
+
+// ---------------------------------------------------------------------------
+// Tithi / Karana / Yoga / Vaar / Hora / Ghatika
+// ---------------------------------------------------------------------------
+
+/// Determine the Tithi (lunar day) for the given date.
+///
+/// Returns the tithi with its start/end UTC times.
+pub fn tithi(date: UtcDate) -> Result<TithiInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    Ok(dhruv_search::tithi_for_date(eng, &utc)?)
+}
+
+/// Determine the Karana (half-tithi) for the given date.
+///
+/// Returns the karana with its start/end UTC times.
+pub fn karana(date: UtcDate) -> Result<KaranaInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    Ok(dhruv_search::karana_for_date(eng, &utc)?)
+}
+
+/// Determine the Yoga (luni-solar yoga) for the given date.
+///
+/// Requires ayanamsha system because the sum (Moon+Sun) does not cancel ayanamsha.
+pub fn yoga(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<YogaInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::yoga_for_date(eng, &utc, &config)?)
+}
+
+/// Determine the Vaar (Vedic weekday) for the given date and location.
+///
+/// The Vedic day runs from sunrise to next sunrise. Uses default RiseSetConfig
+/// (upper limb, with refraction, no altitude correction).
+pub fn vaar(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<VaarInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let rs_config = RiseSetConfig::default();
+    Ok(dhruv_search::vaar_for_date(eng, eop, &utc, location, &rs_config)?)
+}
+
+/// Determine the Hora (planetary hour) for the given date and location.
+///
+/// Uses the Chaldean planetary hour sequence offset by the Vaar day lord.
+pub fn hora(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<HoraInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let rs_config = RiseSetConfig::default();
+    Ok(dhruv_search::hora_for_date(eng, eop, &utc, location, &rs_config)?)
+}
+
+/// Determine the Ghatika (1-60, each ~24 min) for the given date and location.
+///
+/// Ghatikas divide the Vedic day (sunrise to sunrise) into 60 equal parts.
+pub fn ghatika(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<GhatikaInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let rs_config = RiseSetConfig::default();
+    Ok(dhruv_search::ghatika_for_date(eng, eop, &utc, location, &rs_config)?)
 }

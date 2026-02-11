@@ -30,9 +30,9 @@ pub mod global;
 
 // Primary re-exports — users should only need `use dhruv_rs::*`
 pub use convenience::{
-    ayana, longitude, masa, nakshatra, nakshatra28, next_amavasya, next_purnima, next_sankranti,
-    position, position_full, prev_amavasya, prev_purnima, prev_sankranti, query, query_batch,
-    rashi, sidereal_longitude, varsha,
+    ayana, ghatika, hora, karana, longitude, masa, nakshatra, nakshatra28, next_amavasya,
+    next_purnima, next_sankranti, position, position_full, prev_amavasya, prev_purnima,
+    prev_sankranti, query, query_batch, rashi, sidereal_longitude, tithi, vaar, varsha, yoga,
 };
 pub use date::UtcDate;
 pub use error::DhruvError;
@@ -44,12 +44,21 @@ pub use dhruv_frames::{SphericalCoords, SphericalState};
 
 // Re-export vedic types used by the convenience functions.
 pub use dhruv_vedic_base::{
-    Ayana as AyanaKind, AyanamshaSystem, Dms, Masa as MasaName,
-    Nakshatra as NakshatraName, Nakshatra28 as Nakshatra28Name, Nakshatra28Info, NakshatraInfo,
-    Rashi as RashiName, RashiInfo, Samvatsara as SamvatsaraName, deg_to_dms,
+    Ayana as AyanaKind, AyanamshaSystem, Dms, Hora as HoraLord, Karana as KaranaName,
+    Masa as MasaName, Nakshatra as NakshatraName, Nakshatra28 as Nakshatra28Name,
+    Nakshatra28Info, NakshatraInfo, Paksha, Rashi as RashiName, RashiInfo,
+    Samvatsara as SamvatsaraName, Tithi as TithiName, Vaar as VaarName, Yoga as YogaName,
+    deg_to_dms,
 };
+pub use dhruv_vedic_base::riseset_types::GeoLocation;
+
+// Re-export EopKernel for sunrise-based panchang functions.
+pub use dhruv_time::EopKernel;
 
 // Re-export search result types used by convenience functions.
 pub use dhruv_search::lunar_phase_types::LunarPhaseEvent;
-pub use dhruv_search::panchang_types::{AyanaInfo, MasaInfo, VarshaInfo};
+pub use dhruv_search::panchang_types::{
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, TithiInfo, VaarInfo, VarshaInfo,
+    YogaInfo,
+};
 pub use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};

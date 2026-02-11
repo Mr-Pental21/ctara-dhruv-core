@@ -7,6 +7,8 @@
 //! - Bhava (house) systems: 10 division methods
 //! - Rashi (zodiac sign) and DMS conversion
 //! - Nakshatra (lunar mansion) with pada, 27 and 28 schemes
+//! - Tithi (lunar day), Karana (half-tithi), Yoga (luni-solar yoga)
+//! - Vaar (weekday), Hora (planetary hour), Ghatika (time division)
 //!
 //! All implementations are clean-room, derived from IAU standards
 //! and public astronomical formulas.
@@ -17,6 +19,9 @@ pub mod ayanamsha;
 pub mod bhava;
 pub mod bhava_types;
 pub mod error;
+pub mod ghatika;
+pub mod hora;
+pub mod karana;
 pub mod lunar_nodes;
 pub mod masa;
 pub mod nakshatra;
@@ -24,6 +29,9 @@ pub mod rashi;
 pub mod riseset;
 pub mod riseset_types;
 pub mod samvatsara;
+pub mod tithi;
+pub mod vaar;
+pub mod yoga;
 
 pub use ascendant::{ascendant_and_mc_rad, ascendant_longitude_rad, mc_longitude_rad, ramc_rad};
 pub use ayanamsha::{
@@ -35,6 +43,9 @@ pub use bhava_types::{
     Bhava, BhavaConfig, BhavaReferenceMode, BhavaResult, BhavaStartingPoint, BhavaSystem,
 };
 pub use error::VedicError;
+pub use ghatika::{GHATIKA_COUNT, GHATIKA_MINUTES, GhatikaPosition, ghatika_from_elapsed};
+pub use hora::{CHALDEAN_SEQUENCE, HORA_COUNT, Hora, hora_at, vaar_day_lord};
+pub use karana::{ALL_KARANAS, KARANA_SEGMENT_DEG, Karana, KaranaPosition, karana_from_elongation};
 pub use lunar_nodes::{
     LunarNode, NodeMode, lunar_node_deg, mean_ketu_deg, mean_rahu_deg, true_ketu_deg,
     true_rahu_deg,
@@ -49,6 +60,9 @@ pub use rashi::{
 };
 pub use riseset::{approximate_local_noon_jd, compute_all_events, compute_rise_set};
 pub use riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb};
+pub use tithi::{ALL_TITHIS, TITHI_SEGMENT_DEG, Paksha, Tithi, TithiPosition, tithi_from_elongation};
+pub use vaar::{ALL_VAARS, Vaar, vaar_from_jd};
+pub use yoga::{ALL_YOGAS, YOGA_SEGMENT_DEG, Yoga, YogaPosition, yoga_from_sum};
 pub use masa::{ALL_MASAS, Masa, masa_from_rashi_index};
 pub use ayana_type::{ALL_AYANAS, Ayana, ayana_from_sidereal_longitude};
 pub use samvatsara::{

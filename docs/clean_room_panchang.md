@@ -5,6 +5,9 @@
 This document describes the clean-room implementation of Vedic panchang
 classification and search functions in `dhruv_search` and `dhruv_vedic_base`.
 
+See also: `clean_room_tithi_karana_yoga.md` for Tithi, Karana, Yoga, Vaar,
+Hora, and Ghatika (added in Phase 9).
+
 ## Sources
 
 All algorithms are derived from:
