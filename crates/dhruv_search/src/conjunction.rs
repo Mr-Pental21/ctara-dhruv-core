@@ -12,6 +12,7 @@ use dhruv_frames::{cartesian_state_to_spherical_state, cartesian_to_spherical, i
 
 use crate::conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 use crate::error::SearchError;
+use crate::search_util::{is_genuine_crossing, normalize_to_pm180};
 
 /// Maximum scan range in days (~800 days covers all synodic periods).
 const MAX_SCAN_DAYS: f64 = 800.0;
@@ -54,17 +55,6 @@ pub(crate) fn body_ecliptic_state(
     Ok((sph.lon_deg.rem_euclid(360.0), sph.lat_deg, sph.lon_speed))
 }
 
-/// Normalize an angle to [-180, +180].
-pub(crate) fn normalize_to_pm180(deg: f64) -> f64 {
-    let mut d = deg % 360.0;
-    if d > 180.0 {
-        d -= 360.0;
-    } else if d <= -180.0 {
-        d += 360.0;
-    }
-    d
-}
-
 /// Compute the separation function f(t) = normalize(lon1 - lon2 - target).
 /// Returns (f_val, lon1, lon2, lat1, lat2).
 fn separation_function(
@@ -78,15 +68,6 @@ fn separation_function(
     let (lon2, lat2) = body_ecliptic_lon_lat(engine, body2, jd_tdb)?;
     let f = normalize_to_pm180(lon1 - lon2 - target_deg);
     Ok((f, lon1, lon2, lat1, lat2))
-}
-
-/// Check if a sign change is a genuine zero crossing vs a wrap-around discontinuity.
-///
-/// When the normalized function jumps from ~+180 to ~-180 (or vice versa),
-/// the product is negative but it's not a real zero crossing. A genuine
-/// crossing has both values relatively small in magnitude.
-fn is_genuine_crossing(f_a: f64, f_b: f64) -> bool {
-    f_a * f_b < 0.0 && (f_a - f_b).abs() < 270.0
 }
 
 /// Compute actual_separation_deg closest to the target.
@@ -299,30 +280,6 @@ pub fn search_conjunctions(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn normalize_basic() {
-        assert!((normalize_to_pm180(0.0) - 0.0).abs() < 1e-10);
-        assert!((normalize_to_pm180(180.0) - 180.0).abs() < 1e-10);
-        assert!((normalize_to_pm180(-180.0) - 180.0).abs() < 1e-10);
-        assert!((normalize_to_pm180(270.0) - (-90.0)).abs() < 1e-10);
-        assert!((normalize_to_pm180(-270.0) - 90.0).abs() < 1e-10);
-        assert!((normalize_to_pm180(360.0) - 0.0).abs() < 1e-10);
-        assert!((normalize_to_pm180(450.0) - 90.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn genuine_crossing_positive() {
-        assert!(is_genuine_crossing(5.0, -3.0));
-        assert!(is_genuine_crossing(-10.0, 10.0));
-    }
-
-    #[test]
-    fn wraparound_rejected() {
-        // +170 to -170 is a 340° jump — wrap-around, not crossing
-        assert!(!is_genuine_crossing(170.0, -170.0));
-        assert!(!is_genuine_crossing(-170.0, 170.0));
-    }
 
     #[test]
     fn actual_sep_near_zero() {

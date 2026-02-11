@@ -12,6 +12,7 @@ pub mod julian;
 pub mod lsk;
 pub mod scales;
 pub mod sidereal;
+pub mod utc_time;
 
 use std::path::Path;
 
@@ -23,6 +24,7 @@ pub use julian::{
 };
 pub use lsk::LskData;
 pub use sidereal::{earth_rotation_angle_rad, gmst_rad, local_sidereal_time_rad};
+pub use utc_time::UtcTime;
 
 /// A loaded leap-second kernel, ready for time conversions.
 #[derive(Debug, Clone)]

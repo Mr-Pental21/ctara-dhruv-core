@@ -6,24 +6,28 @@ use std::ptr;
 use dhruv_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query, StateVector};
 use dhruv_search::{
     ConjunctionConfig, ConjunctionEvent, EclipseConfig, LunarEclipse, LunarEclipseType,
-    MaxSpeedEvent, MaxSpeedType, SearchError, SolarEclipse, SolarEclipseType, StationaryConfig,
-    StationaryEvent, StationType, next_conjunction, next_lunar_eclipse, next_max_speed,
-    next_solar_eclipse, next_stationary, prev_conjunction, prev_lunar_eclipse, prev_max_speed,
-    prev_solar_eclipse, prev_stationary, search_conjunctions, search_lunar_eclipses,
-    search_max_speed, search_solar_eclipses, search_stationary,
+    LunarPhase, MaxSpeedEvent, MaxSpeedType, SankrantiConfig, SearchError, SolarEclipse,
+    SolarEclipseType, StationaryConfig, StationaryEvent, StationType, ayana_for_date,
+    masa_for_date, next_amavasya, next_conjunction, next_lunar_eclipse, next_max_speed,
+    next_purnima, next_sankranti, next_solar_eclipse, next_specific_sankranti, next_stationary,
+    prev_amavasya, prev_conjunction, prev_lunar_eclipse, prev_max_speed, prev_purnima,
+    prev_sankranti, prev_solar_eclipse, prev_specific_sankranti, prev_stationary,
+    search_amavasyas, search_conjunctions, search_lunar_eclipses, search_max_speed,
+    search_purnimas, search_sankrantis, search_solar_eclipses, search_stationary, varsha_for_date,
 };
+use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
-    AyanamshaSystem, BhavaConfig, BhavaReferenceMode, BhavaStartingPoint, BhavaSystem,
-    GeoLocation, LunarNode, NodeMode, RiseSetConfig, RiseSetEvent,
-    RiseSetResult, SunLimb, VedicError, ayanamsha_deg, ayanamsha_mean_deg, ayanamsha_true_deg,
-    approximate_local_noon_jd, compute_all_events, compute_bhavas, compute_rise_set,
-    deg_to_dms, jd_tdb_to_centuries, lunar_node_deg, nakshatra28_from_longitude,
-    nakshatra28_from_tropical, nakshatra_from_longitude, nakshatra_from_tropical,
-    rashi_from_longitude, rashi_from_tropical,
+    AyanamshaSystem, BhavaConfig, BhavaReferenceMode,
+    BhavaStartingPoint, BhavaSystem, GeoLocation, LunarNode, NodeMode, RiseSetConfig,
+    RiseSetEvent, RiseSetResult, SunLimb, VedicError, ayanamsha_deg, ayanamsha_mean_deg,
+    ayanamsha_true_deg, approximate_local_noon_jd, compute_all_events, compute_bhavas,
+    compute_rise_set, deg_to_dms, jd_tdb_to_centuries, lunar_node_deg,
+    nakshatra28_from_longitude, nakshatra28_from_tropical, nakshatra_from_longitude,
+    nakshatra_from_tropical, rashi_from_longitude, rashi_from_tropical,
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 9;
+pub const DHRUV_API_VERSION: u32 = 10;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -2957,6 +2961,746 @@ pub extern "C" fn dhruv_nakshatra28_name(index: u32) -> *const std::ffi::c_char 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Panchang: Lunar Phase / Sankranti / Masa / Ayana / Varsha
+// ---------------------------------------------------------------------------
+
+/// Lunar phase constants.
+pub const DHRUV_LUNAR_PHASE_NEW_MOON: i32 = 0;
+pub const DHRUV_LUNAR_PHASE_FULL_MOON: i32 = 1;
+
+/// Ayana constants.
+pub const DHRUV_AYANA_UTTARAYANA: i32 = 0;
+pub const DHRUV_AYANA_DAKSHINAYANA: i32 = 1;
+
+/// C-compatible lunar phase event.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvLunarPhaseEvent {
+    pub utc: DhruvUtcTime,
+    /// Phase code (see DHRUV_LUNAR_PHASE_* constants).
+    pub phase: i32,
+    pub moon_longitude_deg: f64,
+    pub sun_longitude_deg: f64,
+}
+
+/// C-compatible Sankranti search configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSankrantiConfig {
+    /// Ayanamsha system code (0-19).
+    pub ayanamsha_system: i32,
+    /// Whether to apply nutation correction (0=false, 1=true).
+    pub use_nutation: u8,
+    pub step_size_days: f64,
+    pub max_iterations: u32,
+    pub convergence_days: f64,
+}
+
+/// C-compatible Sankranti event.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSankrantiEvent {
+    pub utc: DhruvUtcTime,
+    /// 0-based rashi index (0=Mesha .. 11=Meena).
+    pub rashi_index: i32,
+    pub sun_sidereal_longitude_deg: f64,
+    pub sun_tropical_longitude_deg: f64,
+}
+
+/// C-compatible Masa info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvMasaInfo {
+    /// 0-based masa index (0=Chaitra .. 11=Phalguna).
+    pub masa_index: i32,
+    /// Whether this is an adhika (intercalary) month (0=false, 1=true).
+    pub adhika: u8,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// C-compatible Ayana info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvAyanaInfo {
+    /// Ayana code (see DHRUV_AYANA_* constants).
+    pub ayana: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+/// C-compatible Varsha info.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvVarshaInfo {
+    /// 0-based samvatsara index (0=Prabhava .. 59=Akshaya).
+    pub samvatsara_index: i32,
+    /// 1-based order in the 60-year cycle (1-60).
+    pub order: i32,
+    pub start: DhruvUtcTime,
+    pub end: DhruvUtcTime,
+}
+
+fn utc_time_to_ffi(t: &UtcTime) -> DhruvUtcTime {
+    DhruvUtcTime {
+        year: t.year,
+        month: t.month,
+        day: t.day,
+        hour: t.hour,
+        minute: t.minute,
+        second: t.second,
+    }
+}
+
+fn ffi_to_utc_time(t: &DhruvUtcTime) -> UtcTime {
+    UtcTime::new(t.year, t.month, t.day, t.hour, t.minute, t.second)
+}
+
+fn lunar_phase_to_code(p: LunarPhase) -> i32 {
+    match p {
+        LunarPhase::NewMoon => DHRUV_LUNAR_PHASE_NEW_MOON,
+        LunarPhase::FullMoon => DHRUV_LUNAR_PHASE_FULL_MOON,
+    }
+}
+
+fn sankranti_config_from_ffi(cfg: &DhruvSankrantiConfig) -> Option<SankrantiConfig> {
+    let system = ayanamsha_system_from_code(cfg.ayanamsha_system)?;
+    Some(SankrantiConfig {
+        ayanamsha_system: system,
+        use_nutation: cfg.use_nutation != 0,
+        step_size_days: cfg.step_size_days,
+        max_iterations: cfg.max_iterations,
+        convergence_days: cfg.convergence_days,
+    })
+}
+
+/// Returns default Sankranti search configuration (Lahiri, no nutation).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_sankranti_config_default() -> DhruvSankrantiConfig {
+    DhruvSankrantiConfig {
+        ayanamsha_system: 0, // Lahiri
+        use_nutation: 0,
+        step_size_days: 1.0,
+        max_iterations: 50,
+        convergence_days: 1e-8,
+    }
+}
+
+/// Find the next Purnima (full moon) after the given UTC time.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_purnima(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    out_event: *mut DhruvLunarPhaseEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let utc_ref = unsafe { &*utc };
+        let t = ffi_to_utc_time(utc_ref);
+        match next_purnima(engine_ref, &t) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvLunarPhaseEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        phase: lunar_phase_to_code(e.phase),
+                        moon_longitude_deg: e.moon_longitude_deg,
+                        sun_longitude_deg: e.sun_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the previous Purnima (full moon) before the given UTC time.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_purnima(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    out_event: *mut DhruvLunarPhaseEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        match prev_purnima(engine_ref, &t) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvLunarPhaseEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        phase: lunar_phase_to_code(e.phase),
+                        moon_longitude_deg: e.moon_longitude_deg,
+                        sun_longitude_deg: e.sun_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the next Amavasya (new moon) after the given UTC time.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_amavasya(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    out_event: *mut DhruvLunarPhaseEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        match next_amavasya(engine_ref, &t) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvLunarPhaseEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        phase: lunar_phase_to_code(e.phase),
+                        moon_longitude_deg: e.moon_longitude_deg,
+                        sun_longitude_deg: e.sun_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the previous Amavasya (new moon) before the given UTC time.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_amavasya(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    out_event: *mut DhruvLunarPhaseEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        match prev_amavasya(engine_ref, &t) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvLunarPhaseEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        phase: lunar_phase_to_code(e.phase),
+                        moon_longitude_deg: e.moon_longitude_deg,
+                        sun_longitude_deg: e.sun_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Search for all Purnimas in a UTC time range.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+/// `out_events` must point to at least `max_count` contiguous `DhruvLunarPhaseEvent`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_search_purnimas(
+    engine: *const DhruvEngineHandle,
+    start: *const DhruvUtcTime,
+    end: *const DhruvUtcTime,
+    out_events: *mut DhruvLunarPhaseEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || start.is_null() || end.is_null() || out_events.is_null() || out_count.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let s = ffi_to_utc_time(unsafe { &*start });
+        let e = ffi_to_utc_time(unsafe { &*end });
+        match search_purnimas(engine_ref, &s, &e) {
+            Ok(events) => {
+                let count = events.len().min(max_count as usize);
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
+                for (i, ev) in events.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvLunarPhaseEvent {
+                        utc: utc_time_to_ffi(&ev.utc),
+                        phase: lunar_phase_to_code(ev.phase),
+                        moon_longitude_deg: ev.moon_longitude_deg,
+                        sun_longitude_deg: ev.sun_longitude_deg,
+                    };
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Search for all Amavasyas in a UTC time range.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+/// `out_events` must point to at least `max_count` contiguous `DhruvLunarPhaseEvent`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_search_amavasyas(
+    engine: *const DhruvEngineHandle,
+    start: *const DhruvUtcTime,
+    end: *const DhruvUtcTime,
+    out_events: *mut DhruvLunarPhaseEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || start.is_null() || end.is_null() || out_events.is_null() || out_count.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let s = ffi_to_utc_time(unsafe { &*start });
+        let e = ffi_to_utc_time(unsafe { &*end });
+        match search_amavasyas(engine_ref, &s, &e) {
+            Ok(events) => {
+                let count = events.len().min(max_count as usize);
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
+                for (i, ev) in events.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvLunarPhaseEvent {
+                        utc: utc_time_to_ffi(&ev.utc),
+                        phase: lunar_phase_to_code(ev.phase),
+                        moon_longitude_deg: ev.moon_longitude_deg,
+                        sun_longitude_deg: ev.sun_longitude_deg,
+                    };
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the next Sankranti (Sun entering any rashi).
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_sankranti(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out_event: *mut DhruvSankrantiEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match next_sankranti(engine_ref, &t, &cfg) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvSankrantiEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        rashi_index: e.rashi_index as i32,
+                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
+                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the previous Sankranti.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_sankranti(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out_event: *mut DhruvSankrantiEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match prev_sankranti(engine_ref, &t, &cfg) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvSankrantiEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        rashi_index: e.rashi_index as i32,
+                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
+                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Search for all Sankrantis in a UTC time range.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_search_sankrantis(
+    engine: *const DhruvEngineHandle,
+    start: *const DhruvUtcTime,
+    end: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out_events: *mut DhruvSankrantiEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || start.is_null() || end.is_null() || config.is_null() || out_events.is_null() || out_count.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let s = ffi_to_utc_time(unsafe { &*start });
+        let e = ffi_to_utc_time(unsafe { &*end });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match search_sankrantis(engine_ref, &s, &e, &cfg) {
+            Ok(events) => {
+                let count = events.len().min(max_count as usize);
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
+                for (i, ev) in events.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvSankrantiEvent {
+                        utc: utc_time_to_ffi(&ev.utc),
+                        rashi_index: ev.rashi_index as i32,
+                        sun_sidereal_longitude_deg: ev.sun_sidereal_longitude_deg,
+                        sun_tropical_longitude_deg: ev.sun_tropical_longitude_deg,
+                    };
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the next time the Sun enters a specific rashi.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_specific_sankranti(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    rashi_index: i32,
+    config: *const DhruvSankrantiConfig,
+    out_event: *mut DhruvSankrantiEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let rashi_idx = rashi_index as usize;
+        if rashi_idx >= 12 {
+            return DhruvStatus::InvalidQuery;
+        }
+        let rashi = dhruv_vedic_base::ALL_RASHIS[rashi_idx];
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match next_specific_sankranti(engine_ref, &t, rashi, &cfg) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvSankrantiEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        rashi_index: e.rashi_index as i32,
+                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
+                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Find the previous time the Sun entered a specific rashi.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_specific_sankranti(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    rashi_index: i32,
+    config: *const DhruvSankrantiConfig,
+    out_event: *mut DhruvSankrantiEvent,
+    out_found: *mut u8,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let rashi_idx = rashi_index as usize;
+        if rashi_idx >= 12 {
+            return DhruvStatus::InvalidQuery;
+        }
+        let rashi = dhruv_vedic_base::ALL_RASHIS[rashi_idx];
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match prev_specific_sankranti(engine_ref, &t, rashi, &cfg) {
+            Ok(Some(e)) => {
+                unsafe {
+                    *out_event = DhruvSankrantiEvent {
+                        utc: utc_time_to_ffi(&e.utc),
+                        rashi_index: e.rashi_index as i32,
+                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
+                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
+                    };
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Masa (lunar month) for a given UTC date.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_masa_for_date(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out: *mut DhruvMasaInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match masa_for_date(engine_ref, &t, &cfg) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvMasaInfo {
+                        masa_index: info.masa.index() as i32,
+                        adhika: u8::from(info.adhika),
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Ayana (solstice period) for a given UTC date.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ayana_for_date(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out: *mut DhruvAyanaInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match ayana_for_date(engine_ref, &t, &cfg) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvAyanaInfo {
+                        ayana: info.ayana.index() as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Varsha (60-year cycle position) for a given UTC date.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_varsha_for_date(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out: *mut DhruvVarshaInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match varsha_for_date(engine_ref, &t, &cfg) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvVarshaInfo {
+                        samvatsara_index: info.samvatsara.index() as i32,
+                        order: info.order as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Masa name as a NUL-terminated UTF-8 string.
+///
+/// Returns null pointer for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_masa_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 12] = [
+        "Chaitra\0", "Vaishakha\0", "Jyeshtha\0", "Ashadha\0",
+        "Shravana\0", "Bhadrapada\0", "Ashvina\0", "Kartika\0",
+        "Margashirsha\0", "Pausha\0", "Magha\0", "Phalguna\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Ayana name as a NUL-terminated UTF-8 string.
+///
+/// Returns null pointer for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_ayana_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 2] = ["Uttarayana\0", "Dakshinayana\0"];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Samvatsara name as a NUL-terminated UTF-8 string.
+///
+/// Returns null pointer for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_samvatsara_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 60] = [
+        "Prabhava\0", "Vibhava\0", "Shukla\0", "Pramodoota\0", "Prajothpatti\0",
+        "Angirasa\0", "Shrimukha\0", "Bhava\0", "Yuva\0", "Dhaatu\0",
+        "Eeshvara\0", "Bahudhanya\0", "Pramaathi\0", "Vikrama\0", "Vrisha\0",
+        "Chitrabhanu\0", "Svabhanu\0", "Taarana\0", "Paarthiva\0", "Vyaya\0",
+        "Sarvajit\0", "Sarvadhari\0", "Virodhi\0", "Vikruti\0", "Khara\0",
+        "Nandana\0", "Vijaya\0", "Jaya\0", "Manmatha\0", "Durmukhi\0",
+        "Hevilambi\0", "Vilambi\0", "Vikari\0", "Sharvari\0", "Plava\0",
+        "Shubhakrut\0", "Shobhakrut\0", "Krodhi\0", "Vishvavasu\0", "Paraabhava\0",
+        "Plavanga\0", "Keelaka\0", "Saumya\0", "Sadharana\0", "Virodhikrut\0",
+        "Paridhavi\0", "Pramaadhi\0", "Aananda\0", "Raakshasa\0", "Naala\0",
+        "Pingala\0", "Kaalayukti\0", "Siddharthi\0", "Raudri\0", "Durmathi\0",
+        "Dundubhi\0", "Rudhirodgaari\0", "Raktaakshi\0", "Krodhana\0", "Akshaya\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
 fn ffi_boundary(f: impl FnOnce() -> DhruvStatus) -> DhruvStatus {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(status) => status,
@@ -3427,8 +4171,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_9() {
-        assert_eq!(dhruv_api_version(), 9);
+    fn ffi_api_version_is_10() {
+        assert_eq!(dhruv_api_version(), 10);
     }
 
     // --- Search error mapping ---
@@ -4053,5 +4797,155 @@ mod tests {
     #[test]
     fn ffi_nakshatra28_name_invalid() {
         assert!(dhruv_nakshatra28_name(28).is_null());
+    }
+
+    // --- Panchang FFI tests ---
+
+    #[test]
+    fn ffi_sankranti_config_default_values() {
+        let config = dhruv_sankranti_config_default();
+        assert_eq!(config.ayanamsha_system, 0); // Lahiri
+        assert_eq!(config.use_nutation, 0);
+        assert!((config.step_size_days - 1.0).abs() < 1e-10);
+        assert_eq!(config.max_iterations, 50);
+        assert!((config.convergence_days - 1e-8).abs() < 1e-15);
+    }
+
+    #[test]
+    fn ffi_lunar_phase_constants() {
+        assert_eq!(DHRUV_LUNAR_PHASE_NEW_MOON, 0);
+        assert_eq!(DHRUV_LUNAR_PHASE_FULL_MOON, 1);
+    }
+
+    #[test]
+    fn ffi_ayana_constants() {
+        assert_eq!(DHRUV_AYANA_UTTARAYANA, 0);
+        assert_eq!(DHRUV_AYANA_DAKSHINAYANA, 1);
+    }
+
+    #[test]
+    fn ffi_next_purnima_rejects_null() {
+        let utc = DhruvUtcTime {
+            year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0,
+        };
+        let status = unsafe {
+            dhruv_next_purnima(std::ptr::null(), &utc, std::ptr::null_mut(), std::ptr::null_mut())
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_next_amavasya_rejects_null() {
+        let utc = DhruvUtcTime {
+            year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0,
+        };
+        let status = unsafe {
+            dhruv_next_amavasya(std::ptr::null(), &utc, std::ptr::null_mut(), std::ptr::null_mut())
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_next_sankranti_rejects_null() {
+        let utc = DhruvUtcTime {
+            year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0,
+        };
+        let config = dhruv_sankranti_config_default();
+        let status = unsafe {
+            dhruv_next_sankranti(std::ptr::null(), &utc, &config, std::ptr::null_mut(), std::ptr::null_mut())
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_masa_for_date_rejects_null() {
+        let utc = DhruvUtcTime {
+            year: 2024, month: 1, day: 15, hour: 0, minute: 0, second: 0.0,
+        };
+        let config = dhruv_sankranti_config_default();
+        let status = unsafe {
+            dhruv_masa_for_date(std::ptr::null(), &utc, &config, std::ptr::null_mut())
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_ayana_for_date_rejects_null() {
+        let utc = DhruvUtcTime {
+            year: 2024, month: 1, day: 15, hour: 0, minute: 0, second: 0.0,
+        };
+        let config = dhruv_sankranti_config_default();
+        let status = unsafe {
+            dhruv_ayana_for_date(std::ptr::null(), &utc, &config, std::ptr::null_mut())
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_varsha_for_date_rejects_null() {
+        let utc = DhruvUtcTime {
+            year: 2024, month: 1, day: 15, hour: 0, minute: 0, second: 0.0,
+        };
+        let config = dhruv_sankranti_config_default();
+        let status = unsafe {
+            dhruv_varsha_for_date(std::ptr::null(), &utc, &config, std::ptr::null_mut())
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_masa_name_valid() {
+        // Index 0 = Chaitra
+        let name_ptr = dhruv_masa_name(0);
+        assert!(!name_ptr.is_null());
+        let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+        assert_eq!(name.to_str().unwrap(), "Chaitra");
+        // Index 9 = Pausha
+        let name_ptr = dhruv_masa_name(9);
+        assert!(!name_ptr.is_null());
+        let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+        assert_eq!(name.to_str().unwrap(), "Pausha");
+    }
+
+    #[test]
+    fn ffi_masa_name_invalid() {
+        assert!(dhruv_masa_name(12).is_null());
+    }
+
+    #[test]
+    fn ffi_ayana_name_valid() {
+        let name_ptr = dhruv_ayana_name(0);
+        assert!(!name_ptr.is_null());
+        let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+        assert_eq!(name.to_str().unwrap(), "Uttarayana");
+
+        let name_ptr = dhruv_ayana_name(1);
+        assert!(!name_ptr.is_null());
+        let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+        assert_eq!(name.to_str().unwrap(), "Dakshinayana");
+    }
+
+    #[test]
+    fn ffi_ayana_name_invalid() {
+        assert!(dhruv_ayana_name(2).is_null());
+    }
+
+    #[test]
+    fn ffi_samvatsara_name_valid() {
+        // Index 0 = Prabhava
+        let name_ptr = dhruv_samvatsara_name(0);
+        assert!(!name_ptr.is_null());
+        let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+        assert_eq!(name.to_str().unwrap(), "Prabhava");
+        // Index 59 = Akshaya
+        let name_ptr = dhruv_samvatsara_name(59);
+        assert!(!name_ptr.is_null());
+        let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+        assert_eq!(name.to_str().unwrap(), "Akshaya");
+    }
+
+    #[test]
+    fn ffi_samvatsara_name_invalid() {
+        assert!(dhruv_samvatsara_name(60).is_null());
     }
 }

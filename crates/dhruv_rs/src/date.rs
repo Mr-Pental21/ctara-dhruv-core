@@ -1,6 +1,8 @@
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
+use dhruv_time::UtcTime;
+
 use crate::DhruvError;
 
 /// UTC calendar date with sub-second precision.
@@ -125,6 +127,18 @@ fn parse_int(s: &str) -> Option<i32> {
 
 fn parse_uint(s: &str) -> Option<u32> {
     s.parse().ok()
+}
+
+impl From<UtcDate> for UtcTime {
+    fn from(d: UtcDate) -> Self {
+        UtcTime::new(d.year, d.month, d.day, d.hour, d.min, d.sec)
+    }
+}
+
+impl From<UtcTime> for UtcDate {
+    fn from(t: UtcTime) -> Self {
+        UtcDate::new(t.year, t.month, t.day, t.hour, t.minute, t.second)
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,9 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
+use dhruv_core::{Engine, EngineConfig};
+use dhruv_search::sankranti_types::SankrantiConfig;
+use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
     AyanamshaSystem, ayanamsha_deg, deg_to_dms, jd_tdb_to_centuries, nakshatra28_from_longitude,
     nakshatra28_from_tropical, nakshatra_from_longitude, nakshatra_from_tropical,
@@ -63,12 +68,144 @@ enum Commands {
         /// Angle in decimal degrees
         deg: f64,
     },
+    /// Find next Purnima (full moon)
+    NextPurnima {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Path to SPK kernel (de442s.bsp)
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel (naif0012.tls)
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next Amavasya (new moon)
+    NextAmavasya {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next Sankranti (Sun entering a rashi)
+    NextSankranti {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Determine the Masa (lunar month) for a date
+    Masa {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Determine the Ayana (Uttarayana/Dakshinayana) for a date
+    Ayana {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Determine the Varsha (60-year samvatsara cycle) for a date
+    Varsha {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
     let all = AyanamshaSystem::all();
     let idx = usize::try_from(code).ok()?;
     all.get(idx).copied()
+}
+
+fn parse_utc(s: &str) -> Result<UtcTime, String> {
+    // Parse "YYYY-MM-DDThh:mm:ssZ" or "YYYY-MM-DDThh:mm:ss"
+    let s = s.trim_end_matches('Z');
+    let parts: Vec<&str> = s.split('T').collect();
+    if parts.len() != 2 {
+        return Err(format!("expected YYYY-MM-DDThh:mm:ssZ, got {s}"));
+    }
+    let date_parts: Vec<&str> = parts[0].split('-').collect();
+    let time_parts: Vec<&str> = parts[1].split(':').collect();
+    if date_parts.len() != 3 || time_parts.len() != 3 {
+        return Err(format!("invalid date/time format: {s}"));
+    }
+    let year: i32 = date_parts[0].parse().map_err(|e| format!("{e}"))?;
+    let month: u32 = date_parts[1].parse().map_err(|e| format!("{e}"))?;
+    let day: u32 = date_parts[2].parse().map_err(|e| format!("{e}"))?;
+    let hour: u32 = time_parts[0].parse().map_err(|e| format!("{e}"))?;
+    let minute: u32 = time_parts[1].parse().map_err(|e| format!("{e}"))?;
+    let second: f64 = time_parts[2].parse().map_err(|e| format!("{e}"))?;
+    Ok(UtcTime::new(year, month, day, hour, minute, second))
+}
+
+fn load_engine(bsp: &PathBuf, lsk: &PathBuf) -> Engine {
+    let config = EngineConfig::with_single_spk(bsp.clone(), lsk.clone(), 256, true);
+    Engine::new(config).unwrap_or_else(|e| {
+        eprintln!("Failed to load engine: {e}");
+        std::process::exit(1);
+    })
+}
+
+fn require_aya_system(code: i32) -> AyanamshaSystem {
+    aya_system_from_code(code).unwrap_or_else(|| {
+        eprintln!("Invalid ayanamsha code: {code} (0-19)");
+        std::process::exit(1);
+    })
 }
 
 fn main() {
@@ -123,25 +260,13 @@ fn main() {
             jd,
             nutation,
         } => {
-            let system = match aya_system_from_code(ayanamsha) {
-                Some(s) => s,
-                None => {
-                    eprintln!("Invalid ayanamsha code: {ayanamsha} (0-19)");
-                    std::process::exit(1);
-                }
-            };
+            let system = require_aya_system(ayanamsha);
             let t = jd_tdb_to_centuries(jd);
             let aya = ayanamsha_deg(system, t, nutation);
             let info = rashi_from_tropical(lon, system, jd, nutation);
             let dms = info.dms;
-            println!(
-                "Ayanamsha: {:.4} deg",
-                aya
-            );
-            println!(
-                "Sidereal: {:.4} deg",
-                lon - aya
-            );
+            println!("Ayanamsha: {:.4} deg", aya);
+            println!("Sidereal: {:.4} deg", lon - aya);
             println!(
                 "{} ({}) - {} deg {} min {:.1} sec ({:.4} deg in rashi)",
                 info.rashi.name(),
@@ -160,23 +285,11 @@ fn main() {
             nutation,
             scheme,
         } => {
-            let system = match aya_system_from_code(ayanamsha) {
-                Some(s) => s,
-                None => {
-                    eprintln!("Invalid ayanamsha code: {ayanamsha} (0-19)");
-                    std::process::exit(1);
-                }
-            };
+            let system = require_aya_system(ayanamsha);
             let t = jd_tdb_to_centuries(jd);
             let aya = ayanamsha_deg(system, t, nutation);
-            println!(
-                "Ayanamsha: {:.4} deg",
-                aya
-            );
-            println!(
-                "Sidereal: {:.4} deg",
-                lon - aya
-            );
+            println!("Ayanamsha: {:.4} deg", aya);
+            println!("Sidereal: {:.4} deg", lon - aya);
             match scheme {
                 27 => {
                     let info = nakshatra_from_tropical(lon, system, jd, nutation);
@@ -209,6 +322,154 @@ fn main() {
         Commands::Dms { deg } => {
             let d = deg_to_dms(deg);
             println!("{} deg {} min {:.2} sec", d.degrees, d.minutes, d.seconds);
+        }
+
+        Commands::NextPurnima { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::next_purnima(&engine, &utc) {
+                Ok(Some(ev)) => {
+                    println!("Next Purnima: {}", ev.utc);
+                    println!("  Moon lon: {:.4} deg  Sun lon: {:.4} deg", ev.moon_longitude_deg, ev.sun_longitude_deg);
+                }
+                Ok(None) => println!("No Purnima found in search range"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NextAmavasya { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::next_amavasya(&engine, &utc) {
+                Ok(Some(ev)) => {
+                    println!("Next Amavasya: {}", ev.utc);
+                    println!("  Moon lon: {:.4} deg  Sun lon: {:.4} deg", ev.moon_longitude_deg, ev.sun_longitude_deg);
+                }
+                Ok(None) => println!("No Amavasya found in search range"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NextSankranti {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::next_sankranti(&engine, &utc, &config) {
+                Ok(Some(ev)) => {
+                    println!("Next Sankranti: {} ({})", ev.rashi.name(), ev.rashi.western_name());
+                    println!("  Time: {}", ev.utc);
+                    println!("  Sidereal lon: {:.4} deg  Tropical lon: {:.4} deg", ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg);
+                }
+                Ok(None) => println!("No Sankranti found in search range"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Masa {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::masa_for_date(&engine, &utc, &config) {
+                Ok(info) => {
+                    let adhika_str = if info.adhika { " (Adhika)" } else { "" };
+                    println!("Masa: {}{}", info.masa.name(), adhika_str);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Ayana {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::ayana_for_date(&engine, &utc, &config) {
+                Ok(info) => {
+                    println!("Ayana: {}", info.ayana.name());
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Varsha {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::varsha_for_date(&engine, &utc, &config) {
+                Ok(info) => {
+                    println!("Samvatsara: {} (#{} in 60-year cycle)", info.samvatsara.name(), info.order);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
     }
 }

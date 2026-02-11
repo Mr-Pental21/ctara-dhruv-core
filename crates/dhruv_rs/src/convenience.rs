@@ -2,7 +2,10 @@ use dhruv_core::{Body, Frame, Observer, Query, StateVector};
 use dhruv_frames::{
     SphericalCoords, SphericalState, cartesian_state_to_spherical_state, cartesian_to_spherical,
 };
-use dhruv_time::Epoch;
+use dhruv_search::panchang_types::{AyanaInfo, MasaInfo, VarshaInfo};
+use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
+use dhruv_search::{LunarPhaseEvent, SearchError};
+use dhruv_time::{Epoch, UtcTime};
 use dhruv_vedic_base::{
     AyanamshaSystem, Nakshatra28Info, NakshatraInfo, RashiInfo, ayanamsha_deg,
     jd_tdb_to_centuries, nakshatra28_from_longitude, nakshatra_from_longitude,
@@ -197,4 +200,114 @@ pub fn nakshatra28(
 ) -> Result<Nakshatra28Info, DhruvError> {
     let sid = sidereal_longitude(target, observer, date, system, use_nutation)?;
     Ok(nakshatra28_from_longitude(sid))
+}
+
+// ---------------------------------------------------------------------------
+// Panchang convenience functions
+// ---------------------------------------------------------------------------
+
+/// Find the next Purnima (full moon) after the given date.
+pub fn next_purnima(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    dhruv_search::next_purnima(eng, &utc)?
+        .ok_or(DhruvError::Search(SearchError::NoConvergence(
+            "could not find next purnima",
+        )))
+}
+
+/// Find the previous Purnima (full moon) before the given date.
+pub fn prev_purnima(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    dhruv_search::prev_purnima(eng, &utc)?
+        .ok_or(DhruvError::Search(SearchError::NoConvergence(
+            "could not find previous purnima",
+        )))
+}
+
+/// Find the next Amavasya (new moon) after the given date.
+pub fn next_amavasya(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    dhruv_search::next_amavasya(eng, &utc)?
+        .ok_or(DhruvError::Search(SearchError::NoConvergence(
+            "could not find next amavasya",
+        )))
+}
+
+/// Find the previous Amavasya (new moon) before the given date.
+pub fn prev_amavasya(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    dhruv_search::prev_amavasya(eng, &utc)?
+        .ok_or(DhruvError::Search(SearchError::NoConvergence(
+            "could not find previous amavasya",
+        )))
+}
+
+/// Find the next Sankranti (Sun entering a rashi) after the given date.
+pub fn next_sankranti(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<SankrantiEvent, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    dhruv_search::next_sankranti(eng, &utc, &config)?
+        .ok_or(DhruvError::Search(SearchError::NoConvergence(
+            "could not find next sankranti",
+        )))
+}
+
+/// Find the previous Sankranti (Sun entering a rashi) before the given date.
+pub fn prev_sankranti(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<SankrantiEvent, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    dhruv_search::prev_sankranti(eng, &utc, &config)?
+        .ok_or(DhruvError::Search(SearchError::NoConvergence(
+            "could not find previous sankranti",
+        )))
+}
+
+/// Determine the Masa (lunar month, Amanta system) for the given date.
+pub fn masa(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<MasaInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::masa_for_date(eng, &utc, &config)?)
+}
+
+/// Determine the Ayana (Uttarayana/Dakshinayana) for the given date.
+pub fn ayana(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<AyanaInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::ayana_for_date(eng, &utc, &config)?)
+}
+
+/// Determine the Varsha (60-year samvatsara cycle position) for the given date.
+pub fn varsha(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<VarshaInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::varsha_for_date(eng, &utc, &config)?)
 }

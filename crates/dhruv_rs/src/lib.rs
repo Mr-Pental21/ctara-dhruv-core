@@ -30,8 +30,9 @@ pub mod global;
 
 // Primary re-exports — users should only need `use dhruv_rs::*`
 pub use convenience::{
-    longitude, nakshatra, nakshatra28, position, position_full, query, query_batch, rashi,
-    sidereal_longitude,
+    ayana, longitude, masa, nakshatra, nakshatra28, next_amavasya, next_purnima, next_sankranti,
+    position, position_full, prev_amavasya, prev_purnima, prev_sankranti, query, query_batch,
+    rashi, sidereal_longitude, varsha,
 };
 pub use date::UtcDate;
 pub use error::DhruvError;
@@ -43,6 +44,12 @@ pub use dhruv_frames::{SphericalCoords, SphericalState};
 
 // Re-export vedic types used by the convenience functions.
 pub use dhruv_vedic_base::{
-    AyanamshaSystem, Dms, Nakshatra as NakshatraName, Nakshatra28 as Nakshatra28Name,
-    Nakshatra28Info, NakshatraInfo, Rashi as RashiName, RashiInfo, deg_to_dms,
+    Ayana as AyanaKind, AyanamshaSystem, Dms, Masa as MasaName,
+    Nakshatra as NakshatraName, Nakshatra28 as Nakshatra28Name, Nakshatra28Info, NakshatraInfo,
+    Rashi as RashiName, RashiInfo, Samvatsara as SamvatsaraName, deg_to_dms,
 };
+
+// Re-export search result types used by convenience functions.
+pub use dhruv_search::lunar_phase_types::LunarPhaseEvent;
+pub use dhruv_search::panchang_types::{AyanaInfo, MasaInfo, VarshaInfo};
+pub use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
