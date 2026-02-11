@@ -15,6 +15,7 @@
 //! All implementations are clean-room, derived from IAU standards
 //! and public astronomical formulas.
 
+pub mod arudha;
 pub mod ascendant;
 pub mod ayana_type;
 pub mod ayanamsha;
@@ -39,6 +40,9 @@ pub mod util;
 pub mod vaar;
 pub mod yoga;
 
+pub use arudha::{
+    ALL_ARUDHA_PADAS, ArudhaPada, ArudhaResult, all_arudha_padas, arudha_pada,
+};
 pub use ascendant::{ascendant_and_mc_rad, ascendant_longitude_rad, mc_longitude_rad, ramc_rad};
 pub use ayanamsha::{
     AyanamshaSystem, ayanamsha_deg, ayanamsha_mean_deg, ayanamsha_true_deg,

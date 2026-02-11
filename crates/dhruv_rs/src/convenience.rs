@@ -453,3 +453,20 @@ pub fn special_lagnas(
     let config = SankrantiConfig::new(system, use_nutation);
     Ok(dhruv_search::special_lagnas_for_date(eng, eop, &utc, location, &rs_config, &config)?)
 }
+
+/// Compute all 12 arudha padas for a given date and location.
+///
+/// Requires EOP kernel for bhava cusp computation.
+pub fn arudha_padas(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<[dhruv_vedic_base::ArudhaResult; 12], DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let bhava_config = dhruv_vedic_base::BhavaConfig::default();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::arudha_padas_for_date(eng, eop, &utc, location, &bhava_config, &config)?)
+}

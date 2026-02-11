@@ -9,6 +9,7 @@ use dhruv_vedic_base::{
     nakshatra28_from_tropical, nakshatra_from_longitude, nakshatra_from_tropical,
     rashi_from_longitude, rashi_from_tropical,
 };
+use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
 
 #[derive(Parser)]
@@ -311,6 +312,36 @@ enum Commands {
     },
     /// Compute all 8 special lagnas for a date and location
     SpecialLagnas {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
+    /// Compute all 12 arudha padas for a date and location
+    ArudhaPadas {
         /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
         #[arg(long)]
         date: String,
@@ -955,6 +986,49 @@ fn main() {
             println!("  Sree Lagna:      {:>10.4}°", result.sree_lagna);
             println!("  Pranapada Lagna: {:>10.4}°", result.pranapada_lagna);
             println!("  Indu Lagna:      {:>10.4}°", result.indu_lagna);
+        }
+
+        Commands::ArudhaPadas {
+            date,
+            lat,
+            lon,
+            alt,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let system = require_aya_system(ayanamsha);
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let bhava_config = BhavaConfig::default();
+            let aya_config = SankrantiConfig::new(system, nutation);
+
+            let results = dhruv_search::arudha_padas_for_date(
+                &engine, &eop_kernel, &utc, &location, &bhava_config, &aya_config,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            println!("Arudha Padas for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            for r in &results {
+                let rashi_info = dhruv_vedic_base::rashi_from_longitude(r.longitude_deg);
+                println!("  {:16} {:>8.4}° ({} {}°{:02}'{:04.1}\")",
+                    r.pada.name(), r.longitude_deg,
+                    rashi_info.rashi.name(),
+                    rashi_info.dms.degrees,
+                    rashi_info.dms.minutes,
+                    rashi_info.dms.seconds,
+                );
+            }
         }
 
         Commands::Panchang {

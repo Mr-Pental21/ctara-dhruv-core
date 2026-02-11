@@ -7,10 +7,11 @@
 use dhruv_core::{Body, Engine};
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{
-    AllSpecialLagnas, AyanamshaSystem, Graha, LunarNode, NodeMode, ALL_GRAHAS,
-    ascendant_longitude_rad, ayanamsha_deg, ghatikas_since_sunrise, jd_tdb_to_centuries,
-    lunar_node_deg, nth_rashi_from, rashi_lord_by_index,
+    AllSpecialLagnas, ArudhaResult, AyanamshaSystem, BhavaConfig, Graha, LunarNode, NodeMode,
+    ALL_GRAHAS, ascendant_longitude_rad, ayanamsha_deg, compute_bhavas, ghatikas_since_sunrise,
+    jd_tdb_to_centuries, lunar_node_deg, nth_rashi_from, rashi_lord_by_index,
 };
+use dhruv_vedic_base::arudha::all_arudha_padas;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
 use dhruv_vedic_base::special_lagna::all_special_lagnas;
 
@@ -120,6 +121,47 @@ pub fn special_lagnas_for_date(
         lagna_lord,
         moon_9th_lord,
     ))
+}
+
+/// Compute all 12 arudha padas for a given date and location.
+///
+/// Orchestrates bhava cusp computation, graha sidereal positions, resolves
+/// lord longitudes for each house, and delegates to `all_arudha_padas()`.
+pub fn arudha_padas_for_date(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    aya_config: &SankrantiConfig,
+) -> Result<[ArudhaResult; 12], SearchError> {
+    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let jd_utc = utc_to_jd_utc(utc);
+
+    // Get bhava cusps
+    let bhava_result = compute_bhavas(engine, engine.lsk(), eop, location, jd_utc, bhava_config)?;
+
+    // Get sidereal graha positions
+    let graha_lons = graha_sidereal_longitudes(engine, jd_tdb, aya_config.ayanamsha_system, aya_config.use_nutation)?;
+
+    // Convert cusp tropical longitudes to sidereal
+    let t = jd_tdb_to_centuries(jd_tdb);
+    let aya = ayanamsha_deg(aya_config.ayanamsha_system, t, aya_config.use_nutation);
+
+    let mut cusp_sid = [0.0f64; 12];
+    for i in 0..12 {
+        cusp_sid[i] = normalize(bhava_result.bhavas[i].cusp_deg - aya);
+    }
+
+    // Resolve lord longitude for each house
+    let mut lord_lons = [0.0f64; 12];
+    for i in 0..12 {
+        let cusp_rashi_idx = (cusp_sid[i] / 30.0) as u8;
+        let lord = rashi_lord_by_index(cusp_rashi_idx).unwrap_or(Graha::Surya);
+        lord_lons[i] = graha_lons.longitude(lord);
+    }
+
+    Ok(all_arudha_padas(&cusp_sid, &lord_lons))
 }
 
 /// Convert UtcTime to JD UTC (calendar only, no TDB conversion).

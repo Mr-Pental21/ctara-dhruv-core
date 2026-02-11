@@ -31,7 +31,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 15;
+pub const DHRUV_API_VERSION: u32 = 16;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -6079,6 +6079,106 @@ pub unsafe extern "C" fn dhruv_special_lagnas_for_date(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Arudha Padas
+// ---------------------------------------------------------------------------
+
+/// Number of arudha padas.
+pub const DHRUV_ARUDHA_PADA_COUNT: u32 = 12;
+
+/// C-compatible result for a single arudha pada.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvArudhaResult {
+    pub bhava_number: u8,
+    pub longitude_deg: f64,
+    pub rashi_index: u8,
+}
+
+/// Return the name of an arudha pada by 0-based index.
+///
+/// Returns null for invalid indices (>= 12).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_arudha_pada_name(index: u32) -> *const std::ffi::c_char {
+    if index >= 12 {
+        return ptr::null();
+    }
+    let name = dhruv_vedic_base::ALL_ARUDHA_PADAS[index as usize].name();
+    name.as_ptr().cast()
+}
+
+/// Compute a single arudha pada (pure math).
+///
+/// Returns the arudha longitude in degrees [0, 360).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_arudha_pada(bhava_cusp_lon: f64, lord_lon: f64, out_rashi: *mut u8) -> f64 {
+    let (lon, rashi) = dhruv_vedic_base::arudha_pada(bhava_cusp_lon, lord_lon);
+    if !out_rashi.is_null() {
+        unsafe { *out_rashi = rashi; }
+    }
+    lon
+}
+
+/// Compute all 12 arudha padas for a given date and location (engine-dependent).
+///
+/// Writes 12 results to `out` array. Returns `NullPointer` if any pointer is null.
+///
+/// # Safety
+/// All pointers must be valid. `out` must point to an array of at least 12 `DhruvArudhaResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_arudha_padas_for_date(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    out: *mut DhruvArudhaResult,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*utc };
+    let loc_c = unsafe { &*location };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+
+    let bhava_config = dhruv_vedic_base::BhavaConfig::default();
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+
+    match dhruv_search::arudha_padas_for_date(engine, eop, &utc_time, &location, &bhava_config, &aya_config) {
+        Ok(results) => {
+            let out_slice = unsafe { std::slice::from_raw_parts_mut(out, 12) };
+            for (i, r) in results.iter().enumerate() {
+                out_slice[i] = DhruvArudhaResult {
+                    bhava_number: r.pada.bhava_number(),
+                    longitude_deg: r.longitude_deg,
+                    rashi_index: r.rashi_index,
+                };
+            }
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6516,8 +6616,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_15() {
-        assert_eq!(dhruv_api_version(), 15);
+    fn ffi_api_version_is_16() {
+        assert_eq!(dhruv_api_version(), 16);
     }
 
     // --- Search error mapping ---
