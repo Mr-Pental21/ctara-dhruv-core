@@ -523,6 +523,42 @@ enum Commands {
         #[arg(long)]
         eop: PathBuf,
     },
+    /// Compute curated sensitive points (bindus) with optional nakshatra/bhava
+    CoreBindus {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Include nakshatra and pada
+        #[arg(long)]
+        nakshatra: bool,
+        /// Include bhava placement
+        #[arg(long)]
+        bhava: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -1490,6 +1526,99 @@ fn main() {
                     print_entry(planet_names[i], entry, None);
                 }
             }
+        }
+        Commands::CoreBindus {
+            date,
+            lat,
+            lon,
+            alt,
+            ayanamsha,
+            nutation,
+            nakshatra,
+            bhava,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let system = require_aya_system(ayanamsha);
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let bhava_config = BhavaConfig::default();
+            let rs_config = RiseSetConfig::default();
+            let aya_config = SankrantiConfig::new(system, nutation);
+            let bindus_config = dhruv_search::BindusConfig {
+                include_nakshatra: nakshatra,
+                include_bhava: bhava,
+            };
+
+            let result = dhruv_search::core_bindus(
+                &engine, &eop_kernel, &utc, &location, &bhava_config,
+                &rs_config, &aya_config, &bindus_config,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            println!("Core Bindus for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+
+            // Header
+            print!("{:<16} {:>10}  {:<10}", "Name", "Longitude", "Rashi");
+            if nakshatra {
+                print!("  {:<18} {:>4}", "Nakshatra", "Pada");
+            }
+            if bhava {
+                print!("  {:>5}", "Bhava");
+            }
+            println!();
+            let width = 38
+                + if nakshatra { 24 } else { 0 }
+                + if bhava { 7 } else { 0 };
+            println!("{}", "-".repeat(width));
+
+            let print_entry = |name: &str, entry: &dhruv_search::GrahaEntry| {
+                print!("{:<16} {:>9.4}°  {:<10}",
+                    name,
+                    entry.sidereal_longitude,
+                    entry.rashi.name(),
+                );
+                if nakshatra {
+                    print!("  {:<18} {:>4}",
+                        entry.nakshatra.name(),
+                        if entry.pada > 0 { entry.pada.to_string() } else { "-".into() },
+                    );
+                }
+                if bhava {
+                    print!("  {:>5}",
+                        if entry.bhava_number > 0 { entry.bhava_number.to_string() } else { "-".into() },
+                    );
+                }
+                println!();
+            };
+
+            println!("\nArudha Padas:");
+            let pada_names = [
+                "A1 (Lagna)", "A2 (Dhana)", "A3 (Sahaja)", "A4 (Sukha)",
+                "A5 (Putra)", "A6 (Ari)", "A7 (Dara)", "A8 (Mrityu)",
+                "A9 (Dharma)", "A10 (Karma)", "A11 (Labha)", "A12 (UL)",
+            ];
+            for (i, entry) in result.arudha_padas.iter().enumerate() {
+                print_entry(pada_names[i], entry);
+            }
+
+            println!("\nSensitive Points:");
+            print_entry("Bhrigu Bindu", &result.bhrigu_bindu);
+            print_entry("Pranapada", &result.pranapada_lagna);
+            print_entry("Gulika", &result.gulika);
+            print_entry("Maandi", &result.maandi);
+            print_entry("Hora Lagna", &result.hora_lagna);
+            print_entry("Ghati Lagna", &result.ghati_lagna);
+            print_entry("Sree Lagna", &result.sree_lagna);
         }
     }
 }

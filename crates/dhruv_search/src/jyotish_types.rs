@@ -99,3 +99,42 @@ pub struct GrahaPositions {
     /// Outer planets: [Uranus, Neptune, Pluto] (sentinel zeros if not computed).
     pub outer_planets: [GrahaEntry; 3],
 }
+
+/// Configuration flags for core_bindus computation.
+#[derive(Debug, Clone, Copy)]
+pub struct BindusConfig {
+    /// Compute nakshatra + pada for each bindu point.
+    pub include_nakshatra: bool,
+    /// Compute bhava placement for each bindu point.
+    pub include_bhava: bool,
+}
+
+impl Default for BindusConfig {
+    fn default() -> Self {
+        Self {
+            include_nakshatra: false,
+            include_bhava: false,
+        }
+    }
+}
+
+/// Curated sensitive points (bindus) with optional nakshatra/bhava enrichment.
+#[derive(Debug, Clone, Copy)]
+pub struct BindusResult {
+    /// 12 arudha padas (A1 through A12).
+    pub arudha_padas: [GrahaEntry; 12],
+    /// Bhrigu Bindu (midpoint Rahu→Moon).
+    pub bhrigu_bindu: GrahaEntry,
+    /// Pranapada Lagna.
+    pub pranapada_lagna: GrahaEntry,
+    /// Gulika (lagna at Saturn's portion start).
+    pub gulika: GrahaEntry,
+    /// Maandi (lagna at Saturn's portion end).
+    pub maandi: GrahaEntry,
+    /// Hora Lagna.
+    pub hora_lagna: GrahaEntry,
+    /// Ghati Lagna.
+    pub ghati_lagna: GrahaEntry,
+    /// Sree Lagna.
+    pub sree_lagna: GrahaEntry,
+}

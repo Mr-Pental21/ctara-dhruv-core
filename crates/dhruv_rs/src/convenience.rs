@@ -524,6 +524,26 @@ pub fn graha_positions(
     Ok(dhruv_search::graha_positions(eng, eop, &utc, location, &bhava_config, &aya_config, config)?)
 }
 
+/// Compute curated sensitive points (bindus) with optional nakshatra/bhava enrichment.
+///
+/// Collects 19 key Vedic points: 12 arudha padas, bhrigu bindu,
+/// pranapada, gulika, maandi, hora lagna, ghati lagna, sree lagna.
+pub fn core_bindus(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+    config: &dhruv_search::BindusConfig,
+) -> Result<dhruv_search::BindusResult, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let bhava_config = dhruv_vedic_base::BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::core_bindus(eng, eop, &utc, location, &bhava_config, &rs_config, &aya_config, config)?)
+}
+
 /// Compute all 11 upagrahas for a given date and location.
 pub fn upagrahas(
     date: UtcDate,

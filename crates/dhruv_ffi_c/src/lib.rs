@@ -32,7 +32,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 19;
+pub const DHRUV_API_VERSION: u32 = 20;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -6790,6 +6790,134 @@ pub unsafe extern "C" fn dhruv_graha_positions(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Core Bindus
+// ---------------------------------------------------------------------------
+
+/// C-compatible bindus configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvBindusConfig {
+    /// Include nakshatra + pada: 1 = yes, 0 = no.
+    pub include_nakshatra: u8,
+    /// Include bhava placement: 1 = yes, 0 = no.
+    pub include_bhava: u8,
+}
+
+/// C-compatible bindus result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvBindusResult {
+    /// 12 arudha padas (A1-A12).
+    pub arudha_padas: [DhruvGrahaEntry; 12],
+    /// Bhrigu Bindu.
+    pub bhrigu_bindu: DhruvGrahaEntry,
+    /// Pranapada Lagna.
+    pub pranapada_lagna: DhruvGrahaEntry,
+    /// Gulika.
+    pub gulika: DhruvGrahaEntry,
+    /// Maandi.
+    pub maandi: DhruvGrahaEntry,
+    /// Hora Lagna.
+    pub hora_lagna: DhruvGrahaEntry,
+    /// Ghati Lagna.
+    pub ghati_lagna: DhruvGrahaEntry,
+    /// Sree Lagna.
+    pub sree_lagna: DhruvGrahaEntry,
+}
+
+/// Compute curated sensitive points (bindus) with optional nakshatra/bhava enrichment.
+///
+/// # Safety
+/// All pointers must be valid. `out` must point to a valid `DhruvBindusResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_core_bindus(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    bhava_config: *const DhruvBhavaConfig,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    config: *const DhruvBindusConfig,
+    out: *mut DhruvBindusResult,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null()
+        || bhava_config.is_null() || riseset_config.is_null() || config.is_null() || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*utc };
+    let loc_c = unsafe { &*location };
+    let bhava_cfg_c = unsafe { &*bhava_config };
+    let rs_c = unsafe { &*riseset_config };
+    let cfg_c = unsafe { &*config };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+
+    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    let sun_limb = match rs_c.sun_limb {
+        1 => SunLimb::Center,
+        2 => SunLimb::LowerLimb,
+        _ => SunLimb::UpperLimb,
+    };
+    let rs_config = RiseSetConfig {
+        sun_limb,
+        use_refraction: rs_c.use_refraction != 0,
+        altitude_correction: rs_c.altitude_correction != 0,
+    };
+
+    let rust_config = dhruv_search::BindusConfig {
+        include_nakshatra: cfg_c.include_nakshatra != 0,
+        include_bhava: cfg_c.include_bhava != 0,
+    };
+
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+
+    match dhruv_search::core_bindus(
+        engine, eop, &utc_time, &location, &rust_bhava_config,
+        &rs_config, &aya_config, &rust_config,
+    ) {
+        Ok(result) => {
+            let out = unsafe { &mut *out };
+            for i in 0..12 {
+                out.arudha_padas[i] = graha_entry_to_ffi(&result.arudha_padas[i]);
+            }
+            out.bhrigu_bindu = graha_entry_to_ffi(&result.bhrigu_bindu);
+            out.pranapada_lagna = graha_entry_to_ffi(&result.pranapada_lagna);
+            out.gulika = graha_entry_to_ffi(&result.gulika);
+            out.maandi = graha_entry_to_ffi(&result.maandi);
+            out.hora_lagna = graha_entry_to_ffi(&result.hora_lagna);
+            out.ghati_lagna = graha_entry_to_ffi(&result.ghati_lagna);
+            out.sree_lagna = graha_entry_to_ffi(&result.sree_lagna);
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -7227,8 +7355,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_19() {
-        assert_eq!(dhruv_api_version(), 19);
+    fn ffi_api_version_is_20() {
+        assert_eq!(dhruv_api_version(), 20);
     }
 
     // --- Search error mapping ---
@@ -8665,6 +8793,24 @@ mod tests {
             dhruv_graha_positions(
                 ptr::null(), ptr::null(), ptr::null(), ptr::null(),
                 &bhava_cfg, 0, 0, &cfg, out.as_mut_ptr(),
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_core_bindus_rejects_null() {
+        let mut out = std::mem::MaybeUninit::<DhruvBindusResult>::uninit();
+        let cfg = DhruvBindusConfig {
+            include_nakshatra: 0,
+            include_bhava: 0,
+        };
+        let bhava_cfg = dhruv_bhava_config_default();
+        let rs_cfg = dhruv_riseset_config_default();
+        let s = unsafe {
+            dhruv_core_bindus(
+                ptr::null(), ptr::null(), ptr::null(), ptr::null(),
+                &bhava_cfg, &rs_cfg, 0, 0, &cfg, out.as_mut_ptr(),
             )
         };
         assert_eq!(s, DhruvStatus::NullPointer);
