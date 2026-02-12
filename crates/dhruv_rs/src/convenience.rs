@@ -544,6 +544,26 @@ pub fn core_bindus(
     Ok(dhruv_search::core_bindus(eng, eop, &utc, location, &bhava_config, &rs_config, &aya_config, config)?)
 }
 
+/// Compute graha drishti (planetary aspects) with optional extensions.
+///
+/// Computes the 9×9 graha-to-graha virupa matrix, optionally extending to
+/// graha-to-bhava-cusps, graha-to-lagna, and graha-to-core-bindus.
+pub fn drishti(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+    config: &dhruv_search::DrishtiConfig,
+) -> Result<dhruv_search::DrishtiResult, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let bhava_config = dhruv_vedic_base::BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::drishti_for_date(eng, eop, &utc, location, &bhava_config, &rs_config, &aya_config, config)?)
+}
+
 /// Compute all 11 upagrahas for a given date and location.
 pub fn upagrahas(
     date: UtcDate,

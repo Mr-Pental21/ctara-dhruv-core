@@ -559,6 +559,45 @@ enum Commands {
         #[arg(long)]
         eop: PathBuf,
     },
+    /// Compute graha drishti (planetary aspects) with virupa strength
+    Drishti {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Include graha-to-bhava-cusp drishti
+        #[arg(long)]
+        bhava: bool,
+        /// Include graha-to-lagna drishti
+        #[arg(long)]
+        lagna: bool,
+        /// Include graha-to-core-bindus drishti
+        #[arg(long)]
+        bindus: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -1619,6 +1658,120 @@ fn main() {
             print_entry("Hora Lagna", &result.hora_lagna);
             print_entry("Ghati Lagna", &result.ghati_lagna);
             print_entry("Sree Lagna", &result.sree_lagna);
+        }
+        Commands::Drishti {
+            date,
+            lat,
+            lon,
+            alt,
+            ayanamsha,
+            nutation,
+            bhava,
+            lagna,
+            bindus,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let system = require_aya_system(ayanamsha);
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let bhava_config = BhavaConfig::default();
+            let rs_config = RiseSetConfig::default();
+            let aya_config = SankrantiConfig::new(system, nutation);
+            let drishti_config = dhruv_search::DrishtiConfig {
+                include_bhava: bhava,
+                include_lagna: lagna,
+                include_bindus: bindus,
+            };
+
+            let result = dhruv_search::drishti_for_date(
+                &engine, &eop_kernel, &utc, &location, &bhava_config,
+                &rs_config, &aya_config, &drishti_config,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            let graha_names = ["Sun", "Moon", "Mars", "Merc", "Jup", "Ven", "Sat", "Rahu", "Ketu"];
+
+            println!("Graha Drishti for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+
+            // 9x9 graha-to-graha matrix
+            println!("Graha-to-Graha (total virupa):");
+            print!("{:<8}", "From\\To");
+            for name in &graha_names {
+                print!("{:>8}", name);
+            }
+            println!();
+            println!("{}", "-".repeat(8 + 8 * 9));
+            for i in 0..9 {
+                print!("{:<8}", graha_names[i]);
+                for j in 0..9 {
+                    let v = result.graha_to_graha.entries[i][j].total_virupa;
+                    if i == j {
+                        print!("{:>8}", "-");
+                    } else {
+                        print!("{:>8.1}", v);
+                    }
+                }
+                println!();
+            }
+
+            if lagna {
+                println!("\nGraha-to-Lagna:");
+                println!("{:<8} {:>8} {:>8} {:>8} {:>8}", "Graha", "Dist", "Base", "Special", "Total");
+                println!("{}", "-".repeat(44));
+                for i in 0..9 {
+                    let e = &result.graha_to_lagna[i];
+                    println!("{:<8} {:>7.1}° {:>8.1} {:>8.1} {:>8.1}",
+                        graha_names[i], e.angular_distance, e.base_virupa, e.special_virupa, e.total_virupa);
+                }
+            }
+
+            if bhava {
+                println!("\nGraha-to-Bhava Cusps (total virupa):");
+                print!("{:<8}", "Graha");
+                for b in 1..=12 {
+                    print!("{:>6}", format!("B{b}"));
+                }
+                println!();
+                println!("{}", "-".repeat(8 + 6 * 12));
+                for i in 0..9 {
+                    print!("{:<8}", graha_names[i]);
+                    for j in 0..12 {
+                        print!("{:>6.1}", result.graha_to_bhava[i][j].total_virupa);
+                    }
+                    println!();
+                }
+            }
+
+            if bindus {
+                let bindu_names = [
+                    "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
+                    "BhrBin", "Prana", "Gulik", "Maand", "HoraL", "GhatiL", "SreeL",
+                ];
+                println!("\nGraha-to-Core Bindus (total virupa):");
+                print!("{:<8}", "Graha");
+                for name in &bindu_names {
+                    print!("{:>7}", name);
+                }
+                println!();
+                println!("{}", "-".repeat(8 + 7 * 19));
+                for i in 0..9 {
+                    print!("{:<8}", graha_names[i]);
+                    for j in 0..19 {
+                        print!("{:>7.1}", result.graha_to_bindus[i][j].total_virupa);
+                    }
+                    println!();
+                }
+            }
         }
     }
 }

@@ -8,9 +8,9 @@ use dhruv_core::{Body, Engine};
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{
     AllSpecialLagnas, AllUpagrahas, ArudhaResult, AshtakavargaResult, AyanamshaSystem, BhavaConfig,
-    Graha, LunarNode, NodeMode, Upagraha, ALL_GRAHAS, lagna_longitude_rad, ayanamsha_deg,
-    bhrigu_bindu, calculate_ashtakavarga, compute_bhavas, ghatikas_since_sunrise,
-    hora_lagna, ghati_lagna, pranapada_lagna, sree_lagna,
+    DrishtiEntry, Graha, LunarNode, NodeMode, Upagraha, ALL_GRAHAS, lagna_longitude_rad,
+    ayanamsha_deg, bhrigu_bindu, calculate_ashtakavarga, compute_bhavas, ghatikas_since_sunrise,
+    graha_drishti, graha_drishti_matrix, hora_lagna, ghati_lagna, pranapada_lagna, sree_lagna,
     jd_tdb_to_centuries, lunar_node_deg, nth_rashi_from, rashi_lord_by_index,
     sun_based_upagrahas, time_upagraha_jd, normalize_360,
     nakshatra_from_longitude, rashi_from_longitude,
@@ -25,7 +25,8 @@ use dhruv_vedic_base::vaar::vaar_from_jd;
 use crate::conjunction::body_ecliptic_lon_lat;
 use crate::error::SearchError;
 use crate::jyotish_types::{
-    BindusConfig, BindusResult, GrahaEntry, GrahaLongitudes, GrahaPositions, GrahaPositionsConfig,
+    BindusConfig, BindusResult, DrishtiConfig, DrishtiResult, GrahaEntry, GrahaLongitudes,
+    GrahaPositions, GrahaPositionsConfig,
 };
 use crate::panchang::vedic_day_sunrises;
 use crate::sankranti_types::SankrantiConfig;
@@ -531,6 +532,108 @@ pub fn core_bindus(
         hora_lagna: make_graha_entry(hl_lon, &gp_config, bhava_opt, aya),
         ghati_lagna: make_graha_entry(gl_lon, &gp_config, bhava_opt, aya),
         sree_lagna: make_graha_entry(sl_lon, &gp_config, bhava_opt, aya),
+    })
+}
+
+/// Compute graha drishti (planetary aspects) with optional extensions.
+///
+/// Always computes the 9×9 graha-to-graha matrix. Optionally extends to:
+/// - graha-to-bhava-cusp (12 cusps) if `config.include_bhava`
+/// - graha-to-lagna if `config.include_lagna`
+/// - graha-to-core-bindus (19 points) if `config.include_bindus`
+pub fn drishti_for_date(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    config: &DrishtiConfig,
+) -> Result<DrishtiResult, SearchError> {
+    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let jd_utc = utc_to_jd_utc(utc);
+    let t = jd_tdb_to_centuries(jd_tdb);
+    let aya = ayanamsha_deg(aya_config.ayanamsha_system, t, aya_config.use_nutation);
+
+    // 1. Graha sidereal longitudes (always needed)
+    let graha_lons = graha_sidereal_longitudes(
+        engine, jd_tdb, aya_config.ayanamsha_system, aya_config.use_nutation,
+    )?;
+
+    // 2. Graha-to-graha matrix (always computed)
+    let graha_to_graha = graha_drishti_matrix(&graha_lons.longitudes);
+
+    // 3. Graha-to-lagna
+    let graha_to_lagna = if config.include_lagna {
+        let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, jd_utc)?;
+        let lagna_sid = normalize(lagna_rad.to_degrees() - aya);
+        let mut entries = [DrishtiEntry::zero(); 9];
+        for g in ALL_GRAHAS {
+            let i = g.index() as usize;
+            entries[i] = graha_drishti(g, graha_lons.longitudes[i], lagna_sid);
+        }
+        entries
+    } else {
+        [DrishtiEntry::zero(); 9]
+    };
+
+    // 4. Graha-to-bhava cusps
+    let graha_to_bhava = if config.include_bhava {
+        let bhava_result = compute_bhavas(engine, engine.lsk(), eop, location, jd_utc, bhava_config)?;
+        let mut cusp_sid = [0.0f64; 12];
+        for i in 0..12 {
+            cusp_sid[i] = normalize(bhava_result.bhavas[i].cusp_deg - aya);
+        }
+        let mut entries = [[DrishtiEntry::zero(); 12]; 9];
+        for g in ALL_GRAHAS {
+            let gi = g.index() as usize;
+            for ci in 0..12 {
+                entries[gi][ci] = graha_drishti(g, graha_lons.longitudes[gi], cusp_sid[ci]);
+            }
+        }
+        entries
+    } else {
+        [[DrishtiEntry::zero(); 12]; 9]
+    };
+
+    // 5. Graha-to-core-bindus (19 points)
+    let graha_to_bindus = if config.include_bindus {
+        let bindus_cfg = BindusConfig::default();
+        let bindus = core_bindus(
+            engine, eop, utc, location, bhava_config, riseset_config, aya_config, &bindus_cfg,
+        )?;
+
+        // Extract 19 sidereal longitudes: 12 arudha + 7 special
+        let mut bindu_lons = [0.0f64; 19];
+        for i in 0..12 {
+            bindu_lons[i] = bindus.arudha_padas[i].sidereal_longitude;
+        }
+        bindu_lons[12] = bindus.bhrigu_bindu.sidereal_longitude;
+        bindu_lons[13] = bindus.pranapada_lagna.sidereal_longitude;
+        bindu_lons[14] = bindus.gulika.sidereal_longitude;
+        bindu_lons[15] = bindus.maandi.sidereal_longitude;
+        bindu_lons[16] = bindus.hora_lagna.sidereal_longitude;
+        bindu_lons[17] = bindus.ghati_lagna.sidereal_longitude;
+        bindu_lons[18] = bindus.sree_lagna.sidereal_longitude;
+
+        let mut entries = [[DrishtiEntry::zero(); 19]; 9];
+        for g in ALL_GRAHAS {
+            let gi = g.index() as usize;
+            for bi in 0..19 {
+                entries[gi][bi] = graha_drishti(g, graha_lons.longitudes[gi], bindu_lons[bi]);
+            }
+        }
+        entries
+    } else {
+        [[DrishtiEntry::zero(); 19]; 9]
+    };
+
+    Ok(DrishtiResult {
+        graha_to_graha,
+        graha_to_bhava,
+        graha_to_lagna,
+        graha_to_bindus,
     })
 }
 

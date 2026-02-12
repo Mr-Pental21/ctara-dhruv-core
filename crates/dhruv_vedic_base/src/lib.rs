@@ -22,6 +22,7 @@ pub mod ayana_type;
 pub mod ayanamsha;
 pub mod bhava;
 pub mod bhava_types;
+pub mod drishti;
 pub mod error;
 pub mod ghatika;
 pub mod graha;
@@ -104,5 +105,9 @@ pub use ashtakavarga::{
     AshtakavargaResult, BAV_TOTALS, BhinnaAshtakavarga, SAV_TOTAL, SarvaAshtakavarga,
     calculate_all_bav, calculate_ashtakavarga, calculate_bav, calculate_sav, ekadhipatya_sodhana,
     trikona_sodhana,
+};
+pub use drishti::{
+    DrishtiEntry, GrahaDrishtiMatrix, base_virupa, graha_drishti, graha_drishti_matrix,
+    special_virupa,
 };
 pub use util::normalize_360;

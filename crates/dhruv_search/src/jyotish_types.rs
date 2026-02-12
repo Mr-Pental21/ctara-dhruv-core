@@ -1,6 +1,6 @@
 //! Types for Vedic jyotish orchestration (graha longitudes, etc.).
 
-use dhruv_vedic_base::{Graha, Nakshatra, Rashi};
+use dhruv_vedic_base::{DrishtiEntry, Graha, GrahaDrishtiMatrix, Nakshatra, Rashi};
 
 /// Sidereal longitudes of all 9 grahas.
 #[derive(Debug, Clone, Copy)]
@@ -137,4 +137,39 @@ pub struct BindusResult {
     pub ghati_lagna: GrahaEntry,
     /// Sree Lagna.
     pub sree_lagna: GrahaEntry,
+}
+
+/// Configuration flags for drishti computation.
+#[derive(Debug, Clone, Copy)]
+pub struct DrishtiConfig {
+    /// Compute 9×12 graha-to-bhava-cusp drishti.
+    pub include_bhava: bool,
+    /// Compute 9×1 graha-to-lagna drishti.
+    pub include_lagna: bool,
+    /// Compute 9×19 graha-to-core-bindus drishti.
+    pub include_bindus: bool,
+}
+
+impl Default for DrishtiConfig {
+    fn default() -> Self {
+        Self {
+            include_bhava: false,
+            include_lagna: false,
+            include_bindus: false,
+        }
+    }
+}
+
+/// Complete drishti result with graha matrix and optional extensions.
+#[derive(Debug, Clone, Copy)]
+pub struct DrishtiResult {
+    /// 9×9 graha-to-graha drishti (always computed).
+    pub graha_to_graha: GrahaDrishtiMatrix,
+    /// 9×12 graha-to-bhava-cusp drishti (zeroed if flag off).
+    pub graha_to_bhava: [[DrishtiEntry; 12]; 9],
+    /// 9×1 graha-to-lagna drishti (zeroed if flag off).
+    pub graha_to_lagna: [DrishtiEntry; 9],
+    /// 9×19 graha-to-core-bindus drishti (zeroed if flag off).
+    /// 19 bindus = 12 arudha padas + bhrigu_bindu + pranapada + gulika + maandi + hora_lagna + ghati_lagna + sree_lagna.
+    pub graha_to_bindus: [[DrishtiEntry; 19]; 9],
 }

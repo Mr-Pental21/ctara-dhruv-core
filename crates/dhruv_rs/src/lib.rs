@@ -30,9 +30,10 @@ pub mod global;
 
 // Primary re-exports — users should only need `use dhruv_rs::*`
 pub use convenience::{
-    arudha_padas, ashtakavarga, ayana, ghatika, graha_longitudes, hora, karana, longitude, masa,
-    nakshatra, nakshatra28, next_amavasya, next_purnima, next_sankranti, panchang, position,
-    position_full, prev_amavasya, prev_purnima, prev_sankranti, query, query_batch, rashi,
+    arudha_padas, ashtakavarga, ayana, core_bindus, drishti, ghatika, graha_longitudes,
+    graha_positions, hora, karana, longitude, masa, moon_nakshatra, nakshatra, nakshatra28,
+    next_amavasya, next_purnima, next_sankranti, panchang, position, position_full,
+    prev_amavasya, prev_purnima, prev_sankranti, query, query_batch, rashi,
     sidereal_longitude, special_lagnas, sphutas, tithi, upagrahas, vaar, varsha, yoga,
 };
 pub use date::UtcDate;
@@ -56,7 +57,8 @@ pub use dhruv_vedic_base::{
     AllSpecialLagnas, AllUpagrahas, ArudhaPada, ArudhaResult, AshtakavargaResult,
     BhinnaAshtakavarga, Graha, SarvaAshtakavarga, SpecialLagna, Sphuta, SphutalInputs, Upagraha,
 };
-pub use dhruv_search::GrahaLongitudes;
+pub use dhruv_search::{DrishtiConfig, DrishtiResult, GrahaLongitudes};
+pub use dhruv_vedic_base::{DrishtiEntry, GrahaDrishtiMatrix};
 
 // Re-export EopKernel for sunrise-based panchang functions.
 pub use dhruv_time::EopKernel;

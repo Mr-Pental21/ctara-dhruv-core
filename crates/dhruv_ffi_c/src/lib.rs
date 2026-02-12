@@ -32,7 +32,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 20;
+pub const DHRUV_API_VERSION: u32 = 21;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -6918,6 +6918,150 @@ pub unsafe extern "C" fn dhruv_core_bindus(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Drishti (Planetary Aspects)
+// ---------------------------------------------------------------------------
+
+/// C-compatible drishti entry.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvDrishtiEntry {
+    pub angular_distance: f64,
+    pub base_virupa: f64,
+    pub special_virupa: f64,
+    pub total_virupa: f64,
+}
+
+/// C-compatible drishti configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvDrishtiConfig {
+    /// Include graha-to-bhava drishti: 1 = yes, 0 = no.
+    pub include_bhava: u8,
+    /// Include graha-to-lagna drishti: 1 = yes, 0 = no.
+    pub include_lagna: u8,
+    /// Include graha-to-core-bindus drishti: 1 = yes, 0 = no.
+    pub include_bindus: u8,
+}
+
+/// C-compatible drishti result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvDrishtiResult {
+    /// 9×9 graha-to-graha drishti matrix.
+    pub graha_to_graha: [[DhruvDrishtiEntry; 9]; 9],
+    /// 9×12 graha-to-bhava-cusp drishti.
+    pub graha_to_bhava: [[DhruvDrishtiEntry; 12]; 9],
+    /// 9×1 graha-to-lagna drishti.
+    pub graha_to_lagna: [DhruvDrishtiEntry; 9],
+    /// 9×19 graha-to-core-bindus drishti.
+    pub graha_to_bindus: [[DhruvDrishtiEntry; 19]; 9],
+}
+
+fn drishti_entry_to_ffi(entry: &dhruv_vedic_base::DrishtiEntry) -> DhruvDrishtiEntry {
+    DhruvDrishtiEntry {
+        angular_distance: entry.angular_distance,
+        base_virupa: entry.base_virupa,
+        special_virupa: entry.special_virupa,
+        total_virupa: entry.total_virupa,
+    }
+}
+
+/// Compute graha drishti (planetary aspects) with optional extensions.
+///
+/// # Safety
+/// All pointers must be valid. `out` must point to a valid `DhruvDrishtiResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_drishti(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    bhava_config: *const DhruvBhavaConfig,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    config: *const DhruvDrishtiConfig,
+    out: *mut DhruvDrishtiResult,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null()
+        || bhava_config.is_null() || riseset_config.is_null() || config.is_null() || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*utc };
+    let loc_c = unsafe { &*location };
+    let bhava_cfg_c = unsafe { &*bhava_config };
+    let rs_c = unsafe { &*riseset_config };
+    let cfg_c = unsafe { &*config };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+
+    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    let sun_limb = match rs_c.sun_limb {
+        1 => SunLimb::Center,
+        2 => SunLimb::LowerLimb,
+        _ => SunLimb::UpperLimb,
+    };
+    let rs_config = RiseSetConfig {
+        sun_limb,
+        use_refraction: rs_c.use_refraction != 0,
+        altitude_correction: rs_c.altitude_correction != 0,
+    };
+
+    let rust_config = dhruv_search::DrishtiConfig {
+        include_bhava: cfg_c.include_bhava != 0,
+        include_lagna: cfg_c.include_lagna != 0,
+        include_bindus: cfg_c.include_bindus != 0,
+    };
+
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+
+    match dhruv_search::drishti_for_date(
+        engine, eop, &utc_time, &location, &rust_bhava_config,
+        &rs_config, &aya_config, &rust_config,
+    ) {
+        Ok(result) => {
+            let out = unsafe { &mut *out };
+            for i in 0..9 {
+                for j in 0..9 {
+                    out.graha_to_graha[i][j] = drishti_entry_to_ffi(&result.graha_to_graha.entries[i][j]);
+                }
+                out.graha_to_lagna[i] = drishti_entry_to_ffi(&result.graha_to_lagna[i]);
+                for j in 0..12 {
+                    out.graha_to_bhava[i][j] = drishti_entry_to_ffi(&result.graha_to_bhava[i][j]);
+                }
+                for j in 0..19 {
+                    out.graha_to_bindus[i][j] = drishti_entry_to_ffi(&result.graha_to_bindus[i][j]);
+                }
+            }
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -7355,8 +7499,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_20() {
-        assert_eq!(dhruv_api_version(), 20);
+    fn ffi_api_version_is_21() {
+        assert_eq!(dhruv_api_version(), 21);
     }
 
     // --- Search error mapping ---
@@ -8809,6 +8953,25 @@ mod tests {
         let rs_cfg = dhruv_riseset_config_default();
         let s = unsafe {
             dhruv_core_bindus(
+                ptr::null(), ptr::null(), ptr::null(), ptr::null(),
+                &bhava_cfg, &rs_cfg, 0, 0, &cfg, out.as_mut_ptr(),
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_drishti_rejects_null() {
+        let mut out = std::mem::MaybeUninit::<DhruvDrishtiResult>::uninit();
+        let cfg = DhruvDrishtiConfig {
+            include_bhava: 0,
+            include_lagna: 0,
+            include_bindus: 0,
+        };
+        let bhava_cfg = dhruv_bhava_config_default();
+        let rs_cfg = dhruv_riseset_config_default();
+        let s = unsafe {
+            dhruv_drishti(
                 ptr::null(), ptr::null(), ptr::null(), ptr::null(),
                 &bhava_cfg, &rs_cfg, 0, 0, &cfg, out.as_mut_ptr(),
             )
