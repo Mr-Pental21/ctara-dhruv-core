@@ -395,22 +395,25 @@ pub fn ghatika(
     Ok(dhruv_search::ghatika_for_date(eng, eop, &utc, location, &rs_config)?)
 }
 
-/// Compute all six daily panchang elements for a single moment.
+/// Compute daily panchang elements for a single moment.
 ///
 /// Returns tithi, karana, yoga, vaar, hora, and ghatika efficiently
 /// by sharing intermediate computations (body longitudes, sunrises).
+///
+/// When `include_calendar` is true, also computes masa, ayana, and varsha.
 pub fn panchang(
     date: UtcDate,
     eop: &EopKernel,
     location: &GeoLocation,
     system: AyanamshaSystem,
     use_nutation: bool,
+    include_calendar: bool,
 ) -> Result<PanchangInfo, DhruvError> {
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
     let config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::panchang_for_date(eng, eop, &utc, location, &rs_config, &config)?)
+    Ok(dhruv_search::panchang_for_date(eng, eop, &utc, location, &rs_config, &config, include_calendar)?)
 }
 
 // ---------------------------------------------------------------------------

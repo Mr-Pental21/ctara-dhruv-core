@@ -390,6 +390,9 @@ enum Commands {
         /// Apply nutation correction
         #[arg(long)]
         nutation: bool,
+        /// Include calendar elements (masa, ayana, varsha)
+        #[arg(long)]
+        calendar: bool,
         /// Path to SPK kernel
         #[arg(long)]
         bsp: PathBuf,
@@ -1098,6 +1101,7 @@ fn main() {
             alt,
             ayanamsha,
             nutation,
+            calendar,
             bsp,
             lsk,
             eop,
@@ -1112,7 +1116,7 @@ fn main() {
             let location = GeoLocation::new(lat, lon, alt);
             let rs_config = RiseSetConfig::default();
             let config = SankrantiConfig::new(system, nutation);
-            match dhruv_search::panchang_for_date(&engine, &eop_kernel, &utc, &location, &rs_config, &config) {
+            match dhruv_search::panchang_for_date(&engine, &eop_kernel, &utc, &location, &rs_config, &config, calendar) {
                 Ok(info) => {
                     println!("Panchang for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
                     println!("Tithi:    {} (index {})", info.tithi.tithi.name(), info.tithi.tithi_index);
@@ -1128,6 +1132,19 @@ fn main() {
                     println!("  Start:  {}  End: {}", info.hora.start, info.hora.end);
                     println!("Ghatika:  {}/60", info.ghatika.value);
                     println!("  Start:  {}  End: {}", info.ghatika.start, info.ghatika.end);
+                    if let Some(m) = info.masa {
+                        let adhika_str = if m.adhika { " (Adhika)" } else { "" };
+                        println!("Masa:     {}{}", m.masa.name(), adhika_str);
+                        println!("  Start:  {}  End: {}", m.start, m.end);
+                    }
+                    if let Some(a) = info.ayana {
+                        println!("Ayana:    {}", a.ayana.name());
+                        println!("  Start:  {}  End: {}", a.start, a.end);
+                    }
+                    if let Some(v) = info.varsha {
+                        println!("Varsha:   {} (order {} of 60)", v.samvatsara.name(), v.order);
+                        println!("  Start:  {}  End: {}", v.start, v.end);
+                    }
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");

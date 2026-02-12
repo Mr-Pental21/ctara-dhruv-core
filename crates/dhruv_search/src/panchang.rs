@@ -609,6 +609,9 @@ pub fn ghatika_from_sunrises(
 /// This is more efficient than calling the six `_for_date` functions
 /// individually because Sun/Moon longitudes are queried once (instead of 3x)
 /// and sunrise is computed once (instead of 3x).
+///
+/// When `include_calendar` is true, also computes masa (lunar month),
+/// ayana (solstice period), and varsha (60-year samvatsara cycle).
 pub fn panchang_for_date(
     engine: &Engine,
     eop: &EopKernel,
@@ -616,6 +619,7 @@ pub fn panchang_for_date(
     location: &GeoLocation,
     riseset_config: &RiseSetConfig,
     config: &SankrantiConfig,
+    include_calendar: bool,
 ) -> Result<PanchangInfo, SearchError> {
     let jd = utc.to_jd_tdb(engine.lsk());
 
@@ -635,6 +639,16 @@ pub fn panchang_for_date(
     let hora = hora_from_sunrises(jd, sunrise_jd, next_sunrise_jd, engine.lsk());
     let ghatika = ghatika_from_sunrises(jd, sunrise_jd, next_sunrise_jd, engine.lsk());
 
+    // Calendar elements (expensive — only when requested)
+    let (masa, ayana, varsha) = if include_calendar {
+        let m = masa_for_date(engine, utc, config)?;
+        let a = ayana_for_date(engine, utc, config)?;
+        let v = varsha_for_date(engine, utc, config)?;
+        (Some(m), Some(a), Some(v))
+    } else {
+        (None, None, None)
+    };
+
     Ok(PanchangInfo {
         tithi,
         karana,
@@ -642,5 +656,8 @@ pub fn panchang_for_date(
         vaar,
         hora,
         ghatika,
+        masa,
+        ayana,
+        varsha,
     })
 }

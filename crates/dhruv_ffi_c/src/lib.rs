@@ -16,8 +16,9 @@ use dhruv_search::{
     prev_sankranti, prev_solar_eclipse, prev_specific_sankranti, prev_stationary,
     search_amavasyas, search_conjunctions, search_lunar_eclipses, search_max_speed,
     search_purnimas, search_sankrantis, search_solar_eclipses, search_stationary,
-    sidereal_sum_at, special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date,
-    vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, yoga_at, yoga_for_date,
+    panchang_for_date, sidereal_sum_at, special_lagnas_for_date, tithi_at, tithi_for_date,
+    vaar_for_date, vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, yoga_at,
+    yoga_for_date,
 };
 use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
@@ -5270,6 +5271,158 @@ pub unsafe extern "C" fn dhruv_ghatika_for_date(
                         value: info.value as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// C-compatible combined Panchang info.
+///
+/// Contains all six daily elements plus optional calendar fields.
+/// Calendar fields use `*_valid` flags (0=absent, 1=present).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvPanchangInfo {
+    pub tithi: DhruvTithiInfo,
+    pub karana: DhruvKaranaInfo,
+    pub yoga: DhruvYogaInfo,
+    pub vaar: DhruvVaarInfo,
+    pub hora: DhruvHoraInfo,
+    pub ghatika: DhruvGhatikaInfo,
+    /// 1 if masa/ayana/varsha fields are populated, 0 otherwise.
+    pub calendar_valid: u8,
+    pub masa: DhruvMasaInfo,
+    pub ayana: DhruvAyanaInfo,
+    pub varsha: DhruvVarshaInfo,
+}
+
+/// Compute combined panchang for a given UTC date and location.
+///
+/// When `include_calendar` is non-zero, also computes masa, ayana, and varsha.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_for_date(
+    engine: *const DhruvEngineHandle,
+    eop: *const DhruvEopHandle,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
+    sankranti_config: *const DhruvSankrantiConfig,
+    include_calendar: u8,
+    out: *mut DhruvPanchangInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || eop.is_null() || utc.is_null()
+            || location.is_null() || riseset_config.is_null()
+            || sankranti_config.is_null() || out.is_null()
+        {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let eop_ref = unsafe { &*eop };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let loc_ref = unsafe { &*location };
+        let rs_ref = unsafe { &*riseset_config };
+        let geo = GeoLocation::new(loc_ref.latitude_deg, loc_ref.longitude_deg, loc_ref.altitude_m);
+        let sun_limb = match sun_limb_from_code(rs_ref.sun_limb) {
+            Some(l) => l,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let rs_config = RiseSetConfig {
+            use_refraction: rs_ref.use_refraction != 0,
+            sun_limb,
+            altitude_correction: rs_ref.altitude_correction != 0,
+        };
+        let cfg = match sankranti_config_from_ffi(unsafe { &*sankranti_config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match panchang_for_date(engine_ref, eop_ref, &t, &geo, &rs_config, &cfg, include_calendar != 0) {
+            Ok(info) => {
+                let zeroed_masa = DhruvMasaInfo {
+                    masa_index: 0, adhika: 0,
+                    start: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
+                    end: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
+                };
+                let zeroed_ayana = DhruvAyanaInfo {
+                    ayana: 0,
+                    start: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
+                    end: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
+                };
+                let zeroed_varsha = DhruvVarshaInfo {
+                    samvatsara_index: 0, order: 0,
+                    start: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
+                    end: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
+                };
+                let (calendar_valid, masa_ffi, ayana_ffi, varsha_ffi) = match (info.masa, info.ayana, info.varsha) {
+                    (Some(m), Some(a), Some(v)) => (
+                        1u8,
+                        DhruvMasaInfo {
+                            masa_index: m.masa.index() as i32,
+                            adhika: u8::from(m.adhika),
+                            start: utc_time_to_ffi(&m.start),
+                            end: utc_time_to_ffi(&m.end),
+                        },
+                        DhruvAyanaInfo {
+                            ayana: a.ayana.index() as i32,
+                            start: utc_time_to_ffi(&a.start),
+                            end: utc_time_to_ffi(&a.end),
+                        },
+                        DhruvVarshaInfo {
+                            samvatsara_index: v.samvatsara.index() as i32,
+                            order: v.order as i32,
+                            start: utc_time_to_ffi(&v.start),
+                            end: utc_time_to_ffi(&v.end),
+                        },
+                    ),
+                    _ => (0u8, zeroed_masa, zeroed_ayana, zeroed_varsha),
+                };
+                unsafe {
+                    *out = DhruvPanchangInfo {
+                        tithi: DhruvTithiInfo {
+                            tithi_index: info.tithi.tithi_index as i32,
+                            paksha: info.tithi.paksha as i32,
+                            tithi_in_paksha: info.tithi.tithi_in_paksha as i32,
+                            start: utc_time_to_ffi(&info.tithi.start),
+                            end: utc_time_to_ffi(&info.tithi.end),
+                        },
+                        karana: DhruvKaranaInfo {
+                            karana_index: info.karana.karana_index as i32,
+                            karana_name_index: info.karana.karana.index() as i32,
+                            start: utc_time_to_ffi(&info.karana.start),
+                            end: utc_time_to_ffi(&info.karana.end),
+                        },
+                        yoga: DhruvYogaInfo {
+                            yoga_index: info.yoga.yoga_index as i32,
+                            start: utc_time_to_ffi(&info.yoga.start),
+                            end: utc_time_to_ffi(&info.yoga.end),
+                        },
+                        vaar: DhruvVaarInfo {
+                            vaar_index: info.vaar.vaar.index() as i32,
+                            start: utc_time_to_ffi(&info.vaar.start),
+                            end: utc_time_to_ffi(&info.vaar.end),
+                        },
+                        hora: DhruvHoraInfo {
+                            hora_index: info.hora.hora.index() as i32,
+                            hora_position: info.hora.hora_index as i32,
+                            start: utc_time_to_ffi(&info.hora.start),
+                            end: utc_time_to_ffi(&info.hora.end),
+                        },
+                        ghatika: DhruvGhatikaInfo {
+                            value: info.ghatika.value as i32,
+                            start: utc_time_to_ffi(&info.ghatika.start),
+                            end: utc_time_to_ffi(&info.ghatika.end),
+                        },
+                        calendar_valid,
+                        masa: masa_ffi,
+                        ayana: ayana_ffi,
+                        varsha: varsha_ffi,
                     };
                 }
                 DhruvStatus::Ok

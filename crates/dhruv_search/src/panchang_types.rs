@@ -120,7 +120,8 @@ pub struct GhatikaInfo {
     pub end: UtcTime,
 }
 
-/// Combined daily panchang: all six elements for a single moment.
+/// Combined daily panchang: all six elements for a single moment,
+/// with optional calendar elements (masa, ayana, varsha).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PanchangInfo {
     /// Tithi (lunar day).
@@ -135,4 +136,10 @@ pub struct PanchangInfo {
     pub hora: HoraInfo,
     /// Ghatika (1-60 division of Vedic day).
     pub ghatika: GhatikaInfo,
+    /// Masa (lunar month). Present when `include_calendar` is true.
+    pub masa: Option<MasaInfo>,
+    /// Ayana (solstice period). Present when `include_calendar` is true.
+    pub ayana: Option<AyanaInfo>,
+    /// Varsha (60-year samvatsara). Present when `include_calendar` is true.
+    pub varsha: Option<VarshaInfo>,
 }

@@ -262,7 +262,7 @@ fn panchang_combined_matches_individual() {
     let rs = RiseSetConfig::default();
     let config = default_config();
 
-    let combined = panchang_for_date(&engine, &eop, &utc, &loc, &rs, &config).unwrap();
+    let combined = panchang_for_date(&engine, &eop, &utc, &loc, &rs, &config, false).unwrap();
 
     let tithi = tithi_for_date(&engine, &utc).unwrap();
     let karana = karana_for_date(&engine, &utc).unwrap();
@@ -277,4 +277,34 @@ fn panchang_combined_matches_individual() {
     assert_eq!(combined.vaar, vaar, "vaar mismatch");
     assert_eq!(combined.hora, hora, "hora mismatch");
     assert_eq!(combined.ghatika, ghatika, "ghatika mismatch");
+    assert!(combined.masa.is_none(), "masa should be None without calendar");
+    assert!(combined.ayana.is_none(), "ayana should be None without calendar");
+    assert!(combined.varsha.is_none(), "varsha should be None without calendar");
+}
+
+/// panchang_for_date with include_calendar includes masa, ayana, varsha
+#[test]
+fn panchang_with_calendar() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = UtcTime::new(2024, 1, 15, 12, 0, 0.0);
+    let loc = GeoLocation::new(28.6139, 77.2090, 0.0);
+    let rs = RiseSetConfig::default();
+    let config = default_config();
+
+    let combined = panchang_for_date(&engine, &eop, &utc, &loc, &rs, &config, true).unwrap();
+
+    // Calendar fields should be present
+    let masa = combined.masa.expect("masa should be present");
+    let ayana = combined.ayana.expect("ayana should be present");
+    let varsha = combined.varsha.expect("varsha should be present");
+
+    // Cross-check with individual functions
+    let masa_direct = masa_for_date(&engine, &utc, &config).unwrap();
+    let ayana_direct = ayana_for_date(&engine, &utc, &config).unwrap();
+    let varsha_direct = varsha_for_date(&engine, &utc, &config).unwrap();
+
+    assert_eq!(masa, masa_direct, "masa mismatch");
+    assert_eq!(ayana, ayana_direct, "ayana mismatch");
+    assert_eq!(varsha, varsha_direct, "varsha mismatch");
 }
