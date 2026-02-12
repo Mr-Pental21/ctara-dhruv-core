@@ -3,8 +3,8 @@ use dhruv_frames::{
     SphericalCoords, SphericalState, cartesian_state_to_spherical_state, cartesian_to_spherical,
 };
 use dhruv_search::panchang_types::{
-    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangInfo, TithiInfo, VaarInfo,
-    VarshaInfo, YogaInfo,
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangInfo, PanchangNakshatraInfo,
+    TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
 };
 use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use dhruv_search::{LunarPhaseEvent, SearchError};
@@ -350,6 +350,21 @@ pub fn yoga(
     let utc: UtcTime = date.into();
     let config = SankrantiConfig::new(system, use_nutation);
     Ok(dhruv_search::yoga_for_date(eng, &utc, &config)?)
+}
+
+/// Determine the Moon's Nakshatra (27-scheme) with start/end times for the given date.
+///
+/// Unlike [`nakshatra`] which gives any body's nakshatra as a static lookup,
+/// this returns the Moon's current nakshatra with boundary times via bisection.
+pub fn moon_nakshatra(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<PanchangNakshatraInfo, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::nakshatra_for_date(eng, &utc, &config)?)
 }
 
 /// Determine the Vaar (Vedic weekday) for the given date and location.

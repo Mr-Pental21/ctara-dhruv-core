@@ -208,6 +208,24 @@ enum Commands {
         #[arg(long)]
         lsk: PathBuf,
     },
+    /// Determine the Moon's Nakshatra (27-scheme) with start/end times for a date
+    MoonNakshatra {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
     /// Determine the Vaar (Vedic weekday) for a date and location
     Vaar {
         /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
@@ -834,6 +852,33 @@ fn main() {
             match dhruv_search::yoga_for_date(&engine, &utc, &config) {
                 Ok(info) => {
                     println!("Yoga: {} (index {})", info.yoga.name(), info.yoga_index);
+                    println!("  Start: {}", info.start);
+                    println!("  End:   {}", info.end);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::MoonNakshatra {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::nakshatra_for_date(&engine, &utc, &config) {
+                Ok(info) => {
+                    println!("Nakshatra: {} (index {}, pada {})", info.nakshatra.name(), info.nakshatra_index, info.pada);
                     println!("  Start: {}", info.start);
                     println!("  End:   {}", info.end);
                 }

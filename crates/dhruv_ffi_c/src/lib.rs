@@ -16,9 +16,9 @@ use dhruv_search::{
     prev_sankranti, prev_solar_eclipse, prev_specific_sankranti, prev_stationary,
     search_amavasyas, search_conjunctions, search_lunar_eclipses, search_max_speed,
     search_purnimas, search_sankrantis, search_solar_eclipses, search_stationary,
-    panchang_for_date, sidereal_sum_at, special_lagnas_for_date, tithi_at, tithi_for_date,
-    vaar_for_date, vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, yoga_at,
-    yoga_for_date,
+    nakshatra_for_date, panchang_for_date, sidereal_sum_at, special_lagnas_for_date,
+    tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises, varsha_for_date,
+    vedic_day_sunrises, yoga_at, yoga_for_date,
 };
 use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
@@ -5118,6 +5118,46 @@ pub unsafe extern "C" fn dhruv_yoga_for_date(
                 unsafe {
                     *out = DhruvYogaInfo {
                         yoga_index: info.yoga_index as i32,
+                        start: utc_time_to_ffi(&info.start),
+                        end: utc_time_to_ffi(&info.end),
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Determine the Moon's Nakshatra (27-scheme) for a given UTC date.
+///
+/// Requires SankrantiConfig for ayanamsha.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_nakshatra_for_date(
+    engine: *const DhruvEngineHandle,
+    utc: *const DhruvUtcTime,
+    config: *const DhruvSankrantiConfig,
+    out: *mut DhruvPanchangNakshatraInfo,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let engine_ref = unsafe { &*engine };
+        let t = ffi_to_utc_time(unsafe { &*utc });
+        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match nakshatra_for_date(engine_ref, &t, &cfg) {
+            Ok(info) => {
+                unsafe {
+                    *out = DhruvPanchangNakshatraInfo {
+                        nakshatra_index: info.nakshatra_index as i32,
+                        pada: info.pada as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
                     };
