@@ -1,6 +1,6 @@
-# Clean-Room Provenance: Eclipse Computation
+# Clean-Room Provenance: Grahan (Eclipse) Computation
 
-## Lunar Eclipse Algorithm
+## Chandra Grahan (Lunar Eclipse) Algorithm
 
 ### Shadow Geometry (Danjon Method)
 
@@ -23,7 +23,7 @@ shadow appear ~2% larger. This is a standard published value.
 
 The Moon's angular offset from the shadow axis is compared to shadow radii:
 
-- **No eclipse**: near limb of Moon outside penumbra
+- **No grahan**: near limb of Moon outside penumbra
 - **Penumbral**: Moon partially or fully in penumbra, not touching umbra
 - **Partial**: Moon partially in umbra
 - **Total**: Moon fully in umbra
@@ -39,13 +39,13 @@ Found by bisection: when Moon's limb touches shadow boundaries.
 
     umbral_magnitude = (umbral_radius - offset + moon_radius) / (2 × moon_radius)
 
-## Solar Eclipse Algorithm (Geocentric)
+## Surya Grahan (Solar Eclipse) Algorithm (Geocentric)
 
 ### Classification
 
 Compares apparent Sun and Moon angular radii with their separation:
 
-- **No eclipse**: separation ≥ sum of radii
+- **No grahan**: separation ≥ sum of radii
 - **Partial**: disks overlap but neither fully covers the other
 - **Total**: Moon fully covers Sun (moon_r ≥ sun_r, small separation)
 - **Annular**: Sun visible as ring around Moon (sun_r > moon_r, small separation)

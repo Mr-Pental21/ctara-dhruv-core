@@ -1115,7 +1115,7 @@ fn ffi_utc_conjunction_roundtrip() {
 }
 
 #[test]
-fn ffi_utc_lunar_eclipse_roundtrip() {
+fn ffi_utc_chandra_grahan_roundtrip() {
     let engine_ptr = match make_engine() {
         Some(e) => e,
         None => return,
@@ -1126,27 +1126,27 @@ fn ffi_utc_lunar_eclipse_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     let jd_start = calendar_to_jd(2024, 3, 1.0);
-    let cfg = dhruv_eclipse_config_default();
+    let cfg = dhruv_grahan_config_default();
 
     // JD version
-    let mut jd_result = DhruvLunarEclipseResult {
-        eclipse_type: 0, magnitude: 0.0, penumbral_magnitude: 0.0,
-        greatest_eclipse_jd: 0.0, p1_jd: 0.0, u1_jd: 0.0, u2_jd: 0.0,
+    let mut jd_result = DhruvChandraGrahanResult {
+        grahan_type: 0, magnitude: 0.0, penumbral_magnitude: 0.0,
+        greatest_grahan_jd: 0.0, p1_jd: 0.0, u1_jd: 0.0, u2_jd: 0.0,
         u3_jd: 0.0, u4_jd: 0.0, p4_jd: 0.0,
         moon_ecliptic_lat_deg: 0.0, angular_separation_deg: 0.0,
     };
     let mut found: u8 = 0;
     let status = unsafe {
-        dhruv_next_lunar_eclipse(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found)
+        dhruv_next_chandra_grahan(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found)
     };
     assert_eq!(status, DhruvStatus::Ok);
-    assert_eq!(found, 1, "should find a lunar eclipse");
+    assert_eq!(found, 1, "should find a chandra grahan");
 
     // UTC version
     let utc_start = DhruvUtcTime { year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0.0 };
-    let mut utc_result = DhruvLunarEclipseResultUtc {
-        eclipse_type: 0, magnitude: 0.0, penumbral_magnitude: 0.0,
-        greatest_eclipse: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
+    let mut utc_result = DhruvChandraGrahanResultUtc {
+        grahan_type: 0, magnitude: 0.0, penumbral_magnitude: 0.0,
+        greatest_grahan: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
         p1: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
         u1: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
         u2: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
@@ -1158,20 +1158,20 @@ fn ffi_utc_lunar_eclipse_roundtrip() {
     };
     let mut found_utc: u8 = 0;
     let status = unsafe {
-        dhruv_next_lunar_eclipse_utc(engine_ptr, &utc_start, &cfg, &mut utc_result, &mut found_utc)
+        dhruv_next_chandra_grahan_utc(engine_ptr, &utc_start, &cfg, &mut utc_result, &mut found_utc)
     };
     assert_eq!(status, DhruvStatus::Ok);
-    assert_eq!(found_utc, 1, "UTC version should also find eclipse");
+    assert_eq!(found_utc, 1, "UTC version should also find grahan");
 
-    // Eclipse type and magnitudes should match exactly
-    assert_eq!(utc_result.eclipse_type, jd_result.eclipse_type, "eclipse type mismatch");
+    // Grahan type and magnitudes should match exactly
+    assert_eq!(utc_result.grahan_type, jd_result.grahan_type, "grahan type mismatch");
     assert!(
         (utc_result.magnitude - jd_result.magnitude).abs() < 1e-6,
         "magnitude mismatch"
     );
 
-    // Greatest eclipse time roundtrip
-    assert_utc_matches_jd(lsk_ptr, &utc_result.greatest_eclipse, jd_result.greatest_eclipse_jd, "greatest eclipse");
+    // Greatest grahan time roundtrip
+    assert_utc_matches_jd(lsk_ptr, &utc_result.greatest_grahan, jd_result.greatest_grahan_jd, "greatest grahan");
 
     // P1 always present
     assert_utc_matches_jd(lsk_ptr, &utc_result.p1, jd_result.p1_jd, "P1");
@@ -1207,7 +1207,7 @@ fn ffi_utc_lunar_eclipse_roundtrip() {
 }
 
 #[test]
-fn ffi_utc_solar_eclipse_roundtrip() {
+fn ffi_utc_surya_grahan_roundtrip() {
     let engine_ptr = match make_engine() {
         Some(e) => e,
         None => return,
@@ -1218,26 +1218,26 @@ fn ffi_utc_solar_eclipse_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     let jd_start = calendar_to_jd(2024, 3, 1.0);
-    let cfg = dhruv_eclipse_config_default();
+    let cfg = dhruv_grahan_config_default();
 
     // JD version
-    let mut jd_result = DhruvSolarEclipseResult {
-        eclipse_type: 0, magnitude: 0.0,
-        greatest_eclipse_jd: 0.0, c1_jd: 0.0, c2_jd: 0.0, c3_jd: 0.0, c4_jd: 0.0,
+    let mut jd_result = DhruvSuryaGrahanResult {
+        grahan_type: 0, magnitude: 0.0,
+        greatest_grahan_jd: 0.0, c1_jd: 0.0, c2_jd: 0.0, c3_jd: 0.0, c4_jd: 0.0,
         moon_ecliptic_lat_deg: 0.0, angular_separation_deg: 0.0,
     };
     let mut found: u8 = 0;
     let status = unsafe {
-        dhruv_next_solar_eclipse(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found)
+        dhruv_next_surya_grahan(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found)
     };
     assert_eq!(status, DhruvStatus::Ok);
-    assert_eq!(found, 1, "should find a solar eclipse");
+    assert_eq!(found, 1, "should find a surya grahan");
 
     // UTC version
     let utc_start = DhruvUtcTime { year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0.0 };
-    let mut utc_result = DhruvSolarEclipseResultUtc {
-        eclipse_type: 0, magnitude: 0.0,
-        greatest_eclipse: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
+    let mut utc_result = DhruvSuryaGrahanResultUtc {
+        grahan_type: 0, magnitude: 0.0,
+        greatest_grahan: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
         c1: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
         c2: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
         c3: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
@@ -1247,17 +1247,17 @@ fn ffi_utc_solar_eclipse_roundtrip() {
     };
     let mut found_utc: u8 = 0;
     let status = unsafe {
-        dhruv_next_solar_eclipse_utc(engine_ptr, &utc_start, &cfg, &mut utc_result, &mut found_utc)
+        dhruv_next_surya_grahan_utc(engine_ptr, &utc_start, &cfg, &mut utc_result, &mut found_utc)
     };
     assert_eq!(status, DhruvStatus::Ok);
-    assert_eq!(found_utc, 1, "UTC version should also find eclipse");
+    assert_eq!(found_utc, 1, "UTC version should also find grahan");
 
     // Type and magnitude match
-    assert_eq!(utc_result.eclipse_type, jd_result.eclipse_type, "eclipse type mismatch");
+    assert_eq!(utc_result.grahan_type, jd_result.grahan_type, "grahan type mismatch");
     assert!((utc_result.magnitude - jd_result.magnitude).abs() < 1e-6, "magnitude mismatch");
 
-    // Greatest eclipse roundtrip
-    assert_utc_matches_jd(lsk_ptr, &utc_result.greatest_eclipse, jd_result.greatest_eclipse_jd, "greatest solar eclipse");
+    // Greatest grahan roundtrip
+    assert_utc_matches_jd(lsk_ptr, &utc_result.greatest_grahan, jd_result.greatest_grahan_jd, "greatest surya grahan");
 
     // Contact valid flags vs JD sentinels
     if jd_result.c1_jd < 0.0 {

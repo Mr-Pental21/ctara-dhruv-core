@@ -22,14 +22,14 @@ dhruv_core  →  jpl_kernel
 
 ## Design Decisions for Forward Compatibility
 
-Phase 2+ features (lunar nodes, eclipses, ayanamshas, sunrise/sunset, house systems) impose constraints on the Phase 1 foundation. The following decisions are locked in now to avoid refactoring later.
+Phase 2+ features (lunar nodes, grahan, ayanamshas, sunrise/sunset, house systems) impose constraints on the Phase 1 foundation. The following decisions are locked in now to avoid refactoring later.
 
 ### What each future feature needs from the foundation
 
 | Feature | Foundation requirement |
 |---|---|
 | **Lunar nodes** (Rahu/Ketu) | Moon position in ecliptic frame, Cartesian→Spherical to extract ecliptic lon/lat. Computed from Moon's orbital plane — NOT an SPK body. |
-| **Eclipses** | Sun + Moon + Earth positions. Body radii. Root-finding (iterative query at many epochs). |
+| **Grahan** | Sun + Moon + Earth positions. Body radii. Root-finding (iterative query at many epochs). |
 | **Ayanamshas** | Ecliptic longitude → apply precession offset. Needs Cartesian→ecliptic-spherical conversion. |
 | **Sunrise/Sunset** | Sun geocentric position + Earth rotation angle (GMST/ERA) + geographic coordinates + atmospheric refraction. Root-finding over time. |
 | **House systems** | Local Sidereal Time (GMST + geographic longitude), obliquity, Ascendant/MC. Geographic coordinates. |
@@ -63,7 +63,7 @@ This matches how SPICE works: SPK gives body-center positions, a separate step a
 
 ### Decision 5: `DerivedValue` will likely grow
 
-The current `DerivedValue` enum (`Scalar(f64)` / `Vector3([f64; 3])`) is sufficient for Phase 1. Future features may need richer return types (e.g., eclipse geometry with type + magnitude + contact times). This will be addressed when needed — the trait-based extension seam allows backward-compatible evolution.
+The current `DerivedValue` enum (`Scalar(f64)` / `Vector3([f64; 3])`) is sufficient for Phase 1. Future features may need richer return types (e.g., grahan geometry with type + magnitude + contact times). This will be addressed when needed — the trait-based extension seam allows backward-compatible evolution.
 
 ---
 
@@ -716,7 +716,7 @@ This table shows where each future feature will be implemented, using Phase 1 fo
 |---|---|---|
 | Lunar nodes (Rahu/Ketu) | `dhruv_vedic_base` | `Engine::query(Moon)` + `dhruv_frames::cartesian_to_spherical` |
 | Ayanamsha (Lahiri, etc.) | `dhruv_vedic_base` | `dhruv_frames::cartesian_to_spherical` for ecliptic lon |
-| Eclipses | `dhruv_core` or `dhruv_vedic_base` | `Engine::query()` for Sun/Moon/Earth positions |
+| Grahan | `dhruv_core` or `dhruv_vedic_base` | `Engine::query()` for Sun/Moon/Earth positions |
 | Sunrise/Sunset | `dhruv_vedic_base` or new crate | `Engine::query(Sun, observer: Earth)` + `dhruv_time::sidereal` (Phase 2) |
 | House systems | `dhruv_vedic_base` | `dhruv_time::sidereal` + `dhruv_frames::obliquity` |
 | Topocentric observer | New layer above `dhruv_core` | `Engine::query(observer: Earth)` + Earth rotation |

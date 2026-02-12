@@ -1,16 +1,16 @@
-//! Eclipse computation: lunar (penumbral/partial/total) and solar (geocentric).
+//! Grahan (eclipse) computation: chandra (lunar — penumbral/partial/total) and surya (solar — geocentric).
 //!
 //! Builds on the conjunction engine to find new/full moons, then applies
 //! shadow geometry for classification, magnitude, and contact times.
 //!
-//! Lunar eclipse algorithm:
+//! Chandra grahan algorithm:
 //!   1. Find full moons (Sun-Moon opposition, 180 deg separation)
 //!   2. Filter by ecliptic latitude threshold
 //!   3. Compute Earth shadow radii using Danjon augmented method
 //!   4. Classify by comparing Moon's angular distance to shadow radii
 //!   5. Find contact times by bisection
 //!
-//! Solar eclipse algorithm (geocentric):
+//! Surya grahan algorithm (geocentric):
 //!   1. Find new moons (Sun-Moon conjunction, 0 deg separation)
 //!   2. Filter by ecliptic latitude threshold
 //!   3. Compute apparent Sun and Moon angular radii from distances
@@ -18,15 +18,15 @@
 //!   5. Find contact times by bisection
 //!
 //! Sources: standard spherical astronomy (Meeus Ch. 54 for shadow geometry,
-//! IAU 2015 nominal radii). See docs/clean_room_eclipse.md.
+//! IAU 2015 nominal radii). See docs/clean_room_grahan.md.
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
 use dhruv_frames::{cartesian_to_spherical, icrf_to_ecliptic};
 
 use crate::conjunction::{search_conjunctions, next_conjunction, prev_conjunction};
 use crate::conjunction_types::ConjunctionConfig;
-use crate::eclipse_types::{
-    EclipseConfig, LunarEclipse, LunarEclipseType, SolarEclipse, SolarEclipseType,
+use crate::grahan_types::{
+    GrahanConfig, ChandraGrahan, ChandraGrahanType, SuryaGrahan, SuryaGrahanType,
 };
 use crate::error::SearchError;
 
@@ -48,9 +48,9 @@ const MOON_RADIUS_KM: f64 = 1737.4;
 /// Published in Meeus, "Astronomical Algorithms", Ch. 54.
 const DANJON_ENLARGEMENT: f64 = 1.02;
 
-/// Ecliptic latitude threshold for eclipse candidacy (degrees).
+/// Ecliptic latitude threshold for grahan candidacy (degrees).
 /// Generous threshold; exact geometry filters afterward.
-const ECLIPSE_LAT_THRESHOLD_DEG: f64 = 2.0;
+const GRAHAN_LAT_THRESHOLD_DEG: f64 = 2.0;
 
 /// Step size for new/full moon scan (days). Moon synodic period ~29.5 days,
 /// so 0.5 day step safely brackets all crossings.
@@ -173,31 +173,31 @@ fn moon_shadow_offset_deg(engine: &Engine, jd_tdb: f64) -> Result<f64, SearchErr
 }
 
 // ---------------------------------------------------------------------------
-// Lunar eclipses
+// Chandra grahan (lunar eclipses)
 // ---------------------------------------------------------------------------
 
-/// Classify a lunar eclipse based on geometry.
-fn classify_lunar(
+/// Classify a chandra grahan based on geometry.
+fn classify_chandra(
     shadow_offset_deg: f64,
     moon_radius_deg: f64,
     umbral_radius_deg: f64,
     penumbral_radius_deg: f64,
-) -> Option<LunarEclipseType> {
+) -> Option<ChandraGrahanType> {
     let moon_near_edge = shadow_offset_deg - moon_radius_deg;
     let moon_far_edge = shadow_offset_deg + moon_radius_deg;
 
     if moon_near_edge >= penumbral_radius_deg {
-        // Moon entirely outside penumbra — no eclipse
+        // Moon entirely outside penumbra — no grahan
         None
     } else if moon_far_edge <= umbral_radius_deg {
         // Moon entirely inside umbra — total
-        Some(LunarEclipseType::Total)
+        Some(ChandraGrahanType::Total)
     } else if moon_near_edge < umbral_radius_deg {
         // Moon partially inside umbra — partial
-        Some(LunarEclipseType::Partial)
+        Some(ChandraGrahanType::Partial)
     } else {
         // Moon in penumbra only
-        Some(LunarEclipseType::Penumbral)
+        Some(ChandraGrahanType::Penumbral)
     }
 }
 
@@ -206,7 +206,7 @@ fn classify_lunar(
 /// `boundary_radius_deg` is the shadow radius (umbral or penumbral).
 /// `limb_sign`: -1.0 for near limb (inner), +1.0 for far limb (outer).
 /// Searches between `t_a` and `t_b`.
-fn find_lunar_contact(
+fn find_chandra_contact(
     engine: &Engine,
     t_a: f64,
     t_b: f64,
@@ -246,17 +246,17 @@ fn find_lunar_contact(
     Ok(0.5 * (ta + tb))
 }
 
-/// Compute a single lunar eclipse from a full moon event.
-fn compute_lunar_eclipse(
+/// Compute a single chandra grahan from a full moon event.
+fn compute_chandra_grahan(
     engine: &Engine,
     full_moon_jd: f64,
-    config: &EclipseConfig,
-) -> Result<Option<LunarEclipse>, SearchError> {
+    config: &GrahanConfig,
+) -> Result<Option<ChandraGrahan>, SearchError> {
     // Get Moon's ecliptic latitude at full moon
     let (_, moon_lat, moon_dist) = moon_ecliptic(engine, full_moon_jd)?;
 
     // Quick filter
-    if moon_lat.abs() > ECLIPSE_LAT_THRESHOLD_DEG {
+    if moon_lat.abs() > GRAHAN_LAT_THRESHOLD_DEG {
         return Ok(None);
     }
 
@@ -265,12 +265,12 @@ fn compute_lunar_eclipse(
     let moon_radius = moon_angular_radius_deg(moon_dist);
     let shadow_offset = moon_shadow_offset_deg(engine, full_moon_jd)?;
 
-    let eclipse_type = match classify_lunar(shadow_offset, moon_radius, umbral_radius, penumbral_radius) {
+    let grahan_type = match classify_chandra(shadow_offset, moon_radius, umbral_radius, penumbral_radius) {
         Some(t) => t,
         None => return Ok(None),
     };
 
-    if !config.include_penumbral && eclipse_type == LunarEclipseType::Penumbral {
+    if !config.include_penumbral && grahan_type == ChandraGrahanType::Penumbral {
         return Ok(None);
     }
 
@@ -279,11 +279,11 @@ fn compute_lunar_eclipse(
     let penumbral_magnitude =
         (penumbral_radius - shadow_offset + moon_radius) / (2.0 * moon_radius);
 
-    // Contact times — search window: ~6 hours around greatest eclipse
+    // Contact times — search window: ~6 hours around greatest grahan
     let half_window = 0.25; // 6 hours in days
 
     // P1: near limb enters penumbra (outer limb, going in)
-    let p1_jd = find_lunar_contact(
+    let p1_jd = find_chandra_contact(
         engine,
         full_moon_jd - half_window,
         full_moon_jd,
@@ -292,7 +292,7 @@ fn compute_lunar_eclipse(
     )?;
 
     // P4: far limb exits penumbra
-    let p4_jd = find_lunar_contact(
+    let p4_jd = find_chandra_contact(
         engine,
         full_moon_jd,
         full_moon_jd + half_window,
@@ -301,15 +301,15 @@ fn compute_lunar_eclipse(
     )?;
 
     // U1/U4: umbral contacts (only if partial or total)
-    let (u1_jd, u4_jd) = if eclipse_type != LunarEclipseType::Penumbral {
-        let u1 = find_lunar_contact(
+    let (u1_jd, u4_jd) = if grahan_type != ChandraGrahanType::Penumbral {
+        let u1 = find_chandra_contact(
             engine,
             full_moon_jd - half_window,
             full_moon_jd,
             umbral_radius,
             1.0,
         )?;
-        let u4 = find_lunar_contact(
+        let u4 = find_chandra_contact(
             engine,
             full_moon_jd,
             full_moon_jd + half_window,
@@ -322,15 +322,15 @@ fn compute_lunar_eclipse(
     };
 
     // U2/U3: totality contacts (only if total)
-    let (u2_jd, u3_jd) = if eclipse_type == LunarEclipseType::Total {
-        let u2 = find_lunar_contact(
+    let (u2_jd, u3_jd) = if grahan_type == ChandraGrahanType::Total {
+        let u2 = find_chandra_contact(
             engine,
             full_moon_jd - half_window,
             full_moon_jd,
             umbral_radius,
             -1.0, // near limb crosses umbra boundary
         )?;
-        let u3 = find_lunar_contact(
+        let u3 = find_chandra_contact(
             engine,
             full_moon_jd,
             full_moon_jd + half_window,
@@ -344,11 +344,11 @@ fn compute_lunar_eclipse(
 
     let angular_sep = sun_moon_angular_separation(engine, full_moon_jd)?;
 
-    Ok(Some(LunarEclipse {
-        eclipse_type,
+    Ok(Some(ChandraGrahan {
+        grahan_type,
         magnitude: umbral_magnitude,
         penumbral_magnitude,
-        greatest_eclipse_jd: full_moon_jd,
+        greatest_grahan_jd: full_moon_jd,
         p1_jd,
         u1_jd,
         u2_jd,
@@ -360,24 +360,24 @@ fn compute_lunar_eclipse(
     }))
 }
 
-/// Find the next lunar eclipse after `jd_tdb`.
-pub fn next_lunar_eclipse(
+/// Find the next chandra grahan (lunar eclipse) after `jd_tdb`.
+pub fn next_chandra_grahan(
     engine: &Engine,
     jd_tdb: f64,
-    config: &EclipseConfig,
-) -> Result<Option<LunarEclipse>, SearchError> {
+    config: &GrahanConfig,
+) -> Result<Option<ChandraGrahan>, SearchError> {
     let moon_config = ConjunctionConfig::opposition(MOON_STEP_DAYS);
     let mut search_jd = jd_tdb;
 
-    // Search up to ~2 years (enough for at least 2 eclipse seasons)
+    // Search up to ~2 years (enough for at least 2 grahan seasons)
     for _ in 0..50 {
         let full_moon = next_conjunction(engine, Body::Sun, Body::Moon, search_jd, &moon_config)?;
         let Some(fm) = full_moon else {
             return Ok(None);
         };
 
-        if let Some(eclipse) = compute_lunar_eclipse(engine, fm.jd_tdb, config)? {
-            return Ok(Some(eclipse));
+        if let Some(grahan) = compute_chandra_grahan(engine, fm.jd_tdb, config)? {
+            return Ok(Some(grahan));
         }
 
         // Advance past this full moon
@@ -387,12 +387,12 @@ pub fn next_lunar_eclipse(
     Ok(None)
 }
 
-/// Find the previous lunar eclipse before `jd_tdb`.
-pub fn prev_lunar_eclipse(
+/// Find the previous chandra grahan (lunar eclipse) before `jd_tdb`.
+pub fn prev_chandra_grahan(
     engine: &Engine,
     jd_tdb: f64,
-    config: &EclipseConfig,
-) -> Result<Option<LunarEclipse>, SearchError> {
+    config: &GrahanConfig,
+) -> Result<Option<ChandraGrahan>, SearchError> {
     let moon_config = ConjunctionConfig::opposition(MOON_STEP_DAYS);
     let mut search_jd = jd_tdb;
 
@@ -402,8 +402,8 @@ pub fn prev_lunar_eclipse(
             return Ok(None);
         };
 
-        if let Some(eclipse) = compute_lunar_eclipse(engine, fm.jd_tdb, config)? {
-            return Ok(Some(eclipse));
+        if let Some(grahan) = compute_chandra_grahan(engine, fm.jd_tdb, config)? {
+            return Ok(Some(grahan));
         }
 
         search_jd = fm.jd_tdb - 1.0;
@@ -412,13 +412,13 @@ pub fn prev_lunar_eclipse(
     Ok(None)
 }
 
-/// Search for all lunar eclipses in a time range.
-pub fn search_lunar_eclipses(
+/// Search for all chandra grahan in a time range.
+pub fn search_chandra_grahan(
     engine: &Engine,
     jd_start: f64,
     jd_end: f64,
-    config: &EclipseConfig,
-) -> Result<Vec<LunarEclipse>, SearchError> {
+    config: &GrahanConfig,
+) -> Result<Vec<ChandraGrahan>, SearchError> {
     if jd_end <= jd_start {
         return Err(SearchError::InvalidConfig("jd_end must be after jd_start"));
     }
@@ -426,51 +426,51 @@ pub fn search_lunar_eclipses(
     let moon_config = ConjunctionConfig::opposition(MOON_STEP_DAYS);
     let full_moons = search_conjunctions(engine, Body::Sun, Body::Moon, jd_start, jd_end, &moon_config)?;
 
-    let mut eclipses = Vec::new();
+    let mut results = Vec::new();
     for fm in &full_moons {
-        if let Some(eclipse) = compute_lunar_eclipse(engine, fm.jd_tdb, config)? {
-            eclipses.push(eclipse);
+        if let Some(grahan) = compute_chandra_grahan(engine, fm.jd_tdb, config)? {
+            results.push(grahan);
         }
     }
 
-    Ok(eclipses)
+    Ok(results)
 }
 
 // ---------------------------------------------------------------------------
-// Solar eclipses (geocentric)
+// Surya grahan (solar eclipses — geocentric)
 // ---------------------------------------------------------------------------
 
-/// Classify a geocentric solar eclipse.
-fn classify_solar(
+/// Classify a geocentric surya grahan.
+fn classify_surya(
     sun_radius_deg: f64,
     moon_radius_deg: f64,
     min_separation_deg: f64,
-) -> Option<SolarEclipseType> {
+) -> Option<SuryaGrahanType> {
     let sum = sun_radius_deg + moon_radius_deg;
 
     if min_separation_deg >= sum {
-        // No overlap — no eclipse
+        // No overlap — no grahan
         return None;
     }
 
     if min_separation_deg < (moon_radius_deg - sun_radius_deg).abs() {
         // Complete overlap
         if moon_radius_deg >= sun_radius_deg {
-            Some(SolarEclipseType::Total)
+            Some(SuryaGrahanType::Total)
         } else {
-            Some(SolarEclipseType::Annular)
+            Some(SuryaGrahanType::Annular)
         }
     } else {
         // Partial overlap only
-        Some(SolarEclipseType::Partial)
+        Some(SuryaGrahanType::Partial)
     }
 }
 
-/// Find a solar eclipse contact time by bisecting when disk edges touch.
+/// Find a surya grahan contact time by bisecting when disk edges touch.
 ///
 /// `target_sep_deg`: the separation at which contact occurs
 /// (sun_r + moon_r for external, |sun_r - moon_r| for internal).
-fn find_solar_contact(
+fn find_surya_contact(
     engine: &Engine,
     t_a: f64,
     t_b: f64,
@@ -504,16 +504,16 @@ fn find_solar_contact(
     Ok(0.5 * (ta + tb))
 }
 
-/// Compute a single geocentric solar eclipse from a new moon event.
-fn compute_solar_eclipse(
+/// Compute a single geocentric surya grahan from a new moon event.
+fn compute_surya_grahan(
     engine: &Engine,
     new_moon_jd: f64,
-    _config: &EclipseConfig,
-) -> Result<Option<SolarEclipse>, SearchError> {
+    _config: &GrahanConfig,
+) -> Result<Option<SuryaGrahan>, SearchError> {
     // Get Moon's ecliptic latitude at new moon
     let (_, moon_lat, moon_dist) = moon_ecliptic(engine, new_moon_jd)?;
 
-    if moon_lat.abs() > ECLIPSE_LAT_THRESHOLD_DEG {
+    if moon_lat.abs() > GRAHAN_LAT_THRESHOLD_DEG {
         return Ok(None);
     }
 
@@ -522,37 +522,37 @@ fn compute_solar_eclipse(
     let moon_r = moon_angular_radius_deg(moon_dist);
     let min_sep = sun_moon_angular_separation(engine, new_moon_jd)?;
 
-    let eclipse_type = match classify_solar(sun_r, moon_r, min_sep) {
+    let grahan_type = match classify_surya(sun_r, moon_r, min_sep) {
         Some(t) => t,
         None => return Ok(None),
     };
 
     let magnitude = moon_r / sun_r;
 
-    // Contact times — search window: ~4 hours around greatest eclipse
+    // Contact times — search window: ~4 hours around greatest grahan
     let half_window = 4.0 / 24.0;
     let external_sep = sun_r + moon_r;
     let internal_sep = (sun_r - moon_r).abs();
 
     // C1: first external contact (disks start touching)
-    let c1_jd = find_solar_contact(engine, new_moon_jd - half_window, new_moon_jd, external_sep)
+    let c1_jd = find_surya_contact(engine, new_moon_jd - half_window, new_moon_jd, external_sep)
         .ok();
 
     // C4: last external contact (disks stop touching)
-    let c4_jd = find_solar_contact(engine, new_moon_jd, new_moon_jd + half_window, external_sep)
+    let c4_jd = find_surya_contact(engine, new_moon_jd, new_moon_jd + half_window, external_sep)
         .ok();
 
     // C2/C3: internal contacts (only for total/annular)
     let (c2_jd, c3_jd) =
-        if eclipse_type == SolarEclipseType::Total || eclipse_type == SolarEclipseType::Annular {
-            let c2 = find_solar_contact(
+        if grahan_type == SuryaGrahanType::Total || grahan_type == SuryaGrahanType::Annular {
+            let c2 = find_surya_contact(
                 engine,
                 new_moon_jd - half_window,
                 new_moon_jd,
                 internal_sep,
             )
             .ok();
-            let c3 = find_solar_contact(
+            let c3 = find_surya_contact(
                 engine,
                 new_moon_jd,
                 new_moon_jd + half_window,
@@ -564,10 +564,10 @@ fn compute_solar_eclipse(
             (None, None)
         };
 
-    Ok(Some(SolarEclipse {
-        eclipse_type,
+    Ok(Some(SuryaGrahan {
+        grahan_type,
         magnitude,
-        greatest_eclipse_jd: new_moon_jd,
+        greatest_grahan_jd: new_moon_jd,
         c1_jd,
         c2_jd,
         c3_jd,
@@ -577,12 +577,12 @@ fn compute_solar_eclipse(
     }))
 }
 
-/// Find the next geocentric solar eclipse after `jd_tdb`.
-pub fn next_solar_eclipse(
+/// Find the next geocentric surya grahan (solar eclipse) after `jd_tdb`.
+pub fn next_surya_grahan(
     engine: &Engine,
     jd_tdb: f64,
-    config: &EclipseConfig,
-) -> Result<Option<SolarEclipse>, SearchError> {
+    config: &GrahanConfig,
+) -> Result<Option<SuryaGrahan>, SearchError> {
     let moon_config = ConjunctionConfig::conjunction(MOON_STEP_DAYS);
     let mut search_jd = jd_tdb;
 
@@ -592,8 +592,8 @@ pub fn next_solar_eclipse(
             return Ok(None);
         };
 
-        if let Some(eclipse) = compute_solar_eclipse(engine, nm.jd_tdb, config)? {
-            return Ok(Some(eclipse));
+        if let Some(grahan) = compute_surya_grahan(engine, nm.jd_tdb, config)? {
+            return Ok(Some(grahan));
         }
 
         search_jd = nm.jd_tdb + 1.0;
@@ -602,12 +602,12 @@ pub fn next_solar_eclipse(
     Ok(None)
 }
 
-/// Find the previous geocentric solar eclipse before `jd_tdb`.
-pub fn prev_solar_eclipse(
+/// Find the previous geocentric surya grahan (solar eclipse) before `jd_tdb`.
+pub fn prev_surya_grahan(
     engine: &Engine,
     jd_tdb: f64,
-    config: &EclipseConfig,
-) -> Result<Option<SolarEclipse>, SearchError> {
+    config: &GrahanConfig,
+) -> Result<Option<SuryaGrahan>, SearchError> {
     let moon_config = ConjunctionConfig::conjunction(MOON_STEP_DAYS);
     let mut search_jd = jd_tdb;
 
@@ -617,8 +617,8 @@ pub fn prev_solar_eclipse(
             return Ok(None);
         };
 
-        if let Some(eclipse) = compute_solar_eclipse(engine, nm.jd_tdb, config)? {
-            return Ok(Some(eclipse));
+        if let Some(grahan) = compute_surya_grahan(engine, nm.jd_tdb, config)? {
+            return Ok(Some(grahan));
         }
 
         search_jd = nm.jd_tdb - 1.0;
@@ -627,13 +627,13 @@ pub fn prev_solar_eclipse(
     Ok(None)
 }
 
-/// Search for all geocentric solar eclipses in a time range.
-pub fn search_solar_eclipses(
+/// Search for all geocentric surya grahan in a time range.
+pub fn search_surya_grahan(
     engine: &Engine,
     jd_start: f64,
     jd_end: f64,
-    config: &EclipseConfig,
-) -> Result<Vec<SolarEclipse>, SearchError> {
+    config: &GrahanConfig,
+) -> Result<Vec<SuryaGrahan>, SearchError> {
     if jd_end <= jd_start {
         return Err(SearchError::InvalidConfig("jd_end must be after jd_start"));
     }
@@ -641,14 +641,14 @@ pub fn search_solar_eclipses(
     let moon_config = ConjunctionConfig::conjunction(MOON_STEP_DAYS);
     let new_moons = search_conjunctions(engine, Body::Sun, Body::Moon, jd_start, jd_end, &moon_config)?;
 
-    let mut eclipses = Vec::new();
+    let mut results = Vec::new();
     for nm in &new_moons {
-        if let Some(eclipse) = compute_solar_eclipse(engine, nm.jd_tdb, config)? {
-            eclipses.push(eclipse);
+        if let Some(grahan) = compute_surya_grahan(engine, nm.jd_tdb, config)? {
+            results.push(grahan);
         }
     }
 
-    Ok(eclipses)
+    Ok(results)
 }
 
 #[cfg(test)]
@@ -680,68 +680,68 @@ mod tests {
     }
 
     #[test]
-    fn classify_lunar_total() {
+    fn classify_chandra_total() {
         // Moon center very close to shadow axis, small offset
         // near_edge = 0.1 - 0.26 = -0.16, far_edge = 0.1 + 0.26 = 0.36 < 0.70
-        let result = classify_lunar(0.1, 0.26, 0.70, 1.25);
-        assert_eq!(result, Some(LunarEclipseType::Total));
+        let result = classify_chandra(0.1, 0.26, 0.70, 1.25);
+        assert_eq!(result, Some(ChandraGrahanType::Total));
     }
 
     #[test]
-    fn classify_lunar_partial() {
+    fn classify_chandra_partial() {
         // Moon center near umbra boundary
         // near_edge = 0.55 - 0.26 = 0.29 < 0.70, but far_edge = 0.55 + 0.26 = 0.81 > 0.70
-        let result = classify_lunar(0.55, 0.26, 0.70, 1.25);
-        assert_eq!(result, Some(LunarEclipseType::Partial));
+        let result = classify_chandra(0.55, 0.26, 0.70, 1.25);
+        assert_eq!(result, Some(ChandraGrahanType::Partial));
     }
 
     #[test]
-    fn classify_lunar_penumbral() {
+    fn classify_chandra_penumbral() {
         // Moon center outside umbra but inside penumbra
         // near_edge = 1.05 - 0.26 = 0.79 >= 0.70 (outside umbra)
         // far_edge = 1.05 + 0.26 = 1.31 > 1.25 but near_edge < 1.25 (inside penumbra)
-        let result = classify_lunar(1.05, 0.26, 0.70, 1.25);
-        assert_eq!(result, Some(LunarEclipseType::Penumbral));
+        let result = classify_chandra(1.05, 0.26, 0.70, 1.25);
+        assert_eq!(result, Some(ChandraGrahanType::Penumbral));
     }
 
     #[test]
-    fn classify_lunar_none() {
+    fn classify_chandra_none() {
         // Moon outside penumbra entirely (near edge > penumbral radius)
-        let result = classify_lunar(1.6, 0.26, 0.70, 1.25);
+        let result = classify_chandra(1.6, 0.26, 0.70, 1.25);
         assert_eq!(result, None);
     }
 
     #[test]
-    fn classify_solar_total() {
+    fn classify_surya_total() {
         // Moon larger than Sun, separation very small
-        let result = classify_solar(0.266, 0.270, 0.002);
-        assert_eq!(result, Some(SolarEclipseType::Total));
+        let result = classify_surya(0.266, 0.270, 0.002);
+        assert_eq!(result, Some(SuryaGrahanType::Total));
     }
 
     #[test]
-    fn classify_solar_annular() {
+    fn classify_surya_annular() {
         // Moon smaller than Sun, separation very small
-        let result = classify_solar(0.266, 0.250, 0.002);
-        assert_eq!(result, Some(SolarEclipseType::Annular));
+        let result = classify_surya(0.266, 0.250, 0.002);
+        assert_eq!(result, Some(SuryaGrahanType::Annular));
     }
 
     #[test]
-    fn classify_solar_partial() {
+    fn classify_surya_partial() {
         // Disks overlap but neither fully covers the other
-        let result = classify_solar(0.266, 0.260, 0.30);
-        assert_eq!(result, Some(SolarEclipseType::Partial));
+        let result = classify_surya(0.266, 0.260, 0.30);
+        assert_eq!(result, Some(SuryaGrahanType::Partial));
     }
 
     #[test]
-    fn classify_solar_none() {
+    fn classify_surya_none() {
         // No overlap
-        let result = classify_solar(0.266, 0.260, 0.6);
+        let result = classify_surya(0.266, 0.260, 0.6);
         assert_eq!(result, None);
     }
 
     #[test]
-    fn eclipse_config_defaults() {
-        let c = EclipseConfig::default();
+    fn grahan_config_defaults() {
+        let c = GrahanConfig::default();
         assert!(c.include_penumbral);
         assert!(c.include_peak_details);
     }

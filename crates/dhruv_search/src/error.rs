@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use dhruv_core::EngineError;
 
-/// Errors from search and eclipse computations.
+/// Errors from search and grahan computations.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SearchError {

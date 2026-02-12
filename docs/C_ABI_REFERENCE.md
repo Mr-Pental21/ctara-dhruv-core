@@ -27,8 +27,8 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
    - [Sunrise / Sunset](#sunrise--sunset)
    - [Bhava (House Systems)](#bhava-house-systems)
    - [Conjunction / Aspect Search](#conjunction--aspect-search)
-   - [Lunar Eclipse](#lunar-eclipse)
-   - [Solar Eclipse](#solar-eclipse)
+   - [Chandra Grahan](#chandra-grahan)
+   - [Surya Grahan](#surya-grahan)
    - [Stationary Point Search](#stationary-point-search)
    - [Max Speed Search](#max-speed-search)
 
@@ -174,24 +174,24 @@ enum DhruvStatus {
 | 18 | Galactic Center 0 Sag |
 | 19 | Aldebaran 15 Tau |
 
-### Eclipse Type Codes
+### Grahan Type Codes
 
-**Lunar:**
-
-| Constant | Value |
-|----------|-------|
-| `DHRUV_LUNAR_ECLIPSE_PENUMBRAL` | 0 |
-| `DHRUV_LUNAR_ECLIPSE_PARTIAL` | 1 |
-| `DHRUV_LUNAR_ECLIPSE_TOTAL` | 2 |
-
-**Solar:**
+**Chandra Grahan:**
 
 | Constant | Value |
 |----------|-------|
-| `DHRUV_SOLAR_ECLIPSE_PARTIAL` | 0 |
-| `DHRUV_SOLAR_ECLIPSE_ANNULAR` | 1 |
-| `DHRUV_SOLAR_ECLIPSE_TOTAL` | 2 |
-| `DHRUV_SOLAR_ECLIPSE_HYBRID` | 3 |
+| `DHRUV_CHANDRA_GRAHAN_PENUMBRAL` | 0 |
+| `DHRUV_CHANDRA_GRAHAN_PARTIAL` | 1 |
+| `DHRUV_CHANDRA_GRAHAN_TOTAL` | 2 |
+
+**Surya Grahan:**
+
+| Constant | Value |
+|----------|-------|
+| `DHRUV_SURYA_GRAHAN_PARTIAL` | 0 |
+| `DHRUV_SURYA_GRAHAN_ANNULAR` | 1 |
+| `DHRUV_SURYA_GRAHAN_TOTAL` | 2 |
+| `DHRUV_SURYA_GRAHAN_HYBRID` | 3 |
 
 ### Stationary Point Type Codes
 
@@ -381,48 +381,48 @@ typedef struct {
 } DhruvConjunctionEvent;
 ```
 
-### DhruvEclipseConfig
+### DhruvGrahanConfig
 
 ```c
 typedef struct {
-    uint8_t include_penumbral;    // 1 = include penumbral-only lunar eclipses
+    uint8_t include_penumbral;    // 1 = include penumbral-only chandra grahan
     uint8_t include_peak_details; // 1 = include lat/separation at peak
-} DhruvEclipseConfig;
+} DhruvGrahanConfig;
 ```
 
-### DhruvLunarEclipseResult
+### DhruvChandraGrahanResult
 
 ```c
 typedef struct {
-    int32_t eclipse_type;           // DHRUV_LUNAR_ECLIPSE_* constant
+    int32_t grahan_type;            // DHRUV_CHANDRA_GRAHAN_* constant
     double  magnitude;              // Umbral magnitude
     double  penumbral_magnitude;
-    double  greatest_eclipse_jd;    // JD TDB
+    double  greatest_grahan_jd;     // JD TDB
     double  p1_jd;                  // First penumbral contact
     double  u1_jd;                  // First umbral contact (-1.0 if absent)
     double  u2_jd;                  // Start of totality (-1.0 if absent)
     double  u3_jd;                  // End of totality (-1.0 if absent)
     double  u4_jd;                  // Last umbral contact (-1.0 if absent)
     double  p4_jd;                  // Last penumbral contact
-    double  moon_ecliptic_lat_deg;  // Moon lat at greatest eclipse
-    double  angular_separation_deg; // Separation at greatest eclipse
-} DhruvLunarEclipseResult;
+    double  moon_ecliptic_lat_deg;  // Moon lat at greatest grahan
+    double  angular_separation_deg; // Separation at greatest grahan
+} DhruvChandraGrahanResult;
 ```
 
-### DhruvSolarEclipseResult
+### DhruvSuryaGrahanResult
 
 ```c
 typedef struct {
-    int32_t eclipse_type;           // DHRUV_SOLAR_ECLIPSE_* constant
+    int32_t grahan_type;            // DHRUV_SURYA_GRAHAN_* constant
     double  magnitude;              // Moon/Sun apparent diameter ratio
-    double  greatest_eclipse_jd;    // JD TDB
+    double  greatest_grahan_jd;     // JD TDB
     double  c1_jd;                  // First external contact (-1.0 if absent)
     double  c2_jd;                  // First internal contact (-1.0 if absent)
     double  c3_jd;                  // Last internal contact (-1.0 if absent)
     double  c4_jd;                  // Last external contact (-1.0 if absent)
-    double  moon_ecliptic_lat_deg;  // Moon lat at greatest eclipse
-    double  angular_separation_deg; // Separation at greatest eclipse
-} DhruvSolarEclipseResult;
+    double  moon_ecliptic_lat_deg;  // Moon lat at greatest grahan
+    double  angular_separation_deg; // Separation at greatest grahan
+} DhruvSuryaGrahanResult;
 ```
 
 ### DhruvStationaryConfig
@@ -859,95 +859,95 @@ Search for all conjunction/aspect events in a time range.
 
 ---
 
-### Lunar Eclipse
+### Chandra Grahan
 
 ```c
-DhruvEclipseConfig dhruv_eclipse_config_default(void);
+DhruvGrahanConfig dhruv_grahan_config_default(void);
 ```
 
 Returns default: `include_penumbral=1`, `include_peak_details=1`.
 
 ```c
-DhruvStatus dhruv_next_lunar_eclipse(
-    const DhruvEngineHandle*  engine,
-    double                    jd_tdb,
-    const DhruvEclipseConfig* config,
-    DhruvLunarEclipseResult*  out_result,
-    uint8_t*                  out_found
+DhruvStatus dhruv_next_chandra_grahan(
+    const DhruvEngineHandle*   engine,
+    double                     jd_tdb,
+    const DhruvGrahanConfig*   config,
+    DhruvChandraGrahanResult*  out_result,
+    uint8_t*                   out_found
 );
 ```
 
-Find the next lunar eclipse after `jd_tdb`.
+Find the next chandra grahan (lunar eclipse) after `jd_tdb`.
 
 ```c
-DhruvStatus dhruv_prev_lunar_eclipse(
-    const DhruvEngineHandle*  engine,
-    double                    jd_tdb,
-    const DhruvEclipseConfig* config,
-    DhruvLunarEclipseResult*  out_result,
-    uint8_t*                  out_found
+DhruvStatus dhruv_prev_chandra_grahan(
+    const DhruvEngineHandle*   engine,
+    double                     jd_tdb,
+    const DhruvGrahanConfig*   config,
+    DhruvChandraGrahanResult*  out_result,
+    uint8_t*                   out_found
 );
 ```
 
-Find the previous lunar eclipse before `jd_tdb`.
+Find the previous chandra grahan (lunar eclipse) before `jd_tdb`.
 
 ```c
-DhruvStatus dhruv_search_lunar_eclipses(
-    const DhruvEngineHandle*  engine,
-    double                    jd_start,
-    double                    jd_end,
-    const DhruvEclipseConfig* config,
-    DhruvLunarEclipseResult*  out_results,  // Array of max_count
-    uint32_t                  max_count,
-    uint32_t*                 out_count
+DhruvStatus dhruv_search_chandra_grahan(
+    const DhruvEngineHandle*   engine,
+    double                     jd_start,
+    double                     jd_end,
+    const DhruvGrahanConfig*   config,
+    DhruvChandraGrahanResult*  out_results,  // Array of max_count
+    uint32_t                   max_count,
+    uint32_t*                  out_count
 );
 ```
 
-Search for all lunar eclipses in a time range.
+Search for all chandra grahan (lunar eclipses) in a time range.
 
 ---
 
-### Solar Eclipse
+### Surya Grahan
 
 ```c
-DhruvStatus dhruv_next_solar_eclipse(
+DhruvStatus dhruv_next_surya_grahan(
     const DhruvEngineHandle*  engine,
     double                    jd_tdb,
-    const DhruvEclipseConfig* config,
-    DhruvSolarEclipseResult*  out_result,
+    const DhruvGrahanConfig*  config,
+    DhruvSuryaGrahanResult*   out_result,
     uint8_t*                  out_found
 );
 ```
 
-Find the next solar eclipse after `jd_tdb`.
+Find the next surya grahan (solar eclipse) after `jd_tdb`.
 
 ```c
-DhruvStatus dhruv_prev_solar_eclipse(
+DhruvStatus dhruv_prev_surya_grahan(
     const DhruvEngineHandle*  engine,
     double                    jd_tdb,
-    const DhruvEclipseConfig* config,
-    DhruvSolarEclipseResult*  out_result,
+    const DhruvGrahanConfig*  config,
+    DhruvSuryaGrahanResult*   out_result,
     uint8_t*                  out_found
 );
 ```
 
-Find the previous solar eclipse before `jd_tdb`.
+Find the previous surya grahan (solar eclipse) before `jd_tdb`.
 
 ```c
-DhruvStatus dhruv_search_solar_eclipses(
+DhruvStatus dhruv_search_surya_grahan(
     const DhruvEngineHandle*  engine,
     double                    jd_start,
     double                    jd_end,
-    const DhruvEclipseConfig* config,
-    DhruvSolarEclipseResult*  out_results,  // Array of max_count
+    const DhruvGrahanConfig*  config,
+    DhruvSuryaGrahanResult*   out_results,  // Array of max_count
     uint32_t                  max_count,
     uint32_t*                 out_count
 );
 ```
 
-Search for all solar eclipses in a time range.
+Search for all surya grahan (solar eclipses) in a time range.
 
-**Note:** Solar eclipse computation is geocentric. Surface-specific effects (lunar parallax ~57') are not modeled.
+**Note:** Surya grahan computation is geocentric. Surface-specific effects (lunar parallax ~57') are not modeled.
 
 ---
 
@@ -1085,13 +1085,13 @@ Search for all max-speed events in a time range.
 | 32 | `dhruv_next_conjunction` | yes | | | |
 | 33 | `dhruv_prev_conjunction` | yes | | | |
 | 34 | `dhruv_search_conjunctions` | yes | | | |
-| 35 | `dhruv_eclipse_config_default` | | | | yes |
-| 36 | `dhruv_next_lunar_eclipse` | yes | | | |
-| 37 | `dhruv_prev_lunar_eclipse` | yes | | | |
-| 38 | `dhruv_search_lunar_eclipses` | yes | | | |
-| 39 | `dhruv_next_solar_eclipse` | yes | | | |
-| 40 | `dhruv_prev_solar_eclipse` | yes | | | |
-| 41 | `dhruv_search_solar_eclipses` | yes | | | |
+| 35 | `dhruv_grahan_config_default` | | | | yes |
+| 36 | `dhruv_next_chandra_grahan` | yes | | | |
+| 37 | `dhruv_prev_chandra_grahan` | yes | | | |
+| 38 | `dhruv_search_chandra_grahan` | yes | | | |
+| 39 | `dhruv_next_surya_grahan` | yes | | | |
+| 40 | `dhruv_prev_surya_grahan` | yes | | | |
+| 41 | `dhruv_search_surya_grahan` | yes | | | |
 | 42 | `dhruv_stationary_config_default` | | | | yes |
 | 43 | `dhruv_next_stationary` | yes | | | |
 | 44 | `dhruv_prev_stationary` | yes | | | |

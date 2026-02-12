@@ -5,17 +5,17 @@ use std::ptr;
 
 use dhruv_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query, StateVector};
 use dhruv_search::{
-    ConjunctionConfig, ConjunctionEvent, EclipseConfig, LunarEclipse, LunarEclipseType,
-    LunarPhase, MaxSpeedEvent, MaxSpeedType, SankrantiConfig, SearchError, SolarEclipse,
-    SolarEclipseType, StationaryConfig, StationaryEvent, StationType, ayana_for_date,
+    ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, GrahanConfig,
+    LunarPhase, MaxSpeedEvent, MaxSpeedType, SankrantiConfig, SearchError, SuryaGrahan,
+    SuryaGrahanType, StationaryConfig, StationaryEvent, StationType, ayana_for_date,
     body_ecliptic_lon_lat, elongation_at, ghatika_for_date, ghatika_from_sunrises,
     hora_for_date, hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
-    next_amavasya, next_conjunction, next_lunar_eclipse, next_max_speed, next_purnima,
-    next_sankranti, next_solar_eclipse, next_specific_sankranti, next_stationary,
-    prev_amavasya, prev_conjunction, prev_lunar_eclipse, prev_max_speed, prev_purnima,
-    prev_sankranti, prev_solar_eclipse, prev_specific_sankranti, prev_stationary,
-    search_amavasyas, search_conjunctions, search_lunar_eclipses, search_max_speed,
-    search_purnimas, search_sankrantis, search_solar_eclipses, search_stationary,
+    next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed, next_purnima,
+    next_sankranti, next_surya_grahan, next_specific_sankranti, next_stationary,
+    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
+    prev_sankranti, prev_surya_grahan, prev_specific_sankranti, prev_stationary,
+    search_amavasyas, search_chandra_grahan, search_conjunctions, search_max_speed,
+    search_purnimas, search_sankrantis, search_surya_grahan, search_stationary,
     nakshatra_for_date, panchang_for_date, sidereal_sum_at, special_lagnas_for_date,
     tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises, varsha_for_date,
     vedic_day_sunrises, yoga_at, yoga_for_date,
@@ -1777,68 +1777,68 @@ pub unsafe extern "C" fn dhruv_search_conjunctions(
 }
 
 // ---------------------------------------------------------------------------
-// Eclipse search
+// Grahan search
 // ---------------------------------------------------------------------------
 
-/// Sentinel value for absent optional JD fields in eclipse results.
+/// Sentinel value for absent optional JD fields in grahan results.
 pub const DHRUV_JD_ABSENT: f64 = -1.0;
 
-/// Lunar eclipse type: penumbral only.
-pub const DHRUV_LUNAR_ECLIPSE_PENUMBRAL: i32 = 0;
-/// Lunar eclipse type: partial (umbral).
-pub const DHRUV_LUNAR_ECLIPSE_PARTIAL: i32 = 1;
-/// Lunar eclipse type: total.
-pub const DHRUV_LUNAR_ECLIPSE_TOTAL: i32 = 2;
+/// Chandra grahan type: penumbral only.
+pub const DHRUV_CHANDRA_GRAHAN_PENUMBRAL: i32 = 0;
+/// Chandra grahan type: partial (umbral).
+pub const DHRUV_CHANDRA_GRAHAN_PARTIAL: i32 = 1;
+/// Chandra grahan type: total.
+pub const DHRUV_CHANDRA_GRAHAN_TOTAL: i32 = 2;
 
-/// Solar eclipse type: partial.
-pub const DHRUV_SOLAR_ECLIPSE_PARTIAL: i32 = 0;
-/// Solar eclipse type: annular.
-pub const DHRUV_SOLAR_ECLIPSE_ANNULAR: i32 = 1;
-/// Solar eclipse type: total.
-pub const DHRUV_SOLAR_ECLIPSE_TOTAL: i32 = 2;
-/// Solar eclipse type: hybrid.
-pub const DHRUV_SOLAR_ECLIPSE_HYBRID: i32 = 3;
+/// Surya grahan type: partial.
+pub const DHRUV_SURYA_GRAHAN_PARTIAL: i32 = 0;
+/// Surya grahan type: annular.
+pub const DHRUV_SURYA_GRAHAN_ANNULAR: i32 = 1;
+/// Surya grahan type: total.
+pub const DHRUV_SURYA_GRAHAN_TOTAL: i32 = 2;
+/// Surya grahan type: hybrid.
+pub const DHRUV_SURYA_GRAHAN_HYBRID: i32 = 3;
 
-/// C-compatible eclipse search configuration.
+/// C-compatible grahan search configuration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DhruvEclipseConfig {
-    /// Include penumbral-only lunar eclipses: 1 = yes, 0 = no.
+pub struct DhruvGrahanConfig {
+    /// Include penumbral-only chandra grahan: 1 = yes, 0 = no.
     pub include_penumbral: u8,
     /// Include ecliptic latitude and angular separation at peak: 1 = yes, 0 = no.
     pub include_peak_details: u8,
 }
 
-/// Returns default eclipse configuration.
+/// Returns default grahan configuration.
 #[unsafe(no_mangle)]
-pub extern "C" fn dhruv_eclipse_config_default() -> DhruvEclipseConfig {
-    DhruvEclipseConfig {
+pub extern "C" fn dhruv_grahan_config_default() -> DhruvGrahanConfig {
+    DhruvGrahanConfig {
         include_penumbral: 1,
         include_peak_details: 1,
     }
 }
 
-fn eclipse_config_from_ffi(cfg: &DhruvEclipseConfig) -> EclipseConfig {
-    EclipseConfig {
+fn grahan_config_from_ffi(cfg: &DhruvGrahanConfig) -> GrahanConfig {
+    GrahanConfig {
         include_penumbral: cfg.include_penumbral != 0,
         include_peak_details: cfg.include_peak_details != 0,
     }
 }
 
-fn lunar_eclipse_type_to_code(t: LunarEclipseType) -> i32 {
+fn chandra_grahan_type_to_code(t: ChandraGrahanType) -> i32 {
     match t {
-        LunarEclipseType::Penumbral => DHRUV_LUNAR_ECLIPSE_PENUMBRAL,
-        LunarEclipseType::Partial => DHRUV_LUNAR_ECLIPSE_PARTIAL,
-        LunarEclipseType::Total => DHRUV_LUNAR_ECLIPSE_TOTAL,
+        ChandraGrahanType::Penumbral => DHRUV_CHANDRA_GRAHAN_PENUMBRAL,
+        ChandraGrahanType::Partial => DHRUV_CHANDRA_GRAHAN_PARTIAL,
+        ChandraGrahanType::Total => DHRUV_CHANDRA_GRAHAN_TOTAL,
     }
 }
 
-fn solar_eclipse_type_to_code(t: SolarEclipseType) -> i32 {
+fn surya_grahan_type_to_code(t: SuryaGrahanType) -> i32 {
     match t {
-        SolarEclipseType::Partial => DHRUV_SOLAR_ECLIPSE_PARTIAL,
-        SolarEclipseType::Annular => DHRUV_SOLAR_ECLIPSE_ANNULAR,
-        SolarEclipseType::Total => DHRUV_SOLAR_ECLIPSE_TOTAL,
-        SolarEclipseType::Hybrid => DHRUV_SOLAR_ECLIPSE_HYBRID,
+        SuryaGrahanType::Partial => DHRUV_SURYA_GRAHAN_PARTIAL,
+        SuryaGrahanType::Annular => DHRUV_SURYA_GRAHAN_ANNULAR,
+        SuryaGrahanType::Total => DHRUV_SURYA_GRAHAN_TOTAL,
+        SuryaGrahanType::Hybrid => DHRUV_SURYA_GRAHAN_HYBRID,
     }
 }
 
@@ -1846,18 +1846,18 @@ fn option_jd(opt: Option<f64>) -> f64 {
     opt.unwrap_or(DHRUV_JD_ABSENT)
 }
 
-/// C-compatible lunar eclipse result.
+/// C-compatible chandra grahan result.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DhruvLunarEclipseResult {
-    /// Eclipse type code (see DHRUV_LUNAR_ECLIPSE_* constants).
-    pub eclipse_type: i32,
+pub struct DhruvChandraGrahanResult {
+    /// Grahan type code (see DHRUV_CHANDRA_GRAHAN_* constants).
+    pub grahan_type: i32,
     /// Umbral magnitude.
     pub magnitude: f64,
     /// Penumbral magnitude.
     pub penumbral_magnitude: f64,
-    /// Time of greatest eclipse (JD TDB).
-    pub greatest_eclipse_jd: f64,
+    /// Time of greatest grahan (JD TDB).
+    pub greatest_grahan_jd: f64,
     /// P1: First penumbral contact (JD TDB).
     pub p1_jd: f64,
     /// U1: First umbral contact (JD TDB). -1.0 if absent.
@@ -1870,19 +1870,19 @@ pub struct DhruvLunarEclipseResult {
     pub u4_jd: f64,
     /// P4: Last penumbral contact (JD TDB).
     pub p4_jd: f64,
-    /// Moon's ecliptic latitude at greatest eclipse, in degrees.
+    /// Moon's ecliptic latitude at greatest grahan, in degrees.
     pub moon_ecliptic_lat_deg: f64,
-    /// Angular separation at greatest eclipse, in degrees.
+    /// Angular separation at greatest grahan, in degrees.
     pub angular_separation_deg: f64,
 }
 
-impl From<&LunarEclipse> for DhruvLunarEclipseResult {
-    fn from(e: &LunarEclipse) -> Self {
+impl From<&ChandraGrahan> for DhruvChandraGrahanResult {
+    fn from(e: &ChandraGrahan) -> Self {
         Self {
-            eclipse_type: lunar_eclipse_type_to_code(e.eclipse_type),
+            grahan_type: chandra_grahan_type_to_code(e.grahan_type),
             magnitude: e.magnitude,
             penumbral_magnitude: e.penumbral_magnitude,
-            greatest_eclipse_jd: e.greatest_eclipse_jd,
+            greatest_grahan_jd: e.greatest_grahan_jd,
             p1_jd: e.p1_jd,
             u1_jd: option_jd(e.u1_jd),
             u2_jd: option_jd(e.u2_jd),
@@ -1895,16 +1895,16 @@ impl From<&LunarEclipse> for DhruvLunarEclipseResult {
     }
 }
 
-/// C-compatible solar eclipse result.
+/// C-compatible surya grahan result.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DhruvSolarEclipseResult {
-    /// Eclipse type code (see DHRUV_SOLAR_ECLIPSE_* constants).
-    pub eclipse_type: i32,
+pub struct DhruvSuryaGrahanResult {
+    /// Grahan type code (see DHRUV_SURYA_GRAHAN_* constants).
+    pub grahan_type: i32,
     /// Magnitude: ratio of apparent Moon diameter to Sun diameter.
     pub magnitude: f64,
-    /// Time of greatest eclipse (JD TDB).
-    pub greatest_eclipse_jd: f64,
+    /// Time of greatest grahan (JD TDB).
+    pub greatest_grahan_jd: f64,
     /// C1: First external contact (JD TDB). -1.0 if absent.
     pub c1_jd: f64,
     /// C2: First internal contact (JD TDB). -1.0 if absent.
@@ -1913,18 +1913,18 @@ pub struct DhruvSolarEclipseResult {
     pub c3_jd: f64,
     /// C4: Last external contact (JD TDB). -1.0 if absent.
     pub c4_jd: f64,
-    /// Moon's ecliptic latitude at greatest eclipse, in degrees.
+    /// Moon's ecliptic latitude at greatest grahan, in degrees.
     pub moon_ecliptic_lat_deg: f64,
-    /// Angular separation at greatest eclipse, in degrees.
+    /// Angular separation at greatest grahan, in degrees.
     pub angular_separation_deg: f64,
 }
 
-impl From<&SolarEclipse> for DhruvSolarEclipseResult {
-    fn from(e: &SolarEclipse) -> Self {
+impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
+    fn from(e: &SuryaGrahan) -> Self {
         Self {
-            eclipse_type: solar_eclipse_type_to_code(e.eclipse_type),
+            grahan_type: surya_grahan_type_to_code(e.grahan_type),
             magnitude: e.magnitude,
-            greatest_eclipse_jd: e.greatest_eclipse_jd,
+            greatest_grahan_jd: e.greatest_grahan_jd,
             c1_jd: option_jd(e.c1_jd),
             c2_jd: option_jd(e.c2_jd),
             c3_jd: option_jd(e.c3_jd),
@@ -1936,19 +1936,19 @@ impl From<&SolarEclipse> for DhruvSolarEclipseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Lunar eclipse FFI functions
+// Chandra grahan FFI functions
 // ---------------------------------------------------------------------------
 
-/// Find the next lunar eclipse after `jd_tdb`.
+/// Find the next chandra grahan (lunar eclipse) after `jd_tdb`.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_next_lunar_eclipse(
+pub unsafe extern "C" fn dhruv_next_chandra_grahan(
     engine: *const DhruvEngineHandle,
     jd_tdb: f64,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvLunarEclipseResult,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvChandraGrahanResult,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -1959,12 +1959,12 @@ pub unsafe extern "C" fn dhruv_next_lunar_eclipse(
         // SAFETY: All pointers checked for null above.
         let engine_ref = unsafe { &*engine };
         let cfg_ref = unsafe { &*config };
-        let rust_config = eclipse_config_from_ffi(cfg_ref);
+        let rust_config = grahan_config_from_ffi(cfg_ref);
 
-        match next_lunar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
+        match next_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
                 unsafe {
-                    *out_result = DhruvLunarEclipseResult::from(&eclipse);
+                    *out_result = DhruvChandraGrahanResult::from(&grahan);
                     *out_found = 1;
                 }
                 DhruvStatus::Ok
@@ -1978,16 +1978,16 @@ pub unsafe extern "C" fn dhruv_next_lunar_eclipse(
     })
 }
 
-/// Find the previous lunar eclipse before `jd_tdb`.
+/// Find the previous chandra grahan (lunar eclipse) before `jd_tdb`.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_prev_lunar_eclipse(
+pub unsafe extern "C" fn dhruv_prev_chandra_grahan(
     engine: *const DhruvEngineHandle,
     jd_tdb: f64,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvLunarEclipseResult,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvChandraGrahanResult,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -1997,12 +1997,12 @@ pub unsafe extern "C" fn dhruv_prev_lunar_eclipse(
 
         let engine_ref = unsafe { &*engine };
         let cfg_ref = unsafe { &*config };
-        let rust_config = eclipse_config_from_ffi(cfg_ref);
+        let rust_config = grahan_config_from_ffi(cfg_ref);
 
-        match prev_lunar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
+        match prev_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
                 unsafe {
-                    *out_result = DhruvLunarEclipseResult::from(&eclipse);
+                    *out_result = DhruvChandraGrahanResult::from(&grahan);
                     *out_found = 1;
                 }
                 DhruvStatus::Ok
@@ -2016,18 +2016,18 @@ pub unsafe extern "C" fn dhruv_prev_lunar_eclipse(
     })
 }
 
-/// Search for all lunar eclipses in a time range.
+/// Search for all chandra grahan (lunar eclipses) in a time range.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvLunarEclipseResult`.
+/// `out_results` must point to at least `max_count` contiguous `DhruvChandraGrahanResult`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_search_lunar_eclipses(
+pub unsafe extern "C" fn dhruv_search_chandra_grahan(
     engine: *const DhruvEngineHandle,
     jd_start: f64,
     jd_end: f64,
-    config: *const DhruvEclipseConfig,
-    out_results: *mut DhruvLunarEclipseResult,
+    config: *const DhruvGrahanConfig,
+    out_results: *mut DhruvChandraGrahanResult,
     max_count: u32,
     out_count: *mut u32,
 ) -> DhruvStatus {
@@ -2042,16 +2042,16 @@ pub unsafe extern "C" fn dhruv_search_lunar_eclipses(
 
         let engine_ref = unsafe { &*engine };
         let cfg_ref = unsafe { &*config };
-        let rust_config = eclipse_config_from_ffi(cfg_ref);
+        let rust_config = grahan_config_from_ffi(cfg_ref);
 
-        match search_lunar_eclipses(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(eclipses) => {
-                let count = eclipses.len().min(max_count as usize);
+        match search_chandra_grahan(engine_ref, jd_start, jd_end, &rust_config) {
+            Ok(results) => {
+                let count = results.len().min(max_count as usize);
                 let out_slice = unsafe {
                     std::slice::from_raw_parts_mut(out_results, max_count as usize)
                 };
-                for (i, e) in eclipses.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvLunarEclipseResult::from(e);
+                for (i, e) in results.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvChandraGrahanResult::from(e);
                 }
                 unsafe { *out_count = count as u32 };
                 DhruvStatus::Ok
@@ -2062,19 +2062,19 @@ pub unsafe extern "C" fn dhruv_search_lunar_eclipses(
 }
 
 // ---------------------------------------------------------------------------
-// Solar eclipse FFI functions
+// Surya grahan FFI functions
 // ---------------------------------------------------------------------------
 
-/// Find the next solar eclipse after `jd_tdb`.
+/// Find the next surya grahan (solar eclipse) after `jd_tdb`.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_next_solar_eclipse(
+pub unsafe extern "C" fn dhruv_next_surya_grahan(
     engine: *const DhruvEngineHandle,
     jd_tdb: f64,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvSolarEclipseResult,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvSuryaGrahanResult,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -2084,12 +2084,12 @@ pub unsafe extern "C" fn dhruv_next_solar_eclipse(
 
         let engine_ref = unsafe { &*engine };
         let cfg_ref = unsafe { &*config };
-        let rust_config = eclipse_config_from_ffi(cfg_ref);
+        let rust_config = grahan_config_from_ffi(cfg_ref);
 
-        match next_solar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
+        match next_surya_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
                 unsafe {
-                    *out_result = DhruvSolarEclipseResult::from(&eclipse);
+                    *out_result = DhruvSuryaGrahanResult::from(&grahan);
                     *out_found = 1;
                 }
                 DhruvStatus::Ok
@@ -2103,16 +2103,16 @@ pub unsafe extern "C" fn dhruv_next_solar_eclipse(
     })
 }
 
-/// Find the previous solar eclipse before `jd_tdb`.
+/// Find the previous surya grahan (solar eclipse) before `jd_tdb`.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_prev_solar_eclipse(
+pub unsafe extern "C" fn dhruv_prev_surya_grahan(
     engine: *const DhruvEngineHandle,
     jd_tdb: f64,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvSolarEclipseResult,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvSuryaGrahanResult,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -2122,12 +2122,12 @@ pub unsafe extern "C" fn dhruv_prev_solar_eclipse(
 
         let engine_ref = unsafe { &*engine };
         let cfg_ref = unsafe { &*config };
-        let rust_config = eclipse_config_from_ffi(cfg_ref);
+        let rust_config = grahan_config_from_ffi(cfg_ref);
 
-        match prev_solar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
+        match prev_surya_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
                 unsafe {
-                    *out_result = DhruvSolarEclipseResult::from(&eclipse);
+                    *out_result = DhruvSuryaGrahanResult::from(&grahan);
                     *out_found = 1;
                 }
                 DhruvStatus::Ok
@@ -2141,18 +2141,18 @@ pub unsafe extern "C" fn dhruv_prev_solar_eclipse(
     })
 }
 
-/// Search for all solar eclipses in a time range.
+/// Search for all surya grahan (solar eclipses) in a time range.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvSolarEclipseResult`.
+/// `out_results` must point to at least `max_count` contiguous `DhruvSuryaGrahanResult`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_search_solar_eclipses(
+pub unsafe extern "C" fn dhruv_search_surya_grahan(
     engine: *const DhruvEngineHandle,
     jd_start: f64,
     jd_end: f64,
-    config: *const DhruvEclipseConfig,
-    out_results: *mut DhruvSolarEclipseResult,
+    config: *const DhruvGrahanConfig,
+    out_results: *mut DhruvSuryaGrahanResult,
     max_count: u32,
     out_count: *mut u32,
 ) -> DhruvStatus {
@@ -2167,16 +2167,16 @@ pub unsafe extern "C" fn dhruv_search_solar_eclipses(
 
         let engine_ref = unsafe { &*engine };
         let cfg_ref = unsafe { &*config };
-        let rust_config = eclipse_config_from_ffi(cfg_ref);
+        let rust_config = grahan_config_from_ffi(cfg_ref);
 
-        match search_solar_eclipses(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(eclipses) => {
-                let count = eclipses.len().min(max_count as usize);
+        match search_surya_grahan(engine_ref, jd_start, jd_end, &rust_config) {
+            Ok(results) => {
+                let count = results.len().min(max_count as usize);
                 let out_slice = unsafe {
                     std::slice::from_raw_parts_mut(out_results, max_count as usize)
                 };
-                for (i, e) in eclipses.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvSolarEclipseResult::from(e);
+                for (i, e) in results.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvSuryaGrahanResult::from(e);
                 }
                 unsafe { *out_count = count as u32 };
                 DhruvStatus::Ok
@@ -3759,14 +3759,14 @@ pub struct DhruvRiseSetResultUtc {
     pub utc: DhruvUtcTime,
 }
 
-/// C-compatible lunar eclipse result with UTC times.
+/// C-compatible chandra grahan result with UTC times.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DhruvLunarEclipseResultUtc {
-    pub eclipse_type: i32,
+pub struct DhruvChandraGrahanResultUtc {
+    pub grahan_type: i32,
     pub magnitude: f64,
     pub penumbral_magnitude: f64,
-    pub greatest_eclipse: DhruvUtcTime,
+    pub greatest_grahan: DhruvUtcTime,
     pub p1: DhruvUtcTime,
     pub u1: DhruvUtcTime,
     pub u2: DhruvUtcTime,
@@ -3785,13 +3785,13 @@ pub struct DhruvLunarEclipseResultUtc {
     pub u4_valid: u8,
 }
 
-/// C-compatible solar eclipse result with UTC times.
+/// C-compatible surya grahan result with UTC times.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DhruvSolarEclipseResultUtc {
-    pub eclipse_type: i32,
+pub struct DhruvSuryaGrahanResultUtc {
+    pub grahan_type: i32,
     pub magnitude: f64,
-    pub greatest_eclipse: DhruvUtcTime,
+    pub greatest_grahan: DhruvUtcTime,
     pub c1: DhruvUtcTime,
     pub c2: DhruvUtcTime,
     pub c3: DhruvUtcTime,
@@ -3881,16 +3881,16 @@ fn riseset_result_to_utc(r: &RiseSetResult, lsk: &dhruv_time::LeapSecondKernel) 
     }
 }
 
-fn lunar_eclipse_to_utc(e: &LunarEclipse, lsk: &dhruv_time::LeapSecondKernel) -> DhruvLunarEclipseResultUtc {
+fn chandra_grahan_to_utc(e: &ChandraGrahan, lsk: &dhruv_time::LeapSecondKernel) -> DhruvChandraGrahanResultUtc {
     let (u1, u1_valid) = option_jd_to_utc(e.u1_jd, lsk);
     let (u2, u2_valid) = option_jd_to_utc(e.u2_jd, lsk);
     let (u3, u3_valid) = option_jd_to_utc(e.u3_jd, lsk);
     let (u4, u4_valid) = option_jd_to_utc(e.u4_jd, lsk);
-    DhruvLunarEclipseResultUtc {
-        eclipse_type: lunar_eclipse_type_to_code(e.eclipse_type),
+    DhruvChandraGrahanResultUtc {
+        grahan_type: chandra_grahan_type_to_code(e.grahan_type),
         magnitude: e.magnitude,
         penumbral_magnitude: e.penumbral_magnitude,
-        greatest_eclipse: jd_tdb_to_utc_time(e.greatest_eclipse_jd, lsk),
+        greatest_grahan: jd_tdb_to_utc_time(e.greatest_grahan_jd, lsk),
         p1: jd_tdb_to_utc_time(e.p1_jd, lsk),
         u1, u2, u3, u4,
         p4: jd_tdb_to_utc_time(e.p4_jd, lsk),
@@ -3900,15 +3900,15 @@ fn lunar_eclipse_to_utc(e: &LunarEclipse, lsk: &dhruv_time::LeapSecondKernel) ->
     }
 }
 
-fn solar_eclipse_to_utc(e: &SolarEclipse, lsk: &dhruv_time::LeapSecondKernel) -> DhruvSolarEclipseResultUtc {
+fn surya_grahan_to_utc(e: &SuryaGrahan, lsk: &dhruv_time::LeapSecondKernel) -> DhruvSuryaGrahanResultUtc {
     let (c1, c1_valid) = option_jd_to_utc(e.c1_jd, lsk);
     let (c2, c2_valid) = option_jd_to_utc(e.c2_jd, lsk);
     let (c3, c3_valid) = option_jd_to_utc(e.c3_jd, lsk);
     let (c4, c4_valid) = option_jd_to_utc(e.c4_jd, lsk);
-    DhruvSolarEclipseResultUtc {
-        eclipse_type: solar_eclipse_type_to_code(e.eclipse_type),
+    DhruvSuryaGrahanResultUtc {
+        grahan_type: surya_grahan_type_to_code(e.grahan_type),
         magnitude: e.magnitude,
-        greatest_eclipse: jd_tdb_to_utc_time(e.greatest_eclipse_jd, lsk),
+        greatest_grahan: jd_tdb_to_utc_time(e.greatest_grahan_jd, lsk),
         c1, c2, c3, c4,
         moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
         angular_separation_deg: e.angular_separation_deg,
@@ -4041,16 +4041,16 @@ pub unsafe extern "C" fn dhruv_search_conjunctions_utc(
     })
 }
 
-/// Find the next lunar eclipse after the given UTC time.
+/// Find the next chandra grahan after the given UTC time.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_next_lunar_eclipse_utc(
+pub unsafe extern "C" fn dhruv_next_chandra_grahan_utc(
     engine: *const DhruvEngineHandle,
     utc: *const DhruvUtcTime,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvLunarEclipseResultUtc,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvChandraGrahanResultUtc,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -4059,10 +4059,10 @@ pub unsafe extern "C" fn dhruv_next_lunar_eclipse_utc(
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = eclipse_config_from_ffi(unsafe { &*config });
-        match next_lunar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
-                unsafe { *out_result = lunar_eclipse_to_utc(&eclipse, engine_ref.lsk()); *out_found = 1; }
+        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        match next_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
+                unsafe { *out_result = chandra_grahan_to_utc(&grahan, engine_ref.lsk()); *out_found = 1; }
                 DhruvStatus::Ok
             }
             Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
@@ -4071,16 +4071,16 @@ pub unsafe extern "C" fn dhruv_next_lunar_eclipse_utc(
     })
 }
 
-/// Find the previous lunar eclipse before the given UTC time.
+/// Find the previous chandra grahan before the given UTC time.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_prev_lunar_eclipse_utc(
+pub unsafe extern "C" fn dhruv_prev_chandra_grahan_utc(
     engine: *const DhruvEngineHandle,
     utc: *const DhruvUtcTime,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvLunarEclipseResultUtc,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvChandraGrahanResultUtc,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -4089,10 +4089,10 @@ pub unsafe extern "C" fn dhruv_prev_lunar_eclipse_utc(
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = eclipse_config_from_ffi(unsafe { &*config });
-        match prev_lunar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
-                unsafe { *out_result = lunar_eclipse_to_utc(&eclipse, engine_ref.lsk()); *out_found = 1; }
+        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        match prev_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
+                unsafe { *out_result = chandra_grahan_to_utc(&grahan, engine_ref.lsk()); *out_found = 1; }
                 DhruvStatus::Ok
             }
             Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
@@ -4101,18 +4101,18 @@ pub unsafe extern "C" fn dhruv_prev_lunar_eclipse_utc(
     })
 }
 
-/// Search for all lunar eclipses in a UTC time range.
+/// Search for all chandra grahan in a UTC time range.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvLunarEclipseResultUtc`.
+/// `out_results` must point to at least `max_count` contiguous `DhruvChandraGrahanResultUtc`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_search_lunar_eclipses_utc(
+pub unsafe extern "C" fn dhruv_search_chandra_grahan_utc(
     engine: *const DhruvEngineHandle,
     start: *const DhruvUtcTime,
     end: *const DhruvUtcTime,
-    config: *const DhruvEclipseConfig,
-    out_results: *mut DhruvLunarEclipseResultUtc,
+    config: *const DhruvGrahanConfig,
+    out_results: *mut DhruvChandraGrahanResultUtc,
     max_count: u32,
     out_count: *mut u32,
 ) -> DhruvStatus {
@@ -4123,13 +4123,13 @@ pub unsafe extern "C" fn dhruv_search_lunar_eclipses_utc(
         let engine_ref = unsafe { &*engine };
         let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
         let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = eclipse_config_from_ffi(unsafe { &*config });
-        match search_lunar_eclipses(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(eclipses) => {
-                let count = eclipses.len().min(max_count as usize);
+        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        match search_chandra_grahan(engine_ref, jd_start, jd_end, &rust_config) {
+            Ok(results) => {
+                let count = results.len().min(max_count as usize);
                 let out_slice = unsafe { std::slice::from_raw_parts_mut(out_results, max_count as usize) };
-                for (i, e) in eclipses.iter().take(count).enumerate() {
-                    out_slice[i] = lunar_eclipse_to_utc(e, engine_ref.lsk());
+                for (i, e) in results.iter().take(count).enumerate() {
+                    out_slice[i] = chandra_grahan_to_utc(e, engine_ref.lsk());
                 }
                 unsafe { *out_count = count as u32 };
                 DhruvStatus::Ok
@@ -4139,16 +4139,16 @@ pub unsafe extern "C" fn dhruv_search_lunar_eclipses_utc(
     })
 }
 
-/// Find the next solar eclipse after the given UTC time.
+/// Find the next surya grahan after the given UTC time.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_next_solar_eclipse_utc(
+pub unsafe extern "C" fn dhruv_next_surya_grahan_utc(
     engine: *const DhruvEngineHandle,
     utc: *const DhruvUtcTime,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvSolarEclipseResultUtc,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvSuryaGrahanResultUtc,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -4157,10 +4157,10 @@ pub unsafe extern "C" fn dhruv_next_solar_eclipse_utc(
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = eclipse_config_from_ffi(unsafe { &*config });
-        match next_solar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
-                unsafe { *out_result = solar_eclipse_to_utc(&eclipse, engine_ref.lsk()); *out_found = 1; }
+        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        match next_surya_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
+                unsafe { *out_result = surya_grahan_to_utc(&grahan, engine_ref.lsk()); *out_found = 1; }
                 DhruvStatus::Ok
             }
             Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
@@ -4169,16 +4169,16 @@ pub unsafe extern "C" fn dhruv_next_solar_eclipse_utc(
     })
 }
 
-/// Find the previous solar eclipse before the given UTC time.
+/// Find the previous surya grahan before the given UTC time.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_prev_solar_eclipse_utc(
+pub unsafe extern "C" fn dhruv_prev_surya_grahan_utc(
     engine: *const DhruvEngineHandle,
     utc: *const DhruvUtcTime,
-    config: *const DhruvEclipseConfig,
-    out_result: *mut DhruvSolarEclipseResultUtc,
+    config: *const DhruvGrahanConfig,
+    out_result: *mut DhruvSuryaGrahanResultUtc,
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
@@ -4187,10 +4187,10 @@ pub unsafe extern "C" fn dhruv_prev_solar_eclipse_utc(
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = eclipse_config_from_ffi(unsafe { &*config });
-        match prev_solar_eclipse(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(eclipse)) => {
-                unsafe { *out_result = solar_eclipse_to_utc(&eclipse, engine_ref.lsk()); *out_found = 1; }
+        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        match prev_surya_grahan(engine_ref, jd_tdb, &rust_config) {
+            Ok(Some(grahan)) => {
+                unsafe { *out_result = surya_grahan_to_utc(&grahan, engine_ref.lsk()); *out_found = 1; }
                 DhruvStatus::Ok
             }
             Ok(None) => { unsafe { *out_found = 0 }; DhruvStatus::Ok }
@@ -4199,18 +4199,18 @@ pub unsafe extern "C" fn dhruv_prev_solar_eclipse_utc(
     })
 }
 
-/// Search for all solar eclipses in a UTC time range.
+/// Search for all surya grahan in a UTC time range.
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvSolarEclipseResultUtc`.
+/// `out_results` must point to at least `max_count` contiguous `DhruvSuryaGrahanResultUtc`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_search_solar_eclipses_utc(
+pub unsafe extern "C" fn dhruv_search_surya_grahan_utc(
     engine: *const DhruvEngineHandle,
     start: *const DhruvUtcTime,
     end: *const DhruvUtcTime,
-    config: *const DhruvEclipseConfig,
-    out_results: *mut DhruvSolarEclipseResultUtc,
+    config: *const DhruvGrahanConfig,
+    out_results: *mut DhruvSuryaGrahanResultUtc,
     max_count: u32,
     out_count: *mut u32,
 ) -> DhruvStatus {
@@ -4221,13 +4221,13 @@ pub unsafe extern "C" fn dhruv_search_solar_eclipses_utc(
         let engine_ref = unsafe { &*engine };
         let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
         let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = eclipse_config_from_ffi(unsafe { &*config });
-        match search_solar_eclipses(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(eclipses) => {
-                let count = eclipses.len().min(max_count as usize);
+        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        match search_surya_grahan(engine_ref, jd_start, jd_end, &rust_config) {
+            Ok(results) => {
+                let count = results.len().min(max_count as usize);
                 let out_slice = unsafe { std::slice::from_raw_parts_mut(out_results, max_count as usize) };
-                for (i, e) in eclipses.iter().take(count).enumerate() {
-                    out_slice[i] = solar_eclipse_to_utc(e, engine_ref.lsk());
+                for (i, e) in results.iter().take(count).enumerate() {
+                    out_slice[i] = surya_grahan_to_utc(e, engine_ref.lsk());
                 }
                 unsafe { *out_count = count as u32 };
                 DhruvStatus::Ok
@@ -7616,22 +7616,22 @@ mod tests {
         assert_eq!(status, DhruvStatus::InvalidQuery);
     }
 
-    // --- Eclipse FFI tests ---
+    // --- Grahan FFI tests ---
 
     #[test]
-    fn ffi_eclipse_config_default_values() {
-        let cfg = dhruv_eclipse_config_default();
+    fn ffi_grahan_config_default_values() {
+        let cfg = dhruv_grahan_config_default();
         assert_eq!(cfg.include_penumbral, 1);
         assert_eq!(cfg.include_peak_details, 1);
     }
 
     #[test]
-    fn ffi_next_lunar_eclipse_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvLunarEclipseResult>::uninit();
+    fn ffi_next_chandra_grahan_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_next_lunar_eclipse(
+            dhruv_next_chandra_grahan(
                 ptr::null(),
                 2_460_000.5,
                 &cfg,
@@ -7643,12 +7643,12 @@ mod tests {
     }
 
     #[test]
-    fn ffi_prev_lunar_eclipse_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvLunarEclipseResult>::uninit();
+    fn ffi_prev_chandra_grahan_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_prev_lunar_eclipse(
+            dhruv_prev_chandra_grahan(
                 ptr::null(),
                 2_460_000.5,
                 &cfg,
@@ -7660,11 +7660,11 @@ mod tests {
     }
 
     #[test]
-    fn ffi_search_lunar_eclipses_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
+    fn ffi_search_chandra_grahan_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
         let mut count: u32 = 0;
         let status = unsafe {
-            dhruv_search_lunar_eclipses(
+            dhruv_search_chandra_grahan(
                 ptr::null(),
                 2_460_000.5,
                 2_460_400.5,
@@ -7678,12 +7678,12 @@ mod tests {
     }
 
     #[test]
-    fn ffi_next_solar_eclipse_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSolarEclipseResult>::uninit();
+    fn ffi_next_surya_grahan_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResult>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_next_solar_eclipse(
+            dhruv_next_surya_grahan(
                 ptr::null(),
                 2_460_000.5,
                 &cfg,
@@ -7695,12 +7695,12 @@ mod tests {
     }
 
     #[test]
-    fn ffi_prev_solar_eclipse_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSolarEclipseResult>::uninit();
+    fn ffi_prev_surya_grahan_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResult>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_prev_solar_eclipse(
+            dhruv_prev_surya_grahan(
                 ptr::null(),
                 2_460_000.5,
                 &cfg,
@@ -7712,11 +7712,11 @@ mod tests {
     }
 
     #[test]
-    fn ffi_search_solar_eclipses_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
+    fn ffi_search_surya_grahan_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
         let mut count: u32 = 0;
         let status = unsafe {
-            dhruv_search_solar_eclipses(
+            dhruv_search_surya_grahan(
                 ptr::null(),
                 2_460_000.5,
                 2_460_400.5,
@@ -7730,18 +7730,18 @@ mod tests {
     }
 
     #[test]
-    fn ffi_lunar_eclipse_type_constants() {
-        assert_eq!(DHRUV_LUNAR_ECLIPSE_PENUMBRAL, 0);
-        assert_eq!(DHRUV_LUNAR_ECLIPSE_PARTIAL, 1);
-        assert_eq!(DHRUV_LUNAR_ECLIPSE_TOTAL, 2);
+    fn ffi_chandra_grahan_type_constants() {
+        assert_eq!(DHRUV_CHANDRA_GRAHAN_PENUMBRAL, 0);
+        assert_eq!(DHRUV_CHANDRA_GRAHAN_PARTIAL, 1);
+        assert_eq!(DHRUV_CHANDRA_GRAHAN_TOTAL, 2);
     }
 
     #[test]
-    fn ffi_solar_eclipse_type_constants() {
-        assert_eq!(DHRUV_SOLAR_ECLIPSE_PARTIAL, 0);
-        assert_eq!(DHRUV_SOLAR_ECLIPSE_ANNULAR, 1);
-        assert_eq!(DHRUV_SOLAR_ECLIPSE_TOTAL, 2);
-        assert_eq!(DHRUV_SOLAR_ECLIPSE_HYBRID, 3);
+    fn ffi_surya_grahan_type_constants() {
+        assert_eq!(DHRUV_SURYA_GRAHAN_PARTIAL, 0);
+        assert_eq!(DHRUV_SURYA_GRAHAN_ANNULAR, 1);
+        assert_eq!(DHRUV_SURYA_GRAHAN_TOTAL, 2);
+        assert_eq!(DHRUV_SURYA_GRAHAN_HYBRID, 3);
     }
 
     #[test]
@@ -8321,35 +8321,35 @@ mod tests {
     }
 
     #[test]
-    fn ffi_next_lunar_eclipse_utc_rejects_null() {
+    fn ffi_next_chandra_grahan_utc_rejects_null() {
         let utc = test_utc();
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvLunarEclipseResultUtc>::uninit();
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResultUtc>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_next_lunar_eclipse_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
+            dhruv_next_chandra_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
         };
         assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
-    fn ffi_prev_lunar_eclipse_utc_rejects_null() {
+    fn ffi_prev_chandra_grahan_utc_rejects_null() {
         let utc = test_utc();
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvLunarEclipseResultUtc>::uninit();
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResultUtc>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_prev_lunar_eclipse_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
+            dhruv_prev_chandra_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
         };
         assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
-    fn ffi_search_lunar_eclipses_utc_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
+    fn ffi_search_chandra_grahan_utc_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
         let mut count: u32 = 0;
         let status = unsafe {
-            dhruv_search_lunar_eclipses_utc(
+            dhruv_search_chandra_grahan_utc(
                 ptr::null(), ptr::null(), ptr::null(), &cfg,
                 ptr::null_mut(), 10, &mut count,
             )
@@ -8358,35 +8358,35 @@ mod tests {
     }
 
     #[test]
-    fn ffi_next_solar_eclipse_utc_rejects_null() {
+    fn ffi_next_surya_grahan_utc_rejects_null() {
         let utc = test_utc();
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSolarEclipseResultUtc>::uninit();
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResultUtc>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_next_solar_eclipse_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
+            dhruv_next_surya_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
         };
         assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
-    fn ffi_prev_solar_eclipse_utc_rejects_null() {
+    fn ffi_prev_surya_grahan_utc_rejects_null() {
         let utc = test_utc();
-        let cfg = dhruv_eclipse_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSolarEclipseResultUtc>::uninit();
+        let cfg = dhruv_grahan_config_default();
+        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResultUtc>::uninit();
         let mut found: u8 = 0;
         let status = unsafe {
-            dhruv_prev_solar_eclipse_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
+            dhruv_prev_surya_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
         };
         assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
-    fn ffi_search_solar_eclipses_utc_rejects_null() {
-        let cfg = dhruv_eclipse_config_default();
+    fn ffi_search_surya_grahan_utc_rejects_null() {
+        let cfg = dhruv_grahan_config_default();
         let mut count: u32 = 0;
         let status = unsafe {
-            dhruv_search_solar_eclipses_utc(
+            dhruv_search_surya_grahan_utc(
                 ptr::null(), ptr::null(), ptr::null(), &cfg,
                 ptr::null_mut(), 10, &mut count,
             )
