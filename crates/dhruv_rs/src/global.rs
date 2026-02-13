@@ -12,9 +12,7 @@ static ENGINE: OnceLock<Engine> = OnceLock::new();
 /// Returns [`DhruvError::AlreadyInitialized`] on subsequent calls.
 pub fn init(config: EngineConfig) -> Result<(), DhruvError> {
     let eng = Engine::new(config)?;
-    ENGINE
-        .set(eng)
-        .map_err(|_| DhruvError::AlreadyInitialized)
+    ENGINE.set(eng).map_err(|_| DhruvError::AlreadyInitialized)
 }
 
 /// Returns `true` if the global engine has been initialized.

@@ -176,9 +176,7 @@ fn ffi_utc_to_tdb_jd_roundtrip() {
     let mut jd_tdb: f64 = 0.0;
     // J2000.0 = 2000-01-01 12:00:00 UTC (approximately)
     // SAFETY: LSK handle and output are valid in this test.
-    let status = unsafe {
-        dhruv_utc_to_tdb_jd(lsk_ptr, 2000, 1, 1, 12, 0, 0.0, &mut jd_tdb)
-    };
+    let status = unsafe { dhruv_utc_to_tdb_jd(lsk_ptr, 2000, 1, 1, 12, 0, 0.0, &mut jd_tdb) };
     assert_eq!(status, DhruvStatus::Ok);
 
     // Should be very close to J2000.0 (2451545.0), within ~1 minute of TDB-UTC offset.
@@ -218,9 +216,7 @@ fn ffi_full_longitude_workflow() {
     // Step 1: UTC to TDB JD (uses LSK, not engine)
     let mut jd_tdb: f64 = 0.0;
     // SAFETY: LSK handle and output are valid.
-    let status = unsafe {
-        dhruv_utc_to_tdb_jd(lsk_ptr, 2024, 3, 20, 12, 0, 0.0, &mut jd_tdb)
-    };
+    let status = unsafe { dhruv_utc_to_tdb_jd(lsk_ptr, 2024, 3, 20, 12, 0, 0.0, &mut jd_tdb) };
     assert_eq!(status, DhruvStatus::Ok);
 
     // Step 2: Query Mars heliocentric ecliptic
@@ -245,13 +241,18 @@ fn ffi_full_longitude_workflow() {
         distance_km: 0.0,
     };
     // SAFETY: Both pointers are valid.
-    let status = unsafe {
-        dhruv_cartesian_to_spherical(&state.position_km, &mut spherical)
-    };
+    let status = unsafe { dhruv_cartesian_to_spherical(&state.position_km, &mut spherical) };
     assert_eq!(status, DhruvStatus::Ok);
 
-    assert!(spherical.lon_deg >= 0.0 && spherical.lon_deg < 360.0, "longitude {} out of range", spherical.lon_deg);
-    assert!(spherical.distance_km > 1.0e8, "Mars should be >1 AU from Sun");
+    assert!(
+        spherical.lon_deg >= 0.0 && spherical.lon_deg < 360.0,
+        "longitude {} out of range",
+        spherical.lon_deg
+    );
+    assert!(
+        spherical.distance_km > 1.0e8,
+        "Mars should be >1 AU from Sun"
+    );
 
     // SAFETY: Pointers were returned by their respective _new/_load functions.
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -282,7 +283,12 @@ fn ffi_query_utc_spherical_mars_heliocentric() {
             Body::Mars.code(),
             Body::Sun.code(),
             Frame::EclipticJ2000.code(),
-            2024, 3, 20, 12, 0, 0.0,
+            2024,
+            3,
+            20,
+            12,
+            0,
+            0.0,
             &mut out,
         )
     };
@@ -290,7 +296,8 @@ fn ffi_query_utc_spherical_mars_heliocentric() {
 
     assert!(
         out.lon_deg >= 0.0 && out.lon_deg < 360.0,
-        "longitude {} out of range", out.lon_deg
+        "longitude {} out of range",
+        out.lon_deg
     );
     assert!(out.distance_km > 1.0e8, "Mars should be >1 AU from Sun");
 
@@ -322,7 +329,12 @@ fn ffi_query_utc_spherical_speeds_finite() {
             Body::Earth.code(),
             Body::Sun.code(),
             Frame::EclipticJ2000.code(),
-            2024, 6, 15, 0, 0, 0.0,
+            2024,
+            6,
+            15,
+            0,
+            0,
+            0.0,
             &mut out,
         )
     };
@@ -331,7 +343,10 @@ fn ffi_query_utc_spherical_speeds_finite() {
     assert!(out.lon_speed.is_finite(), "lon_speed not finite");
     assert!(out.lat_speed.is_finite(), "lat_speed not finite");
     assert!(out.distance_speed.is_finite(), "distance_speed not finite");
-    assert!(out.lon_speed != 0.0, "lon_speed should be non-zero for orbiting body");
+    assert!(
+        out.lon_speed != 0.0,
+        "lon_speed should be non-zero for orbiting body"
+    );
 
     // SAFETY: Pointer was returned by dhruv_engine_new.
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -438,8 +453,14 @@ fn ffi_sunrise_new_delhi() {
     // SAFETY: All pointers are valid.
     let status = unsafe {
         dhruv_compute_rise_set(
-            engine_ptr, lsk_ptr, eop_ptr, &loc,
-            DHRUV_EVENT_SUNRISE, noon, &cfg, &mut result,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            DHRUV_EVENT_SUNRISE,
+            noon,
+            &cfg,
+            &mut result,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -449,7 +470,12 @@ fn ffi_sunrise_new_delhi() {
     // Sunrise in New Delhi on 2024-03-20 is ~00:48 UTC (06:18 IST)
     // Convert to UTC for validation
     let mut utc = DhruvUtcTime {
-        year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0,
+        year: 0,
+        month: 0,
+        day: 0,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
     };
     // SAFETY: All pointers are valid.
     let status = unsafe { dhruv_riseset_result_to_utc(lsk_ptr, &result, &mut utc) };
@@ -461,7 +487,8 @@ fn ffi_sunrise_new_delhi() {
     assert!(
         total_min < 6 * 60, // before 06:00 UTC
         "Sunrise UTC = {:02}:{:02}, expected ~00:48",
-        utc.hour, utc.minute
+        utc.hour,
+        utc.minute
     );
 
     // SAFETY: Pointers were returned by their respective _new/_load functions.
@@ -511,8 +538,14 @@ fn ffi_polar_never_sets_tromso() {
     // SAFETY: All pointers are valid.
     let status = unsafe {
         dhruv_compute_rise_set(
-            engine_ptr, lsk_ptr, eop_ptr, &loc,
-            DHRUV_EVENT_SUNRISE, noon, &cfg, &mut result,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            DHRUV_EVENT_SUNRISE,
+            noon,
+            &cfg,
+            &mut result,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -524,7 +557,12 @@ fn ffi_polar_never_sets_tromso() {
 
     // Verify that converting NeverSets to UTC returns InvalidQuery
     let mut utc = DhruvUtcTime {
-        year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0,
+        year: 0,
+        month: 0,
+        day: 0,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
     };
     // SAFETY: All pointers are valid.
     let status = unsafe { dhruv_riseset_result_to_utc(lsk_ptr, &result, &mut utc) };
@@ -576,8 +614,13 @@ fn ffi_all_events_new_delhi() {
     // SAFETY: All pointers are valid, results array has 8 elements.
     let status = unsafe {
         dhruv_compute_all_events(
-            engine_ptr, lsk_ptr, eop_ptr, &loc,
-            noon, &cfg, results.as_mut_ptr(),
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            noon,
+            &cfg,
+            results.as_mut_ptr(),
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -596,7 +639,10 @@ fn ffi_all_events_new_delhi() {
         assert!(
             results[i].jd_tdb < results[i + 1].jd_tdb,
             "dawn order: event {} (jd={}) should be < event {} (jd={})",
-            i, results[i].jd_tdb, i + 1, results[i + 1].jd_tdb
+            i,
+            results[i].jd_tdb,
+            i + 1,
+            results[i + 1].jd_tdb
         );
     }
 
@@ -619,7 +665,12 @@ fn ffi_jd_tdb_to_utc_j2000() {
     assert_eq!(status, DhruvStatus::Ok);
 
     let mut utc = DhruvUtcTime {
-        year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0,
+        year: 0,
+        month: 0,
+        day: 0,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
     };
 
     // J2000.0 TDB ≈ 2000-01-01 12:00:00 UTC (within ~1 minute)
@@ -630,7 +681,12 @@ fn ffi_jd_tdb_to_utc_j2000() {
     assert_eq!(utc.month, 1);
     assert_eq!(utc.day, 1);
     assert_eq!(utc.hour, 11); // TDB-UTC offset ~64s, so hour rounds to 11
-    assert!(utc.minute >= 58, "expected ~11:58-11:59, got {:02}:{:02}", utc.hour, utc.minute);
+    assert!(
+        utc.minute >= 58,
+        "expected ~11:58-11:59, got {:02}:{:02}",
+        utc.hour,
+        utc.minute
+    );
 
     // SAFETY: Pointer was returned by dhruv_lsk_load.
     unsafe { dhruv_lsk_free(lsk_ptr) };
@@ -646,9 +702,7 @@ fn ffi_nutation_at_2024() {
     let mut deps: f64 = 0.0;
     let jd = 2_460_310.5; // ~2024-01-01
     // SAFETY: Valid pointers.
-    let status = unsafe {
-        dhruv_nutation_iau2000b(jd, &mut dpsi, &mut deps)
-    };
+    let status = unsafe { dhruv_nutation_iau2000b(jd, &mut dpsi, &mut deps) };
     assert_eq!(status, DhruvStatus::Ok);
     assert!(dpsi.abs() < 18.0, "Δψ = {dpsi}");
     assert!(deps.abs() < 10.0, "Δε = {deps}");
@@ -708,13 +762,21 @@ fn ffi_sunrise_lower_limb_later_than_upper() {
         altitude_correction: 1,
     };
     let mut result_upper = DhruvRiseSetResult {
-        result_type: -1, event_code: -1, jd_tdb: 0.0,
+        result_type: -1,
+        event_code: -1,
+        jd_tdb: 0.0,
     };
     // SAFETY: All pointers are valid.
     let status = unsafe {
         dhruv_compute_rise_set(
-            engine_ptr, lsk_ptr, eop_ptr, &loc,
-            DHRUV_EVENT_SUNRISE, noon, &cfg_upper, &mut result_upper,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            DHRUV_EVENT_SUNRISE,
+            noon,
+            &cfg_upper,
+            &mut result_upper,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -727,13 +789,21 @@ fn ffi_sunrise_lower_limb_later_than_upper() {
         altitude_correction: 1,
     };
     let mut result_lower = DhruvRiseSetResult {
-        result_type: -1, event_code: -1, jd_tdb: 0.0,
+        result_type: -1,
+        event_code: -1,
+        jd_tdb: 0.0,
     };
     // SAFETY: All pointers are valid.
     let status = unsafe {
         dhruv_compute_rise_set(
-            engine_ptr, lsk_ptr, eop_ptr, &loc,
-            DHRUV_EVENT_SUNRISE, noon, &cfg_lower, &mut result_lower,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            DHRUV_EVENT_SUNRISE,
+            noon,
+            &cfg_lower,
+            &mut result_lower,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -744,7 +814,8 @@ fn ffi_sunrise_lower_limb_later_than_upper() {
     assert!(
         result_lower.jd_tdb > result_upper.jd_tdb,
         "LowerLimb sunrise (jd={}) should be after UpperLimb (jd={})",
-        result_lower.jd_tdb, result_upper.jd_tdb
+        result_lower.jd_tdb,
+        result_upper.jd_tdb
     );
 
     // SAFETY: cleanup
@@ -781,20 +852,35 @@ fn ffi_center_mode_between_limbs() {
     let noon = dhruv_approximate_local_noon_jd(jd_0h, loc.longitude_deg);
 
     let mut results = [0.0_f64; 3]; // upper, center, lower
-    for (i, limb_code) in [DHRUV_SUN_LIMB_UPPER, DHRUV_SUN_LIMB_CENTER, DHRUV_SUN_LIMB_LOWER].iter().enumerate() {
+    for (i, limb_code) in [
+        DHRUV_SUN_LIMB_UPPER,
+        DHRUV_SUN_LIMB_CENTER,
+        DHRUV_SUN_LIMB_LOWER,
+    ]
+    .iter()
+    .enumerate()
+    {
         let cfg = DhruvRiseSetConfig {
             use_refraction: 1,
             sun_limb: *limb_code,
             altitude_correction: 1,
         };
         let mut result = DhruvRiseSetResult {
-            result_type: -1, event_code: -1, jd_tdb: 0.0,
+            result_type: -1,
+            event_code: -1,
+            jd_tdb: 0.0,
         };
         // SAFETY: All pointers are valid.
         let status = unsafe {
             dhruv_compute_rise_set(
-                engine_ptr, lsk_ptr, eop_ptr, &loc,
-                DHRUV_EVENT_SUNRISE, noon, &cfg, &mut result,
+                engine_ptr,
+                lsk_ptr,
+                eop_ptr,
+                &loc,
+                DHRUV_EVENT_SUNRISE,
+                noon,
+                &cfg,
+                &mut result,
             )
         };
         assert_eq!(status, DhruvStatus::Ok);
@@ -805,11 +891,15 @@ fn ffi_center_mode_between_limbs() {
     // Order should be: UpperLimb < Center < LowerLimb
     assert!(
         results[0] < results[1],
-        "UpperLimb ({}) should be before Center ({})", results[0], results[1]
+        "UpperLimb ({}) should be before Center ({})",
+        results[0],
+        results[1]
     );
     assert!(
         results[1] < results[2],
-        "Center ({}) should be before LowerLimb ({})", results[1], results[2]
+        "Center ({}) should be before LowerLimb ({})",
+        results[1],
+        results[2]
     );
 
     // SAFETY: cleanup
@@ -864,7 +954,13 @@ fn ffi_bhava_equal_new_delhi() {
     // SAFETY: All pointers are valid.
     let status = unsafe {
         dhruv_compute_bhavas(
-            engine_ptr, lsk_ptr, eop_ptr, &loc, jd_utc, &cfg, &mut result,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            jd_utc,
+            &cfg,
+            &mut result,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -993,7 +1089,13 @@ fn ffi_bhava_body_starting_point() {
 
     let status = unsafe {
         dhruv_compute_bhavas(
-            engine_ptr, lsk_ptr, eop_ptr, &loc, jd_utc, &cfg, &mut result,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            jd_utc,
+            &cfg,
+            &mut result,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -1027,8 +1129,12 @@ fn assert_utc_matches_jd(
     let status = unsafe {
         dhruv_utc_to_tdb_jd(
             lsk_ptr,
-            utc.year, utc.month, utc.day,
-            utc.hour, utc.minute, utc.second,
+            utc.year,
+            utc.month,
+            utc.day,
+            utc.hour,
+            utc.minute,
+            utc.second,
             &mut jd_roundtrip,
         )
     };
@@ -1068,17 +1174,36 @@ fn ffi_utc_conjunction_roundtrip() {
     let mut found: u8 = 0;
     let status = unsafe {
         dhruv_next_conjunction(
-            engine_ptr, Body::Sun.code(), Body::Moon.code(),
-            jd_start, &cfg, &mut jd_event, &mut found,
+            engine_ptr,
+            Body::Sun.code(),
+            Body::Moon.code(),
+            jd_start,
+            &cfg,
+            &mut jd_event,
+            &mut found,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1, "should find a conjunction");
 
     // Now call the UTC version with the same start time
-    let utc_start = DhruvUtcTime { year: 2024, month: 3, day: 20, hour: 12, minute: 0, second: 0.0 };
+    let utc_start = DhruvUtcTime {
+        year: 2024,
+        month: 3,
+        day: 20,
+        hour: 12,
+        minute: 0,
+        second: 0.0,
+    };
     let mut utc_event = DhruvConjunctionEventUtc {
-        utc: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
+        utc: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
         actual_separation_deg: 0.0,
         body1_longitude_deg: 0.0,
         body2_longitude_deg: 0.0,
@@ -1090,8 +1215,13 @@ fn ffi_utc_conjunction_roundtrip() {
     let mut found_utc: u8 = 0;
     let status = unsafe {
         dhruv_next_conjunction_utc(
-            engine_ptr, Body::Sun.code(), Body::Moon.code(),
-            &utc_start, &cfg, &mut utc_event, &mut found_utc,
+            engine_ptr,
+            Body::Sun.code(),
+            Body::Moon.code(),
+            &utc_start,
+            &cfg,
+            &mut utc_event,
+            &mut found_utc,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -1130,10 +1260,18 @@ fn ffi_utc_chandra_grahan_roundtrip() {
 
     // JD version
     let mut jd_result = DhruvChandraGrahanResult {
-        grahan_type: 0, magnitude: 0.0, penumbral_magnitude: 0.0,
-        greatest_grahan_jd: 0.0, p1_jd: 0.0, u1_jd: 0.0, u2_jd: 0.0,
-        u3_jd: 0.0, u4_jd: 0.0, p4_jd: 0.0,
-        moon_ecliptic_lat_deg: 0.0, angular_separation_deg: 0.0,
+        grahan_type: 0,
+        magnitude: 0.0,
+        penumbral_magnitude: 0.0,
+        greatest_grahan_jd: 0.0,
+        p1_jd: 0.0,
+        u1_jd: 0.0,
+        u2_jd: 0.0,
+        u3_jd: 0.0,
+        u4_jd: 0.0,
+        p4_jd: 0.0,
+        moon_ecliptic_lat_deg: 0.0,
+        angular_separation_deg: 0.0,
     };
     let mut found: u8 = 0;
     let status = unsafe {
@@ -1143,35 +1281,111 @@ fn ffi_utc_chandra_grahan_roundtrip() {
     assert_eq!(found, 1, "should find a chandra grahan");
 
     // UTC version
-    let utc_start = DhruvUtcTime { year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0.0 };
+    let utc_start = DhruvUtcTime {
+        year: 2024,
+        month: 3,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
     let mut utc_result = DhruvChandraGrahanResultUtc {
-        grahan_type: 0, magnitude: 0.0, penumbral_magnitude: 0.0,
-        greatest_grahan: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        p1: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        u1: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        u2: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        u3: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        u4: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        p4: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        moon_ecliptic_lat_deg: 0.0, angular_separation_deg: 0.0,
-        u1_valid: 0, u2_valid: 0, u3_valid: 0, u4_valid: 0,
+        grahan_type: 0,
+        magnitude: 0.0,
+        penumbral_magnitude: 0.0,
+        greatest_grahan: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        p1: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        u1: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        u2: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        u3: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        u4: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        p4: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        moon_ecliptic_lat_deg: 0.0,
+        angular_separation_deg: 0.0,
+        u1_valid: 0,
+        u2_valid: 0,
+        u3_valid: 0,
+        u4_valid: 0,
     };
     let mut found_utc: u8 = 0;
     let status = unsafe {
-        dhruv_next_chandra_grahan_utc(engine_ptr, &utc_start, &cfg, &mut utc_result, &mut found_utc)
+        dhruv_next_chandra_grahan_utc(
+            engine_ptr,
+            &utc_start,
+            &cfg,
+            &mut utc_result,
+            &mut found_utc,
+        )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found_utc, 1, "UTC version should also find grahan");
 
     // Grahan type and magnitudes should match exactly
-    assert_eq!(utc_result.grahan_type, jd_result.grahan_type, "grahan type mismatch");
+    assert_eq!(
+        utc_result.grahan_type, jd_result.grahan_type,
+        "grahan type mismatch"
+    );
     assert!(
         (utc_result.magnitude - jd_result.magnitude).abs() < 1e-6,
         "magnitude mismatch"
     );
 
     // Greatest grahan time roundtrip
-    assert_utc_matches_jd(lsk_ptr, &utc_result.greatest_grahan, jd_result.greatest_grahan_jd, "greatest grahan");
+    assert_utc_matches_jd(
+        lsk_ptr,
+        &utc_result.greatest_grahan,
+        jd_result.greatest_grahan_jd,
+        "greatest grahan",
+    );
 
     // P1 always present
     assert_utc_matches_jd(lsk_ptr, &utc_result.p1, jd_result.p1_jd, "P1");
@@ -1222,42 +1436,111 @@ fn ffi_utc_surya_grahan_roundtrip() {
 
     // JD version
     let mut jd_result = DhruvSuryaGrahanResult {
-        grahan_type: 0, magnitude: 0.0,
-        greatest_grahan_jd: 0.0, c1_jd: 0.0, c2_jd: 0.0, c3_jd: 0.0, c4_jd: 0.0,
-        moon_ecliptic_lat_deg: 0.0, angular_separation_deg: 0.0,
+        grahan_type: 0,
+        magnitude: 0.0,
+        greatest_grahan_jd: 0.0,
+        c1_jd: 0.0,
+        c2_jd: 0.0,
+        c3_jd: 0.0,
+        c4_jd: 0.0,
+        moon_ecliptic_lat_deg: 0.0,
+        angular_separation_deg: 0.0,
     };
     let mut found: u8 = 0;
-    let status = unsafe {
-        dhruv_next_surya_grahan(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found)
-    };
+    let status =
+        unsafe { dhruv_next_surya_grahan(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found) };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1, "should find a surya grahan");
 
     // UTC version
-    let utc_start = DhruvUtcTime { year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0.0 };
+    let utc_start = DhruvUtcTime {
+        year: 2024,
+        month: 3,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
     let mut utc_result = DhruvSuryaGrahanResultUtc {
-        grahan_type: 0, magnitude: 0.0,
-        greatest_grahan: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        c1: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        c2: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        c3: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        c4: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        moon_ecliptic_lat_deg: 0.0, angular_separation_deg: 0.0,
-        c1_valid: 0, c2_valid: 0, c3_valid: 0, c4_valid: 0,
+        grahan_type: 0,
+        magnitude: 0.0,
+        greatest_grahan: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        c1: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        c2: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        c3: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        c4: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        moon_ecliptic_lat_deg: 0.0,
+        angular_separation_deg: 0.0,
+        c1_valid: 0,
+        c2_valid: 0,
+        c3_valid: 0,
+        c4_valid: 0,
     };
     let mut found_utc: u8 = 0;
     let status = unsafe {
-        dhruv_next_surya_grahan_utc(engine_ptr, &utc_start, &cfg, &mut utc_result, &mut found_utc)
+        dhruv_next_surya_grahan_utc(
+            engine_ptr,
+            &utc_start,
+            &cfg,
+            &mut utc_result,
+            &mut found_utc,
+        )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found_utc, 1, "UTC version should also find grahan");
 
     // Type and magnitude match
-    assert_eq!(utc_result.grahan_type, jd_result.grahan_type, "grahan type mismatch");
-    assert!((utc_result.magnitude - jd_result.magnitude).abs() < 1e-6, "magnitude mismatch");
+    assert_eq!(
+        utc_result.grahan_type, jd_result.grahan_type,
+        "grahan type mismatch"
+    );
+    assert!(
+        (utc_result.magnitude - jd_result.magnitude).abs() < 1e-6,
+        "magnitude mismatch"
+    );
 
     // Greatest grahan roundtrip
-    assert_utc_matches_jd(lsk_ptr, &utc_result.greatest_grahan, jd_result.greatest_grahan_jd, "greatest surya grahan");
+    assert_utc_matches_jd(
+        lsk_ptr,
+        &utc_result.greatest_grahan,
+        jd_result.greatest_grahan_jd,
+        "greatest surya grahan",
+    );
 
     // Contact valid flags vs JD sentinels
     if jd_result.c1_jd < 0.0 {
@@ -1305,32 +1588,73 @@ fn ffi_utc_stationary_roundtrip() {
 
     // JD version: Mercury next station
     let mut jd_event = DhruvStationaryEvent {
-        jd_tdb: 0.0, body_code: 0, longitude_deg: 0.0, latitude_deg: 0.0, station_type: 0,
+        jd_tdb: 0.0,
+        body_code: 0,
+        longitude_deg: 0.0,
+        latitude_deg: 0.0,
+        station_type: 0,
     };
     let mut found: u8 = 0;
     let status = unsafe {
-        dhruv_next_stationary(engine_ptr, Body::Mercury.code(), jd_start, &cfg, &mut jd_event, &mut found)
+        dhruv_next_stationary(
+            engine_ptr,
+            Body::Mercury.code(),
+            jd_start,
+            &cfg,
+            &mut jd_event,
+            &mut found,
+        )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1);
 
     // UTC version
-    let utc_start = DhruvUtcTime { year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0 };
+    let utc_start = DhruvUtcTime {
+        year: 2024,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
     let mut utc_event = DhruvStationaryEventUtc {
-        utc: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
-        body_code: 0, longitude_deg: 0.0, latitude_deg: 0.0, station_type: 0,
+        utc: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        body_code: 0,
+        longitude_deg: 0.0,
+        latitude_deg: 0.0,
+        station_type: 0,
     };
     let mut found_utc: u8 = 0;
     let status = unsafe {
-        dhruv_next_stationary_utc(engine_ptr, Body::Mercury.code(), &utc_start, &cfg, &mut utc_event, &mut found_utc)
+        dhruv_next_stationary_utc(
+            engine_ptr,
+            Body::Mercury.code(),
+            &utc_start,
+            &cfg,
+            &mut utc_event,
+            &mut found_utc,
+        )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found_utc, 1);
 
     // Verify match
     assert_utc_matches_jd(lsk_ptr, &utc_event.utc, jd_event.jd_tdb, "stationary time");
-    assert_eq!(utc_event.station_type, jd_event.station_type, "station type mismatch");
-    assert!((utc_event.longitude_deg - jd_event.longitude_deg).abs() < 1e-6, "longitude mismatch");
+    assert_eq!(
+        utc_event.station_type, jd_event.station_type,
+        "station type mismatch"
+    );
+    assert!(
+        (utc_event.longitude_deg - jd_event.longitude_deg).abs() < 1e-6,
+        "longitude mismatch"
+    );
 
     unsafe { dhruv_lsk_free(lsk_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -1345,36 +1669,76 @@ fn ffi_utc_query_roundtrip() {
 
     // JD version: Mars heliocentric ecliptic
     let mut out_jd = DhruvSphericalState {
-        lon_deg: 0.0, lat_deg: 0.0, distance_km: 0.0,
-        lon_speed: 0.0, lat_speed: 0.0, distance_speed: 0.0,
+        lon_deg: 0.0,
+        lat_deg: 0.0,
+        distance_km: 0.0,
+        lon_speed: 0.0,
+        lat_speed: 0.0,
+        distance_speed: 0.0,
     };
     let status = unsafe {
         dhruv_query_utc_spherical(
-            engine_ptr, Body::Mars.code(), Body::Sun.code(),
-            Frame::EclipticJ2000.code(), 2024, 6, 15, 0, 0, 0.0, &mut out_jd,
+            engine_ptr,
+            Body::Mars.code(),
+            Body::Sun.code(),
+            Frame::EclipticJ2000.code(),
+            2024,
+            6,
+            15,
+            0,
+            0,
+            0.0,
+            &mut out_jd,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
 
     // DhruvUtcTime struct version
-    let utc = DhruvUtcTime { year: 2024, month: 6, day: 15, hour: 0, minute: 0, second: 0.0 };
+    let utc = DhruvUtcTime {
+        year: 2024,
+        month: 6,
+        day: 15,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
     let mut out_utc = DhruvSphericalState {
-        lon_deg: 0.0, lat_deg: 0.0, distance_km: 0.0,
-        lon_speed: 0.0, lat_speed: 0.0, distance_speed: 0.0,
+        lon_deg: 0.0,
+        lat_deg: 0.0,
+        distance_km: 0.0,
+        lon_speed: 0.0,
+        lat_speed: 0.0,
+        distance_speed: 0.0,
     };
     let status = unsafe {
         dhruv_query_utc(
-            engine_ptr, Body::Mars.code(), Body::Sun.code(),
-            Frame::EclipticJ2000.code(), &utc, &mut out_utc,
+            engine_ptr,
+            Body::Mars.code(),
+            Body::Sun.code(),
+            Frame::EclipticJ2000.code(),
+            &utc,
+            &mut out_utc,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
 
     // Both should produce identical results (same internal path)
-    assert!((out_utc.lon_deg - out_jd.lon_deg).abs() < 1e-12, "lon_deg mismatch");
-    assert!((out_utc.lat_deg - out_jd.lat_deg).abs() < 1e-12, "lat_deg mismatch");
-    assert!((out_utc.distance_km - out_jd.distance_km).abs() < 1e-6, "distance_km mismatch");
-    assert!((out_utc.lon_speed - out_jd.lon_speed).abs() < 1e-12, "lon_speed mismatch");
+    assert!(
+        (out_utc.lon_deg - out_jd.lon_deg).abs() < 1e-12,
+        "lon_deg mismatch"
+    );
+    assert!(
+        (out_utc.lat_deg - out_jd.lat_deg).abs() < 1e-12,
+        "lat_deg mismatch"
+    );
+    assert!(
+        (out_utc.distance_km - out_jd.distance_km).abs() < 1e-6,
+        "distance_km mismatch"
+    );
+    assert!(
+        (out_utc.lon_speed - out_jd.lon_speed).abs() < 1e-12,
+        "lon_speed mismatch"
+    );
 
     unsafe { dhruv_engine_free(engine_ptr) };
 }
@@ -1396,7 +1760,14 @@ fn ffi_utc_ayanamsha_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     // UTC version: approximate 2024-01-01 00:00 UTC
-    let utc = DhruvUtcTime { year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0 };
+    let utc = DhruvUtcTime {
+        year: 2024,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
     let mut deg_utc: f64 = 0.0;
     let status = unsafe { dhruv_ayanamsha_deg_utc(lsk_ptr, 0, &utc, 0, &mut deg_utc) };
     assert_eq!(status, DhruvStatus::Ok);
@@ -1440,27 +1811,56 @@ fn ffi_utc_sunrise_roundtrip() {
 
     // JD version
     let mut jd_result = DhruvRiseSetResult {
-        result_type: -1, event_code: -1, jd_tdb: 0.0,
+        result_type: -1,
+        event_code: -1,
+        jd_tdb: 0.0,
     };
     let status = unsafe {
         dhruv_compute_rise_set(
-            engine_ptr, lsk_ptr, eop_ptr, &loc,
-            DHRUV_EVENT_SUNRISE, noon_jd, &cfg, &mut jd_result,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            DHRUV_EVENT_SUNRISE,
+            noon_jd,
+            &cfg,
+            &mut jd_result,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(jd_result.result_type, DHRUV_RISESET_EVENT);
 
     // UTC version: noon on 2024-03-20 in New Delhi ≈ ~06:30 UTC
-    let utc_noon = DhruvUtcTime { year: 2024, month: 3, day: 20, hour: 7, minute: 21, second: 0.0 };
+    let utc_noon = DhruvUtcTime {
+        year: 2024,
+        month: 3,
+        day: 20,
+        hour: 7,
+        minute: 21,
+        second: 0.0,
+    };
     let mut utc_result = DhruvRiseSetResultUtc {
-        result_type: -1, event_code: -1,
-        utc: DhruvUtcTime { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0.0 },
+        result_type: -1,
+        event_code: -1,
+        utc: DhruvUtcTime {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
     };
     let status = unsafe {
         dhruv_compute_rise_set_utc(
-            engine_ptr, lsk_ptr, eop_ptr, &loc,
-            DHRUV_EVENT_SUNRISE, &utc_noon, &cfg, &mut utc_result,
+            engine_ptr,
+            lsk_ptr,
+            eop_ptr,
+            &loc,
+            DHRUV_EVENT_SUNRISE,
+            &utc_noon,
+            &cfg,
+            &mut utc_result,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
@@ -1492,15 +1892,29 @@ fn ffi_utc_nutation_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     // UTC version
-    let utc = DhruvUtcTime { year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0 };
+    let utc = DhruvUtcTime {
+        year: 2024,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
     let mut dpsi_utc: f64 = 0.0;
     let mut deps_utc: f64 = 0.0;
-    let status = unsafe { dhruv_nutation_iau2000b_utc(lsk_ptr, &utc, &mut dpsi_utc, &mut deps_utc) };
+    let status =
+        unsafe { dhruv_nutation_iau2000b_utc(lsk_ptr, &utc, &mut dpsi_utc, &mut deps_utc) };
     assert_eq!(status, DhruvStatus::Ok);
 
     // Should be very close (nutation changes slowly)
-    assert!((dpsi_utc - dpsi_jd).abs() < 0.01, "dpsi: utc={dpsi_utc}, jd={dpsi_jd}");
-    assert!((deps_utc - deps_jd).abs() < 0.01, "deps: utc={deps_utc}, jd={deps_jd}");
+    assert!(
+        (dpsi_utc - dpsi_jd).abs() < 0.01,
+        "dpsi: utc={dpsi_utc}, jd={dpsi_jd}"
+    );
+    assert!(
+        (deps_utc - deps_jd).abs() < 0.01,
+        "deps: utc={deps_utc}, jd={deps_jd}"
+    );
 
     unsafe { dhruv_lsk_free(lsk_ptr) };
 }

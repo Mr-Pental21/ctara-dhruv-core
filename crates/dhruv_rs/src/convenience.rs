@@ -9,12 +9,11 @@ use dhruv_search::panchang_types::{
 use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use dhruv_search::{LunarPhaseEvent, SearchError};
 use dhruv_time::{EopKernel, Epoch, UtcTime};
-use dhruv_vedic_base::{
-    AyanamshaSystem, Nakshatra28Info, NakshatraInfo, RashiInfo, ayanamsha_deg,
-    jd_tdb_to_centuries, nakshatra28_from_longitude, nakshatra_from_longitude,
-    rashi_from_longitude,
-};
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
+use dhruv_vedic_base::{
+    AyanamshaSystem, Nakshatra28Info, NakshatraInfo, RashiInfo, ayanamsha_deg, jd_tdb_to_centuries,
+    nakshatra_from_longitude, nakshatra28_from_longitude, rashi_from_longitude,
+};
 
 use crate::date::UtcDate;
 use crate::error::DhruvError;
@@ -81,11 +80,7 @@ pub fn position_full(
 /// Query the global engine for ecliptic longitude in degrees.
 ///
 /// Shorthand for `position(target, observer, date)?.lon_deg`.
-pub fn longitude(
-    target: Body,
-    observer: Observer,
-    date: UtcDate,
-) -> Result<f64, DhruvError> {
+pub fn longitude(target: Body, observer: Observer, date: UtcDate) -> Result<f64, DhruvError> {
     Ok(position(target, observer, date)?.lon_deg)
 }
 
@@ -139,7 +134,10 @@ pub fn query_batch(
         .collect();
 
     let results = eng.query_batch(&queries);
-    Ok(results.into_iter().map(|r| r.map_err(DhruvError::from)).collect())
+    Ok(results
+        .into_iter()
+        .map(|r| r.map_err(DhruvError::from))
+        .collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -214,40 +212,36 @@ pub fn nakshatra28(
 pub fn next_purnima(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
     let eng = engine()?;
     let utc: UtcTime = date.into();
-    dhruv_search::next_purnima(eng, &utc)?
-        .ok_or(DhruvError::Search(SearchError::NoConvergence(
-            "could not find next purnima",
-        )))
+    dhruv_search::next_purnima(eng, &utc)?.ok_or(DhruvError::Search(SearchError::NoConvergence(
+        "could not find next purnima",
+    )))
 }
 
 /// Find the previous Purnima (full moon) before the given date.
 pub fn prev_purnima(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
     let eng = engine()?;
     let utc: UtcTime = date.into();
-    dhruv_search::prev_purnima(eng, &utc)?
-        .ok_or(DhruvError::Search(SearchError::NoConvergence(
-            "could not find previous purnima",
-        )))
+    dhruv_search::prev_purnima(eng, &utc)?.ok_or(DhruvError::Search(SearchError::NoConvergence(
+        "could not find previous purnima",
+    )))
 }
 
 /// Find the next Amavasya (new moon) after the given date.
 pub fn next_amavasya(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
     let eng = engine()?;
     let utc: UtcTime = date.into();
-    dhruv_search::next_amavasya(eng, &utc)?
-        .ok_or(DhruvError::Search(SearchError::NoConvergence(
-            "could not find next amavasya",
-        )))
+    dhruv_search::next_amavasya(eng, &utc)?.ok_or(DhruvError::Search(SearchError::NoConvergence(
+        "could not find next amavasya",
+    )))
 }
 
 /// Find the previous Amavasya (new moon) before the given date.
 pub fn prev_amavasya(date: UtcDate) -> Result<LunarPhaseEvent, DhruvError> {
     let eng = engine()?;
     let utc: UtcTime = date.into();
-    dhruv_search::prev_amavasya(eng, &utc)?
-        .ok_or(DhruvError::Search(SearchError::NoConvergence(
-            "could not find previous amavasya",
-        )))
+    dhruv_search::prev_amavasya(eng, &utc)?.ok_or(DhruvError::Search(SearchError::NoConvergence(
+        "could not find previous amavasya",
+    )))
 }
 
 /// Find the next Sankranti (Sun entering a rashi) after the given date.
@@ -259,10 +253,9 @@ pub fn next_sankranti(
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let config = SankrantiConfig::new(system, use_nutation);
-    dhruv_search::next_sankranti(eng, &utc, &config)?
-        .ok_or(DhruvError::Search(SearchError::NoConvergence(
-            "could not find next sankranti",
-        )))
+    dhruv_search::next_sankranti(eng, &utc, &config)?.ok_or(DhruvError::Search(
+        SearchError::NoConvergence("could not find next sankranti"),
+    ))
 }
 
 /// Find the previous Sankranti (Sun entering a rashi) before the given date.
@@ -274,10 +267,9 @@ pub fn prev_sankranti(
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let config = SankrantiConfig::new(system, use_nutation);
-    dhruv_search::prev_sankranti(eng, &utc, &config)?
-        .ok_or(DhruvError::Search(SearchError::NoConvergence(
-            "could not find previous sankranti",
-        )))
+    dhruv_search::prev_sankranti(eng, &utc, &config)?.ok_or(DhruvError::Search(
+        SearchError::NoConvergence("could not find previous sankranti"),
+    ))
 }
 
 /// Determine the Masa (lunar month, Amanta system) for the given date.
@@ -379,7 +371,9 @@ pub fn vaar(
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
-    Ok(dhruv_search::vaar_for_date(eng, eop, &utc, location, &rs_config)?)
+    Ok(dhruv_search::vaar_for_date(
+        eng, eop, &utc, location, &rs_config,
+    )?)
 }
 
 /// Determine the Hora (planetary hour) for the given date and location.
@@ -393,7 +387,9 @@ pub fn hora(
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
-    Ok(dhruv_search::hora_for_date(eng, eop, &utc, location, &rs_config)?)
+    Ok(dhruv_search::hora_for_date(
+        eng, eop, &utc, location, &rs_config,
+    )?)
 }
 
 /// Determine the Ghatika (1-60, each ~24 min) for the given date and location.
@@ -407,7 +403,9 @@ pub fn ghatika(
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
-    Ok(dhruv_search::ghatika_for_date(eng, eop, &utc, location, &rs_config)?)
+    Ok(dhruv_search::ghatika_for_date(
+        eng, eop, &utc, location, &rs_config,
+    )?)
 }
 
 /// Compute daily panchang elements for a single moment.
@@ -428,7 +426,15 @@ pub fn panchang(
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
     let config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::panchang_for_date(eng, eop, &utc, location, &rs_config, &config, include_calendar)?)
+    Ok(dhruv_search::panchang_for_date(
+        eng,
+        eop,
+        &utc,
+        location,
+        &rs_config,
+        &config,
+        include_calendar,
+    )?)
 }
 
 // ---------------------------------------------------------------------------
@@ -443,15 +449,18 @@ pub fn graha_longitudes(
 ) -> Result<dhruv_search::GrahaLongitudes, DhruvError> {
     let eng = engine()?;
     let jd = utc_to_jd_tdb(date)?;
-    Ok(dhruv_search::graha_sidereal_longitudes(eng, jd, system, use_nutation)?)
+    Ok(dhruv_search::graha_sidereal_longitudes(
+        eng,
+        jd,
+        system,
+        use_nutation,
+    )?)
 }
 
 /// Compute all 16 sphutas for the given inputs.
 ///
 /// This is a thin wrapper over [`dhruv_vedic_base::all_sphutas`].
-pub fn sphutas(
-    inputs: &dhruv_vedic_base::SphutalInputs,
-) -> [(dhruv_vedic_base::Sphuta, f64); 16] {
+pub fn sphutas(inputs: &dhruv_vedic_base::SphutalInputs) -> [(dhruv_vedic_base::Sphuta, f64); 16] {
     dhruv_vedic_base::all_sphutas(inputs)
 }
 
@@ -469,7 +478,9 @@ pub fn special_lagnas(
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
     let config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::special_lagnas_for_date(eng, eop, &utc, location, &rs_config, &config)?)
+    Ok(dhruv_search::special_lagnas_for_date(
+        eng, eop, &utc, location, &rs_config, &config,
+    )?)
 }
 
 /// Compute all 12 arudha padas for a given date and location.
@@ -486,7 +497,14 @@ pub fn arudha_padas(
     let utc: UtcTime = date.into();
     let bhava_config = dhruv_vedic_base::BhavaConfig::default();
     let config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::arudha_padas_for_date(eng, eop, &utc, location, &bhava_config, &config)?)
+    Ok(dhruv_search::arudha_padas_for_date(
+        eng,
+        eop,
+        &utc,
+        location,
+        &bhava_config,
+        &config,
+    )?)
 }
 
 /// Compute complete Ashtakavarga (BAV + SAV + Sodhana) for a given date and location.
@@ -503,7 +521,9 @@ pub fn ashtakavarga(
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::ashtakavarga_for_date(eng, eop, &utc, location, &config)?)
+    Ok(dhruv_search::ashtakavarga_for_date(
+        eng, eop, &utc, location, &config,
+    )?)
 }
 
 /// Compute comprehensive graha positions with optional features.
@@ -521,7 +541,15 @@ pub fn graha_positions(
     let utc: UtcTime = date.into();
     let bhava_config = dhruv_vedic_base::BhavaConfig::default();
     let aya_config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::graha_positions(eng, eop, &utc, location, &bhava_config, &aya_config, config)?)
+    Ok(dhruv_search::graha_positions(
+        eng,
+        eop,
+        &utc,
+        location,
+        &bhava_config,
+        &aya_config,
+        config,
+    )?)
 }
 
 /// Compute curated sensitive points (bindus) with optional nakshatra/bhava enrichment.
@@ -541,7 +569,16 @@ pub fn core_bindus(
     let bhava_config = dhruv_vedic_base::BhavaConfig::default();
     let rs_config = RiseSetConfig::default();
     let aya_config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::core_bindus(eng, eop, &utc, location, &bhava_config, &rs_config, &aya_config, config)?)
+    Ok(dhruv_search::core_bindus(
+        eng,
+        eop,
+        &utc,
+        location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        config,
+    )?)
 }
 
 /// Compute graha drishti (planetary aspects) with optional extensions.
@@ -561,7 +598,16 @@ pub fn drishti(
     let bhava_config = dhruv_vedic_base::BhavaConfig::default();
     let rs_config = RiseSetConfig::default();
     let aya_config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::drishti_for_date(eng, eop, &utc, location, &bhava_config, &rs_config, &aya_config, config)?)
+    Ok(dhruv_search::drishti_for_date(
+        eng,
+        eop,
+        &utc,
+        location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        config,
+    )?)
 }
 
 /// Compute all 11 upagrahas for a given date and location.
@@ -576,5 +622,7 @@ pub fn upagrahas(
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
     let config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::all_upagrahas_for_date(eng, eop, &utc, location, &rs_config, &config)?)
+    Ok(dhruv_search::all_upagrahas_for_date(
+        eng, eop, &utc, location, &rs_config, &config,
+    )?)
 }

@@ -112,9 +112,24 @@ fn query_batch_multiple_bodies() {
     }
     let date = UtcDate::new(2024, 3, 20, 12, 0, 0.0);
     let requests = vec![
-        (Body::Mercury, Observer::Body(Body::Earth), Frame::EclipticJ2000, date),
-        (Body::Venus, Observer::Body(Body::Earth), Frame::EclipticJ2000, date),
-        (Body::Mars, Observer::Body(Body::Earth), Frame::EclipticJ2000, date),
+        (
+            Body::Mercury,
+            Observer::Body(Body::Earth),
+            Frame::EclipticJ2000,
+            date,
+        ),
+        (
+            Body::Venus,
+            Observer::Body(Body::Earth),
+            Frame::EclipticJ2000,
+            date,
+        ),
+        (
+            Body::Mars,
+            Observer::Body(Body::Earth),
+            Frame::EclipticJ2000,
+            date,
+        ),
     ];
 
     let results = query_batch(&requests).unwrap();
