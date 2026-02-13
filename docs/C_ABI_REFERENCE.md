@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 8`
+**ABI version:** `DHRUV_API_VERSION = 22`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -31,6 +31,8 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
    - [Surya Grahan](#surya-grahan)
    - [Stationary Point Search](#stationary-point-search)
    - [Max Speed Search](#max-speed-search)
+   - [Graha Sidereal Longitudes](#graha-sidereal-longitudes)
+   - [Nakshatra At](#nakshatra-at)
 
 ---
 
@@ -471,7 +473,7 @@ typedef struct {
 uint32_t dhruv_api_version(void);
 ```
 
-Returns the ABI version number (currently 8).
+Returns the ABI version number.
 
 ---
 
@@ -1047,6 +1049,44 @@ Search for all max-speed events in a time range.
 
 ---
 
+### Graha Sidereal Longitudes
+
+```c
+typedef struct {
+    double longitudes[9];   // Indexed by Graha order (Surya=0 .. Ketu=8)
+} DhruvGrahaLongitudes;
+```
+
+```c
+DhruvStatus dhruv_graha_sidereal_longitudes(
+    const Engine*           engine,
+    double                  jd_tdb,
+    uint32_t                ayanamsha_system,   // 0-19
+    uint8_t                 use_nutation,        // 0=false, 1=true
+    DhruvGrahaLongitudes*   out
+);
+```
+
+Query sidereal longitudes (degrees, 0..360) of all 9 grahas at a given JD (TDB). For the 7 physical planets, queries the engine for tropical ecliptic longitude and subtracts ayanamsha. For Rahu/Ketu, uses true node formulas.
+
+---
+
+### Nakshatra At
+
+```c
+DhruvStatus dhruv_nakshatra_at(
+    const DhruvEngineHandle*    engine,
+    double                      jd_tdb,
+    double                      moon_sidereal_deg,  // [0, 360)
+    const DhruvSankrantiConfig* config,
+    DhruvPanchangNakshatraInfo* out
+);
+```
+
+Determine the Moon's Nakshatra (27-scheme) from a pre-computed sidereal longitude. The engine is still needed for boundary bisection (finding start/end times). Returns nakshatra index, pada, and start/end times (UTC). Useful when the Moon's sidereal longitude has already been computed (e.g., from `dhruv_graha_sidereal_longitudes`).
+
+---
+
 ## Function Summary
 
 | # | Function | Engine | LSK | EOP | Pure Math |
@@ -1099,5 +1139,7 @@ Search for all max-speed events in a time range.
 | 46 | `dhruv_next_max_speed` | yes | | | |
 | 47 | `dhruv_prev_max_speed` | yes | | | |
 | 48 | `dhruv_search_max_speed` | yes | | | |
+| 49 | `dhruv_graha_sidereal_longitudes` | yes | | | |
+| 50 | `dhruv_nakshatra_at` | yes | | | |
 
-**Total exported symbols: 48 functions**
+**Total exported symbols: 50 functions**

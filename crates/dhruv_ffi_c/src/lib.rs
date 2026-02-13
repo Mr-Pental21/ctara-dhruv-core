@@ -16,6 +16,7 @@ use dhruv_search::{
     prev_sankranti, prev_surya_grahan, prev_specific_sankranti, prev_stationary,
     search_amavasyas, search_chandra_grahan, search_conjunctions, search_max_speed,
     search_purnimas, search_sankrantis, search_surya_grahan, search_stationary,
+    graha_sidereal_longitudes, nakshatra_at,
     nakshatra_for_date, panchang_for_date, sidereal_sum_at, special_lagnas_for_date,
     tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises, varsha_for_date,
     vedic_day_sunrises, yoga_at, yoga_for_date,
@@ -32,7 +33,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 21;
+pub const DHRUV_API_VERSION: u32 = 22;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -7062,6 +7063,99 @@ pub unsafe extern "C" fn dhruv_drishti(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Graha Sidereal Longitudes
+// ---------------------------------------------------------------------------
+
+/// C-compatible graha sidereal longitudes result.
+///
+/// Contains sidereal longitudes (degrees, 0..360) for all 9 grahas,
+/// indexed by Graha order: Surya=0, Chandra=1, Mangal=2, Buddh=3,
+/// Guru=4, Shukra=5, Shani=6, Rahu=7, Ketu=8.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvGrahaLongitudes {
+    pub longitudes: [f64; 9],
+}
+
+/// Query sidereal longitudes of all 9 grahas at a given JD (TDB).
+///
+/// # Safety
+/// `engine` and `out` must be valid, non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_graha_sidereal_longitudes(
+    engine: *const Engine,
+    jd_tdb: f64,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    out: *mut DhruvGrahaLongitudes,
+) -> DhruvStatus {
+    if engine.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+
+    match graha_sidereal_longitudes(engine, jd_tdb, system, use_nutation != 0) {
+        Ok(result) => {
+            let out = unsafe { &mut *out };
+            out.longitudes = result.longitudes;
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Nakshatra At (from pre-computed Moon sidereal longitude)
+// ---------------------------------------------------------------------------
+
+/// Determine the Moon's Nakshatra from a pre-computed sidereal longitude.
+///
+/// Accepts a Moon sidereal longitude in degrees [0, 360) at `jd_tdb`.
+/// The engine is still needed for boundary bisection (finding start/end times).
+/// The result includes nakshatra index, pada, and start/end times (UTC).
+///
+/// # Safety
+/// `engine`, `config`, and `out` must be valid, non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_nakshatra_at(
+    engine: *const DhruvEngineHandle,
+    jd_tdb: f64,
+    moon_sidereal_deg: f64,
+    config: *const DhruvSankrantiConfig,
+    out: *mut DhruvPanchangNakshatraInfo,
+) -> DhruvStatus {
+    if engine.is_null() || config.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine_ref = unsafe { &*engine };
+    let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
+        Some(c) => c,
+        None => return DhruvStatus::InvalidQuery,
+    };
+
+    match nakshatra_at(engine_ref, jd_tdb, moon_sidereal_deg, &cfg) {
+        Ok(info) => {
+            unsafe {
+                *out = DhruvPanchangNakshatraInfo {
+                    nakshatra_index: info.nakshatra_index as i32,
+                    pada: info.pada as i32,
+                    start: utc_time_to_ffi(&info.start),
+                    end: utc_time_to_ffi(&info.end),
+                };
+            }
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -7499,8 +7593,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_21() {
-        assert_eq!(dhruv_api_version(), 21);
+    fn ffi_api_version_is_22() {
+        assert_eq!(dhruv_api_version(), 22);
     }
 
     // --- Search error mapping ---
@@ -8975,6 +9069,64 @@ mod tests {
                 ptr::null(), ptr::null(), ptr::null(), ptr::null(),
                 &bhava_cfg, &rs_cfg, 0, 0, &cfg, out.as_mut_ptr(),
             )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_graha_sidereal_longitudes_rejects_null() {
+        let mut out = std::mem::MaybeUninit::<DhruvGrahaLongitudes>::uninit();
+        let s = unsafe {
+            dhruv_graha_sidereal_longitudes(ptr::null(), 2451545.0, 0, 0, out.as_mut_ptr())
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_graha_sidereal_longitudes_rejects_null_out() {
+        // Use a non-null but invalid engine pointer would be UB, so just test null out
+        let s = unsafe {
+            dhruv_graha_sidereal_longitudes(ptr::null(), 2451545.0, 0, 0, ptr::null_mut())
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_graha_sidereal_longitudes_rejects_invalid_ayanamsha() {
+        // Ayanamsha code 99 is invalid
+        let engine_ptr: *const Engine = ptr::null();
+        let mut out = std::mem::MaybeUninit::<DhruvGrahaLongitudes>::uninit();
+        let s = unsafe {
+            dhruv_graha_sidereal_longitudes(engine_ptr, 2451545.0, 99, 0, out.as_mut_ptr())
+        };
+        // Null engine is checked first
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_nakshatra_at_rejects_null() {
+        let mut out = std::mem::MaybeUninit::<DhruvPanchangNakshatraInfo>::uninit();
+        let cfg = dhruv_sankranti_config_default();
+        let s = unsafe {
+            dhruv_nakshatra_at(ptr::null(), 2451545.0, 120.0, &cfg, out.as_mut_ptr())
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_nakshatra_at_rejects_null_config() {
+        let mut out = std::mem::MaybeUninit::<DhruvPanchangNakshatraInfo>::uninit();
+        let s = unsafe {
+            dhruv_nakshatra_at(ptr::null(), 2451545.0, 120.0, ptr::null(), out.as_mut_ptr())
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_nakshatra_at_rejects_null_out() {
+        let cfg = dhruv_sankranti_config_default();
+        let s = unsafe {
+            dhruv_nakshatra_at(ptr::null(), 2451545.0, 120.0, &cfg, ptr::null_mut())
         };
         assert_eq!(s, DhruvStatus::NullPointer);
     }
