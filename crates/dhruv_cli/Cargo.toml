@@ -7,6 +7,7 @@ edition = "2024"
 [dependencies]
 dhruv_core   = { path = "../dhruv_core" }
 dhruv_time   = { path = "../dhruv_time" }
+dhruv_frames = { path = "../dhruv_frames" }
 dhruv_search = { path = "../dhruv_search" }
 dhruv_vedic_base = { path = "../dhruv_vedic_base" }
 clap = { version = "4", features = ["derive"] }

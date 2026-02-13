@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 use dhruv_core::EngineError;
 use dhruv_search::SearchError;
 use dhruv_time::TimeError;
+use dhruv_vedic_base::VedicError;
 
 /// Unified error type for the convenience wrapper.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +22,8 @@ pub enum DhruvError {
     Time(TimeError),
     /// Error from search/panchang computation.
     Search(SearchError),
+    /// Error from vedic base computation (rise/set, bhava, etc.).
+    Vedic(VedicError),
 }
 
 impl Display for DhruvError {
@@ -34,6 +37,7 @@ impl Display for DhruvError {
             Self::Engine(e) => write!(f, "engine error: {e}"),
             Self::Time(e) => write!(f, "time error: {e}"),
             Self::Search(e) => write!(f, "search error: {e}"),
+            Self::Vedic(e) => write!(f, "vedic error: {e}"),
         }
     }
 }
@@ -44,6 +48,7 @@ impl Error for DhruvError {
             Self::Engine(e) => Some(e),
             Self::Time(e) => Some(e),
             Self::Search(e) => Some(e),
+            Self::Vedic(e) => Some(e),
             _ => None,
         }
     }
@@ -64,6 +69,12 @@ impl From<TimeError> for DhruvError {
 impl From<SearchError> for DhruvError {
     fn from(e: SearchError) -> Self {
         Self::Search(e)
+    }
+}
+
+impl From<VedicError> for DhruvError {
+    fn from(e: VedicError) -> Self {
+        Self::Vedic(e)
     }
 }
 

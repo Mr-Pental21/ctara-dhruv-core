@@ -1,15 +1,19 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use dhruv_core::{Engine, EngineConfig};
+use dhruv_core::{Body, Engine, EngineConfig};
+use dhruv_frames::nutation_iau2000b;
+use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
+use dhruv_search::grahan_types::GrahanConfig;
 use dhruv_search::sankranti_types::SankrantiConfig;
-use dhruv_time::{EopKernel, UtcTime};
+use dhruv_search::stationary_types::StationaryConfig;
+use dhruv_time::{EopKernel, UtcTime, calendar_to_jd};
 use dhruv_vedic_base::BhavaConfig;
-use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
+use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
 use dhruv_vedic_base::{
-    AyanamshaSystem, ayanamsha_deg, deg_to_dms, jd_tdb_to_centuries, nakshatra_from_longitude,
-    nakshatra_from_tropical, nakshatra28_from_longitude, nakshatra28_from_tropical,
-    rashi_from_longitude, rashi_from_tropical,
+    AyanamshaSystem, LunarNode, NodeMode, Rashi, ayanamsha_deg, deg_to_dms, jd_tdb_to_centuries,
+    nakshatra_from_longitude, nakshatra_from_tropical, nakshatra28_from_longitude,
+    nakshatra28_from_tropical, rashi_from_longitude, rashi_from_tropical,
 };
 
 #[derive(Parser)]
@@ -598,6 +602,366 @@ enum Commands {
         #[arg(long)]
         eop: PathBuf,
     },
+    /// Find previous Purnima (full moon)
+    PrevPurnima {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous Amavasya (new moon)
+    PrevAmavasya {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous Sankranti
+    PrevSankranti {
+        #[arg(long)]
+        date: String,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search Purnimas in a date range
+    SearchPurnimas {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search Amavasyas in a date range
+    SearchAmavasyas {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search Sankrantis in a date range
+    SearchSankrantis {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next entry of Sun into a specific Rashi
+    NextSpecificSankranti {
+        #[arg(long)]
+        date: String,
+        /// Rashi index (0=Mesha .. 11=Meena)
+        #[arg(long)]
+        rashi: u8,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous entry of Sun into a specific Rashi
+    PrevSpecificSankranti {
+        #[arg(long)]
+        date: String,
+        /// Rashi index (0=Mesha .. 11=Meena)
+        #[arg(long)]
+        rashi: u8,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute ayanamsha for a date
+    AyanamshaCompute {
+        #[arg(long)]
+        date: String,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute nutation (dpsi, deps) for a date
+    NutationCompute {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute sunrise/sunset and twilight events
+    Sunrise {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        lat: f64,
+        #[arg(long)]
+        lon: f64,
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+        #[arg(long)]
+        eop: PathBuf,
+    },
+    /// Compute bhava (house) cusps
+    Bhavas {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        lat: f64,
+        #[arg(long)]
+        lon: f64,
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+        #[arg(long)]
+        eop: PathBuf,
+    },
+    /// Compute Lagna (Ascendant), MC, and RAMC
+    LagnaCompute {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        lat: f64,
+        #[arg(long)]
+        lon: f64,
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+        #[arg(long)]
+        eop: PathBuf,
+    },
+    /// Compute Rahu/Ketu (lunar node) longitude
+    LunarNode {
+        #[arg(long)]
+        date: String,
+        /// Node: rahu or ketu
+        #[arg(long, default_value = "rahu")]
+        node: String,
+        /// Mode: mean or true
+        #[arg(long, default_value = "mean")]
+        mode: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next conjunction between two bodies
+    NextConjunction {
+        #[arg(long)]
+        date: String,
+        /// NAIF body code for first body (e.g. 10=Sun, 301=Moon)
+        #[arg(long)]
+        body1: i32,
+        /// NAIF body code for second body
+        #[arg(long)]
+        body2: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous conjunction between two bodies
+    PrevConjunction {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        body1: i32,
+        #[arg(long)]
+        body2: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search conjunctions between two bodies in a date range
+    SearchConjunctions {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long)]
+        body1: i32,
+        #[arg(long)]
+        body2: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next lunar eclipse
+    NextChandraGrahan {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous lunar eclipse
+    PrevChandraGrahan {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search lunar eclipses in a date range
+    SearchChandraGrahan {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next solar eclipse
+    NextSuryaGrahan {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous solar eclipse
+    PrevSuryaGrahan {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search solar eclipses in a date range
+    SearchSuryaGrahan {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next stationary point of a planet
+    NextStationary {
+        #[arg(long)]
+        date: String,
+        /// NAIF body code (e.g. 499=Mars, 599=Jupiter)
+        #[arg(long)]
+        body: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous stationary point of a planet
+    PrevStationary {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        body: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search stationary points of a planet in a date range
+    SearchStationary {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long)]
+        body: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find next max-speed event of a planet
+    NextMaxSpeed {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        body: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Find previous max-speed event of a planet
+    PrevMaxSpeed {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        body: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Search max-speed events of a planet in a date range
+    SearchMaxSpeed {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
+        #[arg(long)]
+        body: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -647,6 +1011,53 @@ fn load_eop(path: &PathBuf) -> EopKernel {
         eprintln!("Failed to load EOP: {e}");
         std::process::exit(1);
     })
+}
+
+fn require_body(code: i32) -> Body {
+    Body::from_code(code).unwrap_or_else(|| {
+        eprintln!("Invalid body code: {code}");
+        std::process::exit(1);
+    })
+}
+
+fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
+    let day_frac = utc.day as f64
+        + utc.hour as f64 / 24.0
+        + utc.minute as f64 / 1440.0
+        + utc.second / 86_400.0;
+    calendar_to_jd(utc.year, utc.month, day_frac)
+}
+
+fn rashi_from_index(idx: u8) -> Rashi {
+    dhruv_vedic_base::ALL_RASHIS
+        .get(idx as usize)
+        .copied()
+        .unwrap_or_else(|| {
+            eprintln!("Invalid rashi index: {idx} (0-11)");
+            std::process::exit(1);
+        })
+}
+
+fn parse_lunar_node(s: &str) -> LunarNode {
+    match s.to_lowercase().as_str() {
+        "rahu" => LunarNode::Rahu,
+        "ketu" => LunarNode::Ketu,
+        _ => {
+            eprintln!("Invalid node: {s} (rahu or ketu)");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn parse_node_mode(s: &str) -> NodeMode {
+    match s.to_lowercase().as_str() {
+        "mean" => NodeMode::Mean,
+        "true" => NodeMode::True,
+        _ => {
+            eprintln!("Invalid mode: {s} (mean or true)");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn main() {
@@ -1936,5 +2347,934 @@ fn main() {
                 }
             }
         }
+
+        Commands::PrevPurnima { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::prev_purnima(&engine, &utc) {
+                Ok(Some(ev)) => {
+                    println!("Previous Purnima: {}", ev.utc);
+                    println!(
+                        "  Moon lon: {:.4} deg  Sun lon: {:.4} deg",
+                        ev.moon_longitude_deg, ev.sun_longitude_deg
+                    );
+                }
+                Ok(None) => println!("No Purnima found in search range"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevAmavasya { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::prev_amavasya(&engine, &utc) {
+                Ok(Some(ev)) => {
+                    println!("Previous Amavasya: {}", ev.utc);
+                    println!(
+                        "  Moon lon: {:.4} deg  Sun lon: {:.4} deg",
+                        ev.moon_longitude_deg, ev.sun_longitude_deg
+                    );
+                }
+                Ok(None) => println!("No Amavasya found in search range"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevSankranti {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::prev_sankranti(&engine, &utc, &config) {
+                Ok(Some(ev)) => {
+                    println!(
+                        "Previous Sankranti: {} ({})",
+                        ev.rashi.name(),
+                        ev.rashi.western_name()
+                    );
+                    println!("  Time: {}", ev.utc);
+                    println!(
+                        "  Sidereal lon: {:.4} deg  Tropical lon: {:.4} deg",
+                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                    );
+                }
+                Ok(None) => println!("No Sankranti found in search range"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchPurnimas {
+            start,
+            end,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::search_purnimas(&engine, &s, &e) {
+                Ok(events) => {
+                    println!("Found {} Purnimas:", events.len());
+                    for ev in &events {
+                        println!(
+                            "  {}  Moon: {:.4}°  Sun: {:.4}°",
+                            ev.utc, ev.moon_longitude_deg, ev.sun_longitude_deg
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchAmavasyas {
+            start,
+            end,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            match dhruv_search::search_amavasyas(&engine, &s, &e) {
+                Ok(events) => {
+                    println!("Found {} Amavasyas:", events.len());
+                    for ev in &events {
+                        println!(
+                            "  {}  Moon: {:.4}°  Sun: {:.4}°",
+                            ev.utc, ev.moon_longitude_deg, ev.sun_longitude_deg
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchSankrantis {
+            start,
+            end,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::search_sankrantis(&engine, &s, &e, &config) {
+                Ok(events) => {
+                    println!("Found {} Sankrantis:", events.len());
+                    for ev in &events {
+                        println!(
+                            "  {} ({}) at {}  sid: {:.4}°  trop: {:.4}°",
+                            ev.rashi.name(),
+                            ev.rashi.western_name(),
+                            ev.utc,
+                            ev.sun_sidereal_longitude_deg,
+                            ev.sun_tropical_longitude_deg
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NextSpecificSankranti {
+            date,
+            rashi,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let target = rashi_from_index(rashi);
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::next_specific_sankranti(&engine, &utc, target, &config) {
+                Ok(Some(ev)) => {
+                    println!("Next {} Sankranti: {}", ev.rashi.name(), ev.utc);
+                    println!(
+                        "  Sidereal lon: {:.4}°  Tropical lon: {:.4}°",
+                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                    );
+                }
+                Ok(None) => println!("No {} Sankranti found", target.name()),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevSpecificSankranti {
+            date,
+            rashi,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let target = rashi_from_index(rashi);
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::prev_specific_sankranti(&engine, &utc, target, &config) {
+                Ok(Some(ev)) => {
+                    println!("Previous {} Sankranti: {}", ev.rashi.name(), ev.utc);
+                    println!(
+                        "  Sidereal lon: {:.4}°  Tropical lon: {:.4}°",
+                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                    );
+                }
+                Ok(None) => println!("No {} Sankranti found", target.name()),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::AyanamshaCompute {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let t = jd_tdb_to_centuries(jd_tdb);
+            let aya = ayanamsha_deg(system, t, nutation);
+            println!(
+                "Ayanamsha ({:?}): {:.6}°{}",
+                system,
+                aya,
+                if nutation { " (with nutation)" } else { "" }
+            );
+        }
+
+        Commands::NutationCompute { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let t = jd_tdb_to_centuries(jd_tdb);
+            let (dpsi, deps) = nutation_iau2000b(t);
+            println!("Nutation at {}:", date);
+            println!("  dpsi (longitude): {:.6} arcsec", dpsi);
+            println!("  deps (obliquity): {:.6} arcsec", deps);
+        }
+
+        Commands::Sunrise {
+            date,
+            lat,
+            lon,
+            alt,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let rs_config = RiseSetConfig::default();
+            let jd_utc = utc_to_jd_utc(&utc);
+            let jd_noon =
+                dhruv_vedic_base::approximate_local_noon_jd(jd_utc.floor(), location.longitude_deg);
+
+            let events = dhruv_vedic_base::compute_all_events(
+                &engine,
+                engine.lsk(),
+                &eop_kernel,
+                &location,
+                jd_noon,
+                &rs_config,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            println!(
+                "Rise/Set events for {} at {:.4}°N, {:.4}°E:\n",
+                date, lat, lon
+            );
+            for result in &events {
+                match result {
+                    RiseSetResult::Event { jd_tdb, event } => {
+                        println!("  {:20} JD TDB {:.6}", format!("{event:?}"), jd_tdb);
+                    }
+                    RiseSetResult::NeverRises => println!("  Sun never rises (polar night)"),
+                    RiseSetResult::NeverSets => println!("  Sun never sets (midnight sun)"),
+                }
+            }
+        }
+
+        Commands::Bhavas {
+            date,
+            lat,
+            lon,
+            alt,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let bhava_config = BhavaConfig::default();
+            let jd_utc = utc_to_jd_utc(&utc);
+
+            let result = dhruv_vedic_base::compute_bhavas(
+                &engine,
+                engine.lsk(),
+                &eop_kernel,
+                &location,
+                jd_utc,
+                &bhava_config,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            println!(
+                "Bhavas for {} at {:.4}°N, {:.4}°E\n",
+                date, lat, lon
+            );
+            println!("  Lagna: {:.4}°  MC: {:.4}°\n", result.lagna_deg, result.mc_deg);
+            println!("{:>6} {:>10} {:>10} {:>10}", "Bhava", "Cusp", "Start", "End");
+            println!("{}", "-".repeat(40));
+            for b in &result.bhavas {
+                println!(
+                    "{:>6} {:>9.4}° {:>9.4}° {:>9.4}°",
+                    b.number, b.cusp_deg, b.start_deg, b.end_deg
+                );
+            }
+        }
+
+        Commands::LagnaCompute {
+            date,
+            lat,
+            lon,
+            alt,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let jd_utc = utc_to_jd_utc(&utc);
+
+            let lagna = dhruv_vedic_base::lagna_longitude_rad(
+                engine.lsk(),
+                &eop_kernel,
+                &location,
+                jd_utc,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            let mc = dhruv_vedic_base::mc_longitude_rad(
+                engine.lsk(),
+                &eop_kernel,
+                &location,
+                jd_utc,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            let ramc = dhruv_vedic_base::ramc_rad(
+                engine.lsk(),
+                &eop_kernel,
+                &location,
+                jd_utc,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            println!("Lagna (tropical): {:.6}°", lagna.to_degrees().rem_euclid(360.0));
+            println!("MC (tropical):    {:.6}°", mc.to_degrees().rem_euclid(360.0));
+            println!("RAMC:             {:.6}°", ramc.to_degrees().rem_euclid(360.0));
+        }
+
+        Commands::LunarNode {
+            date,
+            node,
+            mode,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let t = jd_tdb_to_centuries(jd_tdb);
+            let lunar_node = parse_lunar_node(&node);
+            let node_mode = parse_node_mode(&mode);
+            let lon = dhruv_vedic_base::lunar_node_deg(lunar_node, t, node_mode);
+            println!("{:?} ({:?}): {:.6}°", lunar_node, node_mode, lon);
+        }
+
+        Commands::NextConjunction {
+            date,
+            body1,
+            body2,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b1 = require_body(body1);
+            let b2 = require_body(body2);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = ConjunctionConfig::conjunction(1.0);
+            match dhruv_search::next_conjunction(&engine, b1, b2, jd_tdb, &config) {
+                Ok(Some(ev)) => print_conjunction_event("Next conjunction", &ev),
+                Ok(None) => println!("No conjunction found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevConjunction {
+            date,
+            body1,
+            body2,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b1 = require_body(body1);
+            let b2 = require_body(body2);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = ConjunctionConfig::conjunction(1.0);
+            match dhruv_search::prev_conjunction(&engine, b1, b2, jd_tdb, &config) {
+                Ok(Some(ev)) => print_conjunction_event("Previous conjunction", &ev),
+                Ok(None) => println!("No conjunction found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchConjunctions {
+            start,
+            end,
+            body1,
+            body2,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b1 = require_body(body1);
+            let b2 = require_body(body2);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_start = s.to_jd_tdb(engine.lsk());
+            let jd_end = e.to_jd_tdb(engine.lsk());
+            let config = ConjunctionConfig::conjunction(1.0);
+            match dhruv_search::search_conjunctions(&engine, b1, b2, jd_start, jd_end, &config) {
+                Ok(events) => {
+                    println!("Found {} conjunctions:", events.len());
+                    for ev in &events {
+                        print_conjunction_event("  Conjunction", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NextChandraGrahan { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = GrahanConfig {
+                include_penumbral: true,
+                include_peak_details: true,
+            };
+            match dhruv_search::next_chandra_grahan(&engine, jd_tdb, &config) {
+                Ok(Some(ev)) => print_chandra_grahan("Next Chandra Grahan", &ev),
+                Ok(None) => println!("No lunar eclipse found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevChandraGrahan { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = GrahanConfig {
+                include_penumbral: true,
+                include_peak_details: true,
+            };
+            match dhruv_search::prev_chandra_grahan(&engine, jd_tdb, &config) {
+                Ok(Some(ev)) => print_chandra_grahan("Previous Chandra Grahan", &ev),
+                Ok(None) => println!("No lunar eclipse found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchChandraGrahan {
+            start,
+            end,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_start = s.to_jd_tdb(engine.lsk());
+            let jd_end = e.to_jd_tdb(engine.lsk());
+            let config = GrahanConfig {
+                include_penumbral: true,
+                include_peak_details: true,
+            };
+            match dhruv_search::search_chandra_grahan(&engine, jd_start, jd_end, &config) {
+                Ok(events) => {
+                    println!("Found {} lunar eclipses:", events.len());
+                    for ev in &events {
+                        print_chandra_grahan("  Chandra Grahan", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NextSuryaGrahan { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = GrahanConfig {
+                include_penumbral: true,
+                include_peak_details: true,
+            };
+            match dhruv_search::next_surya_grahan(&engine, jd_tdb, &config) {
+                Ok(Some(ev)) => print_surya_grahan("Next Surya Grahan", &ev),
+                Ok(None) => println!("No solar eclipse found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevSuryaGrahan { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = GrahanConfig {
+                include_penumbral: true,
+                include_peak_details: true,
+            };
+            match dhruv_search::prev_surya_grahan(&engine, jd_tdb, &config) {
+                Ok(Some(ev)) => print_surya_grahan("Previous Surya Grahan", &ev),
+                Ok(None) => println!("No solar eclipse found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchSuryaGrahan {
+            start,
+            end,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_start = s.to_jd_tdb(engine.lsk());
+            let jd_end = e.to_jd_tdb(engine.lsk());
+            let config = GrahanConfig {
+                include_penumbral: true,
+                include_peak_details: true,
+            };
+            match dhruv_search::search_surya_grahan(&engine, jd_start, jd_end, &config) {
+                Ok(events) => {
+                    println!("Found {} solar eclipses:", events.len());
+                    for ev in &events {
+                        print_surya_grahan("  Surya Grahan", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NextStationary {
+            date,
+            body,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b = require_body(body);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = StationaryConfig::inner_planet();
+            match dhruv_search::next_stationary(&engine, b, jd_tdb, &config) {
+                Ok(Some(ev)) => print_stationary_event("Next stationary", &ev),
+                Ok(None) => println!("No stationary point found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevStationary {
+            date,
+            body,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b = require_body(body);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = StationaryConfig::inner_planet();
+            match dhruv_search::prev_stationary(&engine, b, jd_tdb, &config) {
+                Ok(Some(ev)) => print_stationary_event("Previous stationary", &ev),
+                Ok(None) => println!("No stationary point found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchStationary {
+            start,
+            end,
+            body,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b = require_body(body);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_start = s.to_jd_tdb(engine.lsk());
+            let jd_end = e.to_jd_tdb(engine.lsk());
+            let config = StationaryConfig::inner_planet();
+            match dhruv_search::search_stationary(&engine, b, jd_start, jd_end, &config) {
+                Ok(events) => {
+                    println!("Found {} stationary points:", events.len());
+                    for ev in &events {
+                        print_stationary_event("  Station", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NextMaxSpeed {
+            date,
+            body,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b = require_body(body);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = StationaryConfig::inner_planet();
+            match dhruv_search::next_max_speed(&engine, b, jd_tdb, &config) {
+                Ok(Some(ev)) => print_max_speed_event("Next max-speed", &ev),
+                Ok(None) => println!("No max-speed event found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::PrevMaxSpeed {
+            date,
+            body,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b = require_body(body);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = StationaryConfig::inner_planet();
+            match dhruv_search::prev_max_speed(&engine, b, jd_tdb, &config) {
+                Ok(Some(ev)) => print_max_speed_event("Previous max-speed", &ev),
+                Ok(None) => println!("No max-speed event found"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SearchMaxSpeed {
+            start,
+            end,
+            body,
+            bsp,
+            lsk,
+        } => {
+            let s = parse_utc(&start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let e = parse_utc(&end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b = require_body(body);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_start = s.to_jd_tdb(engine.lsk());
+            let jd_end = e.to_jd_tdb(engine.lsk());
+            let config = StationaryConfig::inner_planet();
+            match dhruv_search::search_max_speed(&engine, b, jd_start, jd_end, &config) {
+                Ok(events) => {
+                    println!("Found {} max-speed events:", events.len());
+                    for ev in &events {
+                        print_max_speed_event("  Max-speed", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
     }
+}
+
+fn print_conjunction_event(label: &str, ev: &ConjunctionEvent) {
+    println!(
+        "{}: JD TDB {:.6}  sep: {:.4}°",
+        label, ev.jd_tdb, ev.actual_separation_deg
+    );
+    println!(
+        "  Body1 lon: {:.4}°  Body2 lon: {:.4}°",
+        ev.body1_longitude_deg, ev.body2_longitude_deg
+    );
+}
+
+fn print_chandra_grahan(label: &str, ev: &dhruv_search::grahan_types::ChandraGrahan) {
+    println!(
+        "{}: {:?}  mag: {:.4}  penumbral mag: {:.4}",
+        label, ev.grahan_type, ev.magnitude, ev.penumbral_magnitude
+    );
+    println!("  Greatest: JD TDB {:.6}", ev.greatest_grahan_jd);
+    println!("  P1: JD TDB {:.6}", ev.p1_jd);
+    if let Some(u1) = ev.u1_jd {
+        println!("  U1: JD TDB {:.6}", u1);
+    }
+    if let Some(u2) = ev.u2_jd {
+        println!("  U2: JD TDB {:.6}", u2);
+    }
+}
+
+fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan) {
+    println!(
+        "{}: {:?}  mag: {:.4}",
+        label, ev.grahan_type, ev.magnitude
+    );
+    println!("  Greatest: JD TDB {:.6}", ev.greatest_grahan_jd);
+    if let Some(c1) = ev.c1_jd {
+        println!("  C1: JD TDB {:.6}", c1);
+    }
+    if let Some(c2) = ev.c2_jd {
+        println!("  C2: JD TDB {:.6}", c2);
+    }
+    if let Some(c3) = ev.c3_jd {
+        println!("  C3: JD TDB {:.6}", c3);
+    }
+    if let Some(c4) = ev.c4_jd {
+        println!("  C4: JD TDB {:.6}", c4);
+    }
+}
+
+fn print_stationary_event(label: &str, ev: &dhruv_search::stationary_types::StationaryEvent) {
+    println!(
+        "{}: {:?} {:?} at JD TDB {:.6}",
+        label, ev.body, ev.station_type, ev.jd_tdb
+    );
+    println!(
+        "  Longitude: {:.4}°  Latitude: {:.4}°",
+        ev.longitude_deg, ev.latitude_deg
+    );
+}
+
+fn print_max_speed_event(label: &str, ev: &dhruv_search::stationary_types::MaxSpeedEvent) {
+    println!(
+        "{}: {:?} {:?} at JD TDB {:.6}",
+        label, ev.body, ev.speed_type, ev.jd_tdb
+    );
+    println!(
+        "  Longitude: {:.4}°  Speed: {:.6} deg/day",
+        ev.longitude_deg, ev.speed_deg_per_day
+    );
 }

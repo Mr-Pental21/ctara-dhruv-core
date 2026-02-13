@@ -1,17 +1,22 @@
 use dhruv_core::{Body, Frame, Observer, Query, StateVector};
 use dhruv_frames::{
     SphericalCoords, SphericalState, cartesian_state_to_spherical_state, cartesian_to_spherical,
+    nutation_iau2000b,
 };
+use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
+use dhruv_search::grahan_types::{ChandraGrahan, GrahanConfig, SuryaGrahan};
 use dhruv_search::panchang_types::{
     AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangInfo, PanchangNakshatraInfo,
     TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
 };
 use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
+use dhruv_search::stationary_types::{MaxSpeedEvent, StationaryConfig, StationaryEvent};
 use dhruv_search::{LunarPhaseEvent, SearchError};
-use dhruv_time::{EopKernel, Epoch, UtcTime};
-use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
+use dhruv_time::{EopKernel, Epoch, UtcTime, calendar_to_jd};
+use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult};
 use dhruv_vedic_base::{
-    AyanamshaSystem, Nakshatra28Info, NakshatraInfo, RashiInfo, ayanamsha_deg, jd_tdb_to_centuries,
+    AyanamshaSystem, BhavaConfig, BhavaResult, LunarNode, Nakshatra28Info, NakshatraInfo, NodeMode,
+    Rashi, RashiInfo, ayanamsha_deg, jd_tdb_to_centuries, lunar_node_deg,
     nakshatra_from_longitude, nakshatra28_from_longitude, rashi_from_longitude,
 };
 
@@ -32,6 +37,13 @@ fn utc_to_jd_tdb(date: UtcDate) -> Result<f64, DhruvError> {
         eng.lsk(),
     );
     Ok(epoch.as_jd_tdb())
+}
+
+/// Convert a UTC date to a Julian Date (UTC scale, no TDB conversion).
+fn utc_to_jd_utc(date: UtcDate) -> f64 {
+    let day_frac =
+        date.day as f64 + date.hour as f64 / 24.0 + date.min as f64 / 1440.0 + date.sec / 86_400.0;
+    calendar_to_jd(date.year, date.month, day_frac)
 }
 
 /// Query the global engine for spherical coordinates (lon, lat, distance).
@@ -625,4 +637,414 @@ pub fn upagrahas(
     Ok(dhruv_search::all_upagrahas_for_date(
         eng, eop, &utc, location, &rs_config, &config,
     )?)
+}
+
+// ---------------------------------------------------------------------------
+// Ayanamsha / Nutation
+// ---------------------------------------------------------------------------
+
+/// Compute the ayanamsha value in degrees for the given date.
+///
+/// Returns the precession offset used to convert tropical to sidereal longitudes.
+pub fn ayanamsha(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<f64, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let t = jd_tdb_to_centuries(jd);
+    Ok(ayanamsha_deg(system, t, use_nutation))
+}
+
+/// Compute IAU 2000B nutation values for the given date.
+///
+/// Returns `(delta_psi_arcsec, delta_epsilon_arcsec)` — nutation in
+/// longitude and obliquity respectively, both in arcseconds.
+pub fn nutation(date: UtcDate) -> Result<(f64, f64), DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let t = jd_tdb_to_centuries(jd);
+    Ok(nutation_iau2000b(t))
+}
+
+// ---------------------------------------------------------------------------
+// Lunar Node
+// ---------------------------------------------------------------------------
+
+/// Compute the ecliptic longitude of a lunar node (Rahu or Ketu).
+///
+/// Returns longitude in degrees [0, 360).
+pub fn lunar_node(
+    node: LunarNode,
+    date: UtcDate,
+    mode: NodeMode,
+) -> Result<f64, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let t = jd_tdb_to_centuries(jd);
+    Ok(lunar_node_deg(node, t, mode))
+}
+
+// ---------------------------------------------------------------------------
+// Rise / Set
+// ---------------------------------------------------------------------------
+
+/// Compute sunrise for the given date and location.
+///
+/// Uses default RiseSetConfig (upper limb, with refraction).
+pub fn sunrise(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<RiseSetResult, DhruvError> {
+    let eng = engine()?;
+    let jd_utc = utc_to_jd_utc(date);
+    Ok(dhruv_vedic_base::compute_rise_set(
+        eng,
+        eng.lsk(),
+        eop,
+        location,
+        RiseSetEvent::Sunrise,
+        jd_utc,
+        &RiseSetConfig::default(),
+    )?)
+}
+
+/// Compute sunset for the given date and location.
+///
+/// Uses default RiseSetConfig (upper limb, with refraction).
+pub fn sunset(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<RiseSetResult, DhruvError> {
+    let eng = engine()?;
+    let jd_utc = utc_to_jd_utc(date);
+    Ok(dhruv_vedic_base::compute_rise_set(
+        eng,
+        eng.lsk(),
+        eop,
+        location,
+        RiseSetEvent::Sunset,
+        jd_utc,
+        &RiseSetConfig::default(),
+    )?)
+}
+
+/// Compute all 8 rise/set/twilight events for the given date and location.
+///
+/// Returns results for: Sunrise, Sunset, CivilDawn, CivilDusk,
+/// NauticalDawn, NauticalDusk, AstronomicalDawn, AstronomicalDusk.
+pub fn all_rise_set_events(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<Vec<RiseSetResult>, DhruvError> {
+    let eng = engine()?;
+    let jd_utc = utc_to_jd_utc(date);
+    Ok(dhruv_vedic_base::compute_all_events(
+        eng,
+        eng.lsk(),
+        eop,
+        location,
+        jd_utc,
+        &RiseSetConfig::default(),
+    )?)
+}
+
+// ---------------------------------------------------------------------------
+// Bhava (House) Computation
+// ---------------------------------------------------------------------------
+
+/// Compute 12 bhava (house) cusps for the given date and location.
+pub fn bhavas(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    config: &BhavaConfig,
+) -> Result<BhavaResult, DhruvError> {
+    let eng = engine()?;
+    let jd_utc = utc_to_jd_utc(date);
+    Ok(dhruv_vedic_base::compute_bhavas(
+        eng,
+        eng.lsk(),
+        eop,
+        location,
+        jd_utc,
+        config,
+    )?)
+}
+
+// ---------------------------------------------------------------------------
+// Lagna / MC / RAMC
+// ---------------------------------------------------------------------------
+
+/// Compute the lagna (ascendant) ecliptic longitude in degrees.
+pub fn lagna(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<f64, DhruvError> {
+    let eng = engine()?;
+    let jd_utc = utc_to_jd_utc(date);
+    let rad = dhruv_vedic_base::lagna_longitude_rad(eng.lsk(), eop, location, jd_utc)?;
+    Ok(rad.to_degrees().rem_euclid(360.0))
+}
+
+/// Compute the MC (Midheaven) ecliptic longitude in degrees.
+pub fn mc(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<f64, DhruvError> {
+    let eng = engine()?;
+    let jd_utc = utc_to_jd_utc(date);
+    let rad = dhruv_vedic_base::mc_longitude_rad(eng.lsk(), eop, location, jd_utc)?;
+    Ok(rad.to_degrees().rem_euclid(360.0))
+}
+
+/// Compute RAMC (Right Ascension of MC / local sidereal time) in degrees.
+pub fn ramc(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<f64, DhruvError> {
+    let eng = engine()?;
+    let jd_utc = utc_to_jd_utc(date);
+    let rad = dhruv_vedic_base::ramc_rad(eng.lsk(), eop, location, jd_utc)?;
+    Ok(rad.to_degrees().rem_euclid(360.0))
+}
+
+// ---------------------------------------------------------------------------
+// Conjunction Search
+// ---------------------------------------------------------------------------
+
+/// Find the next conjunction/aspect event between two bodies after the given date.
+pub fn next_conjunction(
+    body1: Body,
+    body2: Body,
+    date: UtcDate,
+    config: &ConjunctionConfig,
+) -> Result<Option<ConjunctionEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::next_conjunction(eng, body1, body2, jd, config)?)
+}
+
+/// Find the previous conjunction/aspect event between two bodies before the given date.
+pub fn prev_conjunction(
+    body1: Body,
+    body2: Body,
+    date: UtcDate,
+    config: &ConjunctionConfig,
+) -> Result<Option<ConjunctionEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::prev_conjunction(eng, body1, body2, jd, config)?)
+}
+
+/// Search for all conjunction/aspect events between two bodies in a date range.
+pub fn search_conjunctions(
+    body1: Body,
+    body2: Body,
+    start: UtcDate,
+    end: UtcDate,
+    config: &ConjunctionConfig,
+) -> Result<Vec<ConjunctionEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd_start = utc_to_jd_tdb(start)?;
+    let jd_end = utc_to_jd_tdb(end)?;
+    Ok(dhruv_search::search_conjunctions(eng, body1, body2, jd_start, jd_end, config)?)
+}
+
+// ---------------------------------------------------------------------------
+// Eclipse (Grahan) Search
+// ---------------------------------------------------------------------------
+
+/// Find the next lunar eclipse (Chandra Grahan) after the given date.
+pub fn next_chandra_grahan(date: UtcDate) -> Result<Option<ChandraGrahan>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::next_chandra_grahan(eng, jd, &GrahanConfig::default())?)
+}
+
+/// Find the previous lunar eclipse (Chandra Grahan) before the given date.
+pub fn prev_chandra_grahan(date: UtcDate) -> Result<Option<ChandraGrahan>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::prev_chandra_grahan(eng, jd, &GrahanConfig::default())?)
+}
+
+/// Search for all lunar eclipses in a date range.
+pub fn search_chandra_grahan(
+    start: UtcDate,
+    end: UtcDate,
+) -> Result<Vec<ChandraGrahan>, DhruvError> {
+    let eng = engine()?;
+    let jd_start = utc_to_jd_tdb(start)?;
+    let jd_end = utc_to_jd_tdb(end)?;
+    Ok(dhruv_search::search_chandra_grahan(eng, jd_start, jd_end, &GrahanConfig::default())?)
+}
+
+/// Find the next solar eclipse (Surya Grahan) after the given date.
+pub fn next_surya_grahan(date: UtcDate) -> Result<Option<SuryaGrahan>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::next_surya_grahan(eng, jd, &GrahanConfig::default())?)
+}
+
+/// Find the previous solar eclipse (Surya Grahan) before the given date.
+pub fn prev_surya_grahan(date: UtcDate) -> Result<Option<SuryaGrahan>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::prev_surya_grahan(eng, jd, &GrahanConfig::default())?)
+}
+
+/// Search for all solar eclipses in a date range.
+pub fn search_surya_grahan(
+    start: UtcDate,
+    end: UtcDate,
+) -> Result<Vec<SuryaGrahan>, DhruvError> {
+    let eng = engine()?;
+    let jd_start = utc_to_jd_tdb(start)?;
+    let jd_end = utc_to_jd_tdb(end)?;
+    Ok(dhruv_search::search_surya_grahan(eng, jd_start, jd_end, &GrahanConfig::default())?)
+}
+
+// ---------------------------------------------------------------------------
+// Stationary / Max-Speed Search
+// ---------------------------------------------------------------------------
+
+/// Find the next stationary point (retrograde or direct station) for a body.
+pub fn next_stationary(
+    body: Body,
+    date: UtcDate,
+    config: &StationaryConfig,
+) -> Result<Option<StationaryEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::next_stationary(eng, body, jd, config)?)
+}
+
+/// Find the previous stationary point for a body.
+pub fn prev_stationary(
+    body: Body,
+    date: UtcDate,
+    config: &StationaryConfig,
+) -> Result<Option<StationaryEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::prev_stationary(eng, body, jd, config)?)
+}
+
+/// Search for all stationary points of a body in a date range.
+pub fn search_stationary(
+    body: Body,
+    start: UtcDate,
+    end: UtcDate,
+    config: &StationaryConfig,
+) -> Result<Vec<StationaryEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd_start = utc_to_jd_tdb(start)?;
+    let jd_end = utc_to_jd_tdb(end)?;
+    Ok(dhruv_search::search_stationary(eng, body, jd_start, jd_end, config)?)
+}
+
+/// Find the next maximum-speed event for a body.
+pub fn next_max_speed(
+    body: Body,
+    date: UtcDate,
+    config: &StationaryConfig,
+) -> Result<Option<MaxSpeedEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::next_max_speed(eng, body, jd, config)?)
+}
+
+/// Find the previous maximum-speed event for a body.
+pub fn prev_max_speed(
+    body: Body,
+    date: UtcDate,
+    config: &StationaryConfig,
+) -> Result<Option<MaxSpeedEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::prev_max_speed(eng, body, jd, config)?)
+}
+
+/// Search for all maximum-speed events of a body in a date range.
+pub fn search_max_speed(
+    body: Body,
+    start: UtcDate,
+    end: UtcDate,
+    config: &StationaryConfig,
+) -> Result<Vec<MaxSpeedEvent>, DhruvError> {
+    let eng = engine()?;
+    let jd_start = utc_to_jd_tdb(start)?;
+    let jd_end = utc_to_jd_tdb(end)?;
+    Ok(dhruv_search::search_max_speed(eng, body, jd_start, jd_end, config)?)
+}
+
+// ---------------------------------------------------------------------------
+// Panchang range-search functions
+// ---------------------------------------------------------------------------
+
+/// Search for all Purnimas (full moons) in a date range.
+pub fn search_purnimas(
+    start: UtcDate,
+    end: UtcDate,
+) -> Result<Vec<LunarPhaseEvent>, DhruvError> {
+    let eng = engine()?;
+    let utc_start: UtcTime = start.into();
+    let utc_end: UtcTime = end.into();
+    Ok(dhruv_search::search_purnimas(eng, &utc_start, &utc_end)?)
+}
+
+/// Search for all Amavasyas (new moons) in a date range.
+pub fn search_amavasyas(
+    start: UtcDate,
+    end: UtcDate,
+) -> Result<Vec<LunarPhaseEvent>, DhruvError> {
+    let eng = engine()?;
+    let utc_start: UtcTime = start.into();
+    let utc_end: UtcTime = end.into();
+    Ok(dhruv_search::search_amavasyas(eng, &utc_start, &utc_end)?)
+}
+
+/// Search for all Sankrantis (Sun entering a rashi) in a date range.
+pub fn search_sankrantis(
+    start: UtcDate,
+    end: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<Vec<SankrantiEvent>, DhruvError> {
+    let eng = engine()?;
+    let utc_start: UtcTime = start.into();
+    let utc_end: UtcTime = end.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::search_sankrantis(eng, &utc_start, &utc_end, &config)?)
+}
+
+/// Find the next Sankranti for a specific rashi (e.g. Mesha Sankranti).
+pub fn next_specific_sankranti(
+    date: UtcDate,
+    rashi: Rashi,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<Option<SankrantiEvent>, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::next_specific_sankranti(eng, &utc, rashi, &config)?)
+}
+
+/// Find the previous Sankranti for a specific rashi.
+pub fn prev_specific_sankranti(
+    date: UtcDate,
+    rashi: Rashi,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<Option<SankrantiEvent>, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::prev_specific_sankranti(eng, &utc, rashi, &config)?)
 }

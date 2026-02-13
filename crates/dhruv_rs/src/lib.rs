@@ -30,11 +30,17 @@ pub mod global;
 
 // Primary re-exports — users should only need `use dhruv_rs::*`
 pub use convenience::{
-    arudha_padas, ashtakavarga, ayana, core_bindus, drishti, ghatika, graha_longitudes,
-    graha_positions, hora, karana, longitude, masa, moon_nakshatra, nakshatra, nakshatra28,
-    next_amavasya, next_purnima, next_sankranti, panchang, position, position_full, prev_amavasya,
-    prev_purnima, prev_sankranti, query, query_batch, rashi, sidereal_longitude, special_lagnas,
-    sphutas, tithi, upagrahas, vaar, varsha, yoga,
+    all_rise_set_events, arudha_padas, ashtakavarga, ayana, ayanamsha, bhavas, core_bindus,
+    drishti, ghatika, graha_longitudes, graha_positions, hora, karana, lagna, longitude, lunar_node,
+    masa, mc, moon_nakshatra, nakshatra, nakshatra28, next_amavasya, next_chandra_grahan,
+    next_conjunction, next_max_speed, next_purnima, next_sankranti, next_specific_sankranti,
+    next_stationary, next_surya_grahan, nutation, panchang, position, position_full,
+    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
+    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, query,
+    query_batch, ramc, rashi, search_amavasyas, search_chandra_grahan, search_conjunctions,
+    search_max_speed, search_purnimas, search_sankrantis, search_stationary, search_surya_grahan,
+    sidereal_longitude, special_lagnas, sphutas, sunrise, sunset, tithi, upagrahas, vaar, varsha,
+    yoga,
 };
 pub use date::UtcDate;
 pub use error::DhruvError;
@@ -58,6 +64,10 @@ pub use dhruv_vedic_base::{
     Tithi as TithiName, Vaar as VaarName, Yoga as YogaName, deg_to_dms,
 };
 pub use dhruv_vedic_base::{DrishtiEntry, GrahaDrishtiMatrix};
+pub use dhruv_vedic_base::{
+    BhavaConfig, BhavaResult, BhavaSystem, Bhava, LunarNode, NodeMode,
+};
+pub use dhruv_vedic_base::riseset_types::{RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb};
 
 // Re-export EopKernel for sunrise-based panchang functions.
 pub use dhruv_time::EopKernel;
@@ -69,3 +79,10 @@ pub use dhruv_search::panchang_types::{
     VarshaInfo, YogaInfo,
 };
 pub use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
+pub use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
+pub use dhruv_search::grahan_types::{
+    ChandraGrahan, ChandraGrahanType, GrahanConfig, SuryaGrahan, SuryaGrahanType,
+};
+pub use dhruv_search::stationary_types::{
+    MaxSpeedEvent, MaxSpeedType, StationType, StationaryConfig, StationaryEvent,
+};

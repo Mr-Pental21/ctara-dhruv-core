@@ -238,6 +238,7 @@ dependencies = [
  "clap",
  "criterion",
  "dhruv_core",
+ "dhruv_frames",
  "dhruv_search",
  "dhruv_time",
  "dhruv_vedic_base",
