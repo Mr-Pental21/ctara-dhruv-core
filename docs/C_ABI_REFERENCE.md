@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 24`
+**ABI version:** `DHRUV_API_VERSION = 25`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -35,6 +35,7 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
    - [Pure-Math Panchang Classifiers](#pure-math-panchang-classifiers)
    - [Graha Sidereal Longitudes](#graha-sidereal-longitudes)
    - [Nakshatra At](#nakshatra-at)
+   - [Time Upagraha JD](#time-upagraha-jd)
 
 ---
 
@@ -1193,6 +1194,38 @@ Determine the Moon's Nakshatra (27-scheme) from a pre-computed sidereal longitud
 
 ---
 
+### Time Upagraha JD
+
+```c
+DhruvStatus dhruv_time_upagraha_jd(
+    uint32_t    upagraha_index,    // 0=Gulika, 1=Maandi, 2=Kaala, 3=Mrityu, 4=ArthaPrahara, 5=YamaGhantaka
+    uint32_t    weekday,           // 0=Sunday .. 6=Saturday
+    uint8_t     is_day,            // 1=daytime, 0=nighttime
+    double      sunrise_jd,
+    double      sunset_jd,
+    double      next_sunrise_jd,
+    double*     out_jd
+);
+```
+
+Compute the JD at which to evaluate a time-based upagraha's lagna. Pure math — accepts pre-computed sunrise/sunset/next-sunrise JDs. Returns `DHRUV_STATUS_INVALID_QUERY` for `upagraha_index >= 6` or `weekday > 6`.
+
+```c
+DhruvStatus dhruv_time_upagraha_jd_utc(
+    const DhruvEngineHandle*   engine,
+    const DhruvEopHandle*      eop,
+    const DhruvUtcTime*        utc,
+    const DhruvGeoLocation*    location,
+    const DhruvRiseSetConfig*  riseset_config,
+    uint32_t                   upagraha_index,
+    double*                    out_jd
+);
+```
+
+Compute the JD for a time-based upagraha from a UTC date and location. Computes sunrise, sunset, and next sunrise internally from the engine, EOP, and location. Automatically determines weekday and day/night status from the computed rise/set times.
+
+---
+
 ## Function Summary
 
 | # | Function | Engine | LSK | EOP | Pure Math |
@@ -1257,5 +1290,7 @@ Determine the Moon's Nakshatra (27-scheme) from a pre-computed sidereal longitud
 | 58 | `dhruv_ayana_from_sidereal_longitude` | | | | yes |
 | 59 | `dhruv_samvatsara_from_year` | | | | yes |
 | 60 | `dhruv_nth_rashi_from` | | | | yes |
+| 61 | `dhruv_time_upagraha_jd` | | | | yes |
+| 62 | `dhruv_time_upagraha_jd_utc` | yes | | yes | |
 
 **Total exported symbols: 60 functions**

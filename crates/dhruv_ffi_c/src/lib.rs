@@ -31,11 +31,12 @@ use dhruv_vedic_base::{
     jd_tdb_to_centuries, karana_from_elongation, lunar_node_deg, masa_from_rashi_index,
     nakshatra28_from_longitude, nakshatra28_from_tropical, nakshatra_from_longitude,
     nakshatra_from_tropical, nth_rashi_from, rashi_from_longitude, rashi_from_tropical,
-    samvatsara_from_year, tithi_from_elongation, vaar_from_jd, yoga_from_sum,
+    samvatsara_from_year, time_upagraha_jd, tithi_from_elongation, vaar_from_jd,
+    yoga_from_sum,
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 24;
+pub const DHRUV_API_VERSION: u32 = 25;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -6734,6 +6735,156 @@ pub unsafe extern "C" fn dhruv_sun_based_upagrahas(
     DhruvStatus::Ok
 }
 
+/// Map a 0-based upagraha index to the Upagraha enum (time-based only: 0-5).
+fn time_upagraha_from_index(index: u32) -> Option<dhruv_vedic_base::Upagraha> {
+    match index {
+        0 => Some(dhruv_vedic_base::Upagraha::Gulika),
+        1 => Some(dhruv_vedic_base::Upagraha::Maandi),
+        2 => Some(dhruv_vedic_base::Upagraha::Kaala),
+        3 => Some(dhruv_vedic_base::Upagraha::Mrityu),
+        4 => Some(dhruv_vedic_base::Upagraha::ArthaPrahara),
+        5 => Some(dhruv_vedic_base::Upagraha::YamaGhantaka),
+        _ => None,
+    }
+}
+
+/// Compute the JD at which to evaluate a time-based upagraha's lagna.
+///
+/// Accepts pre-computed sunrise/sunset/next-sunrise JDs.
+/// `upagraha_index`: 0=Gulika, 1=Maandi, 2=Kaala, 3=Mrityu,
+///                   4=ArthaPrahara, 5=YamaGhantaka.
+/// `weekday`: 0=Sunday .. 6=Saturday.
+/// `is_day`: 1=daytime, 0=nighttime.
+///
+/// Pure math — no engine or kernel needed.
+///
+/// # Safety
+/// `out_jd` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_time_upagraha_jd(
+    upagraha_index: u32,
+    weekday: u32,
+    is_day: u8,
+    sunrise_jd: f64,
+    sunset_jd: f64,
+    next_sunrise_jd: f64,
+    out_jd: *mut f64,
+) -> DhruvStatus {
+    if out_jd.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let upa = match time_upagraha_from_index(upagraha_index) {
+        Some(u) => u,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    if weekday > 6 {
+        return DhruvStatus::InvalidQuery;
+    }
+    let jd = time_upagraha_jd(
+        upa,
+        weekday as u8,
+        is_day != 0,
+        sunrise_jd,
+        sunset_jd,
+        next_sunrise_jd,
+    );
+    unsafe { *out_jd = jd };
+    DhruvStatus::Ok
+}
+
+/// Compute the JD for a time-based upagraha from a UTC date and location.
+///
+/// Computes sunrise/sunset/next-sunrise internally from engine+EOP+location.
+/// `upagraha_index`: 0=Gulika, 1=Maandi, 2=Kaala, 3=Mrityu,
+///                   4=ArthaPrahara, 5=YamaGhantaka.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_time_upagraha_jd_utc(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
+    upagraha_index: u32,
+    out_jd: *mut f64,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null()
+        || location.is_null() || riseset_config.is_null() || out_jd.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let upa = match time_upagraha_from_index(upagraha_index) {
+        Some(u) => u,
+        None => return DhruvStatus::InvalidQuery,
+    };
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*utc };
+    let loc_c = unsafe { &*location };
+    let rs_c = unsafe { &*riseset_config };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
+        Some(l) => l,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let rs_config = RiseSetConfig {
+        use_refraction: rs_c.use_refraction != 0,
+        sun_limb,
+        altitude_correction: rs_c.altitude_correction != 0,
+    };
+
+    // Compute sunrise pair (vedic day boundaries)
+    let (jd_sunrise, jd_next_sunrise) = match vedic_day_sunrises(
+        engine, eop, &utc_time, &location, &rs_config,
+    ) {
+        Ok(pair) => pair,
+        Err(e) => return DhruvStatus::from(&e),
+    };
+
+    // Compute sunset
+    let jd_utc = ffi_utc_to_jd_utc(utc_c);
+    let noon_jd = approximate_local_noon_jd(
+        jd_utc.floor() + 0.5,
+        loc_c.longitude_deg,
+    );
+    let jd_sunset = match compute_rise_set(
+        engine, engine.lsk(), eop, &location,
+        RiseSetEvent::Sunset, noon_jd, &rs_config,
+    ) {
+        Ok(RiseSetResult::Event { jd_tdb: jd, .. }) => jd,
+        Ok(_) => return DhruvStatus::NoConvergence,
+        Err(_) => return DhruvStatus::NoConvergence,
+    };
+
+    // Determine if query time is during day or night
+    let jd_tdb = utc_time.to_jd_tdb(engine.lsk());
+    let is_day = jd_tdb >= jd_sunrise && jd_tdb < jd_sunset;
+
+    // Weekday from sunrise
+    let weekday = vaar_from_jd(jd_sunrise).index();
+
+    let jd = time_upagraha_jd(
+        upa, weekday, is_day, jd_sunrise, jd_sunset, jd_next_sunrise,
+    );
+    unsafe { *out_jd = jd };
+    DhruvStatus::Ok
+}
+
 /// Compute all 11 upagrahas for a given date and location.
 ///
 /// # Safety
@@ -7867,8 +8018,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_24() {
-        assert_eq!(dhruv_api_version(), 24);
+    fn ffi_api_version_is_25() {
+        assert_eq!(dhruv_api_version(), 25);
     }
 
     // --- Search error mapping ---
@@ -9552,6 +9703,89 @@ mod tests {
         let cfg = dhruv_sankranti_config_default();
         let s = unsafe {
             dhruv_nakshatra_at(ptr::null(), 2451545.0, 120.0, &cfg, ptr::null_mut())
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    // ── time_upagraha_jd ──────────────────────────────────────────
+
+    #[test]
+    fn ffi_time_upagraha_jd_rejects_null_out() {
+        let s = unsafe {
+            dhruv_time_upagraha_jd(0, 0, 1, 2451545.0, 2451545.3, 2451546.0, ptr::null_mut())
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_time_upagraha_jd_rejects_invalid_index() {
+        let mut out: f64 = 0.0;
+        let s = unsafe {
+            dhruv_time_upagraha_jd(6, 0, 1, 2451545.0, 2451545.3, 2451546.0, &mut out)
+        };
+        assert_eq!(s, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_time_upagraha_jd_rejects_invalid_weekday() {
+        let mut out: f64 = 0.0;
+        let s = unsafe {
+            dhruv_time_upagraha_jd(0, 7, 1, 2451545.0, 2451545.3, 2451546.0, &mut out)
+        };
+        assert_eq!(s, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_time_upagraha_jd_valid() {
+        let mut out: f64 = 0.0;
+        // Gulika (0), Sunday (0), daytime
+        let s = unsafe {
+            dhruv_time_upagraha_jd(0, 0, 1, 2451545.0, 2451545.3, 2451546.0, &mut out)
+        };
+        assert_eq!(s, DhruvStatus::Ok);
+        // Result should be between sunrise and sunset
+        assert!(out >= 2451545.0 && out <= 2451545.3, "out={out}");
+    }
+
+    #[test]
+    fn ffi_time_upagraha_jd_utc_rejects_null() {
+        let mut out: f64 = 0.0;
+        let rs_cfg = dhruv_riseset_config_default();
+        let loc = DhruvGeoLocation { latitude_deg: 28.6, longitude_deg: 77.2, altitude_m: 0.0 };
+        let utc = DhruvUtcTime { year: 2024, month: 1, day: 15, hour: 12, minute: 0, second: 0.0 };
+        // null engine
+        let s = unsafe {
+            dhruv_time_upagraha_jd_utc(
+                ptr::null(), ptr::null(), &utc, &loc, &rs_cfg, 0, &mut out,
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_time_upagraha_jd_utc_rejects_null_out() {
+        let rs_cfg = dhruv_riseset_config_default();
+        let loc = DhruvGeoLocation { latitude_deg: 28.6, longitude_deg: 77.2, altitude_m: 0.0 };
+        let utc = DhruvUtcTime { year: 2024, month: 1, day: 15, hour: 12, minute: 0, second: 0.0 };
+        let s = unsafe {
+            dhruv_time_upagraha_jd_utc(
+                ptr::null(), ptr::null(), &utc, &loc, &rs_cfg, 0, ptr::null_mut(),
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_time_upagraha_jd_utc_rejects_invalid_index() {
+        let rs_cfg = dhruv_riseset_config_default();
+        let loc = DhruvGeoLocation { latitude_deg: 28.6, longitude_deg: 77.2, altitude_m: 0.0 };
+        let utc = DhruvUtcTime { year: 2024, month: 1, day: 15, hour: 12, minute: 0, second: 0.0 };
+        let mut out: f64 = 0.0;
+        // index 6 is invalid (only 0-5 allowed), but null engine is checked first
+        let s = unsafe {
+            dhruv_time_upagraha_jd_utc(
+                ptr::null(), ptr::null(), &utc, &loc, &rs_cfg, 6, &mut out,
+            )
         };
         assert_eq!(s, DhruvStatus::NullPointer);
     }
