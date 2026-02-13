@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 23`
+**ABI version:** `DHRUV_API_VERSION = 24`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -32,6 +32,7 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
    - [Stationary Point Search](#stationary-point-search)
    - [Max Speed Search](#max-speed-search)
    - [RAMC](#ramc)
+   - [Pure-Math Panchang Classifiers](#pure-math-panchang-classifiers)
    - [Graha Sidereal Longitudes](#graha-sidereal-longitudes)
    - [Nakshatra At](#nakshatra-at)
 
@@ -1078,6 +1079,82 @@ Search for all max-speed events in a time range.
 
 ---
 
+### Pure-Math Panchang Classifiers
+
+These functions classify raw angular/temporal values into Vedic categories. No engine or kernel needed.
+
+```c
+typedef struct {
+    int32_t tithi_index;        // 0-based (0..29)
+    int32_t paksha;             // 0=Shukla, 1=Krishna
+    int32_t tithi_in_paksha;    // 1-based (1..15)
+    double  degrees_in_tithi;   // [0, 12)
+} DhruvTithiPosition;
+
+DhruvStatus dhruv_tithi_from_elongation(double elongation_deg, DhruvTithiPosition* out);
+```
+
+Determine Tithi from Moon-Sun elongation (degrees, 0..360).
+
+```c
+typedef struct {
+    int32_t karana_index;       // 0-based (0..59)
+    double  degrees_in_karana;  // [0, 6)
+} DhruvKaranaPosition;
+
+DhruvStatus dhruv_karana_from_elongation(double elongation_deg, DhruvKaranaPosition* out);
+```
+
+Determine Karana from Moon-Sun elongation (degrees).
+
+```c
+typedef struct {
+    int32_t yoga_index;         // 0-based (0..26)
+    double  degrees_in_yoga;    // [0, 13.333...)
+} DhruvYogaPosition;
+
+DhruvStatus dhruv_yoga_from_sum(double sum_deg, DhruvYogaPosition* out);
+```
+
+Determine Yoga from Sun+Moon sidereal longitude sum (degrees).
+
+```c
+int32_t dhruv_vaar_from_jd(double jd);
+```
+
+Determine Vaar (weekday) from Julian Date. Returns 0=Ravivaar(Sunday) .. 6=Shanivaar(Saturday).
+
+```c
+int32_t dhruv_masa_from_rashi_index(uint32_t rashi_index);
+```
+
+Determine Masa (lunar month) from 0-based rashi index. Returns 0=Chaitra .. 11=Phalguna, or -1 for invalid input.
+
+```c
+int32_t dhruv_ayana_from_sidereal_longitude(double lon_deg);
+```
+
+Determine Ayana from sidereal longitude. Returns 0=Uttarayana, 1=Dakshinayana.
+
+```c
+typedef struct {
+    int32_t samvatsara_index;   // 0-based (0..59)
+    int32_t cycle_position;     // 1-based (1..60)
+} DhruvSamvatsaraResult;
+
+DhruvStatus dhruv_samvatsara_from_year(int32_t ce_year, DhruvSamvatsaraResult* out);
+```
+
+Determine Samvatsara (Jovian year) from a CE year.
+
+```c
+int32_t dhruv_nth_rashi_from(uint32_t rashi_index, uint32_t offset);
+```
+
+Compute the rashi index that is `offset` signs from `rashi_index`. Returns 0-based index, or -1 for invalid input.
+
+---
+
 ### Graha Sidereal Longitudes
 
 ```c
@@ -1172,5 +1249,13 @@ Determine the Moon's Nakshatra (27-scheme) from a pre-computed sidereal longitud
 | 50 | `dhruv_nakshatra_at` | yes | | | |
 | 51 | `dhruv_ramc_deg` | | yes | yes | |
 | 52 | `dhruv_ramc_deg_utc` | | yes | yes | |
+| 53 | `dhruv_tithi_from_elongation` | | | | yes |
+| 54 | `dhruv_karana_from_elongation` | | | | yes |
+| 55 | `dhruv_yoga_from_sum` | | | | yes |
+| 56 | `dhruv_vaar_from_jd` | | | | yes |
+| 57 | `dhruv_masa_from_rashi_index` | | | | yes |
+| 58 | `dhruv_ayana_from_sidereal_longitude` | | | | yes |
+| 59 | `dhruv_samvatsara_from_year` | | | | yes |
+| 60 | `dhruv_nth_rashi_from` | | | | yes |
 
-**Total exported symbols: 52 functions**
+**Total exported symbols: 60 functions**

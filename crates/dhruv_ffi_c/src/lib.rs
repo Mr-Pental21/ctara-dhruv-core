@@ -26,14 +26,16 @@ use dhruv_vedic_base::{
     AyanamshaSystem, BhavaConfig, BhavaReferenceMode,
     BhavaStartingPoint, BhavaSystem, GeoLocation, LunarNode, NodeMode, RiseSetConfig,
     RiseSetEvent, RiseSetResult, SunLimb, VedicError, ayanamsha_deg, ayanamsha_mean_deg,
-    ayanamsha_true_deg, approximate_local_noon_jd, compute_all_events, compute_bhavas,
-    compute_rise_set, deg_to_dms, jd_tdb_to_centuries, lunar_node_deg,
+    ayanamsha_true_deg, approximate_local_noon_jd, ayana_from_sidereal_longitude,
+    compute_all_events, compute_bhavas, compute_rise_set, deg_to_dms,
+    jd_tdb_to_centuries, karana_from_elongation, lunar_node_deg, masa_from_rashi_index,
     nakshatra28_from_longitude, nakshatra28_from_tropical, nakshatra_from_longitude,
-    nakshatra_from_tropical, rashi_from_longitude, rashi_from_tropical,
+    nakshatra_from_tropical, nth_rashi_from, rashi_from_longitude, rashi_from_tropical,
+    samvatsara_from_year, tithi_from_elongation, vaar_from_jd, yoga_from_sum,
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 23;
+pub const DHRUV_API_VERSION: u32 = 24;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -3742,6 +3744,201 @@ pub extern "C" fn dhruv_samvatsara_name(index: u32) -> *const std::ffi::c_char {
         Some(s) => s.as_ptr().cast(),
         None => ptr::null(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Pure-math panchang classifiers
+// ---------------------------------------------------------------------------
+
+/// C-compatible tithi position from elongation.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvTithiPosition {
+    /// 0-based tithi index (0..29).
+    pub tithi_index: i32,
+    /// Paksha: 0 = Shukla, 1 = Krishna.
+    pub paksha: i32,
+    /// 1-based tithi number within the paksha (1-15).
+    pub tithi_in_paksha: i32,
+    /// Degrees into the current tithi [0, 12).
+    pub degrees_in_tithi: f64,
+}
+
+/// Determine the Tithi from Moon-Sun elongation (degrees).
+///
+/// Pure math — no engine or kernel needed.
+///
+/// # Safety
+/// `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tithi_from_elongation(
+    elongation_deg: f64,
+    out: *mut DhruvTithiPosition,
+) -> DhruvStatus {
+    if out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let pos = tithi_from_elongation(elongation_deg);
+    unsafe {
+        *out = DhruvTithiPosition {
+            tithi_index: pos.tithi_index as i32,
+            paksha: match pos.paksha {
+                dhruv_vedic_base::Paksha::Shukla => 0,
+                dhruv_vedic_base::Paksha::Krishna => 1,
+            },
+            tithi_in_paksha: pos.tithi_in_paksha as i32,
+            degrees_in_tithi: pos.degrees_in_tithi,
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// C-compatible karana position from elongation.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvKaranaPosition {
+    /// 0-based karana sequence index within the synodic month (0..59).
+    pub karana_index: i32,
+    /// Degrees into the current karana [0, 6).
+    pub degrees_in_karana: f64,
+}
+
+/// Determine the Karana from Moon-Sun elongation (degrees).
+///
+/// Pure math — no engine or kernel needed.
+///
+/// # Safety
+/// `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_karana_from_elongation(
+    elongation_deg: f64,
+    out: *mut DhruvKaranaPosition,
+) -> DhruvStatus {
+    if out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let pos = karana_from_elongation(elongation_deg);
+    unsafe {
+        *out = DhruvKaranaPosition {
+            karana_index: pos.karana_index as i32,
+            degrees_in_karana: pos.degrees_in_karana,
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// C-compatible yoga position from Sun+Moon sidereal sum.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvYogaPosition {
+    /// 0-based yoga index (0..26).
+    pub yoga_index: i32,
+    /// Degrees into the current yoga [0, 13.333...).
+    pub degrees_in_yoga: f64,
+}
+
+/// Determine the Yoga from the Sun+Moon sidereal longitude sum (degrees).
+///
+/// Pure math — no engine or kernel needed.
+///
+/// # Safety
+/// `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_yoga_from_sum(
+    sum_deg: f64,
+    out: *mut DhruvYogaPosition,
+) -> DhruvStatus {
+    if out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let pos = yoga_from_sum(sum_deg);
+    unsafe {
+        *out = DhruvYogaPosition {
+            yoga_index: pos.yoga_index as i32,
+            degrees_in_yoga: pos.degrees_in_yoga,
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// Determine the Vaar (weekday) from a Julian Date.
+///
+/// Returns 0-based vaar index: 0=Ravivaar(Sunday) .. 6=Shanivaar(Saturday).
+/// Pure math — no engine or kernel needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_vaar_from_jd(jd: f64) -> i32 {
+    let vaar = vaar_from_jd(jd);
+    vaar.index() as i32
+}
+
+/// Determine the Masa (lunar month) from a 0-based rashi index (0..11).
+///
+/// Returns 0-based masa index: 0=Chaitra .. 11=Phalguna.
+/// Returns -1 for invalid rashi_index (>= 12).
+/// Pure math — no engine or kernel needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_masa_from_rashi_index(rashi_index: u32) -> i32 {
+    if rashi_index >= 12 {
+        return -1;
+    }
+    let masa = masa_from_rashi_index(rashi_index as u8);
+    masa.index() as i32
+}
+
+/// Determine the Ayana from a sidereal longitude (degrees).
+///
+/// Returns 0 = Uttarayana, 1 = Dakshinayana.
+/// Pure math — no engine or kernel needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_ayana_from_sidereal_longitude(lon_deg: f64) -> i32 {
+    let ayana = ayana_from_sidereal_longitude(lon_deg);
+    ayana.index() as i32
+}
+
+/// C-compatible samvatsara result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvSamvatsaraResult {
+    /// 0-based samvatsara index (0..59).
+    pub samvatsara_index: i32,
+    /// 1-based position in the 60-year cycle (1..60).
+    pub cycle_position: i32,
+}
+
+/// Determine the Samvatsara (Jovian year) from a CE year.
+///
+/// Pure math — no engine or kernel needed.
+///
+/// # Safety
+/// `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_samvatsara_from_year(
+    ce_year: i32,
+    out: *mut DhruvSamvatsaraResult,
+) -> DhruvStatus {
+    if out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let (samvatsara, position) = samvatsara_from_year(ce_year);
+    unsafe {
+        *out = DhruvSamvatsaraResult {
+            samvatsara_index: samvatsara.index() as i32,
+            cycle_position: position as i32,
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// Compute the 0-based rashi index that is `offset` signs from `rashi_index`.
+///
+/// Formula: (rashi_index + offset - 1) % 12. Returns -1 if rashi_index >= 12.
+/// Pure math — no engine or kernel needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_nth_rashi_from(rashi_index: u32, offset: u32) -> i32 {
+    if rashi_index >= 12 {
+        return -1;
+    }
+    nth_rashi_from(rashi_index as u8, offset as u8) as i32
 }
 
 // ---------------------------------------------------------------------------
@@ -7670,8 +7867,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_23() {
-        assert_eq!(dhruv_api_version(), 23);
+    fn ffi_api_version_is_24() {
+        assert_eq!(dhruv_api_version(), 24);
     }
 
     // --- Search error mapping ---
@@ -8446,6 +8643,148 @@ mod tests {
     #[test]
     fn ffi_samvatsara_name_invalid() {
         assert!(dhruv_samvatsara_name(60).is_null());
+    }
+
+    // --- Pure-math panchang classifier tests ---
+
+    #[test]
+    fn ffi_tithi_from_elongation_rejects_null() {
+        let s = unsafe { dhruv_tithi_from_elongation(0.0, ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_tithi_from_elongation_shukla_pratipada() {
+        let mut out = std::mem::MaybeUninit::<DhruvTithiPosition>::uninit();
+        let s = unsafe { dhruv_tithi_from_elongation(5.0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        let t = unsafe { out.assume_init() };
+        assert_eq!(t.tithi_index, 0); // Pratipada
+        assert_eq!(t.paksha, 0); // Shukla
+        assert_eq!(t.tithi_in_paksha, 1);
+    }
+
+    #[test]
+    fn ffi_tithi_from_elongation_krishna() {
+        let mut out = std::mem::MaybeUninit::<DhruvTithiPosition>::uninit();
+        let s = unsafe { dhruv_tithi_from_elongation(200.0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        let t = unsafe { out.assume_init() };
+        assert_eq!(t.paksha, 1); // Krishna
+    }
+
+    #[test]
+    fn ffi_karana_from_elongation_rejects_null() {
+        let s = unsafe { dhruv_karana_from_elongation(0.0, ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_karana_from_elongation_basic() {
+        let mut out = std::mem::MaybeUninit::<DhruvKaranaPosition>::uninit();
+        let s = unsafe { dhruv_karana_from_elongation(3.0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        let k = unsafe { out.assume_init() };
+        assert_eq!(k.karana_index, 0);
+        assert!(k.degrees_in_karana >= 0.0 && k.degrees_in_karana < 6.0);
+    }
+
+    #[test]
+    fn ffi_yoga_from_sum_rejects_null() {
+        let s = unsafe { dhruv_yoga_from_sum(0.0, ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_yoga_from_sum_basic() {
+        let mut out = std::mem::MaybeUninit::<DhruvYogaPosition>::uninit();
+        let s = unsafe { dhruv_yoga_from_sum(5.0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        let y = unsafe { out.assume_init() };
+        assert_eq!(y.yoga_index, 0); // Vishkambha
+        assert!(y.degrees_in_yoga >= 0.0);
+    }
+
+    #[test]
+    fn ffi_vaar_from_jd_j2000() {
+        // J2000.0 = 2000-01-01 12:00 TT = Saturday
+        assert_eq!(dhruv_vaar_from_jd(2451545.0), 6); // Shanivaar
+    }
+
+    #[test]
+    fn ffi_vaar_from_jd_sunday() {
+        // 2000-01-02 = Sunday
+        assert_eq!(dhruv_vaar_from_jd(2451546.0), 0); // Ravivaar
+    }
+
+    #[test]
+    fn ffi_masa_from_rashi_index_valid() {
+        // Rashi 0 (Mesha) -> Masa 0 (Chaitra)
+        assert_eq!(dhruv_masa_from_rashi_index(0), 0);
+        // Rashi 11 (Meena) -> Masa 11 (Phalguna)
+        assert_eq!(dhruv_masa_from_rashi_index(11), 11);
+    }
+
+    #[test]
+    fn ffi_masa_from_rashi_index_invalid() {
+        assert_eq!(dhruv_masa_from_rashi_index(12), -1);
+        assert_eq!(dhruv_masa_from_rashi_index(255), -1);
+    }
+
+    #[test]
+    fn ffi_ayana_from_sidereal_longitude_uttarayana() {
+        // 0 deg (Mesha) -> Uttarayana
+        assert_eq!(dhruv_ayana_from_sidereal_longitude(0.0), 0);
+        // 45 deg -> Uttarayana
+        assert_eq!(dhruv_ayana_from_sidereal_longitude(45.0), 0);
+        // 300 deg (Makara) -> Uttarayana
+        assert_eq!(dhruv_ayana_from_sidereal_longitude(300.0), 0);
+    }
+
+    #[test]
+    fn ffi_ayana_from_sidereal_longitude_dakshinayana() {
+        // 120 deg (Simha) -> Dakshinayana
+        assert_eq!(dhruv_ayana_from_sidereal_longitude(120.0), 1);
+        // 180 deg (Tula) -> Dakshinayana
+        assert_eq!(dhruv_ayana_from_sidereal_longitude(180.0), 1);
+    }
+
+    #[test]
+    fn ffi_samvatsara_from_year_rejects_null() {
+        let s = unsafe { dhruv_samvatsara_from_year(2024, ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_samvatsara_from_year_2024() {
+        let mut out = std::mem::MaybeUninit::<DhruvSamvatsaraResult>::uninit();
+        let s = unsafe { dhruv_samvatsara_from_year(2024, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        let r = unsafe { out.assume_init() };
+        assert!(r.samvatsara_index >= 0 && r.samvatsara_index < 60);
+        assert!(r.cycle_position >= 1 && r.cycle_position <= 60);
+    }
+
+    #[test]
+    fn ffi_nth_rashi_from_basic() {
+        // 2nd from Mesha (0) = Vrishabha (1)
+        assert_eq!(dhruv_nth_rashi_from(0, 2), 1);
+        // 5th from Mesha (0) = Simha (4)
+        assert_eq!(dhruv_nth_rashi_from(0, 5), 4);
+        // 12th from Mesha (0) = Meena (11)
+        assert_eq!(dhruv_nth_rashi_from(0, 12), 11);
+    }
+
+    #[test]
+    fn ffi_nth_rashi_from_wrap() {
+        // 3rd from Meena (11) = Vrishabha (1)
+        assert_eq!(dhruv_nth_rashi_from(11, 3), 1);
+    }
+
+    #[test]
+    fn ffi_nth_rashi_from_invalid() {
+        assert_eq!(dhruv_nth_rashi_from(12, 1), -1);
+        assert_eq!(dhruv_nth_rashi_from(255, 5), -1);
     }
 
     // --- UTC variant null rejection tests ---
