@@ -33,7 +33,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 28;
+pub const DHRUV_API_VERSION: u32 = 29;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -8400,6 +8400,8 @@ pub struct DhruvFullKundaliConfig {
     pub include_ashtakavarga: u8,
     /// Include upagrahas section.
     pub include_upagrahas: u8,
+    /// Include special lagnas section.
+    pub include_special_lagnas: u8,
     /// Graha positions config.
     pub graha_positions_config: DhruvGrahaPositionsConfig,
     /// Bindus config.
@@ -8422,6 +8424,8 @@ pub struct DhruvFullKundaliResult {
     pub ashtakavarga: DhruvAshtakavargaResult,
     pub upagrahas_valid: u8,
     pub upagrahas: DhruvAllUpagrahas,
+    pub special_lagnas_valid: u8,
+    pub special_lagnas: DhruvSpecialLagnas,
 }
 
 /// Compute a full kundali in one call, reusing shared intermediates.
@@ -8497,6 +8501,7 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
         include_drishti: cfg_c.include_drishti != 0,
         include_ashtakavarga: cfg_c.include_ashtakavarga != 0,
         include_upagrahas: cfg_c.include_upagrahas != 0,
+        include_special_lagnas: cfg_c.include_special_lagnas != 0,
         graha_positions_config: dhruv_search::GrahaPositionsConfig {
             include_nakshatra: cfg_c.graha_positions_config.include_nakshatra != 0,
             include_lagna: cfg_c.graha_positions_config.include_lagna != 0,
@@ -8525,63 +8530,63 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
         &rust_config,
     ) {
         Ok(result) => {
+            let out = unsafe { &mut *out };
             // SAFETY: POD fields only; zero-init valid as "absent" default.
-            let mut out_val: DhruvFullKundaliResult = unsafe { std::mem::zeroed() };
+            unsafe { std::ptr::write_bytes(out as *mut DhruvFullKundaliResult, 0, 1) };
 
             if let Some(g) = result.graha_positions {
-                out_val.graha_positions_valid = 1;
+                out.graha_positions_valid = 1;
                 for i in 0..9 {
-                    out_val.graha_positions.grahas[i] = graha_entry_to_ffi(&g.grahas[i]);
+                    out.graha_positions.grahas[i] = graha_entry_to_ffi(&g.grahas[i]);
                 }
-                out_val.graha_positions.lagna = graha_entry_to_ffi(&g.lagna);
+                out.graha_positions.lagna = graha_entry_to_ffi(&g.lagna);
                 for i in 0..3 {
-                    out_val.graha_positions.outer_planets[i] =
-                        graha_entry_to_ffi(&g.outer_planets[i]);
+                    out.graha_positions.outer_planets[i] = graha_entry_to_ffi(&g.outer_planets[i]);
                 }
             }
 
             if let Some(b) = result.bindus {
-                out_val.bindus_valid = 1;
+                out.bindus_valid = 1;
                 for i in 0..12 {
-                    out_val.bindus.arudha_padas[i] = graha_entry_to_ffi(&b.arudha_padas[i]);
+                    out.bindus.arudha_padas[i] = graha_entry_to_ffi(&b.arudha_padas[i]);
                 }
-                out_val.bindus.bhrigu_bindu = graha_entry_to_ffi(&b.bhrigu_bindu);
-                out_val.bindus.pranapada_lagna = graha_entry_to_ffi(&b.pranapada_lagna);
-                out_val.bindus.gulika = graha_entry_to_ffi(&b.gulika);
-                out_val.bindus.maandi = graha_entry_to_ffi(&b.maandi);
-                out_val.bindus.hora_lagna = graha_entry_to_ffi(&b.hora_lagna);
-                out_val.bindus.ghati_lagna = graha_entry_to_ffi(&b.ghati_lagna);
-                out_val.bindus.sree_lagna = graha_entry_to_ffi(&b.sree_lagna);
+                out.bindus.bhrigu_bindu = graha_entry_to_ffi(&b.bhrigu_bindu);
+                out.bindus.pranapada_lagna = graha_entry_to_ffi(&b.pranapada_lagna);
+                out.bindus.gulika = graha_entry_to_ffi(&b.gulika);
+                out.bindus.maandi = graha_entry_to_ffi(&b.maandi);
+                out.bindus.hora_lagna = graha_entry_to_ffi(&b.hora_lagna);
+                out.bindus.ghati_lagna = graha_entry_to_ffi(&b.ghati_lagna);
+                out.bindus.sree_lagna = graha_entry_to_ffi(&b.sree_lagna);
             }
 
             if let Some(d) = result.drishti {
-                out_val.drishti_valid = 1;
+                out.drishti_valid = 1;
                 for i in 0..9 {
                     for j in 0..9 {
-                        out_val.drishti.graha_to_graha[i][j] =
+                        out.drishti.graha_to_graha[i][j] =
                             drishti_entry_to_ffi(&d.graha_to_graha.entries[i][j]);
                     }
-                    out_val.drishti.graha_to_lagna[i] = drishti_entry_to_ffi(&d.graha_to_lagna[i]);
+                    out.drishti.graha_to_lagna[i] = drishti_entry_to_ffi(&d.graha_to_lagna[i]);
                     for j in 0..12 {
-                        out_val.drishti.graha_to_bhava[i][j] =
+                        out.drishti.graha_to_bhava[i][j] =
                             drishti_entry_to_ffi(&d.graha_to_bhava[i][j]);
                     }
                     for j in 0..19 {
-                        out_val.drishti.graha_to_bindus[i][j] =
+                        out.drishti.graha_to_bindus[i][j] =
                             drishti_entry_to_ffi(&d.graha_to_bindus[i][j]);
                     }
                 }
             }
 
             if let Some(a) = result.ashtakavarga {
-                out_val.ashtakavarga_valid = 1;
+                out.ashtakavarga_valid = 1;
                 for (i, bav) in a.bavs.iter().enumerate() {
-                    out_val.ashtakavarga.bavs[i] = DhruvBhinnaAshtakavarga {
+                    out.ashtakavarga.bavs[i] = DhruvBhinnaAshtakavarga {
                         graha_index: bav.graha_index,
                         points: bav.points,
                     };
                 }
-                out_val.ashtakavarga.sav = DhruvSarvaAshtakavarga {
+                out.ashtakavarga.sav = DhruvSarvaAshtakavarga {
                     total_points: a.sav.total_points,
                     after_trikona: a.sav.after_trikona,
                     after_ekadhipatya: a.sav.after_ekadhipatya,
@@ -8589,21 +8594,32 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
             }
 
             if let Some(u) = result.upagrahas {
-                out_val.upagrahas_valid = 1;
-                out_val.upagrahas.gulika = u.gulika;
-                out_val.upagrahas.maandi = u.maandi;
-                out_val.upagrahas.kaala = u.kaala;
-                out_val.upagrahas.mrityu = u.mrityu;
-                out_val.upagrahas.artha_prahara = u.artha_prahara;
-                out_val.upagrahas.yama_ghantaka = u.yama_ghantaka;
-                out_val.upagrahas.dhooma = u.dhooma;
-                out_val.upagrahas.vyatipata = u.vyatipata;
-                out_val.upagrahas.parivesha = u.parivesha;
-                out_val.upagrahas.indra_chapa = u.indra_chapa;
-                out_val.upagrahas.upaketu = u.upaketu;
+                out.upagrahas_valid = 1;
+                out.upagrahas.gulika = u.gulika;
+                out.upagrahas.maandi = u.maandi;
+                out.upagrahas.kaala = u.kaala;
+                out.upagrahas.mrityu = u.mrityu;
+                out.upagrahas.artha_prahara = u.artha_prahara;
+                out.upagrahas.yama_ghantaka = u.yama_ghantaka;
+                out.upagrahas.dhooma = u.dhooma;
+                out.upagrahas.vyatipata = u.vyatipata;
+                out.upagrahas.parivesha = u.parivesha;
+                out.upagrahas.indra_chapa = u.indra_chapa;
+                out.upagrahas.upaketu = u.upaketu;
             }
 
-            unsafe { *out = out_val };
+            if let Some(s) = result.special_lagnas {
+                out.special_lagnas_valid = 1;
+                out.special_lagnas.bhava_lagna = s.bhava_lagna;
+                out.special_lagnas.hora_lagna = s.hora_lagna;
+                out.special_lagnas.ghati_lagna = s.ghati_lagna;
+                out.special_lagnas.vighati_lagna = s.vighati_lagna;
+                out.special_lagnas.varnada_lagna = s.varnada_lagna;
+                out.special_lagnas.sree_lagna = s.sree_lagna;
+                out.special_lagnas.pranapada_lagna = s.pranapada_lagna;
+                out.special_lagnas.indu_lagna = s.indu_lagna;
+            }
+
             DhruvStatus::Ok
         }
         Err(e) => DhruvStatus::from(&e),
@@ -9156,8 +9172,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_28() {
-        assert_eq!(dhruv_api_version(), 28);
+    fn ffi_api_version_is_29() {
+        assert_eq!(dhruv_api_version(), 29);
     }
 
     // --- Search error mapping ---
@@ -11258,6 +11274,7 @@ mod tests {
             include_drishti: 1,
             include_ashtakavarga: 1,
             include_upagrahas: 1,
+            include_special_lagnas: 1,
             graha_positions_config: DhruvGrahaPositionsConfig {
                 include_nakshatra: 0,
                 include_lagna: 1,
@@ -11288,6 +11305,65 @@ mod tests {
                 0,
                 &cfg,
                 out.as_mut_ptr(),
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_full_kundali_rejects_null_out() {
+        let cfg = DhruvFullKundaliConfig {
+            include_graha_positions: 1,
+            include_bindus: 1,
+            include_drishti: 1,
+            include_ashtakavarga: 1,
+            include_upagrahas: 1,
+            include_special_lagnas: 1,
+            graha_positions_config: DhruvGrahaPositionsConfig {
+                include_nakshatra: 0,
+                include_lagna: 1,
+                include_outer_planets: 0,
+                include_bhava: 0,
+            },
+            bindus_config: DhruvBindusConfig {
+                include_nakshatra: 0,
+                include_bhava: 0,
+            },
+            drishti_config: DhruvDrishtiConfig {
+                include_bhava: 0,
+                include_lagna: 0,
+                include_bindus: 1,
+            },
+        };
+        let bhava_cfg = dhruv_bhava_config_default();
+        let rs_cfg = dhruv_riseset_config_default();
+        let utc = DhruvUtcTime {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        };
+        let location = DhruvGeoLocation {
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: 0.0,
+        };
+        let engine_ptr = std::ptr::NonNull::<Engine>::dangling().as_ptr();
+        let eop_ptr = std::ptr::NonNull::<dhruv_time::EopKernel>::dangling().as_ptr();
+        let s = unsafe {
+            dhruv_full_kundali_for_date(
+                engine_ptr,
+                eop_ptr,
+                &utc,
+                &location,
+                &bhava_cfg,
+                &rs_cfg,
+                0,
+                0,
+                &cfg,
+                ptr::null_mut(),
             )
         };
         assert_eq!(s, DhruvStatus::NullPointer);

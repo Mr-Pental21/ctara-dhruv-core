@@ -53,6 +53,7 @@ struct JyotishContext {
     jd_utc: f64,
     ayanamsha: f64,
     graha_lons: Option<GrahaLongitudes>,
+    lagna_sid: Option<f64>,
     bhava_result: Option<BhavaResult>,
     sunrise_pair: Option<(f64, f64)>,
     sunset_jd: Option<f64>,
@@ -69,6 +70,7 @@ impl JyotishContext {
             jd_utc,
             ayanamsha,
             graha_lons: None,
+            lagna_sid: None,
             bhava_result: None,
             sunrise_pair: None,
             sunset_jd: None,
@@ -111,6 +113,21 @@ impl JyotishContext {
             self.bhava_result = Some(result);
         }
         Ok(self.bhava_result.as_ref().expect("bhava result set"))
+    }
+
+    fn lagna_sid(
+        &mut self,
+        engine: &Engine,
+        eop: &EopKernel,
+        location: &GeoLocation,
+    ) -> Result<f64, SearchError> {
+        if let Some(lagna_sid) = self.lagna_sid {
+            return Ok(lagna_sid);
+        }
+        let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, self.jd_utc)?;
+        let lagna_sid = normalize(lagna_rad.to_degrees() - self.ayanamsha);
+        self.lagna_sid = Some(lagna_sid);
+        Ok(lagna_sid)
     }
 
     fn sunrise_pair(
@@ -216,28 +233,35 @@ pub fn special_lagnas_for_date(
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
 ) -> Result<AllSpecialLagnas, SearchError> {
-    let jd_tdb = utc.to_jd_tdb(engine.lsk());
-    let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(aya_config.ayanamsha_system, t, aya_config.use_nutation);
+    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    special_lagnas_for_date_with_ctx(
+        engine,
+        eop,
+        utc,
+        location,
+        riseset_config,
+        aya_config,
+        &mut ctx,
+    )
+}
 
-    // Get Sun and Moon sidereal longitudes
-    let (sun_tropical, _) = body_ecliptic_lon_lat(engine, Body::Sun, jd_tdb)?;
-    let (moon_tropical, _) = body_ecliptic_lon_lat(engine, Body::Moon, jd_tdb)?;
-    let sun_sid = normalize(sun_tropical - aya);
-    let moon_sid = normalize(moon_tropical - aya);
-
-    // Compute Lagna (Ascendant) sidereal longitude
-    let jd_utc = utc_to_jd_utc(utc);
-    let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, jd_utc)?;
-    let lagna_tropical = lagna_rad.to_degrees();
-    let lagna_sid = normalize(lagna_tropical - aya);
-
-    // Get sunrise pair for ghatikas
+fn special_lagnas_for_date_with_ctx(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    ctx: &mut JyotishContext,
+) -> Result<AllSpecialLagnas, SearchError> {
+    let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+    let sun_sid = graha_lons.longitude(Graha::Surya);
+    let moon_sid = graha_lons.longitude(Graha::Chandra);
+    let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
     let (jd_sunrise, jd_next_sunrise) =
-        vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
-    let ghatikas = ghatikas_since_sunrise(jd_tdb, jd_sunrise, jd_next_sunrise);
+        ctx.sunrise_pair(engine, eop, utc, location, riseset_config)?;
+    let ghatikas = ghatikas_since_sunrise(ctx.jd_tdb, jd_sunrise, jd_next_sunrise);
 
-    // Determine lords for Indu Lagna
     let lagna_rashi_idx = (lagna_sid / 30.0) as u8;
     let lagna_lord = rashi_lord_by_index(lagna_rashi_idx).unwrap_or(Graha::Surya);
 
@@ -267,23 +291,21 @@ pub fn arudha_padas_for_date(
     bhava_config: &BhavaConfig,
     aya_config: &SankrantiConfig,
 ) -> Result<[ArudhaResult; 12], SearchError> {
-    let jd_tdb = utc.to_jd_tdb(engine.lsk());
-    let jd_utc = utc_to_jd_utc(utc);
+    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    arudha_padas_for_date_with_ctx(engine, eop, location, bhava_config, aya_config, &mut ctx)
+}
 
-    // Get bhava cusps
-    let bhava_result = compute_bhavas(engine, engine.lsk(), eop, location, jd_utc, bhava_config)?;
-
-    // Get sidereal graha positions
-    let graha_lons = graha_sidereal_longitudes(
-        engine,
-        jd_tdb,
-        aya_config.ayanamsha_system,
-        aya_config.use_nutation,
-    )?;
-
-    // Convert cusp tropical longitudes to sidereal
-    let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(aya_config.ayanamsha_system, t, aya_config.use_nutation);
+fn arudha_padas_for_date_with_ctx(
+    engine: &Engine,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    aya_config: &SankrantiConfig,
+    ctx: &mut JyotishContext,
+) -> Result<[ArudhaResult; 12], SearchError> {
+    let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+    let aya = ctx.ayanamsha;
+    let bhava_result = ctx.bhava_result(engine, eop, location, bhava_config)?;
 
     let mut cusp_sid = [0.0f64; 12];
     for i in 0..12 {
@@ -411,8 +433,13 @@ fn graha_positions_with_ctx(
 ) -> Result<GrahaPositions, SearchError> {
     let aya = ctx.ayanamsha;
     let jd_tdb = ctx.jd_tdb;
-    let jd_utc = ctx.jd_utc;
     let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+
+    let lagna_sid = if config.include_lagna {
+        Some(ctx.lagna_sid(engine, eop, location)?)
+    } else {
+        None
+    };
 
     let bhava_result = if config.include_bhava {
         Some(ctx.bhava_result(engine, eop, location, bhava_config)?)
@@ -429,9 +456,12 @@ fn graha_positions_with_ctx(
     }
 
     let lagna = if config.include_lagna {
-        let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, jd_utc)?;
-        let lagna_sid = normalize(lagna_rad.to_degrees() - aya);
-        make_graha_entry(lagna_sid, config, bhava_result, aya)
+        make_graha_entry(
+            lagna_sid.expect("include_lagna implies lagna_sid"),
+            config,
+            bhava_result,
+            aya,
+        )
     } else {
         GrahaEntry::sentinel()
     };
@@ -627,8 +657,7 @@ fn core_bindus_with_ctx(
     let moon_sid = graha_lons.longitude(Graha::Chandra);
     let rahu_sid = graha_lons.longitude(Graha::Rahu);
 
-    let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, ctx.jd_utc)?;
-    let lagna_sid = normalize(lagna_rad.to_degrees() - aya);
+    let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
 
     let (jd_sunrise, jd_next_sunrise) =
         ctx.sunrise_pair(engine, eop, utc, location, riseset_config)?;
@@ -749,8 +778,7 @@ fn drishti_for_date_with_ctx(
     let graha_to_graha = graha_drishti_matrix(&graha_lons.longitudes);
 
     let graha_to_lagna = if config.include_lagna {
-        let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, ctx.jd_utc)?;
-        let lagna_sid = normalize(lagna_rad.to_degrees() - aya);
+        let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
         let mut entries = [DrishtiEntry::zero(); 9];
         for g in ALL_GRAHAS {
             let i = g.index() as usize;
@@ -922,12 +950,27 @@ pub fn full_kundali_for_date(
         None
     };
 
+    let special_lagnas = if config.include_special_lagnas {
+        Some(special_lagnas_for_date_with_ctx(
+            engine,
+            eop,
+            utc,
+            location,
+            riseset_config,
+            aya_config,
+            &mut ctx,
+        )?)
+    } else {
+        None
+    };
+
     Ok(FullKundaliResult {
         graha_positions,
         bindus,
         drishti,
         ashtakavarga,
         upagrahas,
+        special_lagnas,
     })
 }
 

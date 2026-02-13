@@ -1,7 +1,8 @@
 //! Types for Vedic jyotish orchestration (graha longitudes, etc.).
 
 use dhruv_vedic_base::{
-    AllUpagrahas, AshtakavargaResult, DrishtiEntry, Graha, GrahaDrishtiMatrix, Nakshatra, Rashi,
+    AllSpecialLagnas, AllUpagrahas, AshtakavargaResult, DrishtiEntry, Graha, GrahaDrishtiMatrix,
+    Nakshatra, Rashi,
 };
 
 /// Sidereal longitudes of all 9 grahas.
@@ -189,6 +190,8 @@ pub struct FullKundaliConfig {
     pub include_ashtakavarga: bool,
     /// Include upagrahas section.
     pub include_upagrahas: bool,
+    /// Include special lagnas section.
+    pub include_special_lagnas: bool,
     /// Config passed to graha positions computation.
     pub graha_positions_config: GrahaPositionsConfig,
     /// Config passed to bindus computation.
@@ -205,6 +208,7 @@ impl Default for FullKundaliConfig {
             include_drishti: true,
             include_ashtakavarga: true,
             include_upagrahas: true,
+            include_special_lagnas: true,
             graha_positions_config: GrahaPositionsConfig::default(),
             bindus_config: BindusConfig::default(),
             drishti_config: DrishtiConfig::default(),
@@ -225,4 +229,6 @@ pub struct FullKundaliResult {
     pub ashtakavarga: Option<AshtakavargaResult>,
     /// Present when `FullKundaliConfig::include_upagrahas` is true.
     pub upagrahas: Option<AllUpagrahas>,
+    /// Present when `FullKundaliConfig::include_special_lagnas` is true.
+    pub special_lagnas: Option<AllSpecialLagnas>,
 }
