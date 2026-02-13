@@ -443,21 +443,21 @@ C callers cannot use Rust's `UtcDate` type or the `dhruv_rs` wrappers:
 
 | FFI Function | Description |
 |---|---|
-| `dhruv_utc_to_tdb_jd(engine, y, m, d, h, min, s, out)` | UTC calendar → JD TDB |
-| `dhruv_jd_tdb_to_utc(engine, jd_tdb, out)` | JD TDB → UTC calendar components |
-| `dhruv_riseset_result_to_utc(engine, result, out)` | Rise/set JDs → UTC structs |
+| `dhruv_utc_to_tdb_jd(lsk, y, m, d, h, min, s, out)` | UTC calendar → JD TDB |
+| `dhruv_jd_tdb_to_utc(lsk, jd_tdb, out)` | JD TDB → UTC calendar components |
+| `dhruv_riseset_result_to_utc(lsk, result, out)` | Rise/set JDs → UTC structs |
 | `dhruv_query_utc_spherical(engine, body, obs, frame, y, m, d, h, min, s, out)` | UTC-input spherical query |
 
 **Why no Rust wrappers:** `dhruv_rs` already accepts `UtcDate` everywhere and
 handles UTC→TDB internally. These FFI functions exist solely because C has no
-equivalent of `UtcDate::to_jd_tdb()` or the high-level `position(body, obs, date)`
+equivalent of the internal `utc_to_jd_tdb()` helper or the high-level `position(body, obs, date)`
 wrapper:
 
 ```rust
 // Rust: UtcDate handles all conversions
 let date: UtcDate = "2024-03-20T12:00:00Z".parse()?;
 let pos = position(Body::Mars, Observer::Body(Body::Earth), date)?;  // UTC in, spherical out
-let lon = sidereal_longitude(Body::Mars, AyanamshaSystem::Lahiri, date)?;
+let lon = sidereal_longitude(Body::Mars, Observer::Body(Body::Earth), date, AyanamshaSystem::Lahiri, false)?;
 ```
 
 ---

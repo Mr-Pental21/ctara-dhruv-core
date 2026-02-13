@@ -553,6 +553,6 @@ automatically when optional flags are omitted.
 `dhruv_query_utc_spherical`.
 
 **CLI equivalent:** The CLI accepts `--date` as an ISO 8601 UTC string and
-converts to TDB internally using `UtcDate::to_jd_tdb()`. Results are printed
+converts to TDB internally via `UtcTime::to_jd_tdb()`. Results are printed
 as human-readable values. These FFI functions exist because C callers cannot
 use Rust's `UtcDate` type.
