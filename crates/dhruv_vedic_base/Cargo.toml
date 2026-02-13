@@ -8,3 +8,10 @@ edition = "2024"
 dhruv_core   = { path = "../dhruv_core" }
 dhruv_time   = { path = "../dhruv_time" }
 dhruv_frames = { path = "../dhruv_frames" }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "vedic_bench"
+harness = false

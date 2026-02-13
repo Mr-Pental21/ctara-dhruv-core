@@ -9,3 +9,10 @@ dhruv_core       = { path = "../dhruv_core" }
 dhruv_time       = { path = "../dhruv_time" }
 dhruv_frames     = { path = "../dhruv_frames" }
 dhruv_vedic_base = { path = "../dhruv_vedic_base" }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "search_bench"
+harness = false

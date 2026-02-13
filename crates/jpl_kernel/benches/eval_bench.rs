@@ -6,7 +6,10 @@ use jpl_kernel::SpkKernel;
 fn load_kernel() -> Option<SpkKernel> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../kernels/data/de442s.bsp");
     if !path.exists() {
-        eprintln!("Skipping benchmarks: kernel not found at {}", path.display());
+        eprintln!(
+            "Skipping benchmarks: kernel not found at {}",
+            path.display()
+        );
         return None;
     }
     Some(SpkKernel::load(&path).expect("should load de442s.bsp"))

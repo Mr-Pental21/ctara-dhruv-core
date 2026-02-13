@@ -236,6 +236,7 @@ name = "dhruv_cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "criterion",
  "dhruv_core",
  "dhruv_search",
  "dhruv_time",
@@ -256,6 +257,7 @@ dependencies = [
 name = "dhruv_ffi_c"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "dhruv_core",
  "dhruv_frames",
  "dhruv_search",
@@ -266,11 +268,15 @@ dependencies = [
 [[package]]
 name = "dhruv_frames"
 version = "0.1.0"
+dependencies = [
+ "criterion",
+]
 
 [[package]]
 name = "dhruv_rs"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "dhruv_core",
  "dhruv_frames",
  "dhruv_search",
@@ -282,6 +288,7 @@ dependencies = [
 name = "dhruv_search"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "dhruv_core",
  "dhruv_frames",
  "dhruv_time",
@@ -291,11 +298,15 @@ dependencies = [
 [[package]]
 name = "dhruv_time"
 version = "0.1.0"
+dependencies = [
+ "criterion",
+]
 
 [[package]]
 name = "dhruv_vedic_base"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "dhruv_core",
  "dhruv_frames",
  "dhruv_time",

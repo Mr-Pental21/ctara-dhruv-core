@@ -10,3 +10,10 @@ dhruv_time   = { path = "../dhruv_time" }
 dhruv_search = { path = "../dhruv_search" }
 dhruv_vedic_base = { path = "../dhruv_vedic_base" }
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "cli_bench"
+harness = false

@@ -13,5 +13,12 @@ dhruv_frames     = { path = "../dhruv_frames" }
 dhruv_vedic_base = { path = "../dhruv_vedic_base" }
 dhruv_search     = { path = "../dhruv_search" }
 
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "rs_bench"
+harness = false
+
 [lints]
 workspace = true

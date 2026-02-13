@@ -10,3 +10,10 @@ dhruv_time = { path = "../dhruv_time" }
 dhruv_frames = { path = "../dhruv_frames" }
 dhruv_vedic_base = { path = "../dhruv_vedic_base" }
 dhruv_search = { path = "../dhruv_search" }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "ffi_bench"
+harness = false
