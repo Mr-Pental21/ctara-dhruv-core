@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 25`
+**ABI version:** `DHRUV_API_VERSION = 26`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -36,6 +36,7 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
    - [Graha Sidereal Longitudes](#graha-sidereal-longitudes)
    - [Nakshatra At](#nakshatra-at)
    - [Time Upagraha JD](#time-upagraha-jd)
+   - [Pure-Math Ashtakavarga](#pure-math-ashtakavarga)
 
 ---
 
@@ -1226,6 +1227,60 @@ Compute the JD for a time-based upagraha from a UTC date and location. Computes 
 
 ---
 
+### Pure-Math Ashtakavarga
+
+These expose the individual building blocks of ashtakavarga computation. All are pure math — no engine or kernel needed. Callers supply pre-computed rashi positions.
+
+```c
+DhruvStatus dhruv_calculate_bav(
+    uint8_t        graha_index,      // 0=Sun through 6=Saturn
+    const uint8_t* graha_rashis,     // 7 entries: 0-based rashi for Sun..Saturn
+    uint8_t        lagna_rashi,      // 0-based rashi of Ascendant
+    DhruvBhinnaAshtakavarga* out
+);
+```
+
+Calculate BAV (Bhinna Ashtakavarga) for a single graha. Returns `DHRUV_STATUS_INVALID_QUERY` for `graha_index > 6`.
+
+```c
+DhruvStatus dhruv_calculate_all_bav(
+    const uint8_t*           graha_rashis,   // 7 entries
+    uint8_t                  lagna_rashi,
+    DhruvBhinnaAshtakavarga* out             // caller allocates array of 7
+);
+```
+
+Calculate BAV for all 7 grahas at once.
+
+```c
+DhruvStatus dhruv_calculate_sav(
+    const DhruvBhinnaAshtakavarga* bavs,   // 7 entries (from dhruv_calculate_all_bav)
+    DhruvSarvaAshtakavarga*        out
+);
+```
+
+Calculate SAV (Sarva Ashtakavarga) from 7 BAVs. Returns total points, after trikona sodhana, and after ekadhipatya sodhana.
+
+```c
+DhruvStatus dhruv_trikona_sodhana(
+    const uint8_t* totals,    // 12 rashi totals
+    uint8_t*       out        // 12 values after trikona reduction
+);
+```
+
+Apply Trikona Sodhana: subtract the minimum value from each trine group (fire, earth, air, water).
+
+```c
+DhruvStatus dhruv_ekadhipatya_sodhana(
+    const uint8_t* after_trikona,   // 12 values (from dhruv_trikona_sodhana)
+    uint8_t*       out              // 12 values after ekadhipatya reduction
+);
+```
+
+Apply Ekadhipatya Sodhana: subtract the minimum from same-lord pairs (Mercury: Mithuna/Kanya, Jupiter: Dhanu/Meena). Typically called on the output of `dhruv_trikona_sodhana`.
+
+---
+
 ## Function Summary
 
 | # | Function | Engine | LSK | EOP | Pure Math |
@@ -1292,5 +1347,10 @@ Compute the JD for a time-based upagraha from a UTC date and location. Computes 
 | 60 | `dhruv_nth_rashi_from` | | | | yes |
 | 61 | `dhruv_time_upagraha_jd` | | | | yes |
 | 62 | `dhruv_time_upagraha_jd_utc` | yes | | yes | |
+| 63 | `dhruv_calculate_bav` | | | | yes |
+| 64 | `dhruv_calculate_all_bav` | | | | yes |
+| 65 | `dhruv_calculate_sav` | | | | yes |
+| 66 | `dhruv_trikona_sodhana` | | | | yes |
+| 67 | `dhruv_ekadhipatya_sodhana` | | | | yes |
 
 **Total exported symbols: 60 functions**

@@ -36,7 +36,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 25;
+pub const DHRUV_API_VERSION: u32 = 26;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -7020,6 +7020,158 @@ pub unsafe extern "C" fn dhruv_calculate_ashtakavarga(
     DhruvStatus::Ok
 }
 
+/// Calculate BAV for a single graha (pure math).
+///
+/// `graha_index`: 0=Sun through 6=Saturn.
+/// `graha_rashis`: pointer to 7 `u8` values (0-based rashi index for Sun..Saturn).
+/// `lagna_rashi`: 0-based rashi index of the Ascendant.
+/// `out`: pointer to a `DhruvBhinnaAshtakavarga`.
+///
+/// # Safety
+/// `graha_rashis` must point to 7 contiguous `u8` values. `out` must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_calculate_bav(
+    graha_index: u8,
+    graha_rashis: *const u8,
+    lagna_rashi: u8,
+    out: *mut DhruvBhinnaAshtakavarga,
+) -> DhruvStatus {
+    if graha_rashis.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    if graha_index > 6 {
+        return DhruvStatus::InvalidQuery;
+    }
+    let rashis = unsafe { std::slice::from_raw_parts(graha_rashis, 7) };
+    let mut arr = [0u8; 7];
+    arr.copy_from_slice(rashis);
+
+    let bav = dhruv_vedic_base::calculate_bav(graha_index, &arr, lagna_rashi);
+    let out = unsafe { &mut *out };
+    out.graha_index = bav.graha_index;
+    out.points = bav.points;
+    DhruvStatus::Ok
+}
+
+/// Calculate BAV for all 7 grahas (pure math).
+///
+/// `graha_rashis`: pointer to 7 `u8` values (0-based rashi index for Sun..Saturn).
+/// `lagna_rashi`: 0-based rashi index of the Ascendant.
+/// `out`: pointer to array of 7 `DhruvBhinnaAshtakavarga`.
+///
+/// # Safety
+/// `graha_rashis` must point to 7 contiguous `u8`. `out` must point to 7 contiguous
+/// `DhruvBhinnaAshtakavarga`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_calculate_all_bav(
+    graha_rashis: *const u8,
+    lagna_rashi: u8,
+    out: *mut DhruvBhinnaAshtakavarga,
+) -> DhruvStatus {
+    if graha_rashis.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let rashis = unsafe { std::slice::from_raw_parts(graha_rashis, 7) };
+    let mut arr = [0u8; 7];
+    arr.copy_from_slice(rashis);
+
+    let bavs = dhruv_vedic_base::calculate_all_bav(&arr, lagna_rashi);
+    let out_slice = unsafe { std::slice::from_raw_parts_mut(out, 7) };
+    for (i, bav) in bavs.iter().enumerate() {
+        out_slice[i] = DhruvBhinnaAshtakavarga {
+            graha_index: bav.graha_index,
+            points: bav.points,
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// Calculate SAV from 7 BAVs (pure math).
+///
+/// `bavs`: pointer to 7 `DhruvBhinnaAshtakavarga` (e.g. from `dhruv_calculate_all_bav`).
+/// `out`: pointer to a `DhruvSarvaAshtakavarga`.
+///
+/// # Safety
+/// `bavs` must point to 7 contiguous `DhruvBhinnaAshtakavarga`. `out` must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_calculate_sav(
+    bavs: *const DhruvBhinnaAshtakavarga,
+    out: *mut DhruvSarvaAshtakavarga,
+) -> DhruvStatus {
+    if bavs.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let bav_slice = unsafe { std::slice::from_raw_parts(bavs, 7) };
+    let mut rust_bavs = [dhruv_vedic_base::BhinnaAshtakavarga {
+        graha_index: 0,
+        points: [0; 12],
+    }; 7];
+    for (i, b) in bav_slice.iter().enumerate() {
+        rust_bavs[i] = dhruv_vedic_base::BhinnaAshtakavarga {
+            graha_index: b.graha_index,
+            points: b.points,
+        };
+    }
+
+    let sav = dhruv_vedic_base::calculate_sav(&rust_bavs);
+    let out = unsafe { &mut *out };
+    out.total_points = sav.total_points;
+    out.after_trikona = sav.after_trikona;
+    out.after_ekadhipatya = sav.after_ekadhipatya;
+    DhruvStatus::Ok
+}
+
+/// Apply Trikona Sodhana to 12 rashi totals (pure math).
+///
+/// `totals`: pointer to 12 `u8` values (rashi totals).
+/// `out`: pointer to 12 `u8` values (result after trikona reduction).
+///
+/// # Safety
+/// Both pointers must point to 12 contiguous `u8` values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_trikona_sodhana(
+    totals: *const u8,
+    out: *mut u8,
+) -> DhruvStatus {
+    if totals.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let src = unsafe { std::slice::from_raw_parts(totals, 12) };
+    let mut arr = [0u8; 12];
+    arr.copy_from_slice(src);
+
+    let result = dhruv_vedic_base::trikona_sodhana(&arr);
+    let dst = unsafe { std::slice::from_raw_parts_mut(out, 12) };
+    dst.copy_from_slice(&result);
+    DhruvStatus::Ok
+}
+
+/// Apply Ekadhipatya Sodhana to 12 rashi totals (pure math).
+///
+/// Typically called on the output of `dhruv_trikona_sodhana`.
+/// `after_trikona`: pointer to 12 `u8` values.
+/// `out`: pointer to 12 `u8` values (result after ekadhipatya reduction).
+///
+/// # Safety
+/// Both pointers must point to 12 contiguous `u8` values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ekadhipatya_sodhana(
+    after_trikona: *const u8,
+    out: *mut u8,
+) -> DhruvStatus {
+    if after_trikona.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let src = unsafe { std::slice::from_raw_parts(after_trikona, 12) };
+    let mut arr = [0u8; 12];
+    arr.copy_from_slice(src);
+
+    let result = dhruv_vedic_base::ekadhipatya_sodhana(&arr);
+    let dst = unsafe { std::slice::from_raw_parts_mut(out, 12) };
+    dst.copy_from_slice(&result);
+    DhruvStatus::Ok
+}
+
 /// Compute complete Ashtakavarga for a given date and location.
 ///
 /// # Safety
@@ -8018,8 +8170,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_25() {
-        assert_eq!(dhruv_api_version(), 25);
+    fn ffi_api_version_is_26() {
+        assert_eq!(dhruv_api_version(), 26);
     }
 
     // --- Search error mapping ---
@@ -9591,6 +9743,150 @@ mod tests {
             )
         };
         assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    // --- calculate_bav ---
+
+    #[test]
+    fn ffi_calculate_bav_rejects_null() {
+        let mut out = std::mem::MaybeUninit::<DhruvBhinnaAshtakavarga>::uninit();
+        let s = unsafe { dhruv_calculate_bav(0, ptr::null(), 0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+
+        let rashis = [0u8; 7];
+        let s = unsafe { dhruv_calculate_bav(0, rashis.as_ptr(), 0, ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_calculate_bav_rejects_invalid_index() {
+        let rashis = [0u8; 7];
+        let mut out = std::mem::MaybeUninit::<DhruvBhinnaAshtakavarga>::uninit();
+        let s = unsafe { dhruv_calculate_bav(7, rashis.as_ptr(), 0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_calculate_bav_valid() {
+        let rashis = [0u8; 7];
+        let mut out = std::mem::MaybeUninit::<DhruvBhinnaAshtakavarga>::uninit();
+        let s = unsafe { dhruv_calculate_bav(0, rashis.as_ptr(), 0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        let bav = unsafe { out.assume_init() };
+        assert_eq!(bav.graha_index, 0);
+        let total: u8 = bav.points.iter().sum();
+        assert_eq!(total, 48); // Sun BAV total is always 48
+    }
+
+    // --- calculate_all_bav ---
+
+    #[test]
+    fn ffi_calculate_all_bav_rejects_null() {
+        let mut out = [DhruvBhinnaAshtakavarga { graha_index: 0, points: [0; 12] }; 7];
+        let s = unsafe { dhruv_calculate_all_bav(ptr::null(), 0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+
+        let rashis = [0u8; 7];
+        let s = unsafe { dhruv_calculate_all_bav(rashis.as_ptr(), 0, ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_calculate_all_bav_valid() {
+        let rashis = [0u8; 7];
+        let mut out = [DhruvBhinnaAshtakavarga { graha_index: 0, points: [0; 12] }; 7];
+        let s = unsafe { dhruv_calculate_all_bav(rashis.as_ptr(), 0, out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        // Check graha indices are 0..6
+        for i in 0..7 {
+            assert_eq!(out[i].graha_index, i as u8);
+        }
+        // Sun BAV total = 48
+        let sun_total: u8 = out[0].points.iter().sum();
+        assert_eq!(sun_total, 48);
+    }
+
+    // --- calculate_sav ---
+
+    #[test]
+    fn ffi_calculate_sav_rejects_null() {
+        let mut out = std::mem::MaybeUninit::<DhruvSarvaAshtakavarga>::uninit();
+        let s = unsafe { dhruv_calculate_sav(ptr::null(), out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+
+        let bavs = [DhruvBhinnaAshtakavarga { graha_index: 0, points: [0; 12] }; 7];
+        let s = unsafe { dhruv_calculate_sav(bavs.as_ptr(), ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_calculate_sav_valid() {
+        // First compute BAVs, then SAV
+        let rashis = [0u8; 7];
+        let mut bavs = [DhruvBhinnaAshtakavarga { graha_index: 0, points: [0; 12] }; 7];
+        let s = unsafe { dhruv_calculate_all_bav(rashis.as_ptr(), 0, bavs.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+
+        let mut sav = std::mem::MaybeUninit::<DhruvSarvaAshtakavarga>::uninit();
+        let s = unsafe { dhruv_calculate_sav(bavs.as_ptr(), sav.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        let sav = unsafe { sav.assume_init() };
+        let total: u16 = sav.total_points.iter().map(|&p| p as u16).sum();
+        assert_eq!(total, 337);
+    }
+
+    // --- trikona_sodhana ---
+
+    #[test]
+    fn ffi_trikona_sodhana_rejects_null() {
+        let mut out = [0u8; 12];
+        let s = unsafe { dhruv_trikona_sodhana(ptr::null(), out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+
+        let totals = [0u8; 12];
+        let s = unsafe { dhruv_trikona_sodhana(totals.as_ptr(), ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_trikona_sodhana_valid() {
+        // Fire trikona: rashis 0,4,8 with values 5,3,7 → min=3, result 2,0,4
+        let mut totals = [0u8; 12];
+        totals[0] = 5;
+        totals[4] = 3;
+        totals[8] = 7;
+        let mut out = [0u8; 12];
+        let s = unsafe { dhruv_trikona_sodhana(totals.as_ptr(), out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        assert_eq!(out[0], 2);
+        assert_eq!(out[4], 0);
+        assert_eq!(out[8], 4);
+    }
+
+    // --- ekadhipatya_sodhana ---
+
+    #[test]
+    fn ffi_ekadhipatya_sodhana_rejects_null() {
+        let mut out = [0u8; 12];
+        let s = unsafe { dhruv_ekadhipatya_sodhana(ptr::null(), out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+
+        let after = [0u8; 12];
+        let s = unsafe { dhruv_ekadhipatya_sodhana(after.as_ptr(), ptr::null_mut()) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_ekadhipatya_sodhana_valid() {
+        // Mercury pair: rashis 2,5 with values 4,6 → min=4, result 0,2
+        let mut after = [0u8; 12];
+        after[2] = 4;
+        after[5] = 6;
+        let mut out = [0u8; 12];
+        let s = unsafe { dhruv_ekadhipatya_sodhana(after.as_ptr(), out.as_mut_ptr()) };
+        assert_eq!(s, DhruvStatus::Ok);
+        assert_eq!(out[2], 0);
+        assert_eq!(out[5], 2);
     }
 
     #[test]
