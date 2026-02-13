@@ -11,9 +11,10 @@ use dhruv_time::{EopKernel, UtcTime, calendar_to_jd};
 use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
 use dhruv_vedic_base::{
-    AyanamshaSystem, LunarNode, NodeMode, Rashi, ayanamsha_deg, deg_to_dms, jd_tdb_to_centuries,
-    nakshatra_from_longitude, nakshatra_from_tropical, nakshatra28_from_longitude,
-    nakshatra28_from_tropical, rashi_from_longitude, rashi_from_tropical,
+    ALL_GRAHAS, AyanamshaSystem, Graha, LunarNode, NodeMode, Rashi, ayanamsha_deg, deg_to_dms,
+    jd_tdb_to_centuries, nakshatra_from_longitude, nakshatra_from_tropical,
+    nakshatra28_from_longitude, nakshatra28_from_tropical, rashi_from_longitude,
+    rashi_from_tropical,
 };
 
 #[derive(Parser)]
@@ -1022,6 +1023,435 @@ enum Commands {
         #[arg(long)]
         lsk: PathBuf,
     },
+
+    // -------------------------------------------------------------------
+    // Individual Sphuta Formulas (pure math)
+    // -------------------------------------------------------------------
+
+    /// Compute Bhrigu Bindu = midpoint(Rahu, Moon)
+    BhriguBindu {
+        /// Rahu sidereal longitude in degrees
+        #[arg(long)]
+        rahu: f64,
+        /// Moon sidereal longitude in degrees
+        #[arg(long)]
+        moon: f64,
+    },
+    /// Compute Prana Sphuta = Lagna + Moon
+    PranaSphuta {
+        #[arg(long)]
+        lagna: f64,
+        #[arg(long)]
+        moon: f64,
+    },
+    /// Compute Deha Sphuta = Moon + Lagna
+    DehaSphuta {
+        #[arg(long)]
+        moon: f64,
+        #[arg(long)]
+        lagna: f64,
+    },
+    /// Compute Mrityu Sphuta = 8th lord + Lagna
+    MrityuSphuta {
+        #[arg(long)]
+        eighth_lord: f64,
+        #[arg(long)]
+        lagna: f64,
+    },
+    /// Compute Tithi Sphuta = (Moon - Sun) + Lagna
+    TithiSphuta {
+        #[arg(long)]
+        moon: f64,
+        #[arg(long)]
+        sun: f64,
+        #[arg(long)]
+        lagna: f64,
+    },
+    /// Compute Yoga Sphuta = Sun + Moon (raw sum)
+    YogaSphuta {
+        #[arg(long)]
+        sun: f64,
+        #[arg(long)]
+        moon: f64,
+    },
+    /// Compute Yoga Sphuta Normalized = (Sun + Moon) mod 360
+    YogaSphutaNormalized {
+        #[arg(long)]
+        sun: f64,
+        #[arg(long)]
+        moon: f64,
+    },
+    /// Compute Rahu Tithi Sphuta = (Rahu - Sun) + Lagna
+    RahuTithiSphuta {
+        #[arg(long)]
+        rahu: f64,
+        #[arg(long)]
+        sun: f64,
+        #[arg(long)]
+        lagna: f64,
+    },
+    /// Compute Kshetra Sphuta from Venus, Moon, Mars, Jupiter, Lagna
+    KshetraSphuta {
+        #[arg(long)]
+        venus: f64,
+        #[arg(long)]
+        moon: f64,
+        #[arg(long)]
+        mars: f64,
+        #[arg(long)]
+        jupiter: f64,
+        #[arg(long)]
+        lagna: f64,
+    },
+    /// Compute Beeja Sphuta from Sun, Venus, Jupiter
+    BeejaSphuta {
+        #[arg(long)]
+        sun: f64,
+        #[arg(long)]
+        venus: f64,
+        #[arg(long)]
+        jupiter: f64,
+    },
+    /// Compute TriSphuta = Lagna + Moon + Gulika
+    TriSphuta {
+        #[arg(long)]
+        lagna: f64,
+        #[arg(long)]
+        moon: f64,
+        #[arg(long)]
+        gulika: f64,
+    },
+    /// Compute ChatusSphuta = TriSphuta + Sun
+    ChatusSphuta {
+        #[arg(long)]
+        trisphuta: f64,
+        #[arg(long)]
+        sun: f64,
+    },
+    /// Compute PanchaSphuta = ChatusSphuta + Rahu
+    PanchaSphuta {
+        #[arg(long)]
+        chatussphuta: f64,
+        #[arg(long)]
+        rahu: f64,
+    },
+    /// Compute Sookshma TriSphuta = Lagna + Moon + Gulika + Sun
+    SookshmaTrisphuta {
+        #[arg(long)]
+        lagna: f64,
+        #[arg(long)]
+        moon: f64,
+        #[arg(long)]
+        gulika: f64,
+        #[arg(long)]
+        sun: f64,
+    },
+    /// Compute Avayoga Sphuta
+    AvayogaSphuta {
+        #[arg(long)]
+        sun: f64,
+        #[arg(long)]
+        moon: f64,
+    },
+    /// Compute Kunda = Lagna + Moon + Mars
+    Kunda {
+        #[arg(long)]
+        lagna: f64,
+        #[arg(long)]
+        moon: f64,
+        #[arg(long)]
+        mars: f64,
+    },
+
+    // -------------------------------------------------------------------
+    // Individual Special Lagna Formulas (pure math)
+    // -------------------------------------------------------------------
+
+    /// Compute Bhava Lagna from Sun longitude and ghatikas
+    BhavaLagna {
+        #[arg(long)]
+        sun_lon: f64,
+        #[arg(long)]
+        ghatikas: f64,
+    },
+    /// Compute Hora Lagna from Sun longitude and ghatikas
+    HoraLagna {
+        #[arg(long)]
+        sun_lon: f64,
+        #[arg(long)]
+        ghatikas: f64,
+    },
+    /// Compute Ghati Lagna from Sun longitude and ghatikas
+    GhatiLagna {
+        #[arg(long)]
+        sun_lon: f64,
+        #[arg(long)]
+        ghatikas: f64,
+    },
+    /// Compute Vighati Lagna from Lagna longitude and vighatikas
+    VighatiLagna {
+        #[arg(long)]
+        lagna_lon: f64,
+        #[arg(long)]
+        vighatikas: f64,
+    },
+    /// Compute Varnada Lagna from Lagna and Hora Lagna longitudes
+    VarnadaLagna {
+        #[arg(long)]
+        lagna_lon: f64,
+        #[arg(long)]
+        hora_lagna_lon: f64,
+    },
+    /// Compute Sree Lagna from Moon and Lagna longitudes
+    SreeLagna {
+        #[arg(long)]
+        moon_lon: f64,
+        #[arg(long)]
+        lagna_lon: f64,
+    },
+    /// Compute Pranapada Lagna from Sun longitude and ghatikas
+    PranapadaLagna {
+        #[arg(long)]
+        sun_lon: f64,
+        #[arg(long)]
+        ghatikas: f64,
+    },
+    /// Compute Indu Lagna from Moon longitude and graha lord indices
+    InduLagna {
+        #[arg(long)]
+        moon_lon: f64,
+        /// Graha index of lagna lord (0-8: Sun..Ketu)
+        #[arg(long)]
+        lagna_lord: u8,
+        /// Graha index of Moon's 9th lord (0-8)
+        #[arg(long)]
+        moon_9th_lord: u8,
+    },
+
+    // -------------------------------------------------------------------
+    // Utility Primitives
+    // -------------------------------------------------------------------
+
+    /// Determine Tithi from Moon-Sun elongation (degrees)
+    TithiFromElongation {
+        /// Elongation (Moon_lon - Sun_lon) mod 360 in degrees
+        #[arg(long)]
+        elongation: f64,
+    },
+    /// Determine Karana from Moon-Sun elongation (degrees)
+    KaranaFromElongation {
+        #[arg(long)]
+        elongation: f64,
+    },
+    /// Determine Yoga from sidereal sum (Sun + Moon) degrees
+    YogaFromSum {
+        /// Sidereal sum (Sun_sid + Moon_sid) mod 360
+        #[arg(long)]
+        sum: f64,
+    },
+    /// Determine Vaar (weekday) from Julian Date
+    VaarFromJd {
+        /// Julian Date
+        #[arg(long)]
+        jd: f64,
+    },
+    /// Determine Masa from rashi index (0-11)
+    MasaFromRashi {
+        /// Rashi index (0=Mesha .. 11=Meena)
+        #[arg(long)]
+        rashi: u8,
+    },
+    /// Determine Ayana from sidereal longitude
+    AyanaFromLon {
+        /// Sidereal longitude in degrees
+        #[arg(long)]
+        lon: f64,
+    },
+    /// Determine Samvatsara from a year
+    SamvatsaraCompute {
+        /// CE year
+        #[arg(long)]
+        year: i32,
+    },
+    /// Compute the rashi index that is N signs from a starting rashi
+    NthRashiFrom {
+        /// Starting rashi index (0-11)
+        #[arg(long)]
+        rashi: u8,
+        /// Offset in signs
+        #[arg(long)]
+        offset: u8,
+    },
+    /// Determine the rashi lord for a rashi index
+    RashiLord {
+        /// Rashi index (0-11)
+        #[arg(long)]
+        rashi: u8,
+    },
+    /// Normalize angle to [0, 360)
+    Normalize360 {
+        /// Angle in degrees
+        #[arg(long)]
+        deg: f64,
+    },
+    /// Compute a single arudha pada from bhava cusp and lord longitudes
+    ArudhaPadaCompute {
+        /// Bhava cusp longitude in degrees
+        #[arg(long)]
+        cusp_lon: f64,
+        /// Lord longitude in degrees
+        #[arg(long)]
+        lord_lon: f64,
+    },
+    /// Compute 5 sun-based upagrahas from Sun's sidereal longitude
+    SunBasedUpagrahas {
+        /// Sun's sidereal longitude in degrees
+        #[arg(long)]
+        sun_lon: f64,
+    },
+
+    // -------------------------------------------------------------------
+    // Panchang Intermediates (engine required)
+    // -------------------------------------------------------------------
+
+    /// Compute Moon-Sun elongation at a date
+    ElongationAt {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute sidereal sum (Moon + Sun) at a date
+    SiderealSumAt {
+        #[arg(long)]
+        date: String,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Query body ecliptic longitude and latitude
+    BodyLonLat {
+        #[arg(long)]
+        date: String,
+        /// NAIF body code
+        #[arg(long)]
+        body: i32,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute Vedic day sunrise bracket (today's and next sunrise)
+    VedicDaySunrises {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        lat: f64,
+        #[arg(long)]
+        lon: f64,
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+        #[arg(long)]
+        eop: PathBuf,
+    },
+    /// Compute Tithi from pre-computed elongation at a date
+    TithiAt {
+        #[arg(long)]
+        date: String,
+        /// Pre-computed elongation in degrees
+        #[arg(long)]
+        elongation: f64,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute Karana from pre-computed elongation at a date
+    KaranaAt {
+        #[arg(long)]
+        date: String,
+        #[arg(long)]
+        elongation: f64,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute Yoga from pre-computed sidereal sum at a date
+    YogaAt {
+        #[arg(long)]
+        date: String,
+        /// Pre-computed sidereal sum in degrees
+        #[arg(long)]
+        sum: f64,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Compute Moon nakshatra from pre-computed sidereal longitude at a date
+    NakshatraAt {
+        #[arg(long)]
+        date: String,
+        /// Moon sidereal longitude in degrees
+        #[arg(long)]
+        moon_sid: f64,
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        #[arg(long)]
+        nutation: bool,
+        #[arg(long)]
+        bsp: PathBuf,
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+
+    // -------------------------------------------------------------------
+    // Low-level Ashtakavarga / Drishti
+    // -------------------------------------------------------------------
+
+    /// Compute full Ashtakavarga from rashi positions
+    CalculateAshtakavarga {
+        /// Comma-separated rashi indices for Sun,Moon,Mars,Mercury,Jupiter,Venus,Saturn (0-11)
+        #[arg(long)]
+        graha_rashis: String,
+        /// Lagna rashi index (0-11)
+        #[arg(long)]
+        lagna_rashi: u8,
+    },
+    /// Compute graha drishti between two points
+    GrahaDrishtiCompute {
+        /// Graha index (0=Sun, 1=Moon, ..., 8=Ketu)
+        #[arg(long)]
+        graha: u8,
+        /// Source longitude in degrees
+        #[arg(long)]
+        source: f64,
+        /// Target longitude in degrees
+        #[arg(long)]
+        target: f64,
+    },
+    /// Compute full 9×9 graha drishti matrix from longitudes
+    GrahaDrishtiMatrixCompute {
+        /// Comma-separated sidereal longitudes for all 9 grahas
+        #[arg(long)]
+        longitudes: String,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -1125,6 +1555,51 @@ fn parse_node_mode(s: &str) -> NodeMode {
             std::process::exit(1);
         }
     }
+}
+
+fn require_graha(index: u8) -> Graha {
+    ALL_GRAHAS.get(index as usize).copied().unwrap_or_else(|| {
+        eprintln!("Invalid graha index: {index} (0-8: Surya..Ketu)");
+        std::process::exit(1);
+    })
+}
+
+fn parse_graha_rashis(s: &str) -> [u8; 7] {
+    let vals: Vec<u8> = s
+        .split(',')
+        .map(|v| {
+            v.trim().parse::<u8>().unwrap_or_else(|e| {
+                eprintln!("Invalid rashi value '{v}': {e}");
+                std::process::exit(1);
+            })
+        })
+        .collect();
+    if vals.len() != 7 {
+        eprintln!("Expected 7 comma-separated rashi indices, got {}", vals.len());
+        std::process::exit(1);
+    }
+    let mut arr = [0u8; 7];
+    arr.copy_from_slice(&vals);
+    arr
+}
+
+fn parse_longitudes_9(s: &str) -> [f64; 9] {
+    let vals: Vec<f64> = s
+        .split(',')
+        .map(|v| {
+            v.trim().parse::<f64>().unwrap_or_else(|e| {
+                eprintln!("Invalid longitude '{v}': {e}");
+                std::process::exit(1);
+            })
+        })
+        .collect();
+    if vals.len() != 9 {
+        eprintln!("Expected 9 comma-separated longitudes, got {}", vals.len());
+        std::process::exit(1);
+    }
+    let mut arr = [0.0f64; 9];
+    arr.copy_from_slice(&vals);
+    arr
 }
 
 fn main() {
@@ -3396,6 +3871,541 @@ fn main() {
                     rashi_info.dms.minutes,
                     rashi_info.dms.seconds,
                 );
+            }
+        }
+
+        // -----------------------------------------------------------
+        // Individual Sphuta Formulas (pure math)
+        // -----------------------------------------------------------
+
+        Commands::BhriguBindu { rahu, moon } => {
+            println!("{:.4}°", dhruv_vedic_base::bhrigu_bindu(rahu, moon));
+        }
+
+        Commands::PranaSphuta { lagna, moon } => {
+            println!("{:.4}°", dhruv_vedic_base::prana_sphuta(lagna, moon));
+        }
+
+        Commands::DehaSphuta { moon, lagna } => {
+            println!("{:.4}°", dhruv_vedic_base::deha_sphuta(moon, lagna));
+        }
+
+        Commands::MrityuSphuta { eighth_lord, lagna } => {
+            println!("{:.4}°", dhruv_vedic_base::mrityu_sphuta(eighth_lord, lagna));
+        }
+
+        Commands::TithiSphuta { moon, sun, lagna } => {
+            println!("{:.4}°", dhruv_vedic_base::tithi_sphuta(moon, sun, lagna));
+        }
+
+        Commands::YogaSphuta { sun, moon } => {
+            println!("{:.4}°", dhruv_vedic_base::yoga_sphuta(sun, moon));
+        }
+
+        Commands::YogaSphutaNormalized { sun, moon } => {
+            println!("{:.4}°", dhruv_vedic_base::yoga_sphuta_normalized(sun, moon));
+        }
+
+        Commands::RahuTithiSphuta { rahu, sun, lagna } => {
+            println!("{:.4}°", dhruv_vedic_base::rahu_tithi_sphuta(rahu, sun, lagna));
+        }
+
+        Commands::KshetraSphuta {
+            venus,
+            moon,
+            mars,
+            jupiter,
+            lagna,
+        } => {
+            println!(
+                "{:.4}°",
+                dhruv_vedic_base::kshetra_sphuta(venus, moon, mars, jupiter, lagna)
+            );
+        }
+
+        Commands::BeejaSphuta { sun, venus, jupiter } => {
+            println!("{:.4}°", dhruv_vedic_base::beeja_sphuta(sun, venus, jupiter));
+        }
+
+        Commands::TriSphuta {
+            lagna,
+            moon,
+            gulika,
+        } => {
+            println!("{:.4}°", dhruv_vedic_base::trisphuta(lagna, moon, gulika));
+        }
+
+        Commands::ChatusSphuta { trisphuta, sun } => {
+            println!("{:.4}°", dhruv_vedic_base::chatussphuta(trisphuta, sun));
+        }
+
+        Commands::PanchaSphuta { chatussphuta, rahu } => {
+            println!("{:.4}°", dhruv_vedic_base::panchasphuta(chatussphuta, rahu));
+        }
+
+        Commands::SookshmaTrisphuta {
+            lagna,
+            moon,
+            gulika,
+            sun,
+        } => {
+            println!(
+                "{:.4}°",
+                dhruv_vedic_base::sookshma_trisphuta(lagna, moon, gulika, sun)
+            );
+        }
+
+        Commands::AvayogaSphuta { sun, moon } => {
+            println!("{:.4}°", dhruv_vedic_base::avayoga_sphuta(sun, moon));
+        }
+
+        Commands::Kunda { lagna, moon, mars } => {
+            println!("{:.4}°", dhruv_vedic_base::kunda(lagna, moon, mars));
+        }
+
+        // -----------------------------------------------------------
+        // Individual Special Lagna Formulas (pure math)
+        // -----------------------------------------------------------
+
+        Commands::BhavaLagna { sun_lon, ghatikas } => {
+            println!("{:.4}°", dhruv_vedic_base::bhava_lagna(sun_lon, ghatikas));
+        }
+
+        Commands::HoraLagna { sun_lon, ghatikas } => {
+            println!("{:.4}°", dhruv_vedic_base::hora_lagna(sun_lon, ghatikas));
+        }
+
+        Commands::GhatiLagna { sun_lon, ghatikas } => {
+            println!("{:.4}°", dhruv_vedic_base::ghati_lagna(sun_lon, ghatikas));
+        }
+
+        Commands::VighatiLagna {
+            lagna_lon,
+            vighatikas,
+        } => {
+            println!(
+                "{:.4}°",
+                dhruv_vedic_base::vighati_lagna(lagna_lon, vighatikas)
+            );
+        }
+
+        Commands::VarnadaLagna {
+            lagna_lon,
+            hora_lagna_lon,
+        } => {
+            println!(
+                "{:.4}°",
+                dhruv_vedic_base::varnada_lagna(lagna_lon, hora_lagna_lon)
+            );
+        }
+
+        Commands::SreeLagna { moon_lon, lagna_lon } => {
+            println!("{:.4}°", dhruv_vedic_base::sree_lagna(moon_lon, lagna_lon));
+        }
+
+        Commands::PranapadaLagna { sun_lon, ghatikas } => {
+            println!(
+                "{:.4}°",
+                dhruv_vedic_base::pranapada_lagna(sun_lon, ghatikas)
+            );
+        }
+
+        Commands::InduLagna {
+            moon_lon,
+            lagna_lord,
+            moon_9th_lord,
+        } => {
+            let ll = require_graha(lagna_lord);
+            let m9l = require_graha(moon_9th_lord);
+            println!(
+                "{:.4}°",
+                dhruv_vedic_base::indu_lagna(moon_lon, ll, m9l)
+            );
+        }
+
+        // -----------------------------------------------------------
+        // Utility Primitives
+        // -----------------------------------------------------------
+
+        Commands::TithiFromElongation { elongation } => {
+            let pos = dhruv_vedic_base::tithi_from_elongation(elongation);
+            println!(
+                "{} ({} {}) - {:.4}° into tithi",
+                pos.tithi.name(),
+                pos.paksha.name(),
+                pos.tithi_in_paksha,
+                pos.degrees_in_tithi
+            );
+        }
+
+        Commands::KaranaFromElongation { elongation } => {
+            let pos = dhruv_vedic_base::karana_from_elongation(elongation);
+            println!(
+                "{} (index {}) - {:.4}° into karana",
+                pos.karana.name(),
+                pos.karana_index,
+                pos.degrees_in_karana
+            );
+        }
+
+        Commands::YogaFromSum { sum } => {
+            let pos = dhruv_vedic_base::yoga_from_sum(sum);
+            println!(
+                "{} (index {}) - {:.4}° into yoga",
+                pos.yoga.name(),
+                pos.yoga_index,
+                pos.degrees_in_yoga
+            );
+        }
+
+        Commands::VaarFromJd { jd } => {
+            let vaar = dhruv_vedic_base::vaar_from_jd(jd);
+            println!("{} ({})", vaar.name(), vaar.english_name());
+        }
+
+        Commands::MasaFromRashi { rashi } => {
+            let masa = dhruv_vedic_base::masa_from_rashi_index(rashi);
+            println!("{}", masa.name());
+        }
+
+        Commands::AyanaFromLon { lon } => {
+            let ayana = dhruv_vedic_base::ayana_from_sidereal_longitude(lon);
+            println!("{}", ayana.name());
+        }
+
+        Commands::SamvatsaraCompute { year } => {
+            let (samvatsara, cycle_index) = dhruv_vedic_base::samvatsara_from_year(year);
+            println!("{} (index {} in 60-year cycle)", samvatsara.name(), cycle_index);
+        }
+
+        Commands::NthRashiFrom { rashi, offset } => {
+            let result = dhruv_vedic_base::nth_rashi_from(rashi, offset);
+            let ri = rashi_from_index(result);
+            println!("{} (index {})", ri.name(), result);
+        }
+
+        Commands::RashiLord { rashi } => {
+            match dhruv_vedic_base::rashi_lord_by_index(rashi) {
+                Some(graha) => println!("{}", graha.name()),
+                None => {
+                    eprintln!("Invalid rashi index: {rashi} (0-11)");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Normalize360 { deg } => {
+            println!("{:.4}°", dhruv_vedic_base::normalize_360(deg));
+        }
+
+        Commands::ArudhaPadaCompute { cusp_lon, lord_lon } => {
+            let (lon, rashi_idx) = dhruv_vedic_base::arudha_pada(cusp_lon, lord_lon);
+            let ri = rashi_from_index(rashi_idx);
+            println!("{:.4}° ({})", lon, ri.name());
+        }
+
+        Commands::SunBasedUpagrahas { sun_lon } => {
+            let upa = dhruv_vedic_base::sun_based_upagrahas(sun_lon);
+            println!("Dhooma:      {:.4}°", upa.dhooma);
+            println!("Vyatipata:   {:.4}°", upa.vyatipata);
+            println!("Parivesha:   {:.4}°", upa.parivesha);
+            println!("Indra Chapa: {:.4}°", upa.indra_chapa);
+            println!("Upaketu:     {:.4}°", upa.upaketu);
+        }
+
+        // -----------------------------------------------------------
+        // Panchang Intermediates (engine required)
+        // -----------------------------------------------------------
+
+        Commands::ElongationAt { date, bsp, lsk } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            match dhruv_search::elongation_at(&engine, jd_tdb) {
+                Ok(val) => println!("{:.4}°", val),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::SiderealSumAt {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::sidereal_sum_at(&engine, jd_tdb, &config) {
+                Ok(val) => println!("{:.4}°", val),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::BodyLonLat {
+            date,
+            body,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let b = require_body(body);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            match dhruv_search::body_ecliptic_lon_lat(&engine, b, jd_tdb) {
+                Ok((lon, lat)) => println!("Longitude: {:.4}°  Latitude: {:.4}°", lon, lat),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::VedicDaySunrises {
+            date,
+            lat,
+            lon,
+            alt,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation {
+                latitude_deg: lat,
+                longitude_deg: lon,
+                altitude_m: alt,
+            };
+            let rs_config = RiseSetConfig::default();
+            match dhruv_search::vedic_day_sunrises(
+                &engine,
+                &eop_kernel,
+                &utc,
+                &location,
+                &rs_config,
+            ) {
+                Ok((sunrise_jd, next_sunrise_jd)) => {
+                    println!("Sunrise JD:      {:.6}", sunrise_jd);
+                    println!("Next Sunrise JD: {:.6}", next_sunrise_jd);
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::TithiAt {
+            date,
+            elongation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            match dhruv_search::tithi_at(&engine, jd_tdb, elongation) {
+                Ok(info) => {
+                    println!(
+                        "{} ({} {}) - Start: {} End: {}",
+                        info.tithi.name(),
+                        info.paksha.name(),
+                        info.tithi_in_paksha,
+                        info.start,
+                        info.end
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::KaranaAt {
+            date,
+            elongation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            match dhruv_search::karana_at(&engine, jd_tdb, elongation) {
+                Ok(info) => {
+                    println!(
+                        "{} (index {}) - Start: {} End: {}",
+                        info.karana.name(),
+                        info.karana_index,
+                        info.start,
+                        info.end
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::YogaAt {
+            date,
+            sum,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::yoga_at(&engine, jd_tdb, sum, &config) {
+                Ok(info) => {
+                    println!(
+                        "{} (index {}) - Start: {} End: {}",
+                        info.yoga.name(),
+                        info.yoga_index,
+                        info.start,
+                        info.end
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::NakshatraAt {
+            date,
+            moon_sid,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let config = SankrantiConfig::new(system, nutation);
+            match dhruv_search::nakshatra_at(&engine, jd_tdb, moon_sid, &config) {
+                Ok(info) => {
+                    println!(
+                        "{} (index {}) Pada {} - Start: {} End: {}",
+                        info.nakshatra.name(),
+                        info.nakshatra_index,
+                        info.pada,
+                        info.start,
+                        info.end
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        // -----------------------------------------------------------
+        // Low-level Ashtakavarga / Drishti
+        // -----------------------------------------------------------
+
+        Commands::CalculateAshtakavarga {
+            graha_rashis,
+            lagna_rashi,
+        } => {
+            let rashis = parse_graha_rashis(&graha_rashis);
+            let result = dhruv_vedic_base::calculate_ashtakavarga(&rashis, lagna_rashi);
+            let graha_names = [
+                "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn",
+            ];
+            println!("BAV (Bhinna Ashtakavarga):");
+            for (i, bav) in result.bavs.iter().enumerate() {
+                println!(
+                    "  {:8} {:?} (total: {})",
+                    graha_names[i],
+                    bav.points,
+                    bav.total()
+                );
+            }
+            println!("\nSAV (Sarva Ashtakavarga):");
+            println!("  Total:       {:?}", result.sav.total_points);
+            println!("  Trikona:     {:?}", result.sav.after_trikona);
+            println!("  Ekadhipatya: {:?}", result.sav.after_ekadhipatya);
+        }
+
+        Commands::GrahaDrishtiCompute {
+            graha,
+            source,
+            target,
+        } => {
+            let g = require_graha(graha);
+            let entry = dhruv_vedic_base::graha_drishti(g, source, target);
+            println!(
+                "Distance: {:.2}°  Base: {:.2}  Special: {:.2}  Total: {:.2} virupa",
+                entry.angular_distance,
+                entry.base_virupa,
+                entry.special_virupa,
+                entry.total_virupa
+            );
+        }
+
+        Commands::GrahaDrishtiMatrixCompute { longitudes } => {
+            let lons = parse_longitudes_9(&longitudes);
+            let matrix = dhruv_vedic_base::graha_drishti_matrix(&lons);
+            let names = [
+                "Surya", "Chandra", "Mangal", "Buddh", "Guru", "Shukra", "Shani", "Rahu", "Ketu",
+            ];
+            println!("Graha Drishti Matrix (total virupa):\n");
+            print!("{:>10}", "");
+            for name in &names {
+                print!("{:>9}", name);
+            }
+            println!();
+            for (i, name) in names.iter().enumerate() {
+                print!("{:>10}", name);
+                for j in 0..9 {
+                    print!("{:>9.1}", matrix.entries[i][j].total_virupa);
+                }
+                println!();
             }
         }
     }

@@ -15,8 +15,9 @@ use dhruv_search::{LunarPhaseEvent, SearchError};
 use dhruv_time::{EopKernel, Epoch, UtcTime, calendar_to_jd};
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult};
 use dhruv_vedic_base::{
-    AyanamshaSystem, BhavaConfig, BhavaResult, LunarNode, Nakshatra28Info, NakshatraInfo, NodeMode,
-    Rashi, RashiInfo, ayanamsha_deg, jd_tdb_to_centuries, lunar_node_deg,
+    AshtakavargaResult, AyanamshaSystem, BhavaConfig, BhavaResult, BhinnaAshtakavarga,
+    DrishtiEntry, GrahaDrishtiMatrix, LunarNode, Nakshatra28Info, NakshatraInfo, NodeMode, Rashi,
+    RashiInfo, SarvaAshtakavarga, ayanamsha_deg, jd_tdb_to_centuries, lunar_node_deg,
     nakshatra_from_longitude, nakshatra28_from_longitude, rashi_from_longitude,
 };
 
@@ -1047,4 +1048,381 @@ pub fn prev_specific_sankranti(
     let utc: UtcTime = date.into();
     let config = SankrantiConfig::new(system, use_nutation);
     Ok(dhruv_search::prev_specific_sankranti(eng, &utc, rashi, &config)?)
+}
+
+// ---------------------------------------------------------------------------
+// Individual Sphuta Formulas (pure math, no engine required)
+// ---------------------------------------------------------------------------
+
+/// Bhrigu Bindu = midpoint of Rahu and Moon.
+pub fn bhrigu_bindu(rahu: f64, moon: f64) -> f64 {
+    dhruv_vedic_base::bhrigu_bindu(rahu, moon)
+}
+
+/// Prana Sphuta = Lagna + Moon (mod 360).
+pub fn prana_sphuta(lagna: f64, moon: f64) -> f64 {
+    dhruv_vedic_base::prana_sphuta(lagna, moon)
+}
+
+/// Deha Sphuta = Moon + Lagna (mod 360) — alias with reversed parameter order.
+pub fn deha_sphuta(moon: f64, lagna: f64) -> f64 {
+    dhruv_vedic_base::deha_sphuta(moon, lagna)
+}
+
+/// Mrityu Sphuta = 8th lord + Lagna (mod 360).
+pub fn mrityu_sphuta(eighth_lord: f64, lagna: f64) -> f64 {
+    dhruv_vedic_base::mrityu_sphuta(eighth_lord, lagna)
+}
+
+/// Tithi Sphuta = (Moon - Sun) mod 360 + Lagna (mod 360).
+pub fn tithi_sphuta(moon: f64, sun: f64, lagna: f64) -> f64 {
+    dhruv_vedic_base::tithi_sphuta(moon, sun, lagna)
+}
+
+/// Yoga Sphuta = Sun + Moon (mod 360).
+pub fn yoga_sphuta(sun: f64, moon: f64) -> f64 {
+    dhruv_vedic_base::yoga_sphuta(sun, moon)
+}
+
+/// Yoga Sphuta Normalized = (Sun + Moon) mod 360.
+pub fn yoga_sphuta_normalized(sun: f64, moon: f64) -> f64 {
+    dhruv_vedic_base::yoga_sphuta_normalized(sun, moon)
+}
+
+/// Rahu Tithi Sphuta = (Rahu - Sun) mod 360 + Lagna (mod 360).
+pub fn rahu_tithi_sphuta(rahu: f64, sun: f64, lagna: f64) -> f64 {
+    dhruv_vedic_base::rahu_tithi_sphuta(rahu, sun, lagna)
+}
+
+/// Kshetra Sphuta from Venus, Moon, Mars, Jupiter, and Lagna.
+pub fn kshetra_sphuta(venus: f64, moon: f64, mars: f64, jupiter: f64, lagna: f64) -> f64 {
+    dhruv_vedic_base::kshetra_sphuta(venus, moon, mars, jupiter, lagna)
+}
+
+/// Beeja Sphuta from Sun, Venus, and Jupiter.
+pub fn beeja_sphuta(sun: f64, venus: f64, jupiter: f64) -> f64 {
+    dhruv_vedic_base::beeja_sphuta(sun, venus, jupiter)
+}
+
+/// TriSphuta = Lagna + Moon + Gulika (mod 360).
+pub fn trisphuta(lagna: f64, moon: f64, gulika: f64) -> f64 {
+    dhruv_vedic_base::trisphuta(lagna, moon, gulika)
+}
+
+/// ChatusSphuta = TriSphuta + Sun (mod 360).
+pub fn chatussphuta(trisphuta_val: f64, sun: f64) -> f64 {
+    dhruv_vedic_base::chatussphuta(trisphuta_val, sun)
+}
+
+/// PanchaSphuta = ChatusSphuta + Rahu (mod 360).
+pub fn panchasphuta(chatussphuta_val: f64, rahu: f64) -> f64 {
+    dhruv_vedic_base::panchasphuta(chatussphuta_val, rahu)
+}
+
+/// Sookshma TriSphuta = Lagna + Moon + Gulika + Sun (mod 360).
+pub fn sookshma_trisphuta(lagna: f64, moon: f64, gulika: f64, sun: f64) -> f64 {
+    dhruv_vedic_base::sookshma_trisphuta(lagna, moon, gulika, sun)
+}
+
+/// Avayoga Sphuta = Sun + Moon inverted.
+pub fn avayoga_sphuta(sun: f64, moon: f64) -> f64 {
+    dhruv_vedic_base::avayoga_sphuta(sun, moon)
+}
+
+/// Kunda = Lagna + Moon + Mars (mod 360).
+pub fn kunda(lagna: f64, moon: f64, mars: f64) -> f64 {
+    dhruv_vedic_base::kunda(lagna, moon, mars)
+}
+
+// ---------------------------------------------------------------------------
+// Individual Special Lagna Formulas (pure math, no engine required)
+// ---------------------------------------------------------------------------
+
+/// Bhava Lagna from Sun longitude and ghatikas since sunrise.
+pub fn bhava_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::bhava_lagna(sun_lon, ghatikas)
+}
+
+/// Hora Lagna from Sun longitude and ghatikas since sunrise.
+pub fn hora_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::hora_lagna(sun_lon, ghatikas)
+}
+
+/// Ghati Lagna from Sun longitude and ghatikas since sunrise.
+pub fn ghati_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::ghati_lagna(sun_lon, ghatikas)
+}
+
+/// Vighati Lagna from lagna longitude and vighatikas elapsed.
+pub fn vighati_lagna(lagna_lon: f64, vighatikas: f64) -> f64 {
+    dhruv_vedic_base::vighati_lagna(lagna_lon, vighatikas)
+}
+
+/// Varnada Lagna from lagna and hora lagna longitudes.
+pub fn varnada_lagna(lagna_lon: f64, hora_lagna_lon: f64) -> f64 {
+    dhruv_vedic_base::varnada_lagna(lagna_lon, hora_lagna_lon)
+}
+
+/// Sree Lagna from Moon and lagna longitudes.
+pub fn sree_lagna(moon_lon: f64, lagna_lon: f64) -> f64 {
+    dhruv_vedic_base::sree_lagna(moon_lon, lagna_lon)
+}
+
+/// Pranapada Lagna from Sun longitude and ghatikas since sunrise.
+pub fn pranapada_lagna(sun_lon: f64, ghatikas: f64) -> f64 {
+    dhruv_vedic_base::pranapada_lagna(sun_lon, ghatikas)
+}
+
+/// Indu Lagna from Moon longitude and the two graha lords.
+pub fn indu_lagna(
+    moon_lon: f64,
+    lagna_lord: dhruv_vedic_base::Graha,
+    moon_9th_lord: dhruv_vedic_base::Graha,
+) -> f64 {
+    dhruv_vedic_base::indu_lagna(moon_lon, lagna_lord, moon_9th_lord)
+}
+
+/// Compute ghatikas elapsed since sunrise for a given UTC moment.
+pub fn ghatikas_since_sunrise(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<f64, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let rs_config = RiseSetConfig::default();
+    let (sunrise_jd, next_sunrise_jd) =
+        dhruv_search::vedic_day_sunrises(eng, eop, &utc, location, &rs_config)?;
+    let jd_tdb = utc_to_jd_tdb(date)?;
+    Ok(dhruv_vedic_base::ghatikas_since_sunrise(jd_tdb, sunrise_jd, next_sunrise_jd))
+}
+
+// ---------------------------------------------------------------------------
+// Utility Primitives (pure math or simple lookups)
+// ---------------------------------------------------------------------------
+
+/// Determine tithi position from Moon-Sun elongation in degrees.
+pub fn tithi_from_elongation(elongation_deg: f64) -> dhruv_vedic_base::TithiPosition {
+    dhruv_vedic_base::tithi_from_elongation(elongation_deg)
+}
+
+/// Determine karana position from Moon-Sun elongation in degrees.
+pub fn karana_from_elongation(elongation_deg: f64) -> dhruv_vedic_base::KaranaPosition {
+    dhruv_vedic_base::karana_from_elongation(elongation_deg)
+}
+
+/// Determine yoga position from sidereal Sun+Moon sum in degrees.
+pub fn yoga_from_sum(sum_deg: f64) -> dhruv_vedic_base::YogaPosition {
+    dhruv_vedic_base::yoga_from_sum(sum_deg)
+}
+
+/// Determine the Vaar (weekday) from a Julian Date.
+pub fn vaar_from_jd(jd: f64) -> dhruv_vedic_base::Vaar {
+    dhruv_vedic_base::vaar_from_jd(jd)
+}
+
+/// Determine the Masa (lunar month name) from a rashi index (0-11).
+pub fn masa_from_rashi_index(rashi_index: u8) -> dhruv_vedic_base::Masa {
+    dhruv_vedic_base::masa_from_rashi_index(rashi_index)
+}
+
+/// Determine the Ayana from a sidereal longitude in degrees.
+pub fn ayana_from_sidereal_longitude(lon_deg: f64) -> dhruv_vedic_base::Ayana {
+    dhruv_vedic_base::ayana_from_sidereal_longitude(lon_deg)
+}
+
+/// Determine the Samvatsara (60-year cycle) from a year.
+///
+/// Returns `(samvatsara, order)` where `order` is 1-60.
+pub fn samvatsara_from_year(year: i32) -> (dhruv_vedic_base::Samvatsara, u8) {
+    dhruv_vedic_base::samvatsara_from_year(year)
+}
+
+/// Compute the rashi index that is `offset` signs from `rashi_index`.
+pub fn nth_rashi_from(rashi_index: u8, offset: u8) -> u8 {
+    dhruv_vedic_base::nth_rashi_from(rashi_index, offset)
+}
+
+/// Determine the rashi lord for a given rashi index (0-11).
+pub fn rashi_lord(rashi_index: u8) -> Option<dhruv_vedic_base::Graha> {
+    dhruv_vedic_base::rashi_lord_by_index(rashi_index)
+}
+
+/// Compute the Hora lord at a specific (vaar, hora_index) combination.
+pub fn hora_at(vaar: dhruv_vedic_base::Vaar, hora_index: u8) -> dhruv_vedic_base::Hora {
+    dhruv_vedic_base::hora_at(vaar, hora_index)
+}
+
+/// Compute ghatika position from elapsed time since sunrise.
+///
+/// `seconds_since_sunrise` and `vedic_day_duration_seconds` define the position.
+pub fn ghatika_from_elapsed(
+    seconds_since_sunrise: f64,
+    vedic_day_duration_seconds: f64,
+) -> dhruv_vedic_base::GhatikaPosition {
+    dhruv_vedic_base::ghatika_from_elapsed(seconds_since_sunrise, vedic_day_duration_seconds)
+}
+
+/// Normalize an angle to the range [0, 360).
+pub fn normalize_360(deg: f64) -> f64 {
+    dhruv_vedic_base::normalize_360(deg)
+}
+
+/// Approximate Julian Date of local noon from a midnight JD and longitude.
+pub fn approximate_local_noon_jd(jd_ut_midnight: f64, longitude_deg: f64) -> f64 {
+    dhruv_vedic_base::approximate_local_noon_jd(jd_ut_midnight, longitude_deg)
+}
+
+/// Compute a single arudha pada from bhava cusp longitude and its lord longitude.
+///
+/// Returns `(longitude_deg, rashi_index)`.
+pub fn arudha_pada(bhava_cusp_lon: f64, lord_lon: f64) -> (f64, u8) {
+    dhruv_vedic_base::arudha_pada(bhava_cusp_lon, lord_lon)
+}
+
+/// Compute the 5 sun-based upagrahas from the Sun's sidereal longitude.
+pub fn sun_based_upagrahas(sun_sidereal_lon: f64) -> dhruv_vedic_base::SunBasedUpagrahas {
+    dhruv_vedic_base::sun_based_upagrahas(sun_sidereal_lon)
+}
+
+// ---------------------------------------------------------------------------
+// Panchang Intermediates (require engine access)
+// ---------------------------------------------------------------------------
+
+/// Compute Moon-Sun elongation (Moon_lon - Sun_lon) mod 360 at a given date.
+pub fn elongation_at(date: UtcDate) -> Result<f64, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::elongation_at(eng, jd)?)
+}
+
+/// Compute sidereal sum (Moon_sid + Sun_sid) mod 360 at a given date.
+pub fn sidereal_sum_at(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<f64, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::sidereal_sum_at(eng, jd, &config)?)
+}
+
+/// Compute the Vedic day sunrise bracket (today's and next sunrise JD TDB).
+pub fn vedic_day_sunrises(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+) -> Result<(f64, f64), DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = date.into();
+    let rs_config = RiseSetConfig::default();
+    Ok(dhruv_search::vedic_day_sunrises(eng, eop, &utc, location, &rs_config)?)
+}
+
+/// Query a body's ecliptic longitude and latitude in degrees.
+pub fn body_ecliptic_lon_lat(
+    body: Body,
+    date: UtcDate,
+) -> Result<(f64, f64), DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::body_ecliptic_lon_lat(eng, body, jd)?)
+}
+
+/// Determine the Tithi from a pre-computed elongation at a given date.
+pub fn tithi_at(date: UtcDate, elongation_deg: f64) -> Result<TithiInfo, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::tithi_at(eng, jd, elongation_deg)?)
+}
+
+/// Determine the Karana from a pre-computed elongation at a given date.
+pub fn karana_at(date: UtcDate, elongation_deg: f64) -> Result<KaranaInfo, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_search::karana_at(eng, jd, elongation_deg)?)
+}
+
+/// Determine the Yoga from a pre-computed sidereal sum at a given date.
+pub fn yoga_at(
+    date: UtcDate,
+    sidereal_sum_deg: f64,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<YogaInfo, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::yoga_at(eng, jd, sidereal_sum_deg, &config)?)
+}
+
+/// Determine the Moon's nakshatra from a pre-computed sidereal longitude.
+pub fn nakshatra_at(
+    date: UtcDate,
+    moon_sidereal_deg: f64,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<PanchangNakshatraInfo, DhruvError> {
+    let eng = engine()?;
+    let jd = utc_to_jd_tdb(date)?;
+    let config = SankrantiConfig::new(system, use_nutation);
+    Ok(dhruv_search::nakshatra_at(eng, jd, moon_sidereal_deg, &config)?)
+}
+
+// ---------------------------------------------------------------------------
+// Low-level Ashtakavarga / Drishti (pure computation)
+// ---------------------------------------------------------------------------
+
+/// Compute full Ashtakavarga from rashi positions (BAV + SAV + Sodhana).
+///
+/// `graha_rashis` contains rashi indices (0-11) for Sun through Saturn (7 planets).
+/// `lagna_rashi` is the lagna's rashi index (0-11).
+pub fn calculate_ashtakavarga(graha_rashis: &[u8; 7], lagna_rashi: u8) -> AshtakavargaResult {
+    dhruv_vedic_base::calculate_ashtakavarga(graha_rashis, lagna_rashi)
+}
+
+/// Compute a single Bhinna Ashtakavarga (BAV) for one graha.
+///
+/// `graha_index` is 0-6 (Sun through Saturn).
+pub fn calculate_bav(
+    graha_index: u8,
+    graha_rashis: &[u8; 7],
+    lagna_rashi: u8,
+) -> BhinnaAshtakavarga {
+    dhruv_vedic_base::calculate_bav(graha_index, graha_rashis, lagna_rashi)
+}
+
+/// Compute all 7 Bhinna Ashtakavargas.
+pub fn calculate_all_bav(graha_rashis: &[u8; 7], lagna_rashi: u8) -> [BhinnaAshtakavarga; 7] {
+    dhruv_vedic_base::calculate_all_bav(graha_rashis, lagna_rashi)
+}
+
+/// Compute Sarva Ashtakavarga (SAV) from all 7 BAVs.
+pub fn calculate_sav(bavs: &[BhinnaAshtakavarga; 7]) -> SarvaAshtakavarga {
+    dhruv_vedic_base::calculate_sav(bavs)
+}
+
+/// Apply Trikona Sodhana reduction to SAV totals.
+pub fn trikona_sodhana(totals: &[u8; 12]) -> [u8; 12] {
+    dhruv_vedic_base::trikona_sodhana(totals)
+}
+
+/// Apply Ekadhipatya Sodhana reduction to post-Trikona totals.
+pub fn ekadhipatya_sodhana(after_trikona: &[u8; 12]) -> [u8; 12] {
+    dhruv_vedic_base::ekadhipatya_sodhana(after_trikona)
+}
+
+/// Compute graha drishti (planetary aspect) between a single source and target.
+pub fn graha_drishti(
+    graha: dhruv_vedic_base::Graha,
+    source_lon: f64,
+    target_lon: f64,
+) -> DrishtiEntry {
+    dhruv_vedic_base::graha_drishti(graha, source_lon, target_lon)
+}
+
+/// Compute the full 9×9 graha drishti matrix from sidereal longitudes.
+pub fn graha_drishti_matrix(longitudes: &[f64; 9]) -> GrahaDrishtiMatrix {
+    dhruv_vedic_base::graha_drishti_matrix(longitudes)
 }

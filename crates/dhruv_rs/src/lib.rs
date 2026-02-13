@@ -30,17 +30,28 @@ pub mod global;
 
 // Primary re-exports — users should only need `use dhruv_rs::*`
 pub use convenience::{
-    all_rise_set_events, arudha_padas, ashtakavarga, ayana, ayanamsha, bhavas, core_bindus,
-    drishti, ghatika, graha_longitudes, graha_positions, hora, karana, lagna, longitude, lunar_node,
-    masa, mc, moon_nakshatra, nakshatra, nakshatra28, next_amavasya, next_chandra_grahan,
-    next_conjunction, next_max_speed, next_purnima, next_sankranti, next_specific_sankranti,
-    next_stationary, next_surya_grahan, nutation, panchang, position, position_full,
-    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
-    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, query,
-    query_batch, ramc, rashi, search_amavasyas, search_chandra_grahan, search_conjunctions,
+    all_rise_set_events, approximate_local_noon_jd, arudha_pada, arudha_padas, ashtakavarga,
+    avayoga_sphuta, ayana, ayana_from_sidereal_longitude, ayanamsha, beeja_sphuta,
+    bhava_lagna, bhavas, bhrigu_bindu, body_ecliptic_lon_lat, calculate_all_bav,
+    calculate_ashtakavarga, calculate_bav, calculate_sav, chatussphuta, core_bindus,
+    deha_sphuta, drishti, ekadhipatya_sodhana, elongation_at, ghati_lagna, ghatika,
+    ghatika_from_elapsed, ghatikas_since_sunrise, graha_drishti, graha_drishti_matrix,
+    graha_longitudes, graha_positions, hora, hora_at, hora_lagna, indu_lagna, karana,
+    karana_at, karana_from_elongation, kshetra_sphuta, kunda, lagna, longitude, lunar_node,
+    masa, masa_from_rashi_index, mc, moon_nakshatra, mrityu_sphuta, nakshatra, nakshatra28,
+    nakshatra_at, next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed,
+    next_purnima, next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan,
+    normalize_360, nth_rashi_from, nutation, panchang, panchasphuta, position, position_full,
+    prana_sphuta, pranapada_lagna, prev_amavasya, prev_chandra_grahan, prev_conjunction,
+    prev_max_speed, prev_purnima, prev_sankranti, prev_specific_sankranti, prev_stationary,
+    prev_surya_grahan, query, query_batch, rahu_tithi_sphuta, ramc, rashi, rashi_lord,
+    samvatsara_from_year, search_amavasyas, search_chandra_grahan, search_conjunctions,
     search_max_speed, search_purnimas, search_sankrantis, search_stationary, search_surya_grahan,
-    sidereal_longitude, special_lagnas, sphutas, sunrise, sunset, tithi, upagrahas, vaar, varsha,
-    yoga,
+    sidereal_longitude, sidereal_sum_at, sookshma_trisphuta, special_lagnas, sphutas,
+    sree_lagna, sun_based_upagrahas, sunrise, sunset, tithi, tithi_at, tithi_from_elongation,
+    tithi_sphuta, trikona_sodhana, trisphuta, upagrahas, vaar, vaar_from_jd, varnada_lagna,
+    varsha, vedic_day_sunrises, vighati_lagna, yoga, yoga_at, yoga_from_sum, yoga_sphuta,
+    yoga_sphuta_normalized,
 };
 pub use date::UtcDate;
 pub use error::DhruvError;
@@ -58,10 +69,12 @@ pub use dhruv_vedic_base::{
     BhinnaAshtakavarga, Graha, SarvaAshtakavarga, SpecialLagna, Sphuta, SphutalInputs, Upagraha,
 };
 pub use dhruv_vedic_base::{
-    Ayana as AyanaKind, AyanamshaSystem, Dms, Hora as HoraLord, Karana as KaranaName,
-    Masa as MasaName, Nakshatra as NakshatraName, Nakshatra28 as Nakshatra28Name, Nakshatra28Info,
-    NakshatraInfo, Paksha, Rashi as RashiName, RashiInfo, Samvatsara as SamvatsaraName,
-    Tithi as TithiName, Vaar as VaarName, Yoga as YogaName, deg_to_dms,
+    Ayana as AyanaKind, AyanamshaSystem, Dms, GhatikaPosition, Hora as HoraLord,
+    Karana as KaranaName, KaranaPosition, Masa as MasaName, Nakshatra as NakshatraName,
+    Nakshatra28 as Nakshatra28Name, Nakshatra28Info, NakshatraInfo, Paksha,
+    Rashi as RashiName, RashiInfo, Samvatsara as SamvatsaraName, SunBasedUpagrahas,
+    Tithi as TithiName, TithiPosition, Vaar as VaarName, Yoga as YogaName, YogaPosition,
+    deg_to_dms,
 };
 pub use dhruv_vedic_base::{DrishtiEntry, GrahaDrishtiMatrix};
 pub use dhruv_vedic_base::{
