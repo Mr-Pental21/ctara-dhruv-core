@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use dhruv_core::{Body, Engine, EngineConfig};
-use dhruv_frames::nutation_iau2000b;
+use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
+use dhruv_frames::{cartesian_state_to_spherical_state, nutation_iau2000b};
 use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::GrahanConfig;
 use dhruv_search::sankranti_types::SankrantiConfig;
@@ -962,6 +962,66 @@ enum Commands {
         #[arg(long)]
         lsk: PathBuf,
     },
+    /// Query spherical position of a body (lon, lat, distance)
+    Position {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// NAIF body code for target (e.g. 10=Sun, 301=Moon, 499=Mars)
+        #[arg(long)]
+        target: i32,
+        /// NAIF body code for observer (0=SSB, 399=Earth)
+        #[arg(long, default_value = "399")]
+        observer: i32,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Sidereal longitude of a body
+    SiderealLongitude {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// NAIF body code for target
+        #[arg(long)]
+        target: i32,
+        /// NAIF body code for observer (default 399=Earth)
+        #[arg(long, default_value = "399")]
+        observer: i32,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
+    /// Sidereal longitudes of all 9 grahas
+    GrahaLongitudes {
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -1016,6 +1076,13 @@ fn load_eop(path: &PathBuf) -> EopKernel {
 fn require_body(code: i32) -> Body {
     Body::from_code(code).unwrap_or_else(|| {
         eprintln!("Invalid body code: {code}");
+        std::process::exit(1);
+    })
+}
+
+fn require_observer(code: i32) -> Observer {
+    Observer::from_code(code).unwrap_or_else(|| {
+        eprintln!("Invalid observer code: {code}");
         std::process::exit(1);
     })
 }
@@ -3206,6 +3273,129 @@ fn main() {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
                 }
+            }
+        }
+
+        Commands::Position {
+            date,
+            target,
+            observer,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let t = require_body(target);
+            let obs = require_observer(observer);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let query = Query {
+                target: t,
+                observer: obs,
+                frame: Frame::EclipticJ2000,
+                epoch_tdb_jd: jd_tdb,
+            };
+            let state = engine.query(query).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            let sph = cartesian_state_to_spherical_state(
+                &state.position_km,
+                &state.velocity_km_s,
+            );
+            println!("Position of {:?} from {:?}:", t, obs);
+            println!("  Longitude:      {:.6}°", sph.lon_deg);
+            println!("  Latitude:       {:.6}°", sph.lat_deg);
+            println!("  Distance:       {:.6} km", sph.distance_km);
+            println!("  Lon speed:      {:.6} deg/day", sph.lon_speed);
+            println!("  Lat speed:      {:.6} deg/day", sph.lat_speed);
+            println!("  Distance speed: {:.6} km/s", sph.distance_speed);
+        }
+
+        Commands::SiderealLongitude {
+            date,
+            target,
+            observer,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let t = require_body(target);
+            let obs = require_observer(observer);
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let query = Query {
+                target: t,
+                observer: obs,
+                frame: Frame::EclipticJ2000,
+                epoch_tdb_jd: jd_tdb,
+            };
+            let state = engine.query(query).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            let tropical_lon = {
+                let x = state.position_km[0];
+                let y = state.position_km[1];
+                let lon = y.atan2(x).to_degrees();
+                if lon < 0.0 { lon + 360.0 } else { lon }
+            };
+            let tc = jd_tdb_to_centuries(jd_tdb);
+            let aya = ayanamsha_deg(system, tc, nutation);
+            let sid = (tropical_lon - aya).rem_euclid(360.0);
+            println!("Tropical longitude: {:.6}°", tropical_lon);
+            println!("Ayanamsha ({:?}): {:.6}°", system, aya);
+            println!("Sidereal longitude: {:.6}°", sid);
+        }
+
+        Commands::GrahaLongitudes {
+            date,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+        } => {
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(ayanamsha);
+            let engine = load_engine(&bsp, &lsk);
+            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let lons =
+                dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, nutation)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    });
+
+            println!("Graha sidereal longitudes ({:?}{}):\n",
+                system,
+                if nutation { " +nutation" } else { "" }
+            );
+            let graha_names = [
+                "Surya", "Chandra", "Mangal", "Budha", "Guru", "Shukra", "Shani", "Rahu", "Ketu",
+            ];
+            for (i, name) in graha_names.iter().enumerate() {
+                let lon = lons.longitudes[i];
+                let rashi_info = dhruv_vedic_base::rashi_from_longitude(lon);
+                println!(
+                    "  {:8} {:>9.4}° ({} {}°{:02}'{:04.1}\")",
+                    name,
+                    lon,
+                    rashi_info.rashi.name(),
+                    rashi_info.dms.degrees,
+                    rashi_info.dms.minutes,
+                    rashi_info.dms.seconds,
+                );
             }
         }
     }
