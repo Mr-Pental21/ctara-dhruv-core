@@ -9,7 +9,8 @@ use dhruv_core::Engine;
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::dasha::{
     DashaHierarchy, DashaSnapshot, DashaSystem, DashaVariationConfig,
-    nakshatra_hierarchy, nakshatra_snapshot, vimshottari_config,
+    nakshatra_config_for_system, nakshatra_hierarchy, nakshatra_snapshot,
+    yogini_config, yogini_hierarchy, yogini_snapshot,
 };
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
 use dhruv_vedic_base::BhavaConfig;
@@ -49,8 +50,8 @@ fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
 
 /// Dispatch to the correct dasha engine for a given system.
 ///
-/// Currently only Vimshottari is implemented (Phase 18a).
-/// Remaining systems will be added in sub-phases 18b-18d.
+/// Nakshatra-based (10 systems) and Yogini are implemented (Phase 18a-b).
+/// Rashi-based and special systems will be added in sub-phases 18c-18d.
 fn dispatch_hierarchy(
     system: DashaSystem,
     birth_jd: f64,
@@ -58,10 +59,16 @@ fn dispatch_hierarchy(
     max_level: u8,
     variation: &DashaVariationConfig,
 ) -> Result<DashaHierarchy, SearchError> {
+    // Try nakshatra-based systems first (10 systems)
+    if let Some(cfg) = nakshatra_config_for_system(system) {
+        return nakshatra_hierarchy(birth_jd, moon_sid_lon, &cfg, max_level, variation)
+            .map_err(SearchError::from);
+    }
+
     match system {
-        DashaSystem::Vimshottari => {
-            let cfg = vimshottari_config();
-            nakshatra_hierarchy(birth_jd, moon_sid_lon, &cfg, max_level, variation)
+        DashaSystem::Yogini => {
+            let cfg = yogini_config();
+            yogini_hierarchy(birth_jd, moon_sid_lon, &cfg, max_level, variation)
                 .map_err(SearchError::from)
         }
         _ => Err(SearchError::InvalidConfig("dasha system not yet implemented")),
@@ -77,10 +84,17 @@ fn dispatch_snapshot(
     max_level: u8,
     variation: &DashaVariationConfig,
 ) -> Result<DashaSnapshot, SearchError> {
+    // Try nakshatra-based systems first (10 systems)
+    if let Some(cfg) = nakshatra_config_for_system(system) {
+        return Ok(nakshatra_snapshot(
+            birth_jd, moon_sid_lon, &cfg, query_jd, max_level, variation,
+        ));
+    }
+
     match system {
-        DashaSystem::Vimshottari => {
-            let cfg = vimshottari_config();
-            Ok(nakshatra_snapshot(
+        DashaSystem::Yogini => {
+            let cfg = yogini_config();
+            Ok(yogini_snapshot(
                 birth_jd, moon_sid_lon, &cfg, query_jd, max_level, variation,
             ))
         }

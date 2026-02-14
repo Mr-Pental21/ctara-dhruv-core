@@ -164,6 +164,109 @@ fn vimshottari_snapshot_valid() {
     assert_eq!(snapshot.periods[2].level, DashaLevel::Pratyantardasha);
 }
 
+/// All 10 nakshatra-based systems should produce valid hierarchies.
+#[test]
+fn all_nakshatra_systems_hierarchy_valid() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = birth_utc();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let variation = DashaVariationConfig::default();
+
+    let systems = [
+        DashaSystem::Vimshottari,
+        DashaSystem::Ashtottari,
+        DashaSystem::Shodsottari,
+        DashaSystem::Dwadashottari,
+        DashaSystem::Panchottari,
+        DashaSystem::Shatabdika,
+        DashaSystem::Chaturashiti,
+        DashaSystem::DwisaptatiSama,
+        DashaSystem::Shashtihayani,
+        DashaSystem::ShatTrimshaSama,
+    ];
+
+    for system in systems {
+        let result = dasha_hierarchy_for_birth(
+            &engine,
+            &eop,
+            &utc,
+            &location,
+            system,
+            2,
+            &bhava_config,
+            &rs_config,
+            &aya_config,
+            &variation,
+        );
+        assert!(
+            result.is_ok(),
+            "{:?} hierarchy should succeed: {:?}",
+            system,
+            result.err()
+        );
+        let h = result.unwrap();
+        assert_eq!(h.system, system);
+        assert_eq!(h.levels.len(), 3);
+        assert!(!h.levels[0].is_empty());
+    }
+}
+
+/// Yogini dasha should produce valid hierarchy and snapshot.
+#[test]
+fn yogini_hierarchy_and_snapshot_valid() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let birth = birth_utc();
+    // Yogini cycle is only 36y; use query 10y after birth to stay well within range
+    let query = UtcTime::new(2000, 6, 1, 12, 0, 0.0);
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let variation = DashaVariationConfig::default();
+
+    let h_result = dasha_hierarchy_for_birth(
+        &engine,
+        &eop,
+        &birth,
+        &location,
+        DashaSystem::Yogini,
+        2,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &variation,
+    );
+    assert!(h_result.is_ok(), "Yogini hierarchy: {:?}", h_result.err());
+    let h = h_result.unwrap();
+    assert_eq!(h.system, DashaSystem::Yogini);
+    assert_eq!(h.levels.len(), 3);
+    assert_eq!(h.levels[0].len(), 8);
+
+    let s_result = dasha_snapshot_at(
+        &engine,
+        &eop,
+        &birth,
+        &query,
+        &location,
+        DashaSystem::Yogini,
+        2,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &variation,
+    );
+    assert!(s_result.is_ok(), "Yogini snapshot: {:?}", s_result.err());
+    let snap = s_result.unwrap();
+    assert_eq!(snap.system, DashaSystem::Yogini);
+    assert_eq!(snap.periods.len(), 3);
+}
+
+/// Rashi-based systems are not yet implemented (Phase 18c).
 #[test]
 fn unimplemented_system_returns_error() {
     let Some(engine) = load_engine() else { return };
@@ -175,13 +278,12 @@ fn unimplemented_system_returns_error() {
     let aya_config = default_aya_config();
     let variation = DashaVariationConfig::default();
 
-    // Ashtottari is not yet implemented (Phase 18b)
     let result = dasha_hierarchy_for_birth(
         &engine,
         &eop,
         &utc,
         &location,
-        DashaSystem::Ashtottari,
+        DashaSystem::Chara,
         2,
         &bhava_config,
         &rs_config,

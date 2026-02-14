@@ -118,6 +118,76 @@ full hierarchy. Instead of generating all periods at each level, it:
 
 Complexity: O(depth × sequence_length) instead of O(sequence_length^depth).
 
+## Phase 18b: Remaining Nakshatra-Based Systems + Yogini
+
+### Sources
+
+Same BPHS sources as Phase 18a, plus:
+- **BPHS Ch.47**: Ashtottari Dasha
+- **BPHS Ch.48**: Shodsottari Dasha
+- **BPHS Ch.49**: Dwadashottari Dasha
+- **BPHS Ch.50-53**: Panchottari, Shatabdika, Chaturashiti, Dwisaptati, Shashtihayani, Shat-Trimsha
+- **B.V. Raman**: Hindu Predictive Astrology, dasha system summaries
+
+### Nakshatra-Based Systems (10 total)
+
+| System | Total Years | Grahas | Cycles | Starting Nakshatra | Special |
+|--------|-------------|--------|--------|--------------------|---------|
+| Vimshottari | 120 | 9 | 1 | Ashwini (0) | Phase 18a |
+| Ashtottari | 108 | 8 (no Ketu) | 1 | Ardra (5) | Abhijit detection TBD |
+| Shodsottari | 116 | 8 | 1 | Pushya (7) | Arithmetic 11-18y |
+| Dwadashottari | 112 | 8 | 1 | Bharani (1) | Odd 7-21y |
+| Panchottari | 105 | 7 | 1 | Anuradha (16) | Arithmetic 12-18y |
+| Shatabdika | 100 | 7 | 1 | Revati (26) | Paired 5,5,10,10,20,20,30 |
+| Chaturashiti | 84 | 7 | 2 | Swati (14) | Equal 12y each |
+| Dwisaptati Sama | 72 | 8 | 2 | Mula (18) | Equal 9y each |
+| Shashtihayani | 60 | 8 | 2 | Ashwini (0) | Period ÷ nakshatra count |
+| Shat-Trimsha Sama | 36 | 8 | 3 | Shravana (21) | Arithmetic 1-8y |
+
+### Cycle Count Logic
+
+Systems with `cycle_count > 1` repeat the full graha sequence multiple times to
+fill the total period. For example, Chaturashiti (84y, 7 grahas, 2 cycles) generates
+14 mahadasha periods (7 × 2), each 12 years.
+
+### Shashtihayani Special Balance
+
+Unlike other systems where `entry_period = graha_full_period`, Shashtihayani divides
+each graha's total period among the nakshatras assigned to that graha:
+
+```
+entry_period = graha_period / count_of_nakshatras_for_that_graha
+```
+
+This ensures the birth balance is proportional to the per-nakshatra share.
+
+### Yogini Dasha System
+
+**Sequence and Periods** (BPHS):
+
+| Index | Yogini | Graha Lord | Period (years) |
+|-------|--------|------------|----------------|
+| 0 | Mangala | Chandra | 1 |
+| 1 | Pingala | Surya | 2 |
+| 2 | Dhanya | Guru | 3 |
+| 3 | Bhramari | Mangal | 4 |
+| 4 | Bhadrika | Buddh | 5 |
+| 5 | Ulka | Shani | 6 |
+| 6 | Siddha | Shukra | 7 |
+| 7 | Sankata | Rahu | 8 |
+
+Total cycle: 36 years. 8 yoginis.
+
+**Nakshatra-to-Yogini mapping**:
+
+Formula: `yogini_idx = ((nakshatra_1_indexed + 3) % 8)`, where result 0 maps to index 7.
+
+The pattern repeats every 8 nakshatras starting from Ardra (index 5) → Mangala (index 0).
+
+**Sub-period method**: ProportionalFromParent (same as Vimshottari).
+
+**Entity type**: Uses `DashaEntity::Yogini(u8)` (0-7) instead of `DashaEntity::Graha`.
+
 ## Data Provenance
 
 All dasha sequences, periods, and algorithms are derived from:

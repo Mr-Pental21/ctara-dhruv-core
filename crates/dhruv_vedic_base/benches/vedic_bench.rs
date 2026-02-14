@@ -186,7 +186,8 @@ fn avastha_bench(c: &mut Criterion) {
 fn dasha_bench(c: &mut Criterion) {
     use dhruv_vedic_base::dasha::{
         DashaVariationConfig, nakshatra_hierarchy, nakshatra_level0, nakshatra_snapshot,
-        vimshottari_config,
+        vimshottari_config, nakshatra_config_for_system, DashaSystem,
+        yogini_config, yogini_hierarchy, yogini_level0, yogini_snapshot,
     };
 
     let cfg = vimshottari_config();
@@ -242,6 +243,50 @@ fn dasha_bench(c: &mut Criterion) {
                 black_box(&cfg),
                 black_box(query_jd),
                 4,
+                black_box(&variation),
+            )
+        })
+    });
+
+    // Ashtottari (8-graha system)
+    let ash_cfg = nakshatra_config_for_system(DashaSystem::Ashtottari).unwrap();
+    group.bench_function("ashtottari_hierarchy_2", |b| {
+        b.iter(|| {
+            nakshatra_hierarchy(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&ash_cfg),
+                2,
+                black_box(&variation),
+            )
+        })
+    });
+
+    // Yogini (8-entity, 36y cycle)
+    let yog_cfg = yogini_config();
+    group.bench_function("yogini_level0", |b| {
+        b.iter(|| yogini_level0(black_box(birth_jd), black_box(moon_lon), black_box(&yog_cfg)))
+    });
+    group.bench_function("yogini_hierarchy_2", |b| {
+        b.iter(|| {
+            yogini_hierarchy(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&yog_cfg),
+                2,
+                black_box(&variation),
+            )
+        })
+    });
+    group.bench_function("yogini_snapshot_2", |b| {
+        let query_jd = birth_jd + 5_000.0;
+        b.iter(|| {
+            yogini_snapshot(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&yog_cfg),
+                black_box(query_jd),
+                2,
                 black_box(&variation),
             )
         })

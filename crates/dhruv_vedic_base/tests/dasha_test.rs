@@ -3,9 +3,10 @@
 //! These tests verify the pure-math dasha engine without requiring kernel files.
 
 use dhruv_vedic_base::dasha::{
-    DashaEntity, DashaLevel, DashaSystem, DashaVariationConfig, MAX_DASHA_LEVEL,
-    nakshatra_hierarchy, nakshatra_level0, nakshatra_snapshot, snapshot_from_hierarchy,
-    vimshottari_config,
+    DAYS_PER_YEAR, DashaEntity, DashaLevel, DashaSystem, DashaVariationConfig, MAX_DASHA_LEVEL,
+    nakshatra_config_for_system, nakshatra_hierarchy, nakshatra_level0, nakshatra_snapshot,
+    snapshot_from_hierarchy, vimshottari_config, yogini_config, yogini_hierarchy, yogini_level0,
+    yogini_snapshot,
 };
 use dhruv_vedic_base::Graha;
 
@@ -254,5 +255,210 @@ fn all_levels_contiguous() {
             }
             i = j;
         }
+    }
+}
+
+// ==========================================================================
+// All 10 Nakshatra Systems: generic hierarchy + contiguity + snapshot tests
+// ==========================================================================
+
+/// Helper: run standard hierarchy tests for any nakshatra dasha system.
+fn verify_nakshatra_system(
+    system: DashaSystem,
+    expected_total_years: f64,
+    expected_grahas: usize,
+    cycle_count: usize,
+) {
+    let cfg = nakshatra_config_for_system(system).unwrap();
+    let birth_jd = 2451545.0;
+    let moon_lon = 123.456;
+    let variation = DashaVariationConfig::default();
+
+    // Level 0: correct count of mahadashas
+    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg);
+    let expected_count = expected_grahas * cycle_count;
+    assert_eq!(
+        level0.len(),
+        expected_count,
+        "{:?}: expected {} mahadashas, got {}",
+        system,
+        expected_count,
+        level0.len()
+    );
+
+    // Adjacent periods are contiguous
+    for i in 1..level0.len() {
+        assert!(
+            (level0[i].start_jd - level0[i - 1].end_jd).abs() < 1e-10,
+            "{:?}: gap between mahadashas {} and {}",
+            system,
+            i - 1,
+            i
+        );
+    }
+
+    // Total span <= full cycle years * cycle_count (partial balance reduces from max)
+    let total_days = level0.last().unwrap().end_jd - level0.first().unwrap().start_jd;
+    let max_days = expected_total_years * cycle_count as f64 * DAYS_PER_YEAR;
+    assert!(
+        total_days > 0.0 && total_days <= max_days + 1.0,
+        "{:?}: total {total_days} days exceeds max {max_days}",
+        system
+    );
+
+    // At nakshatra start, first period balance = full entry period
+    // For most systems: entry_period = graha_period, so total = full cycle * cycle_count
+    // For Shashtihayani: entry_period = graha_period / nak_count, so total < full
+    let nak_start = 5.0 * (360.0 / 27.0); // Ardra start
+    let level0_full = nakshatra_level0(birth_jd, nak_start, &cfg);
+    let total_full_days: f64 = level0_full.iter().map(|p| p.duration_days()).sum();
+    if !cfg.divide_period_by_nakshatra_count {
+        let expected_full_years = expected_total_years * cycle_count as f64;
+        let total_full_years = total_full_days / DAYS_PER_YEAR;
+        assert!(
+            (total_full_years - expected_full_years).abs() < 0.01,
+            "{:?}: at nak start, total should be {}y, got {}y",
+            system,
+            expected_full_years,
+            total_full_years
+        );
+    } else {
+        // Shashtihayani: just verify it's positive and bounded
+        assert!(total_full_days > 0.0, "{:?}: total should be positive", system);
+    }
+
+    // Hierarchy depth 1 (depth 2 can exceed MAX_PERIODS_PER_LEVEL for multi-cycle systems)
+    let h = nakshatra_hierarchy(birth_jd, moon_lon, &cfg, 1, &variation).unwrap();
+    assert_eq!(h.system, system);
+    assert_eq!(h.levels.len(), 2);
+    assert_eq!(h.levels[0].len(), expected_count);
+    assert_eq!(h.levels[1].len(), expected_count * expected_grahas);
+
+    // Snapshot matches hierarchy
+    let query_jd = birth_jd + 1000.0;
+    let snap = nakshatra_snapshot(birth_jd, moon_lon, &cfg, query_jd, 1, &variation);
+    let from_h = snapshot_from_hierarchy(&h, query_jd);
+    assert_eq!(snap.periods.len(), from_h.periods.len());
+    for (i, (s, h_p)) in snap.periods.iter().zip(from_h.periods.iter()).enumerate() {
+        assert_eq!(s.entity, h_p.entity, "{:?}: level {i} entity mismatch", system);
+    }
+}
+
+#[test]
+fn ashtottari_system() {
+    verify_nakshatra_system(DashaSystem::Ashtottari, 108.0, 8, 1);
+}
+
+#[test]
+fn shodsottari_system() {
+    verify_nakshatra_system(DashaSystem::Shodsottari, 116.0, 8, 1);
+}
+
+#[test]
+fn dwadashottari_system() {
+    verify_nakshatra_system(DashaSystem::Dwadashottari, 112.0, 8, 1);
+}
+
+#[test]
+fn panchottari_system() {
+    verify_nakshatra_system(DashaSystem::Panchottari, 105.0, 7, 1);
+}
+
+#[test]
+fn shatabdika_system() {
+    verify_nakshatra_system(DashaSystem::Shatabdika, 100.0, 7, 1);
+}
+
+#[test]
+fn chaturashiti_system() {
+    verify_nakshatra_system(DashaSystem::Chaturashiti, 84.0, 7, 2);
+}
+
+#[test]
+fn dwisaptati_system() {
+    verify_nakshatra_system(DashaSystem::DwisaptatiSama, 72.0, 8, 2);
+}
+
+#[test]
+fn shashtihayani_system() {
+    verify_nakshatra_system(DashaSystem::Shashtihayani, 60.0, 8, 2);
+}
+
+#[test]
+fn shat_trimsha_system() {
+    verify_nakshatra_system(DashaSystem::ShatTrimshaSama, 36.0, 8, 3);
+}
+
+// ==========================================================================
+// Yogini Dasha Tests
+// ==========================================================================
+
+/// Yogini: 8 mahadashas, 36y total at nakshatra start.
+#[test]
+fn yogini_level0_valid() {
+    let cfg = yogini_config();
+    let birth_jd = 2451545.0;
+    let ardra_start = 5.0 * (360.0 / 27.0);
+    let level0 = yogini_level0(birth_jd, ardra_start, &cfg);
+
+    assert_eq!(level0.len(), 8);
+    assert_eq!(level0[0].entity, DashaEntity::Yogini(0)); // Mangala
+
+    let total_days: f64 = level0.iter().map(|p| p.duration_days()).sum();
+    let total_years = total_days / DAYS_PER_YEAR;
+    assert!(
+        (total_years - 36.0).abs() < 1e-6,
+        "Yogini total should be 36y at nak start, got {total_years}"
+    );
+}
+
+/// Yogini: contiguous periods.
+#[test]
+fn yogini_contiguous() {
+    let cfg = yogini_config();
+    let level0 = yogini_level0(2451545.0, 200.0, &cfg);
+    for i in 1..level0.len() {
+        assert!(
+            (level0[i].start_jd - level0[i - 1].end_jd).abs() < 1e-10,
+            "Yogini: gap between periods {} and {}",
+            i - 1,
+            i
+        );
+    }
+}
+
+/// Yogini: hierarchy depth 2 gives 8/64/512.
+#[test]
+fn yogini_hierarchy_depth_2() {
+    let cfg = yogini_config();
+    let var = DashaVariationConfig::default();
+    let h = yogini_hierarchy(2451545.0, 100.0, &cfg, 2, &var).unwrap();
+
+    assert_eq!(h.system, DashaSystem::Yogini);
+    assert_eq!(h.levels.len(), 3);
+    assert_eq!(h.levels[0].len(), 8);
+    assert_eq!(h.levels[1].len(), 64);
+    assert_eq!(h.levels[2].len(), 512);
+}
+
+/// Yogini: snapshot matches hierarchy.
+#[test]
+fn yogini_snapshot_matches() {
+    let cfg = yogini_config();
+    let var = DashaVariationConfig::default();
+    let birth_jd = 2451545.0;
+    let moon = 150.0;
+    let query_jd = birth_jd + 2000.0;
+
+    let h = yogini_hierarchy(birth_jd, moon, &cfg, 2, &var).unwrap();
+    let snap = yogini_snapshot(birth_jd, moon, &cfg, query_jd, 2, &var);
+
+    assert_eq!(snap.periods.len(), 3);
+    for (level, snap_period) in snap.periods.iter().enumerate() {
+        let active_in_h = h.levels[level]
+            .iter()
+            .find(|p| p.start_jd <= query_jd && query_jd < p.end_jd)
+            .expect("should find active period");
+        assert_eq!(snap_period.entity, active_in_h.entity);
     }
 }
