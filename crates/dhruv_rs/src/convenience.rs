@@ -808,6 +808,56 @@ pub fn avastha_for_graha(
     )?)
 }
 
+// ---------------------------------------------------------------------------
+// Dasha (Planetary Periods)
+// ---------------------------------------------------------------------------
+
+/// Compute a full dasha hierarchy for a birth chart.
+pub fn dasha_hierarchy(
+    birth_date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    system: dhruv_vedic_base::dasha::DashaSystem,
+    max_level: u8,
+    aya_system: AyanamshaSystem,
+    use_nutation: bool,
+    variation: &dhruv_vedic_base::dasha::DashaVariationConfig,
+) -> Result<dhruv_vedic_base::dasha::DashaHierarchy, DhruvError> {
+    let eng = engine()?;
+    let utc: UtcTime = birth_date.into();
+    let bhava_config = dhruv_vedic_base::BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = SankrantiConfig::new(aya_system, use_nutation);
+    Ok(dhruv_search::dasha_hierarchy_for_birth(
+        eng, eop, &utc, location, system, max_level, &bhava_config, &rs_config,
+        &aya_config, variation,
+    )?)
+}
+
+/// Compute a dasha snapshot (active periods at query time) for a birth chart.
+pub fn dasha_snapshot(
+    birth_date: UtcDate,
+    query_date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    system: dhruv_vedic_base::dasha::DashaSystem,
+    max_level: u8,
+    aya_system: AyanamshaSystem,
+    use_nutation: bool,
+    variation: &dhruv_vedic_base::dasha::DashaVariationConfig,
+) -> Result<dhruv_vedic_base::dasha::DashaSnapshot, DhruvError> {
+    let eng = engine()?;
+    let birth_utc: UtcTime = birth_date.into();
+    let query_utc: UtcTime = query_date.into();
+    let bhava_config = dhruv_vedic_base::BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = SankrantiConfig::new(aya_system, use_nutation);
+    Ok(dhruv_search::dasha_snapshot_at(
+        eng, eop, &birth_utc, &query_utc, location, system, max_level, &bhava_config,
+        &rs_config, &aya_config, variation,
+    )?)
+}
+
 /// Compute all 11 upagrahas for a given date and location.
 pub fn upagrahas(
     date: UtcDate,

@@ -8,7 +8,8 @@ use dhruv_search::{
     ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, GrahanConfig,
     LunarPhase, MaxSpeedEvent, MaxSpeedType, SankrantiConfig, SearchError, StationType,
     StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanType, amsha_charts_for_date,
-    ayana_for_date, body_ecliptic_lon_lat, elongation_at, full_kundali_for_date,
+    ayana_for_date, body_ecliptic_lon_lat, dasha_hierarchy_for_birth, dasha_snapshot_at,
+    elongation_at, full_kundali_for_date,
     ghatika_for_date, ghatika_from_sunrises, graha_sidereal_longitudes, hora_for_date,
     hora_from_sunrises, karana_at, karana_for_date, masa_for_date, nakshatra_at, nakshatra_for_date,
     next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed, next_purnima,
@@ -60,6 +61,7 @@ pub enum DhruvStatus {
     InvalidLocation = 10,
     NoConvergence = 11,
     InvalidSearchConfig = 12,
+    InvalidInput = 13,
     Internal = 255,
 }
 
@@ -88,6 +90,7 @@ impl From<&VedicError> for DhruvStatus {
             VedicError::Time(_) => Self::TimeConversion,
             VedicError::InvalidLocation(_) => Self::InvalidLocation,
             VedicError::NoConvergence(_) => Self::NoConvergence,
+            VedicError::InvalidInput(_) => Self::InvalidInput,
             _ => Self::Internal,
         }
     }
@@ -8844,6 +8847,8 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
             include_special_lagnas: cfg_c.amsha_scope.include_special_lagnas != 0,
         },
         amsha_selection: amsha_sel,
+        include_dasha: false,
+        dasha_config: dhruv_search::DashaSelectionConfig::default(),
     };
 
     match full_kundali_for_date(
@@ -9642,6 +9647,363 @@ pub unsafe extern "C" fn dhruv_nakshatra_at(
                     start: utc_time_to_ffi(&info.start),
                     end: utc_time_to_ffi(&info.end),
                 };
+            }
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dasha FFI types and functions
+// ---------------------------------------------------------------------------
+
+/// C-compatible single dasha period.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvDashaPeriod {
+    /// Entity type: 0=Graha, 1=Rashi, 2=Yogini.
+    pub entity_type: u8,
+    /// Entity index: Graha index (0-8), rashi (0-11), yogini (0-7).
+    pub entity_index: u8,
+    /// JD UTC, inclusive.
+    pub start_jd: f64,
+    /// JD UTC, exclusive.
+    pub end_jd: f64,
+    /// Hierarchical level (0-4).
+    pub level: u8,
+    /// 1-indexed position among siblings.
+    pub order: u16,
+    /// Index into parent level's array (0 for level 0).
+    pub parent_idx: u32,
+}
+
+/// Fixed-capacity snapshot for FFI (max 5 levels).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvDashaSnapshot {
+    /// Dasha system code (DashaSystem repr(u8)).
+    pub system: u8,
+    /// Query JD UTC.
+    pub query_jd: f64,
+    /// Number of valid periods (0-5).
+    pub count: u8,
+    /// One period per level.
+    pub periods: [DhruvDashaPeriod; 5],
+}
+
+/// Opaque handle for DashaHierarchy (heap-allocated, caller frees).
+pub type DhruvDashaHierarchyHandle = *mut std::ffi::c_void;
+
+fn dasha_period_to_ffi(p: &dhruv_vedic_base::dasha::DashaPeriod) -> DhruvDashaPeriod {
+    DhruvDashaPeriod {
+        entity_type: p.entity.type_code(),
+        entity_index: p.entity.entity_index(),
+        start_jd: p.start_jd,
+        end_jd: p.end_jd,
+        level: p.level as u8,
+        order: p.order,
+        parent_idx: p.parent_idx,
+    }
+}
+
+/// Get the number of levels in a dasha hierarchy.
+///
+/// # Safety
+/// `handle` must be a valid handle from `dhruv_dasha_hierarchy_utc` or NULL.
+/// `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_dasha_hierarchy_level_count(
+    handle: DhruvDashaHierarchyHandle,
+    out: *mut u8,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let hierarchy =
+        unsafe { &*(handle as *const dhruv_vedic_base::dasha::DashaHierarchy) };
+    unsafe { *out = hierarchy.levels.len() as u8 };
+    DhruvStatus::Ok
+}
+
+/// Get the number of periods at a specific level in a dasha hierarchy.
+///
+/// # Safety
+/// `handle` must be a valid handle. `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_dasha_hierarchy_period_count(
+    handle: DhruvDashaHierarchyHandle,
+    level: u8,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let hierarchy =
+        unsafe { &*(handle as *const dhruv_vedic_base::dasha::DashaHierarchy) };
+    let lvl = level as usize;
+    if lvl >= hierarchy.levels.len() {
+        return DhruvStatus::InvalidInput;
+    }
+    unsafe { *out = hierarchy.levels[lvl].len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Get a specific period from a dasha hierarchy.
+///
+/// # Safety
+/// `handle` must be a valid handle. `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_dasha_hierarchy_period_at(
+    handle: DhruvDashaHierarchyHandle,
+    level: u8,
+    idx: u32,
+    out: *mut DhruvDashaPeriod,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let hierarchy =
+        unsafe { &*(handle as *const dhruv_vedic_base::dasha::DashaHierarchy) };
+    let lvl = level as usize;
+    if lvl >= hierarchy.levels.len() {
+        return DhruvStatus::InvalidInput;
+    }
+    let i = idx as usize;
+    if i >= hierarchy.levels[lvl].len() {
+        return DhruvStatus::InvalidInput;
+    }
+    unsafe { *out = dasha_period_to_ffi(&hierarchy.levels[lvl][i]) };
+    DhruvStatus::Ok
+}
+
+/// Free a dasha hierarchy handle. Passing NULL is a no-op.
+///
+/// # Safety
+/// `handle` must be a valid handle from `dhruv_dasha_hierarchy_utc` or NULL.
+/// Must not be called on handles owned by a FullKundaliResult.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_dasha_hierarchy_free(handle: DhruvDashaHierarchyHandle) {
+    if !handle.is_null() {
+        let _ = unsafe {
+            Box::from_raw(handle as *mut dhruv_vedic_base::dasha::DashaHierarchy)
+        };
+    }
+}
+
+/// Compute a full dasha hierarchy for a birth chart.
+///
+/// Returns an opaque handle that must be freed with `dhruv_dasha_hierarchy_free`.
+///
+/// `system`: DashaSystem repr(u8) code (0=Vimshottari, etc.).
+/// `max_level`: maximum depth (0-4, clamped).
+///
+/// # Safety
+/// All pointers must be valid and non-null. `out` receives the hierarchy handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_dasha_hierarchy_utc(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    birth_utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    bhava_config: *const DhruvBhavaConfig,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    system: u8,
+    max_level: u8,
+    out: *mut DhruvDashaHierarchyHandle,
+) -> DhruvStatus {
+    if engine.is_null()
+        || eop.is_null()
+        || birth_utc.is_null()
+        || location.is_null()
+        || bhava_config.is_null()
+        || riseset_config.is_null()
+        || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*birth_utc };
+    let loc_c = unsafe { &*location };
+    let bhava_cfg_c = unsafe { &*bhava_config };
+    let rs_c = unsafe { &*riseset_config };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let aya_system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
+        Some(l) => l,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let rs_config = RiseSetConfig {
+        use_refraction: rs_c.use_refraction != 0,
+        sun_limb,
+        altitude_correction: rs_c.altitude_correction != 0,
+    };
+    let aya_config = SankrantiConfig::new(aya_system, use_nutation != 0);
+
+    let dasha_system = match dhruv_vedic_base::dasha::DashaSystem::from_u8(system) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let variation = dhruv_vedic_base::dasha::DashaVariationConfig::default();
+
+    match dasha_hierarchy_for_birth(
+        engine,
+        eop,
+        &utc_time,
+        &location,
+        dasha_system,
+        max_level.min(dhruv_vedic_base::dasha::MAX_DASHA_LEVEL),
+        &rust_bhava_config,
+        &rs_config,
+        &aya_config,
+        &variation,
+    ) {
+        Ok(hierarchy) => {
+            let boxed = Box::new(hierarchy);
+            unsafe { *out = Box::into_raw(boxed) as DhruvDashaHierarchyHandle };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Compute a dasha snapshot (active periods at query time) for a birth chart.
+///
+/// `system`: DashaSystem repr(u8) code (0=Vimshottari, etc.).
+/// `max_level`: maximum depth (0-4, clamped).
+///
+/// # Safety
+/// All pointers must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_dasha_snapshot_utc(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    birth_utc: *const DhruvUtcTime,
+    query_utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    bhava_config: *const DhruvBhavaConfig,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    system: u8,
+    max_level: u8,
+    out: *mut DhruvDashaSnapshot,
+) -> DhruvStatus {
+    if engine.is_null()
+        || eop.is_null()
+        || birth_utc.is_null()
+        || query_utc.is_null()
+        || location.is_null()
+        || bhava_config.is_null()
+        || riseset_config.is_null()
+        || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let birth_c = unsafe { &*birth_utc };
+    let query_c = unsafe { &*query_utc };
+    let loc_c = unsafe { &*location };
+    let bhava_cfg_c = unsafe { &*bhava_config };
+    let rs_c = unsafe { &*riseset_config };
+
+    let birth_time = UtcTime {
+        year: birth_c.year,
+        month: birth_c.month,
+        day: birth_c.day,
+        hour: birth_c.hour,
+        minute: birth_c.minute,
+        second: birth_c.second,
+    };
+    let query_time = UtcTime {
+        year: query_c.year,
+        month: query_c.month,
+        day: query_c.day,
+        hour: query_c.hour,
+        minute: query_c.minute,
+        second: query_c.second,
+    };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let aya_system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
+        Some(l) => l,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let rs_config = RiseSetConfig {
+        use_refraction: rs_c.use_refraction != 0,
+        sun_limb,
+        altitude_correction: rs_c.altitude_correction != 0,
+    };
+    let aya_config = SankrantiConfig::new(aya_system, use_nutation != 0);
+
+    let dasha_system = match dhruv_vedic_base::dasha::DashaSystem::from_u8(system) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let variation = dhruv_vedic_base::dasha::DashaVariationConfig::default();
+
+    match dasha_snapshot_at(
+        engine,
+        eop,
+        &birth_time,
+        &query_time,
+        &location,
+        dasha_system,
+        max_level.min(dhruv_vedic_base::dasha::MAX_DASHA_LEVEL),
+        &rust_bhava_config,
+        &rs_config,
+        &aya_config,
+        &variation,
+    ) {
+        Ok(snapshot) => {
+            let out = unsafe { &mut *out };
+            out.system = system;
+            out.query_jd = snapshot.query_jd;
+            let count = snapshot.periods.len().min(5);
+            out.count = count as u8;
+            // Zero-init all periods first
+            out.periods = [DhruvDashaPeriod {
+                entity_type: 0,
+                entity_index: 0,
+                start_jd: 0.0,
+                end_jd: 0.0,
+                level: 0,
+                order: 0,
+                parent_idx: 0,
+            }; 5];
+            for i in 0..count {
+                out.periods[i] = dasha_period_to_ffi(&snapshot.periods[i]);
             }
             DhruvStatus::Ok
         }

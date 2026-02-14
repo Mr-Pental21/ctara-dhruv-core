@@ -39,6 +39,7 @@ impl From<dhruv_vedic_base::VedicError> for SearchError {
     fn from(e: dhruv_vedic_base::VedicError) -> Self {
         match e {
             dhruv_vedic_base::VedicError::Engine(eng) => Self::Engine(eng),
+            dhruv_vedic_base::VedicError::InvalidInput(msg) => Self::InvalidConfig(msg),
             _ => Self::NoConvergence("vedic calculation failed"),
         }
     }

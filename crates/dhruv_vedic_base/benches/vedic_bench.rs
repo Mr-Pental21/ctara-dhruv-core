@@ -183,6 +183,72 @@ fn avastha_bench(c: &mut Criterion) {
     group.finish();
 }
 
+fn dasha_bench(c: &mut Criterion) {
+    use dhruv_vedic_base::dasha::{
+        DashaVariationConfig, nakshatra_hierarchy, nakshatra_level0, nakshatra_snapshot,
+        vimshottari_config,
+    };
+
+    let cfg = vimshottari_config();
+    let birth_jd = 2_451_545.0;
+    let moon_lon = 123.456;
+    let variation = DashaVariationConfig::default();
+
+    let mut group = c.benchmark_group("dasha");
+    group.bench_function("vimshottari_level0", |b| {
+        b.iter(|| nakshatra_level0(black_box(birth_jd), black_box(moon_lon), black_box(&cfg)))
+    });
+    group.bench_function("vimshottari_hierarchy_2", |b| {
+        b.iter(|| {
+            nakshatra_hierarchy(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&cfg),
+                2,
+                black_box(&variation),
+            )
+        })
+    });
+    group.bench_function("vimshottari_hierarchy_4", |b| {
+        b.iter(|| {
+            nakshatra_hierarchy(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&cfg),
+                4,
+                black_box(&variation),
+            )
+        })
+    });
+    group.bench_function("vimshottari_snapshot_2", |b| {
+        let query_jd = birth_jd + 10_000.0;
+        b.iter(|| {
+            nakshatra_snapshot(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&cfg),
+                black_box(query_jd),
+                2,
+                black_box(&variation),
+            )
+        })
+    });
+    group.bench_function("vimshottari_snapshot_4", |b| {
+        let query_jd = birth_jd + 10_000.0;
+        b.iter(|| {
+            nakshatra_snapshot(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&cfg),
+                black_box(query_jd),
+                4,
+                black_box(&variation),
+            )
+        })
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     ayanamsha_bench,
@@ -191,6 +257,7 @@ criterion_group!(
     amsha_bench,
     shadbala_bench,
     vimsopaka_bench,
-    avastha_bench
+    avastha_bench,
+    dasha_bench
 );
 criterion_main!(benches);

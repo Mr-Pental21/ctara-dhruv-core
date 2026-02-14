@@ -1591,6 +1591,45 @@ enum Commands {
         #[arg(long)]
         eop: PathBuf,
     },
+    /// Compute Dasha (planetary period) hierarchy or snapshot
+    Dasha {
+        /// Dasha system (vimshottari)
+        #[arg(long, default_value = "vimshottari")]
+        system: String,
+        /// Birth UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        birth_date: String,
+        /// Query UTC datetime for snapshot mode (omit for hierarchy-only)
+        #[arg(long)]
+        query_date: Option<String>,
+        /// Latitude in degrees (north positive)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in degrees (east positive)
+        #[arg(long)]
+        lon: f64,
+        /// Altitude in meters (default 0)
+        #[arg(long, default_value = "0")]
+        alt: f64,
+        /// Maximum dasha depth (0-4, default 2)
+        #[arg(long, default_value = "2")]
+        max_level: u8,
+        /// Ayanamsha system code (0-19, default 0=Lahiri)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Path to SPK kernel
+        #[arg(long)]
+        bsp: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Path to IERS EOP file (finals2000A.all)
+        #[arg(long)]
+        eop: PathBuf,
+    },
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -5052,6 +5091,149 @@ fn main() {
                 }
             }
         }
+        Commands::Dasha {
+            system,
+            birth_date,
+            query_date,
+            lat,
+            lon,
+            alt,
+            max_level,
+            ayanamsha,
+            nutation,
+            bsp,
+            lsk,
+            eop,
+        } => {
+            let aya_system = require_aya_system(ayanamsha);
+            let birth_utc = parse_utc(&birth_date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&bsp, &lsk);
+            let eop_kernel = load_eop(&eop);
+            let location = GeoLocation::new(lat, lon, alt);
+            let bhava_config = BhavaConfig::default();
+            let rs_config = RiseSetConfig::default();
+            let aya_config = SankrantiConfig::new(aya_system, nutation);
+            let dasha_system = parse_dasha_system(&system);
+            let variation = dhruv_vedic_base::dasha::DashaVariationConfig::default();
+            let clamped_level = max_level.min(dhruv_vedic_base::dasha::MAX_DASHA_LEVEL);
+
+            if let Some(q_date) = query_date {
+                let query_utc = parse_utc(&q_date).unwrap_or_else(|e| {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                });
+                let snapshot = dhruv_search::dasha_snapshot_at(
+                    &engine, &eop_kernel, &birth_utc, &query_utc, &location,
+                    dasha_system, clamped_level, &bhava_config, &rs_config,
+                    &aya_config, &variation,
+                )
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                });
+                println!(
+                    "Dasha Snapshot ({}) at {} for birth {}\n",
+                    dasha_system.name(), q_date, birth_date
+                );
+                for period in &snapshot.periods {
+                    let indent = "  ".repeat(period.level as usize);
+                    println!(
+                        "{}{}: {} (JD {:.4} - {:.4}, {:.1} days)",
+                        indent,
+                        period.level.name(),
+                        format_dasha_entity(&period.entity),
+                        period.start_jd,
+                        period.end_jd,
+                        period.duration_days(),
+                    );
+                }
+            } else {
+                let hierarchy = dhruv_search::dasha_hierarchy_for_birth(
+                    &engine, &eop_kernel, &birth_utc, &location,
+                    dasha_system, clamped_level, &bhava_config, &rs_config,
+                    &aya_config, &variation,
+                )
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                });
+                println!(
+                    "Dasha Hierarchy ({}) for birth {} ({} levels)\n",
+                    dasha_system.name(), birth_date, hierarchy.levels.len()
+                );
+                for (lvl_idx, level) in hierarchy.levels.iter().enumerate() {
+                    let level_name = dhruv_vedic_base::dasha::DashaLevel::from_u8(lvl_idx as u8)
+                        .map(|l| l.name())
+                        .unwrap_or("Unknown");
+                    println!("Level {} ({}) — {} periods:", lvl_idx, level_name, level.len());
+                    let display_count = level.len().min(50);
+                    for period in &level[..display_count] {
+                        let indent = "  ".repeat(lvl_idx + 1);
+                        println!(
+                            "{}[{}] {} (JD {:.4} - {:.4}, {:.1} days)",
+                            indent,
+                            period.order,
+                            format_dasha_entity(&period.entity),
+                            period.start_jd,
+                            period.end_jd,
+                            period.duration_days(),
+                        );
+                    }
+                    if level.len() > display_count {
+                        println!("  ... and {} more periods", level.len() - display_count);
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+}
+
+fn parse_dasha_system(s: &str) -> dhruv_vedic_base::dasha::DashaSystem {
+    match s.to_lowercase().as_str() {
+        "vimshottari" => dhruv_vedic_base::dasha::DashaSystem::Vimshottari,
+        "ashtottari" => dhruv_vedic_base::dasha::DashaSystem::Ashtottari,
+        "shodsottari" => dhruv_vedic_base::dasha::DashaSystem::Shodsottari,
+        "dwadashottari" => dhruv_vedic_base::dasha::DashaSystem::Dwadashottari,
+        "panchottari" => dhruv_vedic_base::dasha::DashaSystem::Panchottari,
+        "shatabdika" => dhruv_vedic_base::dasha::DashaSystem::Shatabdika,
+        "chaturashiti" => dhruv_vedic_base::dasha::DashaSystem::Chaturashiti,
+        "dwisaptati-sama" => dhruv_vedic_base::dasha::DashaSystem::DwisaptatiSama,
+        "shashtihayani" => dhruv_vedic_base::dasha::DashaSystem::Shashtihayani,
+        "shat-trimsha-sama" => dhruv_vedic_base::dasha::DashaSystem::ShatTrimshaSama,
+        "yogini" => dhruv_vedic_base::dasha::DashaSystem::Yogini,
+        "chara" => dhruv_vedic_base::dasha::DashaSystem::Chara,
+        "sthira" => dhruv_vedic_base::dasha::DashaSystem::Sthira,
+        "yogardha" => dhruv_vedic_base::dasha::DashaSystem::Yogardha,
+        "driga" => dhruv_vedic_base::dasha::DashaSystem::Driga,
+        "shoola" => dhruv_vedic_base::dasha::DashaSystem::Shoola,
+        "mandooka" => dhruv_vedic_base::dasha::DashaSystem::Mandooka,
+        "chakra" => dhruv_vedic_base::dasha::DashaSystem::Chakra,
+        "kala" => dhruv_vedic_base::dasha::DashaSystem::Kala,
+        "kaal-chakra" => dhruv_vedic_base::dasha::DashaSystem::KaalChakra,
+        "kendradi" => dhruv_vedic_base::dasha::DashaSystem::Kendradi,
+        "karaka-kendradi" => dhruv_vedic_base::dasha::DashaSystem::KarakaKendradi,
+        "karaka-kendradi-graha" => dhruv_vedic_base::dasha::DashaSystem::KarakaKendradiGraha,
+        other => {
+            eprintln!("Unknown dasha system: {other}");
+            eprintln!("Valid: vimshottari, ashtottari, shodsottari, dwadashottari, panchottari,");
+            eprintln!("       shatabdika, chaturashiti, dwisaptati-sama, shashtihayani,");
+            eprintln!("       shat-trimsha-sama, yogini, chara, sthira, yogardha, driga,");
+            eprintln!("       shoola, mandooka, chakra, kala, kaal-chakra, kendradi,");
+            eprintln!("       karaka-kendradi, karaka-kendradi-graha");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn format_dasha_entity(entity: &dhruv_vedic_base::dasha::DashaEntity) -> String {
+    match entity {
+        dhruv_vedic_base::dasha::DashaEntity::Graha(g) => g.english_name().to_string(),
+        dhruv_vedic_base::dasha::DashaEntity::Rashi(r) => format!("Rashi {r}"),
+        dhruv_vedic_base::dasha::DashaEntity::Yogini(y) => format!("Yogini {y}"),
     }
 }
 

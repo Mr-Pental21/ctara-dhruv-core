@@ -325,6 +325,115 @@ pub struct VimsopakaResult {
 }
 
 // ---------------------------------------------------------------------------
+// Dasha selection config (for FullKundaliConfig)
+// ---------------------------------------------------------------------------
+
+/// Dasha selection for FullKundaliConfig. Copy-safe, fixed-size.
+#[derive(Debug, Clone, Copy)]
+pub struct DashaSelectionConfig {
+    /// Number of valid entries in `systems` (0..=MAX_DASHA_SYSTEMS).
+    pub count: u8,
+    /// Which dasha systems to compute (DashaSystem repr(u8), 0xFF=unused).
+    pub systems: [u8; dhruv_vedic_base::dasha::MAX_DASHA_SYSTEMS],
+    /// Max level depth for hierarchy computation (0-4, default 2).
+    pub max_level: u8,
+    /// Per-level sub-period method overrides (0xFF = use system default).
+    pub level_methods: [u8; 5],
+    /// Yogini scheme (0=default, 1=la-deepanshu-giri).
+    pub yogini_scheme: u8,
+    /// Whether to use Abhijit for Ashtottari (1=yes, 0=no).
+    pub use_abhijit: u8,
+    /// Optional query JD for snapshot computation.
+    /// None = skip snapshots, only compute hierarchy.
+    pub snapshot_jd: Option<f64>,
+}
+
+impl Default for DashaSelectionConfig {
+    fn default() -> Self {
+        Self {
+            count: 0,
+            systems: [0xFF; dhruv_vedic_base::dasha::MAX_DASHA_SYSTEMS],
+            max_level: dhruv_vedic_base::dasha::DEFAULT_DASHA_LEVEL,
+            level_methods: [0xFF; 5],
+            yogini_scheme: 0,
+            use_abhijit: 1,
+            snapshot_jd: None,
+        }
+    }
+}
+
+impl DashaSelectionConfig {
+    /// Fix recoverable issues (clamping).
+    pub fn sanitize(&mut self) {
+        if self.max_level > dhruv_vedic_base::dasha::MAX_DASHA_LEVEL {
+            self.max_level = dhruv_vedic_base::dasha::MAX_DASHA_LEVEL;
+        }
+    }
+
+    /// Validate configuration. Returns error for unrecoverable issues.
+    pub fn validate(&self) -> Result<(), dhruv_vedic_base::VedicError> {
+        use dhruv_vedic_base::VedicError;
+        let max_sys = dhruv_vedic_base::dasha::MAX_DASHA_SYSTEMS;
+        let num_systems = dhruv_vedic_base::dasha::ALL_DASHA_SYSTEMS.len();
+
+        if self.count as usize > max_sys {
+            return Err(VedicError::InvalidInput("count exceeds MAX_DASHA_SYSTEMS"));
+        }
+
+        for i in 0..self.count as usize {
+            let code = self.systems[i];
+            if code == 0xFF {
+                return Err(VedicError::InvalidInput(
+                    "invalid system code in active range",
+                ));
+            }
+            if code as usize >= num_systems {
+                return Err(VedicError::InvalidInput("unknown system code"));
+            }
+        }
+
+        // Check for duplicates
+        for i in 0..self.count as usize {
+            for j in (i + 1)..self.count as usize {
+                if self.systems[i] == self.systems[j] {
+                    return Err(VedicError::InvalidInput("duplicate system"));
+                }
+            }
+        }
+
+        // Validate level_methods
+        for &m in &self.level_methods {
+            if m != 0xFF && dhruv_vedic_base::dasha::SubPeriodMethod::from_u8(m).is_none() {
+                return Err(VedicError::InvalidInput("invalid sub-period method"));
+            }
+        }
+
+        // Validate yogini_scheme
+        if dhruv_vedic_base::dasha::YoginiScheme::from_u8(self.yogini_scheme).is_none() {
+            return Err(VedicError::InvalidInput("invalid yogini scheme"));
+        }
+
+        Ok(())
+    }
+
+    /// Convert to a DashaVariationConfig.
+    pub fn to_variation_config(&self) -> dhruv_vedic_base::dasha::DashaVariationConfig {
+        let mut level_methods = [None; 5];
+        for (i, &m) in self.level_methods.iter().enumerate() {
+            if m != 0xFF {
+                level_methods[i] = dhruv_vedic_base::dasha::SubPeriodMethod::from_u8(m);
+            }
+        }
+        dhruv_vedic_base::dasha::DashaVariationConfig {
+            level_methods,
+            yogini_scheme: dhruv_vedic_base::dasha::YoginiScheme::from_u8(self.yogini_scheme)
+                .unwrap_or_default(),
+            use_abhijit: self.use_abhijit != 0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Full kundali config/result
 // ---------------------------------------------------------------------------
 
@@ -351,6 +460,8 @@ pub struct FullKundaliConfig {
     pub include_vimsopaka: bool,
     /// Include avastha (planetary state) section.
     pub include_avastha: bool,
+    /// Include dasha (planetary period) section.
+    pub include_dasha: bool,
     /// Node dignity policy for vimsopaka and avastha.
     pub node_dignity_policy: NodeDignityPolicy,
     /// Config passed to graha positions computation.
@@ -363,6 +474,8 @@ pub struct FullKundaliConfig {
     pub amsha_scope: AmshaChartScope,
     /// Which amshas to compute.
     pub amsha_selection: AmshaSelectionConfig,
+    /// Which dasha systems to compute.
+    pub dasha_config: DashaSelectionConfig,
 }
 
 impl Default for FullKundaliConfig {
@@ -378,12 +491,14 @@ impl Default for FullKundaliConfig {
             include_shadbala: false,
             include_vimsopaka: false,
             include_avastha: false,
+            include_dasha: false,
             node_dignity_policy: NodeDignityPolicy::default(),
             graha_positions_config: GrahaPositionsConfig::default(),
             bindus_config: BindusConfig::default(),
             drishti_config: DrishtiConfig::default(),
             amsha_scope: AmshaChartScope::default(),
             amsha_selection: AmshaSelectionConfig::default(),
+            dasha_config: DashaSelectionConfig::default(),
         }
     }
 }
@@ -411,4 +526,8 @@ pub struct FullKundaliResult {
     pub vimsopaka: Option<VimsopakaResult>,
     /// Present when `FullKundaliConfig::include_avastha` is true.
     pub avastha: Option<AllGrahaAvasthas>,
+    /// Present when `FullKundaliConfig::include_dasha` is true.
+    pub dasha: Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
+    /// Present when dasha is computed and snapshot_jd is set.
+    pub dasha_snapshots: Option<Vec<dhruv_vedic_base::DashaSnapshot>>,
 }

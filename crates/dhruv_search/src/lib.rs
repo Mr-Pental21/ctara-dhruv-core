@@ -10,6 +10,7 @@
 
 pub mod conjunction;
 pub mod conjunction_types;
+pub mod dasha;
 pub mod error;
 pub mod grahan;
 pub mod grahan_types;
@@ -27,6 +28,10 @@ pub mod stationary_types;
 
 pub use conjunction::{
     body_ecliptic_lon_lat, next_conjunction, prev_conjunction, search_conjunctions,
+};
+pub use dasha::{
+    dasha_hierarchy_for_birth, dasha_hierarchy_with_moon, dasha_snapshot_at,
+    dasha_snapshot_with_moon,
 };
 pub use conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 pub use error::SearchError;
@@ -46,9 +51,9 @@ pub use jyotish::{
 };
 pub use jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
-    BindusResult, DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
-    GrahaLongitudes, GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry,
-    ShadbalaResult, VimsopakaEntry, VimsopakaResult,
+    BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult, FullKundaliConfig,
+    FullKundaliResult, GrahaEntry, GrahaLongitudes, GrahaPositions, GrahaPositionsConfig,
+    MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, VimsopakaEntry, VimsopakaResult,
 };
 pub use lunar_phase::{
     next_amavasya, next_purnima, prev_amavasya, prev_purnima, search_amavasyas, search_purnimas,

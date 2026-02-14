@@ -18,6 +18,8 @@ pub enum VedicError {
     InvalidLocation(&'static str),
     /// Iterative algorithm did not converge.
     NoConvergence(&'static str),
+    /// Invalid input parameter.
+    InvalidInput(&'static str),
 }
 
 impl Display for VedicError {
@@ -27,6 +29,7 @@ impl Display for VedicError {
             Self::Time(e) => write!(f, "time error: {e}"),
             Self::InvalidLocation(msg) => write!(f, "invalid location: {msg}"),
             Self::NoConvergence(msg) => write!(f, "no convergence: {msg}"),
+            Self::InvalidInput(msg) => write!(f, "invalid input: {msg}"),
         }
     }
 }

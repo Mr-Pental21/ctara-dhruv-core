@@ -1084,6 +1084,8 @@ pub fn full_kundali_for_date(
         shadbala,
         vimsopaka,
         avastha,
+        dasha: None,
+        dasha_snapshots: None,
     })
 }
 
