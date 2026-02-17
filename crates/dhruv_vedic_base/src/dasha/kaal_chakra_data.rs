@@ -138,33 +138,33 @@ pub const ALL_DPS: [DashaProgression; 24] = [
 /// - Group 5 (Table VII, DP 16-19): Mrigashira(4), PPhalguni(10), Anuradha(16), Dhanishta(22)
 /// - Group 6 (Table VII, DP 20-23): Ardra(5), UPhalguni(11), Jyeshtha(17), Shatabhisha(23)
 pub const KCD_NAKSHATRA_PADA_MAP: [[u8; 4]; 27] = [
-    [0, 1, 2, 3],       // 0  Ashwini     → Group 1 (DP 0-3)
-    [4, 5, 6, 7],       // 1  Bharani     → Group 2 (DP 4-7)
-    [8, 9, 10, 11],     // 2  Kritika     → Group 3 (DP 8-11)
-    [12, 13, 14, 15],   // 3  Rohini      → Group 4 (DP 12-15)
-    [16, 17, 18, 19],   // 4  Mrigashira  → Group 5 (DP 16-19)
-    [20, 21, 22, 23],   // 5  Ardra       → Group 6 (DP 20-23)
-    [0, 1, 2, 3],       // 6  Punarvasu   → Group 1
-    [4, 5, 6, 7],       // 7  Pushya      → Group 2
-    [8, 9, 10, 11],     // 8  Ashlesha    → Group 3
-    [12, 13, 14, 15],   // 9  Magha       → Group 4
-    [16, 17, 18, 19],   // 10 PPhalguni   → Group 5
-    [20, 21, 22, 23],   // 11 UPhalguni   → Group 6
-    [0, 1, 2, 3],       // 12 Hasta       → Group 1
-    [4, 5, 6, 7],       // 13 Chitra      → Group 2
-    [8, 9, 10, 11],     // 14 Swati       → Group 3
-    [12, 13, 14, 15],   // 15 Vishakha    → Group 4
-    [16, 17, 18, 19],   // 16 Anuradha    → Group 5
-    [20, 21, 22, 23],   // 17 Jyeshtha    → Group 6
-    [0, 1, 2, 3],       // 18 Mula        → Group 1
-    [4, 5, 6, 7],       // 19 PAshadha    → Group 2
-    [8, 9, 10, 11],     // 20 UAshadha    → Group 3
-    [12, 13, 14, 15],   // 21 Shravana    → Group 4
-    [16, 17, 18, 19],   // 22 Dhanishta   → Group 5
-    [20, 21, 22, 23],   // 23 Shatabhisha → Group 6
-    [0, 1, 2, 3],       // 24 PBhadra     → Group 1
-    [4, 5, 6, 7],       // 25 UBhadra     → Group 2
-    [8, 9, 10, 11],     // 26 Revati      → Group 3
+    [0, 1, 2, 3],     // 0  Ashwini     → Group 1 (DP 0-3)
+    [4, 5, 6, 7],     // 1  Bharani     → Group 2 (DP 4-7)
+    [8, 9, 10, 11],   // 2  Kritika     → Group 3 (DP 8-11)
+    [12, 13, 14, 15], // 3  Rohini      → Group 4 (DP 12-15)
+    [16, 17, 18, 19], // 4  Mrigashira  → Group 5 (DP 16-19)
+    [20, 21, 22, 23], // 5  Ardra       → Group 6 (DP 20-23)
+    [0, 1, 2, 3],     // 6  Punarvasu   → Group 1
+    [4, 5, 6, 7],     // 7  Pushya      → Group 2
+    [8, 9, 10, 11],   // 8  Ashlesha    → Group 3
+    [12, 13, 14, 15], // 9  Magha       → Group 4
+    [16, 17, 18, 19], // 10 PPhalguni   → Group 5
+    [20, 21, 22, 23], // 11 UPhalguni   → Group 6
+    [0, 1, 2, 3],     // 12 Hasta       → Group 1
+    [4, 5, 6, 7],     // 13 Chitra      → Group 2
+    [8, 9, 10, 11],   // 14 Swati       → Group 3
+    [12, 13, 14, 15], // 15 Vishakha    → Group 4
+    [16, 17, 18, 19], // 16 Anuradha    → Group 5
+    [20, 21, 22, 23], // 17 Jyeshtha    → Group 6
+    [0, 1, 2, 3],     // 18 Mula        → Group 1
+    [4, 5, 6, 7],     // 19 PAshadha    → Group 2
+    [8, 9, 10, 11],   // 20 UAshadha    → Group 3
+    [12, 13, 14, 15], // 21 Shravana    → Group 4
+    [16, 17, 18, 19], // 22 Dhanishta   → Group 5
+    [20, 21, 22, 23], // 23 Shatabhisha → Group 6
+    [0, 1, 2, 3],     // 24 PBhadra     → Group 1
+    [4, 5, 6, 7],     // 25 UBhadra     → Group 2
+    [8, 9, 10, 11],   // 26 Revati      → Group 3
 ];
 
 /// Default sub-period method for Kaal Chakra.
@@ -207,10 +207,7 @@ pub fn pada_from_nakshatra_position(position_in_nakshatra: f64) -> u8 {
 ///
 /// The Moon's fractional position within its pada determines how much of the
 /// DP's total span has elapsed.
-pub fn kcd_birth_balance(
-    moon_sidereal_lon: f64,
-    dp: &DashaProgression,
-) -> (usize, f64) {
+pub fn kcd_birth_balance(moon_sidereal_lon: f64, dp: &DashaProgression) -> (usize, f64) {
     let nakshatra_span = 360.0 / 27.0;
     let lon = crate::util::normalize_360(moon_sidereal_lon);
 
@@ -248,20 +245,26 @@ mod tests {
     #[test]
     fn dp_spans_are_correct() {
         // Verify known spans
-        assert!((ALL_DPS[0].span - 100.0).abs() < 1e-10);  // DP0
-        assert!((ALL_DPS[1].span - 85.0).abs() < 1e-10);   // DP1
-        assert!((ALL_DPS[2].span - 83.0).abs() < 1e-10);   // DP2
-        assert!((ALL_DPS[3].span - 86.0).abs() < 1e-10);   // DP3
+        assert!((ALL_DPS[0].span - 100.0).abs() < 1e-10); // DP0
+        assert!((ALL_DPS[1].span - 85.0).abs() < 1e-10); // DP1
+        assert!((ALL_DPS[2].span - 83.0).abs() < 1e-10); // DP2
+        assert!((ALL_DPS[3].span - 86.0).abs() < 1e-10); // DP3
     }
 
     #[test]
     fn all_dp_spans_sum_correctly() {
         for (i, dp_item) in ALL_DPS.iter().enumerate() {
-            let sum: f64 = dp_item.rashis.iter().map(|&r| KCD_RASHI_YEARS[r as usize]).sum();
+            let sum: f64 = dp_item
+                .rashis
+                .iter()
+                .map(|&r| KCD_RASHI_YEARS[r as usize])
+                .sum();
             assert!(
                 (sum - dp_item.span).abs() < 1e-10,
                 "DP{} span mismatch: sum={}, span={}",
-                i, sum, dp_item.span
+                i,
+                sum,
+                dp_item.span
             );
         }
     }
@@ -273,7 +276,9 @@ mod tests {
                 assert!(
                     (dp_idx as usize) < 24,
                     "nak {} pada {} maps to invalid DP {}",
-                    nak, pada, dp_idx
+                    nak,
+                    pada,
+                    dp_idx
                 );
             }
         }
@@ -290,8 +295,8 @@ mod tests {
 
     #[test]
     fn kcd_dp_index_basic() {
-        assert_eq!(kcd_dp_index(0, 0), 0);  // Ashwini pada 1 → DP0
-        assert_eq!(kcd_dp_index(0, 3), 3);  // Ashwini pada 4 → DP3
+        assert_eq!(kcd_dp_index(0, 0), 0); // Ashwini pada 1 → DP0
+        assert_eq!(kcd_dp_index(0, 3), 3); // Ashwini pada 4 → DP3
         assert_eq!(kcd_dp_index(3, 0), 12); // Rohini pada 1 → DP12
     }
 

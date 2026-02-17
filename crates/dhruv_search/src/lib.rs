@@ -31,9 +31,11 @@ pub use conjunction::{
 };
 pub use conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 pub use dasha::{
-    dasha_hierarchy_for_birth, dasha_hierarchy_with_moon, dasha_snapshot_at,
-    dasha_snapshot_with_moon,
+    DashaInputs, dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs, dasha_snapshot_at,
+    dasha_snapshot_with_inputs,
 };
+#[allow(deprecated)]
+pub use dasha::{dasha_hierarchy_with_moon, dasha_snapshot_with_moon};
 pub use error::SearchError;
 pub use grahan::{
     next_chandra_grahan, next_surya_grahan, prev_chandra_grahan, prev_surya_grahan,

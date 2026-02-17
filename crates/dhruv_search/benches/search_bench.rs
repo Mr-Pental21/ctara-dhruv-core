@@ -253,6 +253,66 @@ fn dasha_hierarchy_bench(c: &mut Criterion) {
             .expect("should succeed")
         })
     });
+    group.bench_function("chara_hierarchy", |b| {
+        b.iter(|| {
+            dhruv_search::dasha_hierarchy_for_birth(
+                black_box(&engine),
+                black_box(&eop),
+                black_box(&birth),
+                black_box(&location),
+                dhruv_vedic_base::dasha::DashaSystem::Chara,
+                2,
+                black_box(&bhava_config),
+                black_box(&rs_config),
+                black_box(&aya_config),
+                black_box(&variation),
+            )
+            .expect("should succeed")
+        })
+    });
+    group.bench_function("kala_hierarchy", |b| {
+        b.iter(|| {
+            dhruv_search::dasha_hierarchy_for_birth(
+                black_box(&engine),
+                black_box(&eop),
+                black_box(&birth),
+                black_box(&location),
+                dhruv_vedic_base::dasha::DashaSystem::Kala,
+                2,
+                black_box(&bhava_config),
+                black_box(&rs_config),
+                black_box(&aya_config),
+                black_box(&variation),
+            )
+            .expect("should succeed")
+        })
+    });
+    group.bench_function("full_kundali_3_dashas", |b| {
+        let mut dasha_config = dhruv_search::DashaSelectionConfig::default();
+        dasha_config.count = 3;
+        dasha_config.systems[0] = dhruv_vedic_base::dasha::DashaSystem::Vimshottari as u8;
+        dasha_config.systems[1] = dhruv_vedic_base::dasha::DashaSystem::Chara as u8;
+        dasha_config.systems[2] = dhruv_vedic_base::dasha::DashaSystem::Kala as u8;
+        dasha_config.max_level = 2;
+        let config = dhruv_search::FullKundaliConfig {
+            include_dasha: true,
+            dasha_config,
+            ..dhruv_search::FullKundaliConfig::default()
+        };
+        b.iter(|| {
+            dhruv_search::full_kundali_for_date(
+                black_box(&engine),
+                black_box(&eop),
+                black_box(&birth),
+                black_box(&location),
+                black_box(&bhava_config),
+                black_box(&rs_config),
+                black_box(&aya_config),
+                black_box(&config),
+            )
+            .expect("should succeed")
+        })
+    });
     group.bench_function("dasha_snapshot_at", |b| {
         let query = UtcTime::new(2024, 6, 1, 12, 0, 0.0);
         b.iter(|| {

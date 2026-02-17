@@ -14,14 +14,14 @@ use crate::error::VedicError;
 use crate::nakshatra::NAKSHATRA_SPAN_27;
 
 use super::kaal_chakra_data::{
-    ALL_DPS, KCD_DEFAULT_METHOD, KCD_NAKSHATRA_PADA_MAP, KCD_RASHIS_PER_DP, KCD_RASHI_YEARS,
+    ALL_DPS, KCD_DEFAULT_METHOD, KCD_NAKSHATRA_PADA_MAP, KCD_RASHI_YEARS, KCD_RASHIS_PER_DP,
     kcd_birth_balance, pada_from_nakshatra_position,
 };
 use super::query::find_active_period;
 use super::subperiod::generate_children;
 use super::types::{
-    DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot, DashaSystem,
-    DAYS_PER_YEAR, MAX_DASHA_LEVEL, MAX_PERIODS_PER_LEVEL,
+    DAYS_PER_YEAR, DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot,
+    DashaSystem, MAX_DASHA_LEVEL, MAX_PERIODS_PER_LEVEL,
 };
 use super::variation::DashaVariationConfig;
 
@@ -306,8 +306,10 @@ mod tests {
     #[test]
     fn kaal_chakra_children_12_rashis() {
         let periods = kaal_chakra_level0(BIRTH_JD, 0.0);
-        let children =
-            kaal_chakra_children(&periods[0], super::super::variation::SubPeriodMethod::ProportionalFromParent);
+        let children = kaal_chakra_children(
+            &periods[0],
+            super::super::variation::SubPeriodMethod::ProportionalFromParent,
+        );
 
         assert_eq!(children.len(), 12);
         // First child starts at parent start

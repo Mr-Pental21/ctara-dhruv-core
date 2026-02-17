@@ -31,12 +31,16 @@ use dhruv_vedic_base::{
 };
 
 use crate::conjunction::body_ecliptic_lon_lat;
+use crate::dasha::{
+    DashaInputs, dasha_hierarchy_with_inputs, dasha_snapshot_with_inputs, is_rashi_system,
+    needs_moon_lon, needs_sunrise_sunset,
+};
 use crate::error::SearchError;
 use crate::jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
-    BindusResult, DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
-    GrahaLongitudes, GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry,
-    ShadbalaResult, VimsopakaEntry, VimsopakaResult,
+    BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult, FullKundaliConfig,
+    FullKundaliResult, GrahaEntry, GrahaLongitudes, GrahaPositions, GrahaPositionsConfig,
+    MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, VimsopakaEntry, VimsopakaResult,
 };
 use crate::panchang::{hora_from_sunrises, masa_for_date, varsha_for_date, vedic_day_sunrises};
 use crate::sankranti_types::SankrantiConfig;
@@ -1097,6 +1101,21 @@ pub fn full_kundali_for_date(
         None
     };
 
+    let (dasha, dasha_snapshots) = if config.include_dasha && config.dasha_config.count > 0 {
+        compute_kundali_dashas(
+            engine,
+            eop,
+            utc,
+            location,
+            riseset_config,
+            aya_config,
+            &config.dasha_config,
+            &mut ctx,
+        )?
+    } else {
+        (None, None)
+    };
+
     Ok(FullKundaliResult {
         graha_positions,
         bindus,
@@ -1108,9 +1127,148 @@ pub fn full_kundali_for_date(
         shadbala,
         vimsopaka,
         avastha,
-        dasha: None,
-        dasha_snapshots: None,
+        dasha,
+        dasha_snapshots,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Dasha context-sharing helpers for FullKundali integration
+// ---------------------------------------------------------------------------
+
+/// Build DashaInputs from JyotishContext for a given system.
+fn build_dasha_inputs_from_ctx<'a>(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    system: dhruv_vedic_base::dasha::DashaSystem,
+    rashi_inputs_storage: &'a mut Option<dhruv_vedic_base::dasha::RashiDashaInputs>,
+    ctx: &mut JyotishContext,
+) -> Result<DashaInputs<'a>, SearchError> {
+    let moon_sid_lon = if needs_moon_lon(system) {
+        Some(ctx.graha_lons(engine, aya_config)?.longitudes[1])
+    } else {
+        None
+    };
+
+    if is_rashi_system(system) {
+        let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+        let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
+        *rashi_inputs_storage = Some(dhruv_vedic_base::dasha::RashiDashaInputs::new(
+            graha_lons.longitudes,
+            lagna_sid,
+        ));
+    }
+
+    let sunrise_sunset = if needs_sunrise_sunset(system) {
+        let (sunrise, _) = ctx.sunrise_pair(engine, eop, utc, location, riseset_config)?;
+        let sunset = ctx.sunset_jd(engine, eop, location, riseset_config)?;
+        Some((sunrise, sunset))
+    } else {
+        None
+    };
+
+    Ok(DashaInputs {
+        moon_sid_lon,
+        rashi_inputs: rashi_inputs_storage.as_ref(),
+        sunrise_sunset,
+    })
+}
+
+/// Compute dasha hierarchies and optional snapshots for FullKundali.
+///
+/// Implements the fallback contract: per-system failures are skipped (logged),
+/// dense output with preserved ordering, None for all-fail.
+fn compute_kundali_dashas(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    dasha_config: &DashaSelectionConfig,
+    ctx: &mut JyotishContext,
+) -> Result<
+    (
+        Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
+        Option<Vec<dhruv_vedic_base::DashaSnapshot>>,
+    ),
+    SearchError,
+> {
+    // sanitize() MUST run before validate() — see plan Phase C note
+    let mut config = *dasha_config;
+    config.sanitize();
+    config.validate().map_err(SearchError::from)?;
+
+    let birth_jd = utc_to_jd_utc(utc);
+    let variation = config.to_variation_config();
+    let max_level = config.max_level;
+
+    let mut hierarchies = Vec::new();
+    let mut snapshots = Vec::new();
+
+    for i in 0..config.count as usize {
+        let system_code = config.systems[i];
+        let system = match dhruv_vedic_base::dasha::DashaSystem::from_u8(system_code) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Build inputs from ctx (may fail for systems needing sunrise at polar locations)
+        let mut rashi_storage = None;
+        let inputs = match build_dasha_inputs_from_ctx(
+            engine,
+            eop,
+            utc,
+            location,
+            riseset_config,
+            aya_config,
+            system,
+            &mut rashi_storage,
+            ctx,
+        ) {
+            Ok(i) => i,
+            Err(e) => {
+                eprintln!("dasha: skipping {system:?}: {e}");
+                continue;
+            }
+        };
+
+        match dasha_hierarchy_with_inputs(birth_jd, system, max_level, &variation, &inputs) {
+            Ok(hierarchy) => {
+                hierarchies.push(hierarchy);
+                // Attempt snapshot only if hierarchy succeeded and snapshot_jd is set
+                if let Some(query_jd) = config.snapshot_jd {
+                    match dasha_snapshot_with_inputs(
+                        birth_jd, query_jd, system, max_level, &variation, &inputs,
+                    ) {
+                        Ok(snap) => snapshots.push(snap),
+                        Err(e) => {
+                            eprintln!("dasha snapshot: skipping {system:?}: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("dasha: skipping {system:?}: {e}");
+            }
+        }
+    }
+
+    let dasha = if hierarchies.is_empty() {
+        None
+    } else {
+        Some(hierarchies)
+    };
+    let dasha_snapshots = if config.snapshot_jd.is_some() && !snapshots.is_empty() {
+        Some(snapshots)
+    } else {
+        None
+    };
+    Ok((dasha, dasha_snapshots))
 }
 
 /// Convert UtcTime to JD UTC (calendar only, no TDB conversion).

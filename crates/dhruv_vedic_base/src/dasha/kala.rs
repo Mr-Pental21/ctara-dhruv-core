@@ -20,8 +20,8 @@ use super::kala_data::{
 use super::query::find_active_period;
 use super::subperiod::generate_children;
 use super::types::{
-    DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot, DashaSystem,
-    DAYS_PER_YEAR, MAX_DASHA_LEVEL, MAX_PERIODS_PER_LEVEL,
+    DAYS_PER_YEAR, DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot,
+    DashaSystem, MAX_DASHA_LEVEL, MAX_PERIODS_PER_LEVEL,
 };
 use super::variation::DashaVariationConfig;
 
@@ -363,8 +363,7 @@ mod tests {
     fn kala_level0_entity_lookup() {
         let (sunrise, sunset) = test_sunrise_sunset();
         let birth = 2451545.0 + 10.0 / 24.0;
-        let result =
-            kala_level0_entity(birth, sunrise, sunset, DashaEntity::Graha(Graha::Guru));
+        let result = kala_level0_entity(birth, sunrise, sunset, DashaEntity::Graha(Graha::Guru));
         assert!(result.is_some());
         let period = result.unwrap();
         assert_eq!(period.entity, DashaEntity::Graha(Graha::Guru));
