@@ -5460,6 +5460,7 @@ fn print_max_speed_event(label: &str, ev: &dhruv_search::stationary_types::MaxSp
 // ---------------------------------------------------------------------------
 
 struct ResolvedKundaliFlags {
+    include_bhava_cusps: bool,
     include_graha: bool,
     include_bindus: bool,
     include_drishti: bool,
@@ -5505,6 +5506,7 @@ fn resolve_kundali_flags(
 
     if all {
         ResolvedKundaliFlags {
+            include_bhava_cusps: true,
             include_graha: true,
             include_bindus: true,
             include_drishti: true,
@@ -5520,6 +5522,7 @@ fn resolve_kundali_flags(
         }
     } else if any_include_flag {
         ResolvedKundaliFlags {
+            include_bhava_cusps: include_graha,
             include_graha,
             include_bindus,
             include_drishti,
@@ -5534,8 +5537,9 @@ fn resolve_kundali_flags(
             include_calendar,
         }
     } else {
-        // Backwards-compatible default: original 6 sections
+        // Backwards-compatible default: original 6 sections + bhava cusps
         ResolvedKundaliFlags {
+            include_bhava_cusps: true,
             include_graha: true,
             include_bindus: true,
             include_drishti: true,
@@ -5604,6 +5608,7 @@ fn build_kundali_config(
     };
 
     dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: resolved.include_bhava_cusps,
         include_graha_positions: compute_graha,
         graha_positions_config: gp_config,
         include_bindus: resolved.include_bindus,
@@ -5693,6 +5698,28 @@ fn print_kundali(
             g.lagna.pada,
             g.lagna.bhava_number,
         )?;
+        writeln!(w)?;
+    }
+
+    if flags.include_bhava_cusps
+        && let Some(ref bh) = result.bhava_cusps
+    {
+        let aya = result.ayanamsha_deg;
+        writeln!(w, "Bhava Cusps:")?;
+        for b in &bh.bhavas {
+            let sid = (b.cusp_deg - aya).rem_euclid(360.0);
+            let nk = nakshatra_from_longitude(sid);
+            writeln!(
+                w,
+                "  Bhava {:>2}  {}  Nakshatra: {:<12} Pada: {}",
+                b.number,
+                format_rashi_dms(sid),
+                nk.nakshatra.name(),
+                nk.pada,
+            )?;
+        }
+        let mc_sid = (bh.mc_deg - aya).rem_euclid(360.0);
+        writeln!(w, "  MC        {}", format_rashi_dms(mc_sid))?;
         writeln!(w)?;
     }
 
@@ -6074,6 +6101,7 @@ mod tests {
             false, false, false, false, false, false, false, false, false, false, false, false,
             false,
         );
+        assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
         assert!(f.include_bindus);
         assert!(f.include_drishti);
@@ -6094,6 +6122,7 @@ mod tests {
             true, false, false, false, false, false, false, false, false, false, false, false,
             false,
         );
+        assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
         assert!(f.include_bindus);
         assert!(f.include_amshas);
@@ -6109,6 +6138,10 @@ mod tests {
         let f = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
             false,
+        );
+        assert!(
+            f.include_bhava_cusps,
+            "bhava cusps follows graha in any_flag branch"
         );
         assert!(f.include_graha);
         assert!(!f.include_bindus);
@@ -6126,6 +6159,24 @@ mod tests {
         assert!(f.include_panchang);
         assert!(f.include_calendar);
         assert!(!f.include_graha);
+        assert!(
+            !f.include_bhava_cusps,
+            "bhava cusps off when only calendar selected"
+        );
+    }
+
+    #[test]
+    fn test_resolve_kundali_flags_panchang_only_no_bhava() {
+        // When only panchang is selected, bhava cusps should be off
+        // (follows include_graha which is false)
+        //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
+        let f = resolve_kundali_flags(
+            false, false, false, false, false, false, false, false, false, false, false, true,
+            false,
+        );
+        assert!(f.include_panchang);
+        assert!(!f.include_graha);
+        assert!(!f.include_bhava_cusps);
     }
 
     #[test]
@@ -6152,6 +6203,7 @@ mod tests {
             None,
             NodeDignityPolicy::default(),
         );
+        assert!(cfg.include_bhava_cusps);
         assert!(cfg.include_graha_positions);
         assert!(cfg.include_bindus);
         assert!(cfg.include_drishti);
@@ -6163,6 +6215,19 @@ mod tests {
         assert!(!cfg.include_amshas);
         assert!(!cfg.include_shadbala);
         assert!(!cfg.include_panchang);
+    }
+
+    #[test]
+    fn test_build_kundali_config_bhava_cusps_off_when_panchang_only() {
+        //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
+        let resolved = resolve_kundali_flags(
+            false, false, false, false, false, false, false, false, false, false, false, true,
+            false,
+        );
+        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::default());
+        assert!(!cfg.include_bhava_cusps);
+        assert!(cfg.include_panchang);
+        assert!(!cfg.include_graha_positions);
     }
 
     #[test]
@@ -6264,5 +6329,170 @@ mod tests {
         // Should not panic and should produce valid output
         assert!(!s.is_empty());
         assert!(!s.contains("30°"));
+    }
+
+    fn empty_kundali_result() -> dhruv_search::FullKundaliResult {
+        dhruv_search::FullKundaliResult {
+            ayanamsha_deg: 24.0,
+            bhava_cusps: None,
+            graha_positions: None,
+            bindus: None,
+            drishti: None,
+            ashtakavarga: None,
+            upagrahas: None,
+            special_lagnas: None,
+            amshas: None,
+            shadbala: None,
+            vimsopaka: None,
+            avastha: None,
+            panchang: None,
+            dasha: None,
+            dasha_snapshots: None,
+        }
+    }
+
+    fn make_bhava_result() -> dhruv_vedic_base::BhavaResult {
+        let mut bhavas = [dhruv_vedic_base::Bhava {
+            number: 1,
+            cusp_deg: 0.0,
+            start_deg: 0.0,
+            end_deg: 30.0,
+        }; 12];
+        for i in 0..12 {
+            bhavas[i].number = (i + 1) as u8;
+            bhavas[i].cusp_deg = (i as f64) * 30.0;
+            bhavas[i].start_deg = (i as f64) * 30.0;
+            bhavas[i].end_deg = ((i + 1) as f64) * 30.0;
+        }
+        dhruv_vedic_base::BhavaResult {
+            bhavas,
+            lagna_deg: 0.0,
+            mc_deg: 90.0,
+        }
+    }
+
+    #[test]
+    fn test_print_kundali_bhava_shown_when_flag_on() {
+        // make_bhava_result: cusps at 0°,30°,...,330° tropical, ayanamsha=24.0
+        // Cusp 1: 0° tropical → (0-24) mod 360 = 336° sidereal → Meena (330-360°) at 06°00'00"
+        // Cusp 2: 30° tropical → 6° sidereal → Mesha (0-30°) at 06°00'00"
+        // MC: 90° tropical → 66° sidereal → Mithuna (60-90°) at 06°00'00"
+        let mut result = empty_kundali_result();
+        result.bhava_cusps = Some(make_bhava_result());
+        let flags = ResolvedKundaliFlags {
+            include_bhava_cusps: true,
+            include_graha: false,
+            include_bindus: false,
+            include_drishti: false,
+            include_ashtakavarga: false,
+            include_upagrahas: false,
+            include_special_lagnas: false,
+            include_amshas: false,
+            include_shadbala: false,
+            include_vimsopaka: false,
+            include_avastha: false,
+            include_panchang: false,
+            include_calendar: false,
+        };
+        let mut buf = Vec::new();
+        print_kundali(&mut buf, &result, &flags).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines[0], "Bhava Cusps:");
+
+        // Cusp 1: 0° tropical − 24° aya = 336° sid → Meena 06°00'00"
+        let bhava1 = lines
+            .iter()
+            .find(|l| l.contains("Bhava  1"))
+            .expect("no Bhava 1 line");
+        assert!(
+            bhava1.contains("Meena") && bhava1.contains("06°00'00\""),
+            "Bhava 1 should be Meena 06°00'00\", got: {bhava1}"
+        );
+
+        // Cusp 2: 30° tropical − 24° = 6° sid → Mesha 06°00'00"
+        let bhava2 = lines
+            .iter()
+            .find(|l| l.contains("Bhava  2"))
+            .expect("no Bhava 2 line");
+        assert!(
+            bhava2.contains("Mesha") && bhava2.contains("06°00'00\""),
+            "Bhava 2 should be Mesha 06°00'00\", got: {bhava2}"
+        );
+
+        // Cusp 4: 90° tropical − 24° = 66° sid → Mithuna 06°00'00"
+        let bhava4 = lines
+            .iter()
+            .find(|l| l.contains("Bhava  4"))
+            .expect("no Bhava 4 line");
+        assert!(
+            bhava4.contains("Mithuna") && bhava4.contains("06°00'00\""),
+            "Bhava 4 should be Mithuna 06°00'00\", got: {bhava4}"
+        );
+
+        // MC: 90° tropical − 24° = 66° sid → Mithuna 06°00'00"
+        let mc_line = lines
+            .iter()
+            .find(|l| l.starts_with("  MC"))
+            .expect("no MC line");
+        assert!(
+            mc_line.contains("Mithuna") && mc_line.contains("06°00'00\""),
+            "MC should be Mithuna 06°00'00\", got: {mc_line}"
+        );
+    }
+
+    #[test]
+    fn test_print_kundali_bhava_hidden_when_flag_off() {
+        let mut result = empty_kundali_result();
+        result.bhava_cusps = Some(make_bhava_result());
+        let flags = ResolvedKundaliFlags {
+            include_bhava_cusps: false,
+            include_graha: false,
+            include_bindus: false,
+            include_drishti: false,
+            include_ashtakavarga: false,
+            include_upagrahas: false,
+            include_special_lagnas: false,
+            include_amshas: false,
+            include_shadbala: false,
+            include_vimsopaka: false,
+            include_avastha: false,
+            include_panchang: false,
+            include_calendar: false,
+        };
+        let mut buf = Vec::new();
+        print_kundali(&mut buf, &result, &flags).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(
+            !output.contains("Bhava Cusps:"),
+            "should NOT print bhava cusps when flag is off"
+        );
+    }
+
+    #[test]
+    fn test_print_kundali_bhava_hidden_when_none() {
+        let result = empty_kundali_result();
+        let flags = ResolvedKundaliFlags {
+            include_bhava_cusps: true,
+            include_graha: false,
+            include_bindus: false,
+            include_drishti: false,
+            include_ashtakavarga: false,
+            include_upagrahas: false,
+            include_special_lagnas: false,
+            include_amshas: false,
+            include_shadbala: false,
+            include_vimsopaka: false,
+            include_avastha: false,
+            include_panchang: false,
+            include_calendar: false,
+        };
+        let mut buf = Vec::new();
+        print_kundali(&mut buf, &result, &flags).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(
+            !output.contains("Bhava Cusps:"),
+            "should NOT print when bhava_cusps is None"
+        );
     }
 }

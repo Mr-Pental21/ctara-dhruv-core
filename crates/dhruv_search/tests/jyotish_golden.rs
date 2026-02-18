@@ -702,6 +702,270 @@ fn load_lsk() -> Option<LeapSecondKernel> {
     LeapSecondKernel::load(Path::new(LSK_PATH)).ok()
 }
 
+/// Verify bhava_cusps populated when include_bhava_cusps is true (default).
+#[test]
+fn full_kundali_has_bhava_cusps() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = dhruv_vedic_base::riseset_types::RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let config = dhruv_search::FullKundaliConfig::default();
+
+    let result = dhruv_search::full_kundali_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &config,
+    )
+    .expect("full_kundali should succeed");
+
+    // ayanamsha_deg should be positive (Lahiri ~ 24 deg in 2024)
+    assert!(
+        result.ayanamsha_deg > 23.0 && result.ayanamsha_deg < 25.0,
+        "ayanamsha_deg = {}, expected ~24",
+        result.ayanamsha_deg
+    );
+
+    let bh = result
+        .bhava_cusps
+        .as_ref()
+        .expect("bhava_cusps should be Some");
+    assert_eq!(bh.bhavas.len(), 12);
+    for (i, b) in bh.bhavas.iter().enumerate() {
+        assert_eq!(b.number, (i + 1) as u8);
+        assert!(
+            b.cusp_deg >= 0.0 && b.cusp_deg < 360.0,
+            "cusp {}: {}",
+            i,
+            b.cusp_deg
+        );
+    }
+    assert!(bh.lagna_deg >= 0.0 && bh.lagna_deg < 360.0);
+    assert!(bh.mc_deg >= 0.0 && bh.mc_deg < 360.0);
+}
+
+/// Verify bhava_cusps is None when include_bhava_cusps is false.
+#[test]
+fn full_kundali_bhava_cusps_flag_off() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = dhruv_vedic_base::riseset_types::RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let config = dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: false,
+        include_graha_positions: false,
+        include_bindus: false,
+        include_drishti: false,
+        include_ashtakavarga: false,
+        include_upagrahas: false,
+        include_special_lagnas: false,
+        include_panchang: true,
+        ..dhruv_search::FullKundaliConfig::default()
+    };
+
+    let result = dhruv_search::full_kundali_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &config,
+    )
+    .expect("panchang-only should succeed without bhava computation");
+
+    assert!(
+        result.bhava_cusps.is_none(),
+        "bhava_cusps should be None when flag is off"
+    );
+    assert!(
+        result.panchang.is_some(),
+        "panchang should still be computed"
+    );
+    assert!(result.ayanamsha_deg > 23.0 && result.ayanamsha_deg < 25.0);
+}
+
+/// High-latitude + time-based house system: KP at 70°N fails for compute_bhavas.
+/// With include_bhava_cusps=false the kundali call must still succeed.
+/// Uses spring equinox (sun rises at 70°N) so panchang also works.
+#[test]
+fn full_kundali_high_lat_kp_bhava_off_succeeds() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    // Spring equinox — sun rises at 70°N
+    let utc = UtcTime::new(2024, 3, 20, 12, 0, 0.0);
+    // Tromso-like latitude where KP house system fails
+    let location = GeoLocation::new(70.0, 25.0, 0.0);
+    let bhava_config = BhavaConfig {
+        system: dhruv_vedic_base::BhavaSystem::KP,
+        ..BhavaConfig::default()
+    };
+    let rs_config = dhruv_vedic_base::riseset_types::RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let config = dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: false,
+        include_graha_positions: true,
+        include_bindus: false,
+        include_drishti: false,
+        include_ashtakavarga: false,
+        include_upagrahas: false,
+        include_special_lagnas: false,
+        include_panchang: false,
+        ..dhruv_search::FullKundaliConfig::default()
+    };
+
+    let result = dhruv_search::full_kundali_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &config,
+    )
+    .expect("high-lat graha should succeed when bhava cusps disabled");
+
+    assert!(result.bhava_cusps.is_none());
+    assert!(result.graha_positions.is_some());
+}
+
+/// High-latitude + KP + bhava off + panchang-only: verifies that disabling bhava cusps
+/// lets panchang succeed at high latitude even with a failing house system config.
+#[test]
+fn full_kundali_high_lat_kp_bhava_off_panchang_succeeds() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    // Spring equinox — sun rises at 70°N, so panchang can compute
+    let utc = UtcTime::new(2024, 3, 20, 12, 0, 0.0);
+    let location = GeoLocation::new(70.0, 25.0, 0.0);
+    let bhava_config = BhavaConfig {
+        system: dhruv_vedic_base::BhavaSystem::KP,
+        ..BhavaConfig::default()
+    };
+    let rs_config = dhruv_vedic_base::riseset_types::RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let config = dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: false,
+        include_graha_positions: false,
+        include_bindus: false,
+        include_drishti: false,
+        include_ashtakavarga: false,
+        include_upagrahas: false,
+        include_special_lagnas: false,
+        include_panchang: true,
+        ..dhruv_search::FullKundaliConfig::default()
+    };
+
+    let result = dhruv_search::full_kundali_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &config,
+    )
+    .expect("high-lat panchang-only should succeed when bhava cusps disabled");
+
+    assert!(result.bhava_cusps.is_none());
+    assert!(result.panchang.is_some(), "panchang should be computed");
+    assert!(result.graha_positions.is_none());
+}
+
+/// High-latitude + KP + bhava off + include_calendar=true: the calendar path
+/// (masa, ayana, varsha) also succeeds when bhava cusps are disabled.
+#[test]
+fn full_kundali_high_lat_kp_bhava_off_calendar_succeeds() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = UtcTime::new(2024, 3, 20, 12, 0, 0.0);
+    let location = GeoLocation::new(70.0, 25.0, 0.0);
+    let bhava_config = BhavaConfig {
+        system: dhruv_vedic_base::BhavaSystem::KP,
+        ..BhavaConfig::default()
+    };
+    let rs_config = dhruv_vedic_base::riseset_types::RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let config = dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: false,
+        include_graha_positions: false,
+        include_bindus: false,
+        include_drishti: false,
+        include_ashtakavarga: false,
+        include_upagrahas: false,
+        include_special_lagnas: false,
+        include_panchang: false,
+        include_calendar: true,
+        ..dhruv_search::FullKundaliConfig::default()
+    };
+
+    let result = dhruv_search::full_kundali_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &config,
+    )
+    .expect("high-lat calendar-only should succeed when bhava cusps disabled");
+
+    assert!(result.bhava_cusps.is_none());
+    assert!(result.panchang.is_some(), "calendar implies panchang");
+}
+
+/// High-latitude + time-based house system: KP at 70°N with include_bhava_cusps=true
+/// should propagate the bhava failure as an error.
+#[test]
+fn full_kundali_high_lat_kp_bhava_on_fails() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = UtcTime::new(2024, 3, 20, 12, 0, 0.0);
+    let location = GeoLocation::new(70.0, 25.0, 0.0);
+    let bhava_config = BhavaConfig {
+        system: dhruv_vedic_base::BhavaSystem::KP,
+        ..BhavaConfig::default()
+    };
+    let rs_config = dhruv_vedic_base::riseset_types::RiseSetConfig::default();
+    let aya_config = default_aya_config();
+    let config = dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: true,
+        include_graha_positions: false,
+        include_panchang: false,
+        ..dhruv_search::FullKundaliConfig::default()
+    };
+
+    let result = dhruv_search::full_kundali_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &config,
+    );
+
+    assert!(
+        result.is_err(),
+        "KP at 70N with bhava cusps enabled should fail"
+    );
+}
+
 /// Verify the lagna returned by graha_positions is a rising point (H < 0).
 #[test]
 fn lagna_is_rising_in_graha_positions() {

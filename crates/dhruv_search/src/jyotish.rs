@@ -952,6 +952,23 @@ pub fn full_kundali_for_date(
 ) -> Result<FullKundaliResult, SearchError> {
     let mut ctx = JyotishContext::new(engine, utc, aya_config);
 
+    // Ayanamsha — always computed, used for bhava cusp display.
+    let ayanamsha = ctx.ayanamsha;
+
+    // Bhava cusps — only computed when requested.
+    let bhava_cusps = if config.include_bhava_cusps {
+        Some(compute_bhavas(
+            engine,
+            engine.lsk(),
+            eop,
+            location,
+            ctx.jd_utc,
+            bhava_config,
+        )?)
+    } else {
+        None
+    };
+
     let graha_positions = if config.include_graha_positions {
         Some(graha_positions_with_ctx(
             engine,
@@ -1133,6 +1150,8 @@ pub fn full_kundali_for_date(
     };
 
     Ok(FullKundaliResult {
+        ayanamsha_deg: ayanamsha,
+        bhava_cusps,
         graha_positions,
         bindus,
         drishti,

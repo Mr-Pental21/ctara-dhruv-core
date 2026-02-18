@@ -3,8 +3,8 @@
 use crate::panchang_types::PanchangInfo;
 use dhruv_vedic_base::{
     AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaVariation, AshtakavargaResult,
-    Dms, DrishtiEntry, Graha, GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra, NodeDignityPolicy,
-    Rashi, ShadbalaBreakdown, SthanaBalaBreakdown,
+    BhavaResult, Dms, DrishtiEntry, Graha, GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra,
+    NodeDignityPolicy, Rashi, ShadbalaBreakdown, SthanaBalaBreakdown,
 };
 
 /// Sidereal longitudes of all 9 grahas.
@@ -441,6 +441,8 @@ impl DashaSelectionConfig {
 /// Configuration for one-shot full kundali computation.
 #[derive(Debug, Clone, Copy)]
 pub struct FullKundaliConfig {
+    /// Include bhava cusps section. Default: true.
+    pub include_bhava_cusps: bool,
     /// Include comprehensive graha positions section.
     pub include_graha_positions: bool,
     /// Include core bindus section.
@@ -486,6 +488,7 @@ pub struct FullKundaliConfig {
 impl Default for FullKundaliConfig {
     fn default() -> Self {
         Self {
+            include_bhava_cusps: true,
             include_graha_positions: true,
             include_bindus: true,
             include_drishti: true,
@@ -513,6 +516,10 @@ impl Default for FullKundaliConfig {
 /// One-shot full kundali result.
 #[derive(Debug, Clone)]
 pub struct FullKundaliResult {
+    /// Ayanamsha in degrees used for this kundali.
+    pub ayanamsha_deg: f64,
+    /// Present when `FullKundaliConfig::include_bhava_cusps` is true.
+    pub bhava_cusps: Option<BhavaResult>,
     /// Present when `FullKundaliConfig::include_graha_positions` is true.
     pub graha_positions: Option<GrahaPositions>,
     /// Present when `FullKundaliConfig::include_bindus` is true.

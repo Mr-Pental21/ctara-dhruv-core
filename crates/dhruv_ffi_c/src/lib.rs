@@ -35,7 +35,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 34;
+pub const DHRUV_API_VERSION: u32 = 35;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -8672,6 +8672,8 @@ pub struct DhruvAllGrahaAvasthas {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DhruvFullKundaliConfig {
+    /// Include bhava cusps section. Default: 1.
+    pub include_bhava_cusps: u8,
     /// Include graha positions section.
     pub include_graha_positions: u8,
     /// Include bindus section.
@@ -8730,6 +8732,11 @@ pub const DHRUV_MAX_AMSHA_REQUESTS: usize = 40;
 #[repr(C)]
 #[derive(Debug)]
 pub struct DhruvFullKundaliResult {
+    /// Ayanamsha in degrees used for this kundali.
+    pub ayanamsha_deg: f64,
+    /// 1 when `include_bhava_cusps` was non-zero and computation succeeded; 0 otherwise.
+    pub bhava_cusps_valid: u8,
+    pub bhava_cusps: DhruvBhavaResult,
     pub graha_positions_valid: u8,
     pub graha_positions: DhruvGrahaPositions,
     pub bindus_valid: u8,
@@ -8797,6 +8804,66 @@ pub unsafe extern "C" fn dhruv_full_kundali_result_free(result: *mut DhruvFullKu
     r.dasha_count = 0;
     r.dasha_snapshot_count = 0;
     r.dasha_systems = [0; 8];
+}
+
+/// Returns default full kundali configuration.
+///
+/// All core include flags (`include_bhava_cusps`, `include_graha_positions`,
+/// `include_bindus`, `include_drishti`, `include_ashtakavarga`,
+/// `include_upagrahas`, `include_special_lagnas`) are set to 1.
+/// Optional sections (`include_amshas`, `include_shadbala`, `include_vimsopaka`,
+/// `include_avastha`, `include_panchang`, `include_calendar`, `include_dasha`)
+/// are set to 0.
+///
+/// C callers should use this instead of zero-initializing the struct, which
+/// would leave `include_bhava_cusps` (and other defaults) at 0.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig {
+    DhruvFullKundaliConfig {
+        include_bhava_cusps: 1,
+        include_graha_positions: 1,
+        include_bindus: 1,
+        include_drishti: 1,
+        include_ashtakavarga: 1,
+        include_upagrahas: 1,
+        include_special_lagnas: 1,
+        include_amshas: 0,
+        include_shadbala: 0,
+        include_vimsopaka: 0,
+        include_avastha: 0,
+        node_dignity_policy: 0, // SignLordBased
+        graha_positions_config: DhruvGrahaPositionsConfig {
+            include_nakshatra: 0,
+            include_lagna: 0,
+            include_outer_planets: 0,
+            include_bhava: 0,
+        },
+        bindus_config: DhruvBindusConfig {
+            include_nakshatra: 0,
+            include_bhava: 0,
+        },
+        drishti_config: DhruvDrishtiConfig {
+            include_bhava: 0,
+            include_lagna: 0,
+            include_bindus: 0,
+        },
+        amsha_scope: DhruvAmshaChartScope {
+            include_bhava_cusps: 0,
+            include_arudha_padas: 0,
+            include_upagrahas: 0,
+            include_sphutas: 0,
+            include_special_lagnas: 0,
+        },
+        amsha_selection: DhruvAmshaSelectionConfig {
+            count: 0,
+            codes: [0; 40],
+            variations: [0; 40],
+        },
+        include_panchang: 0,
+        include_calendar: 0,
+        include_dasha: 0,
+        dasha_config: dhruv_dasha_selection_config_default(),
+    }
 }
 
 /// Compute a full kundali in one call, reusing shared intermediates.
@@ -8876,6 +8943,7 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
     };
 
     let rust_config = dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: cfg_c.include_bhava_cusps != 0,
         include_graha_positions: cfg_c.include_graha_positions != 0,
         include_bindus: cfg_c.include_bindus != 0,
         include_drishti: cfg_c.include_drishti != 0,
@@ -8933,6 +9001,22 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
         Ok(result) => {
             // out was zero-init'd at entry; safe to populate fields now.
             let out = unsafe { &mut *out };
+
+            out.ayanamsha_deg = result.ayanamsha_deg;
+
+            if let Some(bh) = result.bhava_cusps {
+                out.bhava_cusps_valid = 1;
+                for i in 0..12 {
+                    out.bhava_cusps.bhavas[i] = DhruvBhava {
+                        number: bh.bhavas[i].number,
+                        cusp_deg: bh.bhavas[i].cusp_deg,
+                        start_deg: bh.bhavas[i].start_deg,
+                        end_deg: bh.bhavas[i].end_deg,
+                    };
+                }
+                out.bhava_cusps.lagna_deg = bh.lagna_deg;
+                out.bhava_cusps.mc_deg = bh.mc_deg;
+            }
 
             if let Some(g) = result.graha_positions {
                 out.graha_positions_valid = 1;
@@ -10623,8 +10707,28 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_34() {
-        assert_eq!(dhruv_api_version(), 34);
+    fn ffi_api_version_is_35() {
+        assert_eq!(dhruv_api_version(), 35);
+    }
+
+    #[test]
+    fn ffi_full_kundali_config_default_values() {
+        let cfg = dhruv_full_kundali_config_default();
+        assert_eq!(cfg.include_bhava_cusps, 1);
+        assert_eq!(cfg.include_graha_positions, 1);
+        assert_eq!(cfg.include_bindus, 1);
+        assert_eq!(cfg.include_drishti, 1);
+        assert_eq!(cfg.include_ashtakavarga, 1);
+        assert_eq!(cfg.include_upagrahas, 1);
+        assert_eq!(cfg.include_special_lagnas, 1);
+        assert_eq!(cfg.include_amshas, 0);
+        assert_eq!(cfg.include_shadbala, 0);
+        assert_eq!(cfg.include_vimsopaka, 0);
+        assert_eq!(cfg.include_avastha, 0);
+        assert_eq!(cfg.include_panchang, 0);
+        assert_eq!(cfg.include_calendar, 0);
+        assert_eq!(cfg.include_dasha, 0);
+        assert_eq!(cfg.node_dignity_policy, 0);
     }
 
     // --- Search error mapping ---
@@ -12719,50 +12823,7 @@ mod tests {
     #[test]
     fn ffi_full_kundali_rejects_null() {
         let mut out = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
-        let cfg = DhruvFullKundaliConfig {
-            include_graha_positions: 1,
-            include_bindus: 1,
-            include_drishti: 1,
-            include_ashtakavarga: 1,
-            include_upagrahas: 1,
-            include_special_lagnas: 1,
-            include_amshas: 0,
-            include_shadbala: 0,
-            include_vimsopaka: 0,
-            include_avastha: 0,
-            include_panchang: 0,
-            include_calendar: 0,
-            include_dasha: 0,
-            node_dignity_policy: 0,
-            graha_positions_config: DhruvGrahaPositionsConfig {
-                include_nakshatra: 0,
-                include_lagna: 1,
-                include_outer_planets: 0,
-                include_bhava: 0,
-            },
-            bindus_config: DhruvBindusConfig {
-                include_nakshatra: 0,
-                include_bhava: 0,
-            },
-            drishti_config: DhruvDrishtiConfig {
-                include_bhava: 0,
-                include_lagna: 0,
-                include_bindus: 1,
-            },
-            amsha_scope: DhruvAmshaChartScope {
-                include_bhava_cusps: 0,
-                include_arudha_padas: 0,
-                include_upagrahas: 0,
-                include_sphutas: 0,
-                include_special_lagnas: 0,
-            },
-            amsha_selection: DhruvAmshaSelectionConfig {
-                count: 0,
-                codes: [0; 40],
-                variations: [0; 40],
-            },
-            dasha_config: dhruv_dasha_selection_config_default(),
-        };
+        let cfg = dhruv_full_kundali_config_default();
         let bhava_cfg = dhruv_bhava_config_default();
         let rs_cfg = dhruv_riseset_config_default();
         let s = unsafe {
@@ -12784,50 +12845,7 @@ mod tests {
 
     #[test]
     fn ffi_full_kundali_rejects_null_out() {
-        let cfg = DhruvFullKundaliConfig {
-            include_graha_positions: 1,
-            include_bindus: 1,
-            include_drishti: 1,
-            include_ashtakavarga: 1,
-            include_upagrahas: 1,
-            include_special_lagnas: 1,
-            include_amshas: 0,
-            include_shadbala: 0,
-            include_vimsopaka: 0,
-            include_avastha: 0,
-            include_panchang: 0,
-            include_calendar: 0,
-            include_dasha: 0,
-            node_dignity_policy: 0,
-            graha_positions_config: DhruvGrahaPositionsConfig {
-                include_nakshatra: 0,
-                include_lagna: 1,
-                include_outer_planets: 0,
-                include_bhava: 0,
-            },
-            bindus_config: DhruvBindusConfig {
-                include_nakshatra: 0,
-                include_bhava: 0,
-            },
-            drishti_config: DhruvDrishtiConfig {
-                include_bhava: 0,
-                include_lagna: 0,
-                include_bindus: 1,
-            },
-            amsha_scope: DhruvAmshaChartScope {
-                include_bhava_cusps: 0,
-                include_arudha_padas: 0,
-                include_upagrahas: 0,
-                include_sphutas: 0,
-                include_special_lagnas: 0,
-            },
-            amsha_selection: DhruvAmshaSelectionConfig {
-                count: 0,
-                codes: [0; 40],
-                variations: [0; 40],
-            },
-            dasha_config: dhruv_dasha_selection_config_default(),
-        };
+        let cfg = dhruv_full_kundali_config_default();
         let bhava_cfg = dhruv_bhava_config_default();
         let rs_cfg = dhruv_riseset_config_default();
         let utc = DhruvUtcTime {

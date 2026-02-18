@@ -696,6 +696,7 @@ fn kundali_config_with_dasha(dasha_config: DashaSelectionConfig) -> FullKundaliC
         include_dasha: true,
         dasha_config,
         // Minimal: disable most sections for speed
+        include_bhava_cusps: false,
         include_graha_positions: false,
         include_bindus: false,
         include_drishti: false,
