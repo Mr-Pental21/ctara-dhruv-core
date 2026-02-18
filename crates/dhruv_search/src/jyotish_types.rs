@@ -1,5 +1,6 @@
 //! Types for Vedic jyotish orchestration (graha longitudes, etc.).
 
+use crate::panchang_types::PanchangInfo;
 use dhruv_vedic_base::{
     AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaVariation, AshtakavargaResult,
     Dms, DrishtiEntry, Graha, GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra, NodeDignityPolicy,
@@ -460,6 +461,10 @@ pub struct FullKundaliConfig {
     pub include_vimsopaka: bool,
     /// Include avastha (planetary state) section.
     pub include_avastha: bool,
+    /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra).
+    pub include_panchang: bool,
+    /// Include calendar elements (masa, ayana, varsha). Implies include_panchang.
+    pub include_calendar: bool,
     /// Include dasha (planetary period) section.
     pub include_dasha: bool,
     /// Node dignity policy for vimsopaka and avastha.
@@ -491,6 +496,8 @@ impl Default for FullKundaliConfig {
             include_shadbala: false,
             include_vimsopaka: false,
             include_avastha: false,
+            include_panchang: false,
+            include_calendar: false,
             include_dasha: false,
             node_dignity_policy: NodeDignityPolicy::default(),
             graha_positions_config: GrahaPositionsConfig::default(),
@@ -526,6 +533,8 @@ pub struct FullKundaliResult {
     pub vimsopaka: Option<VimsopakaResult>,
     /// Present when `FullKundaliConfig::include_avastha` is true.
     pub avastha: Option<AllGrahaAvasthas>,
+    /// Present when `FullKundaliConfig::include_panchang` or `include_calendar` is true.
+    pub panchang: Option<PanchangInfo>,
     /// Present when `FullKundaliConfig::include_dasha` is true.
     pub dasha: Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
     /// Present when dasha is computed and snapshot_jd is set.

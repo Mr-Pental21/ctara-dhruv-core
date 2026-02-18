@@ -641,6 +641,48 @@ enum Commands {
         /// UTC datetime for dasha snapshot query
         #[arg(long)]
         dasha_snapshot_date: Option<String>,
+        /// Include graha positions
+        #[arg(long)]
+        include_graha: bool,
+        /// Include core bindus
+        #[arg(long)]
+        include_bindus: bool,
+        /// Include drishti
+        #[arg(long)]
+        include_drishti: bool,
+        /// Include ashtakavarga
+        #[arg(long)]
+        include_ashtakavarga: bool,
+        /// Include upagrahas
+        #[arg(long)]
+        include_upagrahas: bool,
+        /// Include special lagnas
+        #[arg(long)]
+        include_special_lagnas: bool,
+        /// Include amsha (divisional charts)
+        #[arg(long)]
+        include_amshas: bool,
+        /// Include shadbala
+        #[arg(long)]
+        include_shadbala: bool,
+        /// Include vimsopaka bala
+        #[arg(long)]
+        include_vimsopaka: bool,
+        /// Include graha avasthas
+        #[arg(long)]
+        include_avastha: bool,
+        /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra)
+        #[arg(long)]
+        include_panchang: bool,
+        /// Include calendar (masa, ayana, varsha). Implies --include-panchang
+        #[arg(long)]
+        include_calendar: bool,
+        /// Node dignity policy: "sign-lord" (default) or "sama"
+        #[arg(long)]
+        node_policy: Option<String>,
+        /// Enable all sections (except dasha, which requires --dasha-systems)
+        #[arg(long)]
+        all: bool,
     },
     /// Find previous Purnima (full moon)
     PrevPurnima {
@@ -3123,6 +3165,20 @@ fn main() {
             dasha_systems,
             dasha_max_level,
             dasha_snapshot_date,
+            include_graha,
+            include_bindus,
+            include_drishti,
+            include_ashtakavarga,
+            include_upagrahas,
+            include_special_lagnas,
+            include_amshas,
+            include_shadbala,
+            include_vimsopaka,
+            include_avastha,
+            include_panchang,
+            include_calendar,
+            node_policy,
+            all,
         } => {
             if dasha_snapshot_date.is_some() && dasha_systems.is_none() {
                 eprintln!("Error: --dasha-snapshot-date requires --dasha-systems");
@@ -3140,42 +3196,46 @@ fn main() {
             let rs_config = RiseSetConfig::default();
             let aya_config = SankrantiConfig::new(system, nutation);
 
-            let (include_dasha, dasha_config) = if let Some(ref sys_str) = dasha_systems {
-                let dasha_cfg = parse_dasha_systems_config(sys_str, dasha_max_level);
-                let snapshot_jd = dasha_snapshot_date.as_ref().map(|d| {
-                    let snap_utc = parse_utc(d).unwrap_or_else(|e| {
-                        eprintln!("{e}");
-                        std::process::exit(1);
-                    });
-                    utc_to_jd_utc(&snap_utc)
-                });
-                let mut cfg = dasha_cfg;
-                cfg.snapshot_jd = snapshot_jd;
-                (true, cfg)
-            } else {
-                (false, dhruv_search::DashaSelectionConfig::default())
+            let node_dignity_policy = match node_policy.as_deref() {
+                Some("sama") => NodeDignityPolicy::AlwaysSama,
+                Some("sign-lord") | None => NodeDignityPolicy::SignLordBased,
+                Some(other) => {
+                    eprintln!("Error: unknown --node-policy '{other}', use 'sign-lord' or 'sama'");
+                    std::process::exit(1);
+                }
             };
 
-            let full_config = dhruv_search::FullKundaliConfig {
-                graha_positions_config: dhruv_search::GrahaPositionsConfig {
-                    include_nakshatra: true,
-                    include_lagna: true,
-                    include_outer_planets: false,
-                    include_bhava: true,
-                },
-                bindus_config: dhruv_search::BindusConfig {
-                    include_nakshatra: true,
-                    include_bhava: true,
-                },
-                drishti_config: dhruv_search::DrishtiConfig {
-                    include_bhava: true,
-                    include_lagna: true,
-                    include_bindus: true,
-                },
-                include_dasha,
-                dasha_config,
-                ..dhruv_search::FullKundaliConfig::default()
-            };
+            let resolved = resolve_kundali_flags(
+                all,
+                include_graha,
+                include_bindus,
+                include_drishti,
+                include_ashtakavarga,
+                include_upagrahas,
+                include_special_lagnas,
+                include_amshas,
+                include_shadbala,
+                include_vimsopaka,
+                include_avastha,
+                include_panchang,
+                include_calendar,
+            );
+
+            let snapshot_jd = dasha_snapshot_date.as_ref().map(|d| {
+                let snap_utc = parse_utc(d).unwrap_or_else(|e| {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                });
+                utc_to_jd_utc(&snap_utc)
+            });
+
+            let full_config = build_kundali_config(
+                &resolved,
+                dasha_systems.as_deref(),
+                dasha_max_level,
+                snapshot_jd,
+                node_dignity_policy,
+            );
 
             let result = dhruv_search::full_kundali_for_date(
                 &engine,
@@ -3193,222 +3253,10 @@ fn main() {
             });
 
             println!("Kundali for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
-
-            if let Some(g) = result.graha_positions {
-                let graha_names = [
-                    "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
-                ];
-                println!("Graha Positions:");
-                for (i, entry) in g.grahas.iter().enumerate() {
-                    println!(
-                        "  {:<8} {:>8.4}°  {:<8}  Nakshatra: {:<12} Pada: {} Bhava: {}",
-                        graha_names[i],
-                        entry.sidereal_longitude,
-                        entry.rashi.name(),
-                        entry.nakshatra.name(),
-                        entry.pada,
-                        entry.bhava_number,
-                    );
-                }
-                println!(
-                    "  {:<8} {:>8.4}°  {:<8}  Nakshatra: {:<12} Pada: {} Bhava: {}",
-                    "Lagna",
-                    g.lagna.sidereal_longitude,
-                    g.lagna.rashi.name(),
-                    g.lagna.nakshatra.name(),
-                    g.lagna.pada,
-                    g.lagna.bhava_number,
-                );
-                println!();
-            }
-
-            if let Some(s) = result.special_lagnas {
-                println!("Special Lagnas:");
-                println!("  Bhava Lagna:     {:>10.4}°", s.bhava_lagna);
-                println!("  Hora Lagna:      {:>10.4}°", s.hora_lagna);
-                println!("  Ghati Lagna:     {:>10.4}°", s.ghati_lagna);
-                println!("  Vighati Lagna:   {:>10.4}°", s.vighati_lagna);
-                println!("  Varnada Lagna:   {:>10.4}°", s.varnada_lagna);
-                println!("  Sree Lagna:      {:>10.4}°", s.sree_lagna);
-                println!("  Pranapada Lagna: {:>10.4}°", s.pranapada_lagna);
-                println!("  Indu Lagna:      {:>10.4}°", s.indu_lagna);
-                println!();
-            }
-
-            if let Some(b) = result.bindus {
-                let pada_names = [
-                    "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
-                ];
-                println!("Core Bindus:");
-                for (i, entry) in b.arudha_padas.iter().enumerate() {
-                    println!(
-                        "  {:<6} {:>8.4}° ({})",
-                        pada_names[i],
-                        entry.sidereal_longitude,
-                        entry.rashi.name()
-                    );
-                }
-                println!(
-                    "  {:<6} {:>8.4}° ({})",
-                    "Bhrigu",
-                    b.bhrigu_bindu.sidereal_longitude,
-                    b.bhrigu_bindu.rashi.name()
-                );
-                println!(
-                    "  {:<6} {:>8.4}° ({})",
-                    "Prana",
-                    b.pranapada_lagna.sidereal_longitude,
-                    b.pranapada_lagna.rashi.name()
-                );
-                println!(
-                    "  {:<6} {:>8.4}° ({})",
-                    "Gulika",
-                    b.gulika.sidereal_longitude,
-                    b.gulika.rashi.name()
-                );
-                println!(
-                    "  {:<6} {:>8.4}° ({})",
-                    "Maandi",
-                    b.maandi.sidereal_longitude,
-                    b.maandi.rashi.name()
-                );
-                println!(
-                    "  {:<6} {:>8.4}° ({})",
-                    "Hora",
-                    b.hora_lagna.sidereal_longitude,
-                    b.hora_lagna.rashi.name()
-                );
-                println!(
-                    "  {:<6} {:>8.4}° ({})",
-                    "Ghati",
-                    b.ghati_lagna.sidereal_longitude,
-                    b.ghati_lagna.rashi.name()
-                );
-                println!(
-                    "  {:<6} {:>8.4}° ({})",
-                    "Sree",
-                    b.sree_lagna.sidereal_longitude,
-                    b.sree_lagna.rashi.name()
-                );
-                println!();
-            }
-
-            if let Some(d) = result.drishti {
-                let graha_names = [
-                    "Sun", "Moon", "Mars", "Merc", "Jup", "Ven", "Sat", "Rahu", "Ketu",
-                ];
-                println!("Graha-to-Graha Drishti (total virupa):");
-                print!("{:<8}", "From\\To");
-                for name in &graha_names {
-                    print!("{:>8}", name);
-                }
-                println!();
-                println!("{}", "-".repeat(8 + 8 * 9));
-                for i in 0..9 {
-                    print!("{:<8}", graha_names[i]);
-                    for j in 0..9 {
-                        let v = d.graha_to_graha.entries[i][j].total_virupa;
-                        if i == j {
-                            print!("{:>8}", "-");
-                        } else {
-                            print!("{:>8.1}", v);
-                        }
-                    }
-                    println!();
-                }
-                println!();
-            }
-
-            if let Some(a) = result.ashtakavarga {
-                println!("Sarva Ashtakavarga totals:");
-                print!("  Total      ");
-                for &p in &a.sav.total_points {
-                    print!("{:>4}", p);
-                }
-                println!();
-                print!("  Trikona    ");
-                for &p in &a.sav.after_trikona {
-                    print!("{:>4}", p);
-                }
-                println!();
-                print!("  Ekadhipatya");
-                for &p in &a.sav.after_ekadhipatya {
-                    print!("{:>4}", p);
-                }
-                println!("\n");
-            }
-
-            if let Some(u) = result.upagrahas {
-                println!("Upagrahas:");
-                for (name, lon) in [
-                    ("Gulika", u.gulika),
-                    ("Maandi", u.maandi),
-                    ("Kaala", u.kaala),
-                    ("Mrityu", u.mrityu),
-                    ("Artha Prahara", u.artha_prahara),
-                    ("Yama Ghantaka", u.yama_ghantaka),
-                    ("Dhooma", u.dhooma),
-                    ("Vyatipata", u.vyatipata),
-                    ("Parivesha", u.parivesha),
-                    ("Indra Chapa", u.indra_chapa),
-                    ("Upaketu", u.upaketu),
-                ] {
-                    let r = dhruv_vedic_base::rashi_from_longitude(lon);
-                    println!("  {:<13} {:>8.4}° ({})", name, lon, r.rashi.name());
-                }
-                println!();
-            }
-
-            if let Some(ref dasha_vec) = result.dasha {
-                println!("Dasha Hierarchies ({} system(s)):", dasha_vec.len());
-                for hierarchy in dasha_vec {
-                    println!(
-                        "\n  {} ({} levels):",
-                        hierarchy.system.name(),
-                        hierarchy.levels.len()
-                    );
-                    for (lvl_idx, level) in hierarchy.levels.iter().enumerate() {
-                        let level_name =
-                            dhruv_vedic_base::dasha::DashaLevel::from_u8(lvl_idx as u8)
-                                .map(|l| l.name())
-                                .unwrap_or("Unknown");
-                        let display_count = level.len().min(20);
-                        for period in &level[..display_count] {
-                            let indent = "    ".to_string() + &"  ".repeat(lvl_idx);
-                            println!(
-                                "{}[{}] {} ({:.1} days)",
-                                indent,
-                                level_name,
-                                format_dasha_entity(&period.entity),
-                                period.duration_days(),
-                            );
-                        }
-                        if level.len() > display_count {
-                            let indent = "    ".to_string() + &"  ".repeat(lvl_idx);
-                            println!("{}... and {} more", indent, level.len() - display_count);
-                        }
-                    }
-                }
-                println!();
-            }
-
-            if let Some(ref snap_vec) = result.dasha_snapshots {
-                println!("Dasha Snapshots:");
-                for snap in snap_vec {
-                    println!("  {} at JD {:.4}:", snap.system.name(), snap.query_jd);
-                    for period in &snap.periods {
-                        let indent = "    ".to_string() + &"  ".repeat(period.level as usize);
-                        println!(
-                            "{}{}: {} ({:.1} days)",
-                            indent,
-                            period.level.name(),
-                            format_dasha_entity(&period.entity),
-                            period.duration_days(),
-                        );
-                    }
-                }
-                println!();
-            }
+            print_kundali(&mut std::io::stdout(), &result, &resolved).unwrap_or_else(|e| {
+                eprintln!("Error writing output: {e}");
+                std::process::exit(1);
+            });
         }
 
         Commands::PrevPurnima { date, bsp, lsk } => {
@@ -5605,4 +5453,816 @@ fn print_max_speed_event(label: &str, ev: &dhruv_search::stationary_types::MaxSp
         "  Longitude: {:.4}°  Speed: {:.6} deg/day",
         ev.longitude_deg, ev.speed_deg_per_day
     );
+}
+
+// ---------------------------------------------------------------------------
+// Kundali flag resolution and config construction helpers
+// ---------------------------------------------------------------------------
+
+struct ResolvedKundaliFlags {
+    include_graha: bool,
+    include_bindus: bool,
+    include_drishti: bool,
+    include_ashtakavarga: bool,
+    include_upagrahas: bool,
+    include_special_lagnas: bool,
+    include_amshas: bool,
+    include_shadbala: bool,
+    include_vimsopaka: bool,
+    include_avastha: bool,
+    include_panchang: bool,
+    include_calendar: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_kundali_flags(
+    all: bool,
+    include_graha: bool,
+    include_bindus: bool,
+    include_drishti: bool,
+    include_ashtakavarga: bool,
+    include_upagrahas: bool,
+    include_special_lagnas: bool,
+    include_amshas: bool,
+    include_shadbala: bool,
+    include_vimsopaka: bool,
+    include_avastha: bool,
+    include_panchang: bool,
+    include_calendar: bool,
+) -> ResolvedKundaliFlags {
+    let any_include_flag = include_graha
+        || include_bindus
+        || include_drishti
+        || include_ashtakavarga
+        || include_upagrahas
+        || include_special_lagnas
+        || include_amshas
+        || include_shadbala
+        || include_vimsopaka
+        || include_avastha
+        || include_panchang
+        || include_calendar;
+
+    if all {
+        ResolvedKundaliFlags {
+            include_graha: true,
+            include_bindus: true,
+            include_drishti: true,
+            include_ashtakavarga: true,
+            include_upagrahas: true,
+            include_special_lagnas: true,
+            include_amshas: true,
+            include_shadbala: true,
+            include_vimsopaka: true,
+            include_avastha: true,
+            include_panchang: true,
+            include_calendar: true,
+        }
+    } else if any_include_flag {
+        ResolvedKundaliFlags {
+            include_graha,
+            include_bindus,
+            include_drishti,
+            include_ashtakavarga,
+            include_upagrahas,
+            include_special_lagnas,
+            include_amshas,
+            include_shadbala,
+            include_vimsopaka,
+            include_avastha,
+            include_panchang: include_panchang || include_calendar,
+            include_calendar,
+        }
+    } else {
+        // Backwards-compatible default: original 6 sections
+        ResolvedKundaliFlags {
+            include_graha: true,
+            include_bindus: true,
+            include_drishti: true,
+            include_ashtakavarga: true,
+            include_upagrahas: true,
+            include_special_lagnas: true,
+            include_amshas: false,
+            include_shadbala: false,
+            include_vimsopaka: false,
+            include_avastha: false,
+            include_panchang: false,
+            include_calendar: false,
+        }
+    }
+}
+
+fn shodasavarga_amsha_selection() -> dhruv_search::AmshaSelectionConfig {
+    let d_numbers: [u16; 16] = [1, 2, 3, 4, 7, 9, 10, 12, 16, 20, 24, 27, 30, 40, 45, 60];
+    let mut sel = dhruv_search::AmshaSelectionConfig {
+        count: 16,
+        ..Default::default()
+    };
+    for (i, &d) in d_numbers.iter().enumerate() {
+        sel.codes[i] = d;
+    }
+    sel
+}
+
+fn build_kundali_config(
+    resolved: &ResolvedKundaliFlags,
+    dasha_systems: Option<&str>,
+    dasha_max_level: u8,
+    dasha_snapshot_jd: Option<f64>,
+    node_policy: NodeDignityPolicy,
+) -> dhruv_search::FullKundaliConfig {
+    // Compute-vs-print: force graha_positions + lagna when amshas need it
+    let compute_graha = resolved.include_graha || resolved.include_amshas;
+    let mut gp_config = if resolved.include_graha {
+        dhruv_search::GrahaPositionsConfig {
+            include_nakshatra: true,
+            include_lagna: true,
+            include_outer_planets: false,
+            include_bhava: true,
+        }
+    } else {
+        dhruv_search::GrahaPositionsConfig::default()
+    };
+    if resolved.include_amshas {
+        gp_config.include_lagna = true;
+    }
+
+    // Dasha: controlled solely by dasha_systems presence
+    let (include_dasha, dasha_config) = if let Some(sys_str) = dasha_systems {
+        let mut cfg = parse_dasha_systems_config(sys_str, dasha_max_level);
+        cfg.snapshot_jd = dasha_snapshot_jd;
+        (true, cfg)
+    } else {
+        (false, dhruv_search::DashaSelectionConfig::default())
+    };
+
+    // Amsha: populate Shodasavarga default if enabled with count==0
+    let amsha_selection = if resolved.include_amshas {
+        shodasavarga_amsha_selection()
+    } else {
+        dhruv_search::AmshaSelectionConfig::default()
+    };
+
+    dhruv_search::FullKundaliConfig {
+        include_graha_positions: compute_graha,
+        graha_positions_config: gp_config,
+        include_bindus: resolved.include_bindus,
+        include_drishti: resolved.include_drishti,
+        include_ashtakavarga: resolved.include_ashtakavarga,
+        include_upagrahas: resolved.include_upagrahas,
+        include_special_lagnas: resolved.include_special_lagnas,
+        include_amshas: resolved.include_amshas,
+        amsha_selection,
+        include_shadbala: resolved.include_shadbala,
+        include_vimsopaka: resolved.include_vimsopaka,
+        include_avastha: resolved.include_avastha,
+        include_panchang: resolved.include_panchang,
+        include_calendar: resolved.include_calendar,
+        include_dasha,
+        dasha_config,
+        node_dignity_policy: node_policy,
+        bindus_config: dhruv_search::BindusConfig {
+            include_nakshatra: resolved.include_bindus,
+            include_bhava: resolved.include_bindus,
+        },
+        drishti_config: dhruv_search::DrishtiConfig {
+            include_bhava: resolved.include_drishti,
+            include_lagna: resolved.include_drishti,
+            include_bindus: resolved.include_drishti,
+        },
+        amsha_scope: dhruv_search::AmshaChartScope::default(),
+    }
+}
+
+fn format_rashi_dms(sidereal_lon: f64) -> String {
+    let info = rashi_from_longitude(sidereal_lon);
+    let mut degs = info.dms.degrees;
+    let mut mins = info.dms.minutes;
+    let mut secs = info.dms.seconds;
+    let mut rashi_name = info.rashi.name();
+
+    // Carry normalization for display (seconds rounding to 60)
+    if secs >= 59.5 {
+        secs = 0.0;
+        mins += 1;
+        if mins >= 60 {
+            mins = 0;
+            degs += 1;
+        }
+    }
+    // If carry pushed past 30°, show next rashi at 0°
+    if degs >= 30 {
+        let next = rashi_from_longitude(sidereal_lon + 0.001);
+        rashi_name = next.rashi.name();
+        degs = 0;
+    }
+
+    format!("{:<10} {:02}°{:02}'{:02.0}\"", rashi_name, degs, mins, secs)
+}
+
+fn print_kundali(
+    w: &mut impl std::io::Write,
+    result: &dhruv_search::FullKundaliResult,
+    flags: &ResolvedKundaliFlags,
+) -> std::io::Result<()> {
+    let graha_names = [
+        "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
+    ];
+
+    if flags.include_graha
+        && let Some(ref g) = result.graha_positions
+    {
+        writeln!(w, "Graha Positions:")?;
+        for (i, entry) in g.grahas.iter().enumerate() {
+            writeln!(
+                w,
+                "  {:<8} {}  Nakshatra: {:<12} Pada: {} Bhava: {}",
+                graha_names[i],
+                format_rashi_dms(entry.sidereal_longitude),
+                entry.nakshatra.name(),
+                entry.pada,
+                entry.bhava_number,
+            )?;
+        }
+        writeln!(
+            w,
+            "  {:<8} {}  Nakshatra: {:<12} Pada: {} Bhava: {}",
+            "Lagna",
+            format_rashi_dms(g.lagna.sidereal_longitude),
+            g.lagna.nakshatra.name(),
+            g.lagna.pada,
+            g.lagna.bhava_number,
+        )?;
+        writeln!(w)?;
+    }
+
+    if flags.include_special_lagnas
+        && let Some(ref s) = result.special_lagnas
+    {
+        writeln!(w, "Special Lagnas:")?;
+        writeln!(w, "  Bhava Lagna:     {}", format_rashi_dms(s.bhava_lagna))?;
+        writeln!(w, "  Hora Lagna:      {}", format_rashi_dms(s.hora_lagna))?;
+        writeln!(w, "  Ghati Lagna:     {}", format_rashi_dms(s.ghati_lagna))?;
+        writeln!(
+            w,
+            "  Vighati Lagna:   {}",
+            format_rashi_dms(s.vighati_lagna)
+        )?;
+        writeln!(
+            w,
+            "  Varnada Lagna:   {}",
+            format_rashi_dms(s.varnada_lagna)
+        )?;
+        writeln!(w, "  Sree Lagna:      {}", format_rashi_dms(s.sree_lagna))?;
+        writeln!(
+            w,
+            "  Pranapada Lagna: {}",
+            format_rashi_dms(s.pranapada_lagna)
+        )?;
+        writeln!(w, "  Indu Lagna:      {}", format_rashi_dms(s.indu_lagna))?;
+        writeln!(w)?;
+    }
+
+    if flags.include_bindus
+        && let Some(ref b) = result.bindus
+    {
+        let pada_names = [
+            "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
+        ];
+        writeln!(w, "Core Bindus:")?;
+        for (i, entry) in b.arudha_padas.iter().enumerate() {
+            writeln!(
+                w,
+                "  {:<6} {}",
+                pada_names[i],
+                format_rashi_dms(entry.sidereal_longitude)
+            )?;
+        }
+        for (name, entry) in [
+            ("Bhrigu", &b.bhrigu_bindu),
+            ("Prana", &b.pranapada_lagna),
+            ("Gulika", &b.gulika),
+            ("Maandi", &b.maandi),
+            ("Hora", &b.hora_lagna),
+            ("Ghati", &b.ghati_lagna),
+            ("Sree", &b.sree_lagna),
+        ] {
+            writeln!(
+                w,
+                "  {:<6} {}",
+                name,
+                format_rashi_dms(entry.sidereal_longitude)
+            )?;
+        }
+        writeln!(w)?;
+    }
+
+    if flags.include_drishti
+        && let Some(ref d) = result.drishti
+    {
+        let short_names = [
+            "Sun", "Moon", "Mars", "Merc", "Jup", "Ven", "Sat", "Rahu", "Ketu",
+        ];
+        writeln!(w, "Graha-to-Graha Drishti (total virupa):")?;
+        write!(w, "{:<8}", "From\\To")?;
+        for name in &short_names {
+            write!(w, "{:>8}", name)?;
+        }
+        writeln!(w)?;
+        writeln!(w, "{}", "-".repeat(8 + 8 * 9))?;
+        for (i, short_name) in short_names.iter().enumerate() {
+            write!(w, "{:<8}", short_name)?;
+            for j in 0..9 {
+                let v = d.graha_to_graha.entries[i][j].total_virupa;
+                if i == j {
+                    write!(w, "{:>8}", "-")?;
+                } else {
+                    write!(w, "{:>8.1}", v)?;
+                }
+            }
+            writeln!(w)?;
+        }
+        writeln!(w)?;
+    }
+
+    if flags.include_ashtakavarga
+        && let Some(ref a) = result.ashtakavarga
+    {
+        writeln!(w, "Sarva Ashtakavarga totals:")?;
+        write!(w, "  Total      ")?;
+        for &p in &a.sav.total_points {
+            write!(w, "{:>4}", p)?;
+        }
+        writeln!(w)?;
+        write!(w, "  Trikona    ")?;
+        for &p in &a.sav.after_trikona {
+            write!(w, "{:>4}", p)?;
+        }
+        writeln!(w)?;
+        write!(w, "  Ekadhipatya")?;
+        for &p in &a.sav.after_ekadhipatya {
+            write!(w, "{:>4}", p)?;
+        }
+        writeln!(w, "\n")?;
+    }
+
+    if flags.include_upagrahas
+        && let Some(ref u) = result.upagrahas
+    {
+        writeln!(w, "Upagrahas:")?;
+        for (name, lon) in [
+            ("Gulika", u.gulika),
+            ("Maandi", u.maandi),
+            ("Kaala", u.kaala),
+            ("Mrityu", u.mrityu),
+            ("Artha Prahr", u.artha_prahara),
+            ("Yama Ghant", u.yama_ghantaka),
+            ("Dhooma", u.dhooma),
+            ("Vyatipata", u.vyatipata),
+            ("Parivesha", u.parivesha),
+            ("Indra Chapa", u.indra_chapa),
+            ("Upaketu", u.upaketu),
+        ] {
+            writeln!(w, "  {:<13} {}", name, format_rashi_dms(lon))?;
+        }
+        writeln!(w)?;
+    }
+
+    if flags.include_amshas
+        && let Some(ref am) = result.amshas
+    {
+        writeln!(w, "Amsha Charts ({} chart(s)):", am.charts.len())?;
+        for chart in &am.charts {
+            writeln!(w, "\n  {} (D{}):", chart.amsha.name(), chart.amsha.code())?;
+            for (i, entry) in chart.grahas.iter().enumerate() {
+                writeln!(
+                    w,
+                    "    {:<8} {}",
+                    graha_names[i],
+                    format_rashi_dms(entry.sidereal_longitude)
+                )?;
+            }
+            writeln!(
+                w,
+                "    {:<8} {}",
+                "Lagna",
+                format_rashi_dms(chart.lagna.sidereal_longitude)
+            )?;
+        }
+        writeln!(w)?;
+    }
+
+    if flags.include_shadbala
+        && let Some(ref sb) = result.shadbala
+    {
+        writeln!(w, "Shadbala:")?;
+        writeln!(
+            w,
+            "  {:<8} {:>8} {:>6} {:>8} {:>8} {:>6} {:>6} {:>8} {:>6} {:>6}",
+            "Graha", "Sthana", "Dig", "Kala", "Cheshta", "Nais", "Drik", "Total", "Reqd", "OK?"
+        )?;
+        writeln!(w, "  {}", "-".repeat(78))?;
+        for e in &sb.entries {
+            writeln!(
+                w,
+                "  {:<8} {:>8.2} {:>6.2} {:>8.2} {:>8.2} {:>6.2} {:>6.2} {:>8.2} {:>6.2} {:>6}",
+                e.graha.english_name(),
+                e.sthana.total,
+                e.dig,
+                e.kala.total,
+                e.cheshta,
+                e.naisargika,
+                e.drik,
+                e.total_shashtiamsas,
+                e.required_strength,
+                if e.is_strong { "Yes" } else { "No" },
+            )?;
+        }
+        writeln!(w)?;
+    }
+
+    if flags.include_vimsopaka
+        && let Some(ref vm) = result.vimsopaka
+    {
+        writeln!(w, "Vimsopaka Bala:")?;
+        writeln!(
+            w,
+            "  {:<8} {:>10} {:>11} {:>10} {:>13}",
+            "Graha", "Shadvarga", "Saptavarga", "Dashavarga", "Shodasavarga"
+        )?;
+        writeln!(w, "  {}", "-".repeat(56))?;
+        for e in &vm.entries {
+            writeln!(
+                w,
+                "  {:<8} {:>10.2} {:>11.2} {:>10.2} {:>13.2}",
+                e.graha.english_name(),
+                e.shadvarga,
+                e.saptavarga,
+                e.dashavarga,
+                e.shodasavarga,
+            )?;
+        }
+        writeln!(w)?;
+    }
+
+    if flags.include_avastha
+        && let Some(ref av) = result.avastha
+    {
+        writeln!(w, "Graha Avasthas:")?;
+        writeln!(
+            w,
+            "  {:<8} {:<12} {:<12} {:<12} {:<12} {:<12}",
+            "Graha", "Baladi", "Jagradadi", "Deeptadi", "Lajjitadi", "Sayanadi"
+        )?;
+        writeln!(w, "  {}", "-".repeat(72))?;
+        for (i, e) in av.entries.iter().enumerate() {
+            writeln!(
+                w,
+                "  {:<8} {:<12} {:<12} {:<12} {:<12} {:<12}",
+                graha_names[i],
+                e.baladi.name(),
+                e.jagradadi.name(),
+                e.deeptadi.name(),
+                e.lajjitadi.name(),
+                e.sayanadi.avastha.name(),
+            )?;
+        }
+        writeln!(w)?;
+    }
+
+    if flags.include_panchang
+        && let Some(ref p) = result.panchang
+    {
+        writeln!(w, "Panchang:")?;
+        writeln!(
+            w,
+            "  Tithi:     {} (index {})",
+            p.tithi.tithi.name(),
+            p.tithi.tithi_index
+        )?;
+        writeln!(
+            w,
+            "    Paksha: {}  Tithi in paksha: {}",
+            p.tithi.paksha.name(),
+            p.tithi.tithi_in_paksha
+        )?;
+        writeln!(w, "    Start:  {}  End: {}", p.tithi.start, p.tithi.end)?;
+        writeln!(
+            w,
+            "  Karana:    {} (sequence {})",
+            p.karana.karana.name(),
+            p.karana.karana_index
+        )?;
+        writeln!(w, "    Start:  {}  End: {}", p.karana.start, p.karana.end)?;
+        writeln!(
+            w,
+            "  Yoga:      {} (index {})",
+            p.yoga.yoga.name(),
+            p.yoga.yoga_index
+        )?;
+        writeln!(w, "    Start:  {}  End: {}", p.yoga.start, p.yoga.end)?;
+        writeln!(w, "  Vaar:      {}", p.vaar.vaar.name())?;
+        writeln!(w, "    Start:  {}  End: {}", p.vaar.start, p.vaar.end)?;
+        writeln!(
+            w,
+            "  Hora:      {} (position {} of 24)",
+            p.hora.hora.name(),
+            p.hora.hora_index
+        )?;
+        writeln!(w, "    Start:  {}  End: {}", p.hora.start, p.hora.end)?;
+        writeln!(w, "  Ghatika:   {}/60", p.ghatika.value)?;
+        writeln!(w, "    Start:  {}  End: {}", p.ghatika.start, p.ghatika.end)?;
+        writeln!(
+            w,
+            "  Nakshatra: {} (index {}, pada {})",
+            p.nakshatra.nakshatra.name(),
+            p.nakshatra.nakshatra_index,
+            p.nakshatra.pada
+        )?;
+        writeln!(
+            w,
+            "    Start:  {}  End: {}",
+            p.nakshatra.start, p.nakshatra.end
+        )?;
+        if flags.include_calendar {
+            if let Some(ref m) = p.masa {
+                let adhika_str = if m.adhika { " (Adhika)" } else { "" };
+                writeln!(w, "  Masa:      {}{}", m.masa.name(), adhika_str)?;
+                writeln!(w, "    Start:  {}  End: {}", m.start, m.end)?;
+            }
+            if let Some(ref a) = p.ayana {
+                writeln!(w, "  Ayana:     {}", a.ayana.name())?;
+                writeln!(w, "    Start:  {}  End: {}", a.start, a.end)?;
+            }
+            if let Some(ref v) = p.varsha {
+                writeln!(
+                    w,
+                    "  Varsha:    {} (order {} of 60)",
+                    v.samvatsara.name(),
+                    v.order
+                )?;
+                writeln!(w, "    Start:  {}  End: {}", v.start, v.end)?;
+            }
+        }
+        writeln!(w)?;
+    }
+
+    // Dasha is always printed if present (controlled by --dasha-systems, not flags)
+    if let Some(ref dasha_vec) = result.dasha {
+        writeln!(w, "Dasha Hierarchies ({} system(s)):", dasha_vec.len())?;
+        for hierarchy in dasha_vec {
+            writeln!(
+                w,
+                "\n  {} ({} levels):",
+                hierarchy.system.name(),
+                hierarchy.levels.len()
+            )?;
+            for (lvl_idx, level) in hierarchy.levels.iter().enumerate() {
+                let level_name = dhruv_vedic_base::dasha::DashaLevel::from_u8(lvl_idx as u8)
+                    .map(|l| l.name())
+                    .unwrap_or("Unknown");
+                let display_count = level.len().min(20);
+                for period in &level[..display_count] {
+                    let indent = "    ".to_string() + &"  ".repeat(lvl_idx);
+                    writeln!(
+                        w,
+                        "{}[{}] {} ({:.1} days)",
+                        indent,
+                        level_name,
+                        format_dasha_entity(&period.entity),
+                        period.duration_days(),
+                    )?;
+                }
+                if level.len() > display_count {
+                    let indent = "    ".to_string() + &"  ".repeat(lvl_idx);
+                    writeln!(w, "{}... and {} more", indent, level.len() - display_count)?;
+                }
+            }
+        }
+        writeln!(w)?;
+    }
+
+    if let Some(ref snap_vec) = result.dasha_snapshots {
+        writeln!(w, "Dasha Snapshots:")?;
+        for snap in snap_vec {
+            writeln!(w, "  {} at JD {:.4}:", snap.system.name(), snap.query_jd)?;
+            for period in &snap.periods {
+                let indent = "    ".to_string() + &"  ".repeat(period.level as usize);
+                writeln!(
+                    w,
+                    "{}{}: {} ({:.1} days)",
+                    indent,
+                    period.level.name(),
+                    format_dasha_entity(&period.entity),
+                    period.duration_days(),
+                )?;
+            }
+        }
+        writeln!(w)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_kundali_flags_default() {
+        let f = resolve_kundali_flags(
+            false, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        assert!(f.include_graha);
+        assert!(f.include_bindus);
+        assert!(f.include_drishti);
+        assert!(f.include_ashtakavarga);
+        assert!(f.include_upagrahas);
+        assert!(f.include_special_lagnas);
+        assert!(!f.include_amshas);
+        assert!(!f.include_shadbala);
+        assert!(!f.include_vimsopaka);
+        assert!(!f.include_avastha);
+        assert!(!f.include_panchang);
+        assert!(!f.include_calendar);
+    }
+
+    #[test]
+    fn test_resolve_kundali_flags_all() {
+        let f = resolve_kundali_flags(
+            true, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        assert!(f.include_graha);
+        assert!(f.include_bindus);
+        assert!(f.include_amshas);
+        assert!(f.include_shadbala);
+        assert!(f.include_vimsopaka);
+        assert!(f.include_avastha);
+        assert!(f.include_panchang);
+        assert!(f.include_calendar);
+    }
+
+    #[test]
+    fn test_resolve_kundali_flags_graha_only() {
+        let f = resolve_kundali_flags(
+            false, true, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        assert!(f.include_graha);
+        assert!(!f.include_bindus);
+        assert!(!f.include_drishti);
+        assert!(!f.include_amshas);
+        assert!(!f.include_panchang);
+    }
+
+    #[test]
+    fn test_resolve_kundali_flags_calendar_implies_panchang() {
+        let f = resolve_kundali_flags(
+            false, false, false, false, false, false, false, false, false, false, false, false,
+            true,
+        );
+        assert!(f.include_panchang);
+        assert!(f.include_calendar);
+        assert!(!f.include_graha);
+    }
+
+    #[test]
+    fn test_shodasavarga_amsha_selection() {
+        let sel = shodasavarga_amsha_selection();
+        assert_eq!(sel.count, 16);
+        let expected: [u16; 16] = [1, 2, 3, 4, 7, 9, 10, 12, 16, 20, 24, 27, 30, 40, 45, 60];
+        for i in 0..16 {
+            assert_eq!(sel.codes[i], expected[i]);
+            assert_eq!(sel.variations[i], 0);
+        }
+    }
+
+    #[test]
+    fn test_build_kundali_config_defaults_with_dasha() {
+        let resolved = resolve_kundali_flags(
+            false, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        let cfg = build_kundali_config(
+            &resolved,
+            Some("vimshottari"),
+            2,
+            None,
+            NodeDignityPolicy::default(),
+        );
+        assert!(cfg.include_graha_positions);
+        assert!(cfg.include_bindus);
+        assert!(cfg.include_drishti);
+        assert!(cfg.include_ashtakavarga);
+        assert!(cfg.include_upagrahas);
+        assert!(cfg.include_special_lagnas);
+        assert!(cfg.include_dasha);
+        assert!(cfg.dasha_config.count > 0);
+        assert!(!cfg.include_amshas);
+        assert!(!cfg.include_shadbala);
+        assert!(!cfg.include_panchang);
+    }
+
+    #[test]
+    fn test_build_kundali_config_graha_with_dasha() {
+        let resolved = resolve_kundali_flags(
+            false, true, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        let cfg = build_kundali_config(
+            &resolved,
+            Some("vimshottari"),
+            2,
+            None,
+            NodeDignityPolicy::default(),
+        );
+        assert!(cfg.include_graha_positions);
+        assert!(!cfg.include_bindus);
+        assert!(cfg.include_dasha);
+    }
+
+    #[test]
+    fn test_build_kundali_config_all_with_dasha() {
+        let resolved = resolve_kundali_flags(
+            true, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        let cfg = build_kundali_config(
+            &resolved,
+            Some("vimshottari"),
+            2,
+            None,
+            NodeDignityPolicy::default(),
+        );
+        assert!(cfg.include_graha_positions);
+        assert!(cfg.include_panchang);
+        assert!(cfg.include_calendar);
+        assert!(cfg.include_amshas);
+        assert_eq!(cfg.amsha_selection.count, 16);
+        assert!(cfg.include_dasha);
+    }
+
+    #[test]
+    fn test_build_kundali_config_no_dasha_without_systems() {
+        let resolved = resolve_kundali_flags(
+            true, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::default());
+        assert!(!cfg.include_dasha);
+        assert_eq!(cfg.dasha_config.count, 0);
+        assert!(cfg.include_graha_positions);
+        assert!(cfg.include_amshas);
+    }
+
+    #[test]
+    fn test_build_kundali_config_amshas_force_graha() {
+        // --include-amshas alone (no --include-graha)
+        let resolved = resolve_kundali_flags(
+            false, false, false, false, false, false, false, true, false, false, false, false,
+            false,
+        );
+        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::default());
+        // Graha must be force-computed for amshas
+        assert!(cfg.include_graha_positions);
+        assert!(cfg.graha_positions_config.include_lagna);
+        assert!(cfg.include_amshas);
+        assert_eq!(cfg.amsha_selection.count, 16);
+    }
+
+    #[test]
+    fn test_build_kundali_config_node_policy() {
+        let resolved = resolve_kundali_flags(
+            false, true, false, false, false, false, false, false, false, false, false, false,
+            false,
+        );
+        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::AlwaysSama);
+        assert_eq!(cfg.node_dignity_policy, NodeDignityPolicy::AlwaysSama);
+    }
+
+    #[test]
+    fn test_format_rashi_dms_normal() {
+        let s = format_rashi_dms(45.0);
+        assert!(s.contains("Vrishabha"));
+        assert!(s.contains("15°"));
+        assert!(s.contains("00'"));
+        assert!(s.contains("00\""));
+    }
+
+    #[test]
+    fn test_format_rashi_dms_zero() {
+        let s = format_rashi_dms(0.0);
+        assert!(s.contains("Mesha"));
+        assert!(s.contains("00°"));
+    }
+
+    #[test]
+    fn test_format_rashi_dms_near_360() {
+        let s = format_rashi_dms(359.9999);
+        // Should not panic and should produce valid output
+        assert!(!s.is_empty());
+        assert!(!s.contains("30°"));
+    }
 }

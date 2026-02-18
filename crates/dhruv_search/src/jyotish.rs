@@ -42,7 +42,9 @@ use crate::jyotish_types::{
     FullKundaliResult, GrahaEntry, GrahaLongitudes, GrahaPositions, GrahaPositionsConfig,
     MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, VimsopakaEntry, VimsopakaResult,
 };
-use crate::panchang::{hora_from_sunrises, masa_for_date, varsha_for_date, vedic_day_sunrises};
+use crate::panchang::{
+    hora_from_sunrises, masa_for_date, panchang_for_date, varsha_for_date, vedic_day_sunrises,
+};
 use crate::sankranti_types::SankrantiConfig;
 
 /// Map a Graha to its dhruv_core::Body for engine queries.
@@ -1101,6 +1103,20 @@ pub fn full_kundali_for_date(
         None
     };
 
+    let panchang = if config.include_panchang || config.include_calendar {
+        Some(panchang_for_date(
+            engine,
+            eop,
+            utc,
+            location,
+            riseset_config,
+            aya_config,
+            config.include_calendar,
+        )?)
+    } else {
+        None
+    };
+
     let (dasha, dasha_snapshots) = if config.include_dasha && config.dasha_config.count > 0 {
         compute_kundali_dashas(
             engine,
@@ -1127,6 +1143,7 @@ pub fn full_kundali_for_date(
         shadbala,
         vimsopaka,
         avastha,
+        panchang,
         dasha,
         dasha_snapshots,
     })

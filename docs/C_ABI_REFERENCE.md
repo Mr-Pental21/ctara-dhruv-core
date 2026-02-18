@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 33`
+**ABI version:** `DHRUV_API_VERSION = 34`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -1487,3 +1487,11 @@ All JD values in dasha APIs use **JD UTC** (not TDB):
 | `DhruvDashaHierarchyHandle` (standalone) | `dhruv_dasha_hierarchy_utc` | `dhruv_dasha_hierarchy_free` | Caller owns. Must free exactly once. |
 | `DhruvDashaHierarchyHandle` (in kundali) | `dhruv_full_kundali_for_date` | `dhruv_full_kundali_result_free` | Result owns. Do NOT call `dhruv_dasha_hierarchy_free` on these. |
 | `DhruvFullKundaliResult` | Caller stack/heap | `dhruv_full_kundali_result_free` | **Move-only:** do NOT memcpy the struct and free both copies — copied handles become dangling after the first free. Exactly one `result_free` call per `dhruv_full_kundali_for_date` invocation. |
+
+---
+
+## Changelog
+
+**v34**: Added `include_panchang`, `include_calendar` fields to `DhruvFullKundaliConfig`. Added `panchang_valid`, `panchang` (`DhruvPanchangInfo`) fields to `DhruvFullKundaliResult`. When `include_panchang` or `include_calendar` is non-zero, result includes panchang data. `include_calendar` implies `include_panchang`. Existing fields and offsets of prior struct members are unchanged (new fields appended).
+
+**v33**: Added dasha integration to `DhruvFullKundaliConfig` / `DhruvFullKundaliResult`. Added `DhruvDashaSelectionConfig`, `DhruvDashaSnapshot`, `DhruvDashaPeriod` types. Added standalone `dhruv_dasha_hierarchy_utc`, `dhruv_dasha_snapshot_utc`, accessor, and free functions.

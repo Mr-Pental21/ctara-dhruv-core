@@ -2002,6 +2002,8 @@ fn ffi_full_kundali_result_free_double_free_same_pointer() {
         include_shadbala: 0,
         include_vimsopaka: 0,
         include_avastha: 0,
+        include_panchang: 0,
+        include_calendar: 0,
         node_dignity_policy: 0,
         graha_positions_config: DhruvGrahaPositionsConfig {
             include_nakshatra: 0,
@@ -2091,6 +2093,8 @@ fn ffi_full_kundali_error_path_free_safety() {
         include_shadbala: 0,
         include_vimsopaka: 0,
         include_avastha: 0,
+        include_panchang: 0,
+        include_calendar: 0,
         node_dignity_policy: 0,
         graha_positions_config: DhruvGrahaPositionsConfig {
             include_nakshatra: 0,
@@ -2170,6 +2174,8 @@ fn ffi_full_kundali_dasha_overflow_rejection() {
         include_shadbala: 0,
         include_vimsopaka: 0,
         include_avastha: 0,
+        include_panchang: 0,
+        include_calendar: 0,
         node_dignity_policy: 0,
         graha_positions_config: DhruvGrahaPositionsConfig {
             include_nakshatra: 0,
@@ -2253,6 +2259,8 @@ fn ffi_full_kundali_dasha_partial_success_contract() {
         include_shadbala: 0,
         include_vimsopaka: 0,
         include_avastha: 0,
+        include_panchang: 0,
+        include_calendar: 0,
         node_dignity_policy: 0,
         graha_positions_config: DhruvGrahaPositionsConfig {
             include_nakshatra: 0,
@@ -2324,6 +2332,332 @@ fn ffi_full_kundali_dasha_partial_success_contract() {
             hier_systems
         );
     }
+
+    unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+    unsafe { dhruv_eop_free(eop_ptr) };
+}
+
+#[test]
+fn ffi_full_kundali_panchang_only() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(f) => f,
+        None => return,
+    };
+    let (utc, loc, bhava, rs) = kundali_test_params();
+
+    let fk_config = DhruvFullKundaliConfig {
+        include_graha_positions: 0,
+        include_bindus: 0,
+        include_drishti: 0,
+        include_ashtakavarga: 0,
+        include_upagrahas: 0,
+        include_special_lagnas: 0,
+        include_amshas: 0,
+        include_shadbala: 0,
+        include_vimsopaka: 0,
+        include_avastha: 0,
+        include_panchang: 1,
+        include_calendar: 0,
+        node_dignity_policy: 0,
+        graha_positions_config: DhruvGrahaPositionsConfig {
+            include_nakshatra: 0,
+            include_lagna: 0,
+            include_outer_planets: 0,
+            include_bhava: 0,
+        },
+        bindus_config: DhruvBindusConfig {
+            include_nakshatra: 0,
+            include_bhava: 0,
+        },
+        drishti_config: DhruvDrishtiConfig {
+            include_bhava: 0,
+            include_lagna: 0,
+            include_bindus: 0,
+        },
+        amsha_scope: DhruvAmshaChartScope {
+            include_bhava_cusps: 0,
+            include_arudha_padas: 0,
+            include_upagrahas: 0,
+            include_sphutas: 0,
+            include_special_lagnas: 0,
+        },
+        amsha_selection: DhruvAmshaSelectionConfig {
+            count: 0,
+            codes: [0; 40],
+            variations: [0; 40],
+        },
+        include_dasha: 0,
+        dasha_config: dhruv_dasha_selection_config_default(),
+    };
+
+    let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
+    let status = unsafe {
+        dhruv_full_kundali_for_date(
+            engine_ptr as *const _,
+            eop_ptr as *const _,
+            &utc,
+            &loc,
+            &bhava,
+            &rs,
+            0,
+            1,
+            &fk_config,
+            result.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    let r = unsafe { &*result.as_ptr() };
+
+    assert_eq!(r.panchang_valid, 1);
+    assert!((0..=29).contains(&r.panchang.tithi.tithi_index));
+    assert!((0..=6).contains(&r.panchang.vaar.vaar_index));
+    assert_eq!(r.panchang.calendar_valid, 0);
+    assert_eq!(r.graha_positions_valid, 0);
+
+    unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+    unsafe { dhruv_eop_free(eop_ptr) };
+}
+
+#[test]
+fn ffi_full_kundali_panchang_disabled() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(f) => f,
+        None => return,
+    };
+    let (utc, loc, bhava, rs) = kundali_test_params();
+
+    let fk_config = DhruvFullKundaliConfig {
+        include_graha_positions: 0,
+        include_bindus: 0,
+        include_drishti: 0,
+        include_ashtakavarga: 0,
+        include_upagrahas: 0,
+        include_special_lagnas: 0,
+        include_amshas: 0,
+        include_shadbala: 0,
+        include_vimsopaka: 0,
+        include_avastha: 0,
+        include_panchang: 0,
+        include_calendar: 0,
+        node_dignity_policy: 0,
+        graha_positions_config: DhruvGrahaPositionsConfig {
+            include_nakshatra: 0,
+            include_lagna: 0,
+            include_outer_planets: 0,
+            include_bhava: 0,
+        },
+        bindus_config: DhruvBindusConfig {
+            include_nakshatra: 0,
+            include_bhava: 0,
+        },
+        drishti_config: DhruvDrishtiConfig {
+            include_bhava: 0,
+            include_lagna: 0,
+            include_bindus: 0,
+        },
+        amsha_scope: DhruvAmshaChartScope {
+            include_bhava_cusps: 0,
+            include_arudha_padas: 0,
+            include_upagrahas: 0,
+            include_sphutas: 0,
+            include_special_lagnas: 0,
+        },
+        amsha_selection: DhruvAmshaSelectionConfig {
+            count: 0,
+            codes: [0; 40],
+            variations: [0; 40],
+        },
+        include_dasha: 0,
+        dasha_config: dhruv_dasha_selection_config_default(),
+    };
+
+    let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
+    let status = unsafe {
+        dhruv_full_kundali_for_date(
+            engine_ptr as *const _,
+            eop_ptr as *const _,
+            &utc,
+            &loc,
+            &bhava,
+            &rs,
+            0,
+            1,
+            &fk_config,
+            result.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    let r = unsafe { &*result.as_ptr() };
+
+    assert_eq!(r.panchang_valid, 0);
+
+    unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+    unsafe { dhruv_eop_free(eop_ptr) };
+}
+
+#[test]
+fn ffi_full_kundali_calendar_implies_panchang() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(f) => f,
+        None => return,
+    };
+    let (utc, loc, bhava, rs) = kundali_test_params();
+
+    let fk_config = DhruvFullKundaliConfig {
+        include_graha_positions: 0,
+        include_bindus: 0,
+        include_drishti: 0,
+        include_ashtakavarga: 0,
+        include_upagrahas: 0,
+        include_special_lagnas: 0,
+        include_amshas: 0,
+        include_shadbala: 0,
+        include_vimsopaka: 0,
+        include_avastha: 0,
+        include_panchang: 0,
+        include_calendar: 1,
+        node_dignity_policy: 0,
+        graha_positions_config: DhruvGrahaPositionsConfig {
+            include_nakshatra: 0,
+            include_lagna: 0,
+            include_outer_planets: 0,
+            include_bhava: 0,
+        },
+        bindus_config: DhruvBindusConfig {
+            include_nakshatra: 0,
+            include_bhava: 0,
+        },
+        drishti_config: DhruvDrishtiConfig {
+            include_bhava: 0,
+            include_lagna: 0,
+            include_bindus: 0,
+        },
+        amsha_scope: DhruvAmshaChartScope {
+            include_bhava_cusps: 0,
+            include_arudha_padas: 0,
+            include_upagrahas: 0,
+            include_sphutas: 0,
+            include_special_lagnas: 0,
+        },
+        amsha_selection: DhruvAmshaSelectionConfig {
+            count: 0,
+            codes: [0; 40],
+            variations: [0; 40],
+        },
+        include_dasha: 0,
+        dasha_config: dhruv_dasha_selection_config_default(),
+    };
+
+    let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
+    let status = unsafe {
+        dhruv_full_kundali_for_date(
+            engine_ptr as *const _,
+            eop_ptr as *const _,
+            &utc,
+            &loc,
+            &bhava,
+            &rs,
+            0,
+            1,
+            &fk_config,
+            result.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    let r = unsafe { &*result.as_ptr() };
+
+    // include_calendar=1 implies panchang is present
+    assert_eq!(r.panchang_valid, 1);
+    assert!((0..=29).contains(&r.panchang.tithi.tithi_index));
+    assert!((0..=6).contains(&r.panchang.vaar.vaar_index));
+    // Calendar fields should be populated
+    assert_eq!(r.panchang.calendar_valid, 1);
+    assert!(r.panchang.masa.start.year > 0);
+    assert!(r.panchang.masa.end.year > 0);
+
+    unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+    unsafe { dhruv_eop_free(eop_ptr) };
+}
+
+#[test]
+fn ffi_full_kundali_panchang_and_calendar() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(f) => f,
+        None => return,
+    };
+    let (utc, loc, bhava, rs) = kundali_test_params();
+
+    let fk_config = DhruvFullKundaliConfig {
+        include_graha_positions: 0,
+        include_bindus: 0,
+        include_drishti: 0,
+        include_ashtakavarga: 0,
+        include_upagrahas: 0,
+        include_special_lagnas: 0,
+        include_amshas: 0,
+        include_shadbala: 0,
+        include_vimsopaka: 0,
+        include_avastha: 0,
+        include_panchang: 1,
+        include_calendar: 1,
+        node_dignity_policy: 0,
+        graha_positions_config: DhruvGrahaPositionsConfig {
+            include_nakshatra: 0,
+            include_lagna: 0,
+            include_outer_planets: 0,
+            include_bhava: 0,
+        },
+        bindus_config: DhruvBindusConfig {
+            include_nakshatra: 0,
+            include_bhava: 0,
+        },
+        drishti_config: DhruvDrishtiConfig {
+            include_bhava: 0,
+            include_lagna: 0,
+            include_bindus: 0,
+        },
+        amsha_scope: DhruvAmshaChartScope {
+            include_bhava_cusps: 0,
+            include_arudha_padas: 0,
+            include_upagrahas: 0,
+            include_sphutas: 0,
+            include_special_lagnas: 0,
+        },
+        amsha_selection: DhruvAmshaSelectionConfig {
+            count: 0,
+            codes: [0; 40],
+            variations: [0; 40],
+        },
+        include_dasha: 0,
+        dasha_config: dhruv_dasha_selection_config_default(),
+    };
+
+    let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
+    let status = unsafe {
+        dhruv_full_kundali_for_date(
+            engine_ptr as *const _,
+            eop_ptr as *const _,
+            &utc,
+            &loc,
+            &bhava,
+            &rs,
+            0,
+            1,
+            &fk_config,
+            result.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    let r = unsafe { &*result.as_ptr() };
+
+    assert_eq!(r.panchang_valid, 1);
+    assert!((0..=29).contains(&r.panchang.tithi.tithi_index));
+    assert_eq!(r.panchang.calendar_valid, 1);
+    assert!(r.panchang.masa.start.year > 0);
 
     unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
     unsafe { dhruv_engine_free(engine_ptr) };

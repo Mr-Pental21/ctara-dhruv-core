@@ -35,7 +35,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 33;
+pub const DHRUV_API_VERSION: u32 = 34;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -6143,100 +6143,104 @@ pub unsafe extern "C" fn dhruv_panchang_for_date(
             include_calendar != 0,
         ) {
             Ok(info) => {
-                let zeroed_masa = DhruvMasaInfo {
-                    masa_index: 0,
-                    adhika: 0,
-                    start: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
-                    end: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
-                };
-                let zeroed_ayana = DhruvAyanaInfo {
-                    ayana: 0,
-                    start: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
-                    end: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
-                };
-                let zeroed_varsha = DhruvVarshaInfo {
-                    samvatsara_index: 0,
-                    order: 0,
-                    start: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
-                    end: utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0)),
-                };
-                let (calendar_valid, masa_ffi, ayana_ffi, varsha_ffi) =
-                    match (info.masa, info.ayana, info.varsha) {
-                        (Some(m), Some(a), Some(v)) => (
-                            1u8,
-                            DhruvMasaInfo {
-                                masa_index: m.masa.index() as i32,
-                                adhika: u8::from(m.adhika),
-                                start: utc_time_to_ffi(&m.start),
-                                end: utc_time_to_ffi(&m.end),
-                            },
-                            DhruvAyanaInfo {
-                                ayana: a.ayana.index() as i32,
-                                start: utc_time_to_ffi(&a.start),
-                                end: utc_time_to_ffi(&a.end),
-                            },
-                            DhruvVarshaInfo {
-                                samvatsara_index: v.samvatsara.index() as i32,
-                                order: v.order as i32,
-                                start: utc_time_to_ffi(&v.start),
-                                end: utc_time_to_ffi(&v.end),
-                            },
-                        ),
-                        _ => (0u8, zeroed_masa, zeroed_ayana, zeroed_varsha),
-                    };
-                unsafe {
-                    *out = DhruvPanchangInfo {
-                        tithi: DhruvTithiInfo {
-                            tithi_index: info.tithi.tithi_index as i32,
-                            paksha: info.tithi.paksha as i32,
-                            tithi_in_paksha: info.tithi.tithi_in_paksha as i32,
-                            start: utc_time_to_ffi(&info.tithi.start),
-                            end: utc_time_to_ffi(&info.tithi.end),
-                        },
-                        karana: DhruvKaranaInfo {
-                            karana_index: info.karana.karana_index as i32,
-                            karana_name_index: info.karana.karana.index() as i32,
-                            start: utc_time_to_ffi(&info.karana.start),
-                            end: utc_time_to_ffi(&info.karana.end),
-                        },
-                        yoga: DhruvYogaInfo {
-                            yoga_index: info.yoga.yoga_index as i32,
-                            start: utc_time_to_ffi(&info.yoga.start),
-                            end: utc_time_to_ffi(&info.yoga.end),
-                        },
-                        vaar: DhruvVaarInfo {
-                            vaar_index: info.vaar.vaar.index() as i32,
-                            start: utc_time_to_ffi(&info.vaar.start),
-                            end: utc_time_to_ffi(&info.vaar.end),
-                        },
-                        hora: DhruvHoraInfo {
-                            hora_index: info.hora.hora.index() as i32,
-                            hora_position: info.hora.hora_index as i32,
-                            start: utc_time_to_ffi(&info.hora.start),
-                            end: utc_time_to_ffi(&info.hora.end),
-                        },
-                        ghatika: DhruvGhatikaInfo {
-                            value: info.ghatika.value as i32,
-                            start: utc_time_to_ffi(&info.ghatika.start),
-                            end: utc_time_to_ffi(&info.ghatika.end),
-                        },
-                        nakshatra: DhruvPanchangNakshatraInfo {
-                            nakshatra_index: info.nakshatra.nakshatra_index as i32,
-                            pada: info.nakshatra.pada as i32,
-                            start: utc_time_to_ffi(&info.nakshatra.start),
-                            end: utc_time_to_ffi(&info.nakshatra.end),
-                        },
-                        calendar_valid,
-                        masa: masa_ffi,
-                        ayana: ayana_ffi,
-                        varsha: varsha_ffi,
-                    };
-                }
+                unsafe { *out = panchang_info_to_ffi(&info) };
                 DhruvStatus::Ok
             }
             Err(e) => DhruvStatus::from(&e),
         }
     })
+}
+
+/// Convert a Rust `PanchangInfo` to a C-compatible `DhruvPanchangInfo`.
+fn panchang_info_to_ffi(info: &dhruv_search::PanchangInfo) -> DhruvPanchangInfo {
+    let zeroed_utc = utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0));
+    let zeroed_masa = DhruvMasaInfo {
+        masa_index: 0,
+        adhika: 0,
+        start: zeroed_utc,
+        end: zeroed_utc,
+    };
+    let zeroed_ayana = DhruvAyanaInfo {
+        ayana: 0,
+        start: zeroed_utc,
+        end: zeroed_utc,
+    };
+    let zeroed_varsha = DhruvVarshaInfo {
+        samvatsara_index: 0,
+        order: 0,
+        start: zeroed_utc,
+        end: zeroed_utc,
+    };
+    let (calendar_valid, masa_ffi, ayana_ffi, varsha_ffi) =
+        match (info.masa, info.ayana, info.varsha) {
+            (Some(m), Some(a), Some(v)) => (
+                1u8,
+                DhruvMasaInfo {
+                    masa_index: m.masa.index() as i32,
+                    adhika: u8::from(m.adhika),
+                    start: utc_time_to_ffi(&m.start),
+                    end: utc_time_to_ffi(&m.end),
+                },
+                DhruvAyanaInfo {
+                    ayana: a.ayana.index() as i32,
+                    start: utc_time_to_ffi(&a.start),
+                    end: utc_time_to_ffi(&a.end),
+                },
+                DhruvVarshaInfo {
+                    samvatsara_index: v.samvatsara.index() as i32,
+                    order: v.order as i32,
+                    start: utc_time_to_ffi(&v.start),
+                    end: utc_time_to_ffi(&v.end),
+                },
+            ),
+            _ => (0u8, zeroed_masa, zeroed_ayana, zeroed_varsha),
+        };
+    DhruvPanchangInfo {
+        tithi: DhruvTithiInfo {
+            tithi_index: info.tithi.tithi_index as i32,
+            paksha: info.tithi.paksha as i32,
+            tithi_in_paksha: info.tithi.tithi_in_paksha as i32,
+            start: utc_time_to_ffi(&info.tithi.start),
+            end: utc_time_to_ffi(&info.tithi.end),
+        },
+        karana: DhruvKaranaInfo {
+            karana_index: info.karana.karana_index as i32,
+            karana_name_index: info.karana.karana.index() as i32,
+            start: utc_time_to_ffi(&info.karana.start),
+            end: utc_time_to_ffi(&info.karana.end),
+        },
+        yoga: DhruvYogaInfo {
+            yoga_index: info.yoga.yoga_index as i32,
+            start: utc_time_to_ffi(&info.yoga.start),
+            end: utc_time_to_ffi(&info.yoga.end),
+        },
+        vaar: DhruvVaarInfo {
+            vaar_index: info.vaar.vaar.index() as i32,
+            start: utc_time_to_ffi(&info.vaar.start),
+            end: utc_time_to_ffi(&info.vaar.end),
+        },
+        hora: DhruvHoraInfo {
+            hora_index: info.hora.hora.index() as i32,
+            hora_position: info.hora.hora_index as i32,
+            start: utc_time_to_ffi(&info.hora.start),
+            end: utc_time_to_ffi(&info.hora.end),
+        },
+        ghatika: DhruvGhatikaInfo {
+            value: info.ghatika.value as i32,
+            start: utc_time_to_ffi(&info.ghatika.start),
+            end: utc_time_to_ffi(&info.ghatika.end),
+        },
+        nakshatra: DhruvPanchangNakshatraInfo {
+            nakshatra_index: info.nakshatra.nakshatra_index as i32,
+            pada: info.nakshatra.pada as i32,
+            start: utc_time_to_ffi(&info.nakshatra.start),
+            end: utc_time_to_ffi(&info.nakshatra.end),
+        },
+        calendar_valid,
+        masa: masa_ffi,
+        ayana: ayana_ffi,
+        varsha: varsha_ffi,
+    }
 }
 
 /// Return the name of a tithi by index (0-29).
@@ -8700,6 +8704,10 @@ pub struct DhruvFullKundaliConfig {
     pub amsha_scope: DhruvAmshaChartScope,
     /// Which amshas to compute.
     pub amsha_selection: DhruvAmshaSelectionConfig,
+    /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra).
+    pub include_panchang: u8,
+    /// Include calendar elements (masa, ayana, varsha). Implies include_panchang.
+    pub include_calendar: u8,
     /// Include dasha (planetary period) section.
     pub include_dasha: u8,
     /// Dasha configuration.
@@ -8745,6 +8753,8 @@ pub struct DhruvFullKundaliResult {
     pub vimsopaka: DhruvVimsopakaResult,
     pub avastha_valid: u8,
     pub avastha: DhruvAllGrahaAvasthas,
+    pub panchang_valid: u8,
+    pub panchang: DhruvPanchangInfo,
     /// Number of valid dasha hierarchies (0..=8).
     pub dasha_count: u8,
     /// Opaque hierarchy handles. Read via `dhruv_dasha_hierarchy_*` accessors.
@@ -8904,6 +8914,8 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
             include_special_lagnas: cfg_c.amsha_scope.include_special_lagnas != 0,
         },
         amsha_selection: amsha_sel,
+        include_panchang: cfg_c.include_panchang != 0 || cfg_c.include_calendar != 0,
+        include_calendar: cfg_c.include_calendar != 0,
         include_dasha: cfg_c.include_dasha != 0,
         dasha_config: dasha_selection_from_ffi(&cfg_c.dasha_config),
     };
@@ -9090,6 +9102,11 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
                         },
                     };
                 }
+            }
+
+            if let Some(ref p) = result.panchang {
+                out.panchang_valid = 1;
+                out.panchang = panchang_info_to_ffi(p);
             }
 
             if let Some(ref dasha_vec) = result.dasha {
@@ -10606,8 +10623,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_33() {
-        assert_eq!(dhruv_api_version(), 33);
+    fn ffi_api_version_is_34() {
+        assert_eq!(dhruv_api_version(), 34);
     }
 
     // --- Search error mapping ---
@@ -12713,6 +12730,8 @@ mod tests {
             include_shadbala: 0,
             include_vimsopaka: 0,
             include_avastha: 0,
+            include_panchang: 0,
+            include_calendar: 0,
             include_dasha: 0,
             node_dignity_policy: 0,
             graha_positions_config: DhruvGrahaPositionsConfig {
@@ -12776,6 +12795,8 @@ mod tests {
             include_shadbala: 0,
             include_vimsopaka: 0,
             include_avastha: 0,
+            include_panchang: 0,
+            include_calendar: 0,
             include_dasha: 0,
             node_dignity_policy: 0,
             graha_positions_config: DhruvGrahaPositionsConfig {
