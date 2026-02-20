@@ -730,9 +730,11 @@ pub unsafe extern "C" fn dhruv_ayanamsha_mean_deg(
     })
 }
 
-/// True (nutation-corrected) ayanamsha at a JD TDB.
+/// "True" ayanamsha helper at a JD TDB.
 ///
-/// For TrueLahiri, adds delta_psi to mean value. For all others, returns mean.
+/// For anchor-relative systems (including TrueLahiri), this matches mean
+/// ayanamsha and ignores `delta_psi_arcsec`. Legacy systems may apply
+/// `delta_psi_arcsec` where applicable.
 ///
 /// # Safety
 /// `out_deg` must be a valid, non-null pointer.
@@ -1053,10 +1055,10 @@ pub extern "C" fn dhruv_approximate_local_noon_jd(jd_ut_midnight: f64, longitude
 // Unified ayanamsha + standalone nutation
 // ---------------------------------------------------------------------------
 
-/// Unified ayanamsha computation. Computes nutation internally when needed.
+/// Unified ayanamsha computation.
 ///
-/// When `use_nutation` is non-zero and the system uses the true equinox
-/// (TrueLahiri), nutation in longitude is computed via IAU 2000B and applied.
+/// For anchor-relative systems (including TrueLahiri), `use_nutation` is
+/// ignored. Legacy systems preserve historical behavior.
 ///
 /// # Safety
 /// `out_deg` must be a valid, non-null pointer.
@@ -10482,7 +10484,7 @@ mod tests {
     }
 
     #[test]
-    fn ffi_ayanamsha_deg_true_lahiri_with_nutation() {
+    fn ffi_ayanamsha_deg_true_lahiri_ignores_nutation_flag() {
         let mut with_nut: f64 = 0.0;
         let mut without: f64 = 0.0;
         let jd = 2_460_310.5; // ~2024-01-01
@@ -10493,7 +10495,7 @@ mod tests {
         assert_eq!(s1, DhruvStatus::Ok);
         assert_eq!(s2, DhruvStatus::Ok);
         let diff = (with_nut - without).abs();
-        assert!(diff > 1e-6 && diff < 0.01, "nutation diff = {diff} deg");
+        assert!(diff < 1e-15, "nutation diff = {diff} deg");
     }
 
     #[test]

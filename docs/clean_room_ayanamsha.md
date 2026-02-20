@@ -66,7 +66,7 @@ domain) converted to ecliptic coordinates using IAU 2006 obliquity.
 | System | Anchor Star | Sidereal Position | J2000.0 Ecliptic Lon | Ayanamsha |
 |--------|-------------|-------------------|---------------------|-----------|
 | Lahiri | Spica (alpha Vir) | 0 deg Libra (180 deg) | ~203.83 deg | 23.853 deg (Indian govt gazette) |
-| TrueLahiri | Same as Lahiri | Same | Same | 23.853 deg (nutation applied separately) |
+| TrueLahiri | Spica (alpha Vir) | 0 deg Libra (180 deg), star-locked | ~203.85 deg | anchor-relative (not mean+nutation) |
 | FaganBradley | SVP calibration | Empirical | Empirical | 24.736 deg (published SVP tables) |
 | PushyaPaksha | delta Cancri | 16 deg Cancer (106 deg) | ~127 deg | 21.000 deg |
 | RohiniPaksha | Aldebaran (alpha Tau) | 15 deg 47 min Taurus (45.783 deg) | ~69.87 deg | 24.087 deg |
@@ -102,6 +102,23 @@ traditional systems (e.g., Surya Siddhanta) historically used a fixed
 54 arcsec/year rate, which diverges from the IAU model over centuries.
 Our reference values are calibrated so that the IAU-based formula matches
 published tables at J2000.0.
+
+### Anchor-Relative Systems
+
+Some systems are now evaluated by locking an anchor to a sidereal longitude
+at every epoch instead of using a fixed J2000 offset:
+
+- TrueLahiri (Spica at 180 deg)
+- PushyaPaksha (Pushya anchor at 106 deg)
+- RohiniPaksha (Aldebaran at 15 deg 47 min Taurus)
+- Aldebaran15Tau (Aldebaran at 15 deg Taurus)
+
+For these systems, the implementation computes anchor tropical longitude in
+ecliptic-of-date coordinates and derives ayanamsha as:
+
+`ayanamsha = anchor_tropical_longitude - target_sidereal_longitude`
+
+The legacy `use_nutation` toggle is ignored for anchor-relative systems.
 
 ---
 

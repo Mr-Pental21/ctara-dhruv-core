@@ -93,9 +93,9 @@ DhruvStatus dhruv_ayanamsha_mean_deg(
     double* out_deg         // output: ayanamsha in degrees
 );
 
-// True (nutation-corrected) ayanamsha
-// For TrueLahiri, adds delta_psi to mean value
-// For all other systems, ignores delta_psi and returns mean
+// "true"-mode ayanamsha helper.
+// For anchor-relative systems (including TrueLahiri), this is identical to
+// mean ayanamsha and ignores delta_psi.
 DhruvStatus dhruv_ayanamsha_true_deg(
     int32_t system_code,
     double  jd_tdb,

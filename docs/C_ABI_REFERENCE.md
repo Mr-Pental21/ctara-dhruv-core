@@ -653,7 +653,9 @@ DhruvStatus dhruv_ayanamsha_true_deg(
 );
 ```
 
-True (nutation-corrected) ayanamsha. Only affects TrueLahiri (code 1); others return mean.
+`true`-mode helper ayanamsha.
+For anchor-relative systems (including TrueLahiri), this is identical to mean
+ayanamsha and ignores `delta_psi_arcsec`.
 
 ```c
 DhruvStatus dhruv_ayanamsha_deg(
@@ -664,7 +666,8 @@ DhruvStatus dhruv_ayanamsha_deg(
 );
 ```
 
-Unified function. When `use_nutation != 0`, automatically computes IAU 2000B nutation and applies it (only relevant for TrueLahiri).
+Unified function.
+For anchor-relative systems (including TrueLahiri), `use_nutation` is ignored.
 
 ```c
 uint32_t dhruv_ayanamsha_system_count(void);

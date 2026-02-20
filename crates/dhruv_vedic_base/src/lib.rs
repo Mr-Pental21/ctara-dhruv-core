@@ -21,6 +21,7 @@ pub mod ashtakavarga;
 pub mod avastha;
 pub mod ayana_type;
 pub mod ayanamsha;
+mod ayanamsha_anchor;
 pub mod bhava;
 pub mod bhava_types;
 pub mod combustion;
