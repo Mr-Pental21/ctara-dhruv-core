@@ -40,6 +40,32 @@ are published in the cited paper.
 
 ---
 
+## Sun Position: Equatorial-of-Date Coordinates
+
+The sunrise/sunset iterative loop requires the Sun's right ascension (RA) and
+declination (dec) in the **equatorial frame of date** (true equator and equinox
+of date). The coordinate chain is:
+
+```
+ICRF J2000 (engine query, Frame::IcrfJ2000)
+  → Ecliptic J2000  [icrf_to_ecliptic()]
+  → Ecliptic of Date  [precess_ecliptic_j2000_to_date(v, t)]
+  → Equatorial of Date  [R_x(-ε_date)]
+  → RA = atan2(y, x),  dec = asin(z / r)
+```
+
+where R_x(-ε) rotates the ecliptic-of-date vector into the equatorial-of-date
+frame (x unchanged; y_eq = cos ε · y_ecl − sin ε · z_ecl;
+z_eq = sin ε · y_ecl + cos ε · z_ecl) and ε is the mean obliquity of date
+from `mean_obliquity_of_date_rad(t)`.
+
+Using equatorial-of-date (rather than J2000) ensures the computed RA and hour
+angle are consistent with the Local Sidereal Time derived from GMST and the
+IERS EOP. Mixing J2000 RA with a of-date LST introduces a ~50 arcsec/century
+systematic error in sunrise timing.
+
+---
+
 ## Sunrise/Sunset Algorithm
 
 **Source**: Standard astronomical spherical trigonometry formulas, published

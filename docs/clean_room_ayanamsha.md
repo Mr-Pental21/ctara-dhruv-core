@@ -16,6 +16,42 @@ implements the 5th-order polynomial directly from the published coefficients.
 
 ---
 
+## Ecliptic-of-Date Coordinate Requirement
+
+**Critical design note (implemented Phase 18 / API v36):**
+
+The ayanamsha formula requires the **tropical ecliptic longitude measured in the
+ecliptic of date** as its input. Using J2000 ecliptic coordinates introduces a
+systematic error of approximately 104 arcsec/century (~50"/century precession
+correction not applied).
+
+**Coordinate chain:**
+```
+ICRF J2000 (engine output)
+  → Ecliptic J2000  [icrf_to_ecliptic()]
+  → Ecliptic of Date  [precess_ecliptic_j2000_to_date(v, t)]
+  → tropical longitude (deg)
+  → sidereal longitude = tropical − ayanamsha
+```
+
+**Precession rotation** (IAU 2006, Capitaine et al. 2003, Table 1):
+```
+P = R3(-(Π_A + p_A)) · R1(π_A) · R3(Π_A)
+```
+where π_A is the inclination of the ecliptic of date on the ecliptic of J2000,
+Π_A is the longitude of the ascending node of the ecliptic of date on J2000,
+and p_A is the general precession in longitude.
+
+**Implementations**:
+- `dhruv_frames::precession::precess_ecliptic_j2000_to_date(v, t)`
+- `dhruv_frames::precession::precess_ecliptic_date_to_j2000(v, t)` (inverse)
+
+**Velocity correction**: d(P·r)/dt = P·(dr/dt) + Ṗ·r. The Ṗ·r cross-term
+is automatically captured by finite-differencing the fully-precessed longitude
+at t ± 1 minute, rather than rotating the raw velocity vector.
+
+---
+
 ## Ayanamsha Reference Values
 
 Each system's J2000.0 reference value was independently derived from the

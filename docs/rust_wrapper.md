@@ -52,9 +52,9 @@ let d: UtcDate = "2024-03-20T12:30:45.5Z".parse().unwrap();
 
 | Function | Returns | Description |
 |---|---|---|
-| `position(target, observer, date)` | `SphericalCoords` | Ecliptic J2000 position (lon, lat, distance) |
-| `position_full(target, observer, date)` | `SphericalState` | Position + angular velocities |
-| `longitude(target, observer, date)` | `f64` | Ecliptic longitude in radians |
+| `position(target, observer, date)` | `SphericalCoords` | Ecliptic-**of-date** position (lon, lat, distance) using IAU 2006 precession |
+| `position_full(target, observer, date)` | `SphericalState` | Position + angular velocities (finite-diff at t ± 1 min) |
+| `longitude(target, observer, date)` | `f64` | Ecliptic-of-date longitude in radians |
 | `query(target, observer, frame, date)` | `StateVector` | Cartesian position + velocity in specified frame |
 | `query_batch(requests)` | `Vec<Result<StateVector>>` | Batched queries with memoization |
 
@@ -67,7 +67,7 @@ let d: UtcDate = "2024-03-20T12:30:45.5Z".parse().unwrap();
 | `ayanamsha(date, system, nutation)` | `f64` | Ayanamsha in degrees |
 | `nutation(date)` | `(f64, f64)` | IAU 2000B nutation (dpsi, deps) in arcsec |
 | `lunar_node(date, node, mode)` | `f64` | Rahu/Ketu longitude in degrees |
-| `sidereal_longitude(target, observer, date, system, nutation)` | `f64` | Sidereal longitude in degrees |
+| `sidereal_longitude(target, observer, date, system, nutation)` | `f64` | Sidereal longitude in degrees (ecliptic-of-date tropical − ayanamsha) |
 
 #### Rashi / Nakshatra
 

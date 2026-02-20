@@ -2,7 +2,7 @@
 
 ## Module
 
-`dhruv_vedic_base::ascendant`, `dhruv_vedic_base::bhava`, `dhruv_vedic_base::bhava_types`
+`dhruv_vedic_base::lagna`, `dhruv_vedic_base::bhava`, `dhruv_vedic_base::bhava_types`
 
 ## Purpose
 
@@ -29,8 +29,10 @@ MC = atan2(sin(LST), cos(LST)*cos(eps))
 Standard spherical astronomy textbook formula. Independently derivable from
 the spherical triangle (pole, zenith, vernal equinox).
 
-**Obliquity:** J2000.0 mean obliquity constant (`OBLIQUITY_J2000_RAD` from
-`dhruv_frames`), standard for astrological computation.
+**Obliquity:** Mean obliquity of date computed from the IAU 2006 polynomial
+(`dhruv_frames::obliquity::mean_obliquity_of_date_rad(t)`, where t is Julian
+centuries from J2000.0 in TDB). This removes the ~0.014°/century error that
+would accumulate if the fixed J2000 obliquity constant were used instead.
 
 **Sidereal time chain:** UTC -> UT1 (via IERS EOP DUT1) -> GMST (Capitaine 2003)
 -> LST (GMST + east longitude). Reuses existing `dhruv_time` functions.
@@ -146,6 +148,20 @@ celestial equator into thirds, then projects to the ecliptic.
 - Standard semi-arc equator division method.
 
 **Latitude limit:** |lat| <= 66.5 degrees.
+
+### Body Ecliptic Longitude (BhavaStartingPoint::BodyLongitude)
+
+When the bhava starting point is a body's longitude, the coordinate chain is:
+
+```
+ICRF J2000 (engine query, Frame::IcrfJ2000)
+  → Ecliptic J2000  [icrf_to_ecliptic()]
+  → Ecliptic of Date  [precess_ecliptic_j2000_to_date(v, t)]
+  → longitude (deg)  [cartesian_to_spherical()]
+```
+
+This ensures the body longitude is measured in the same ecliptic-of-date frame
+as the Lagna/MC, keeping all cusp computations internally consistent.
 
 ### Supporting Formulas
 

@@ -59,6 +59,10 @@ Location-dependent commands additionally require `--lat`, `--lon`, and `--eop`.
 dhruv position --date 2024-03-20T12:00:00Z --target 499 --observer 399 --bsp de442s.bsp --lsk naif0012.tls
 ```
 
+Returns ecliptic-**of-date** spherical coordinates (longitude, latitude,
+distance) using IAU 2006 full 3D precession applied after the ICRF→J2000
+ecliptic rotation. Velocities are computed by finite-differencing at t ± 1 min.
+
 | Flag | Description |
 |---|---|
 | `--target` | NAIF body code (10=Sun, 301=Moon, 499=Mars, etc.) |
@@ -69,6 +73,10 @@ dhruv position --date 2024-03-20T12:00:00Z --target 499 --observer 399 --bsp de4
 ```
 dhruv sidereal-longitude --date 2024-03-20T12:00:00Z --target 499 --bsp de442s.bsp --lsk naif0012.tls
 ```
+
+Returns tropical ecliptic-of-date longitude minus ayanamsha. Uses IAU 2006
+full 3D ecliptic precession to convert the ICRF J2000 position into the
+ecliptic of date before subtracting the ayanamsha.
 
 Adds `--ayanamsha` and `--nutation` flags.
 

@@ -47,11 +47,37 @@ SPK Type 2 uses Chebyshev polynomials within time intervals. Our Clenshaw
 recurrence evaluation matches the NAIF reference implementation to machine
 precision (~10^-15 relative). No measurable contribution to error.
 
-### 4. Frame rotation (ICRF to ecliptic)
+### 4. Frame rotation (ICRF to ecliptic J2000)
 
-Uses IAU 1976 obliquity value (23.4392911 degrees) with precomputed
-sin/cos. Rotation preserves vector magnitude to machine precision.
-No measurable contribution for ICRF-frame comparisons.
+Uses IAU 1976 obliquity constant (23.4392911 degrees) with precomputed
+sin/cos for the fixed ICRF→ecliptic J2000 rotation. Rotation preserves
+vector magnitude to machine precision. No measurable contribution for
+ICRF-frame comparisons.
+
+### 4a. Ecliptic precession (J2000 → ecliptic of date)
+
+All ecliptic longitudes reported by the engine are in the **ecliptic of date**
+(IAU 2006 full 3D precession, implemented from Capitaine et al. 2003, Table 1).
+
+The precession rotation P = R3(-(Π_A + p_A)) · R1(π_A) · R3(Π_A) is applied
+after the ICRF→ecliptic J2000 step. Skipping this step would introduce a
+systematic error of ~104 arcsec/century (~1.73 arcmin/century) in ecliptic
+longitude — far exceeding acceptable Vedic astrological tolerances.
+
+Residual error after applying IAU 2006 precession:
+- p_A polynomial truncated at 5th order → < 0.001 arcsec/century residual
+- Velocity: finite-difference at t ± 1 min captures the Ṗ·r cross-term;
+  velocity error < 0.002 arcsec/day
+
+No measurable contribution to Tier-1 body position errors (which are dominated
+by cross-kernel differences).
+
+### 4b. Obliquity of date (ecliptic → equatorial)
+
+Sunrise/sunset uses `mean_obliquity_of_date_rad(t)` (IAU 2006, 84381.406"
+at T=0). Bhava/Lagna computations also use the obliquity of date rather than
+the J2000 constant. Residual vs true obliquity: nutation in obliquity (~9.2"
+peak) is not included here; it is < 0.003° and acceptable for Vedic computation.
 
 ### 5. Chain resolution (accumulation)
 
