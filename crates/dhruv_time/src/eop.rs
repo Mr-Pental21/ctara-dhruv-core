@@ -82,9 +82,17 @@ impl EopData {
     }
 
     /// DUT1 (UT1−UTC) in seconds at a given MJD, linearly interpolated.
+    ///
+    /// For epochs before the table start (pre-1973), returns 0.0: UTC was not
+    /// formally defined before 1960, so UT1 ≈ UTC with negligible difference
+    /// (< 1 second), making DUT1=0 a correct approximation for historical dates.
+    /// For epochs after the table end, returns `Err(TimeError::EopOutOfRange)`.
     pub fn dut1_at_mjd(&self, mjd: f64) -> Result<f64, TimeError> {
         let (mjd_start, mjd_end) = self.range();
-        if mjd < mjd_start || mjd > mjd_end {
+        if mjd < mjd_start {
+            return Ok(0.0);
+        }
+        if mjd > mjd_end {
             return Err(TimeError::EopOutOfRange);
         }
 
@@ -211,8 +219,9 @@ mod tests {
 
     #[test]
     fn out_of_range_before() {
+        // Pre-table epochs return DUT1=0 (UT1≈UTC for pre-1973 historical dates)
         let data = EopData::parse_finals(&test_snippet()).unwrap();
-        assert_eq!(data.dut1_at_mjd(59999.0), Err(TimeError::EopOutOfRange));
+        assert_eq!(data.dut1_at_mjd(59999.0), Ok(0.0));
     }
 
     #[test]
