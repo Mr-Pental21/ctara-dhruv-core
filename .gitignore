@@ -25,6 +25,9 @@ kernels/data/*.bsp
 kernels/data/*.tls
 kernels/data/*.all
 
+
 # Generated benchmark run artifacts
 docs/benchmarks/ffi_bench_*.txt
 docs/benchmarks/ffi_bench_*_sorted.tsv
+
+.playwright-mcp/
