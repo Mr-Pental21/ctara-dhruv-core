@@ -28,10 +28,11 @@ use dhruv_vedic_base::{
     RiseSetResult, SunLimb, VedicError, amsha_longitude, amsha_rashi_info,
     approximate_local_noon_jd, ayana_from_sidereal_longitude, ayanamsha_deg, ayanamsha_mean_deg,
     ayanamsha_true_deg, compute_all_events, compute_bhavas, compute_rise_set, deg_to_dms,
-    jd_tdb_to_centuries, karana_from_elongation, lunar_node_deg, masa_from_rashi_index,
-    nakshatra_from_longitude, nakshatra_from_tropical, nakshatra28_from_longitude,
-    nakshatra28_from_tropical, nth_rashi_from, rashi_from_longitude, rashi_from_tropical,
-    samvatsara_from_year, time_upagraha_jd, tithi_from_elongation, vaar_from_jd, yoga_from_sum,
+    jd_tdb_to_centuries, karana_from_elongation, lunar_node_deg, lunar_node_deg_for_epoch,
+    masa_from_rashi_index, nakshatra_from_longitude, nakshatra_from_tropical,
+    nakshatra28_from_longitude, nakshatra28_from_tropical, nth_rashi_from, rashi_from_longitude,
+    rashi_from_tropical, samvatsara_from_year, time_upagraha_jd, tithi_from_elongation,
+    vaar_from_jd, yoga_from_sum,
 };
 
 /// ABI version for downstream bindings.
@@ -1525,7 +1526,12 @@ pub const DHRUV_NODE_KETU: i32 = 1;
 
 /// Node mode: mean (polynomial only).
 pub const DHRUV_NODE_MODE_MEAN: i32 = 0;
-/// Node mode: true (mean + perturbation corrections).
+/// Node mode: true.
+///
+/// In pure-math APIs (`dhruv_lunar_node_deg`, `dhruv_lunar_node_deg_utc`),
+/// this uses the Meeus perturbation model. In engine-aware APIs
+/// (`dhruv_lunar_node_deg_with_engine`, `dhruv_lunar_node_deg_utc_with_engine`),
+/// this uses the osculating node from Moon state vectors.
 pub const DHRUV_NODE_MODE_TRUE: i32 = 1;
 
 /// Map integer code to LunarNode enum.
@@ -1582,6 +1588,55 @@ pub unsafe extern "C" fn dhruv_lunar_node_deg(
         // SAFETY: Pointer is checked for null; write one value.
         unsafe { *out_deg = deg };
         DhruvStatus::Ok
+    })
+}
+
+/// Compute lunar node longitude in degrees [0, 360), using an engine handle.
+///
+/// For `mode_code=1` (True), this uses an osculating-node computation from
+/// Moon state vectors (`r × v`) with full IAU 2006 precession to ecliptic-of-date.
+/// For `mode_code=0` (Mean), this matches the polynomial mean-node model.
+///
+/// # Arguments
+/// * `engine` — engine handle from `dhruv_engine_new`
+/// * `node_code` — 0 = Rahu, 1 = Ketu
+/// * `mode_code` — 0 = Mean, 1 = True
+/// * `jd_tdb` — Julian Date in TDB
+/// * `out_deg` — output longitude in degrees
+///
+/// # Safety
+/// `engine` and `out_deg` must be valid, non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_lunar_node_deg_with_engine(
+    engine: *const DhruvEngineHandle,
+    node_code: i32,
+    mode_code: i32,
+    jd_tdb: f64,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let node = match lunar_node_from_code(node_code) {
+            Some(n) => n,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let mode = match node_mode_from_code(mode_code) {
+            Some(m) => m,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let engine_ref = unsafe { &*engine };
+        match lunar_node_deg_for_epoch(engine_ref, node, jd_tdb, mode) {
+            Ok(deg) => {
+                unsafe { *out_deg = deg };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
     })
 }
 
@@ -5466,6 +5521,46 @@ pub unsafe extern "C" fn dhruv_lunar_node_deg_utc(
         let t = jd_tdb_to_centuries(jd_tdb);
         unsafe { *out_deg = lunar_node_deg(node, t, mode) };
         DhruvStatus::Ok
+    })
+}
+
+/// Lunar node longitude with UTC input using an engine handle.
+///
+/// For `mode_code=1` (True), this uses an osculating-node computation from
+/// Moon state vectors. For `mode_code=0` (Mean), this matches the polynomial
+/// mean-node model.
+///
+/// # Safety
+/// `engine`, `utc`, and `out_deg` must be valid, non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_lunar_node_deg_utc_with_engine(
+    engine: *const DhruvEngineHandle,
+    node_code: i32,
+    mode_code: i32,
+    utc: *const DhruvUtcTime,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || utc.is_null() || out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let node = match lunar_node_from_code(node_code) {
+            Some(n) => n,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let mode = match node_mode_from_code(mode_code) {
+            Some(m) => m,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let engine_ref = unsafe { &*engine };
+        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
+        match lunar_node_deg_for_epoch(engine_ref, node, jd_tdb, mode) {
+            Ok(deg) => {
+                unsafe { *out_deg = deg };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
     })
 }
 

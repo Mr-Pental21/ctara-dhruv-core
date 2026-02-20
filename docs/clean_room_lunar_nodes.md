@@ -3,8 +3,7 @@
 ## What is Computed
 
 Ecliptic longitude of the Moon's ascending node (Rahu) and descending node
-(Ketu = Rahu + 180 deg), in both mean (polynomial) and true (polynomial +
-short-period perturbation) modes.
+(Ketu = Rahu + 180 deg), in both mean and true modes.
 
 ## Sources
 
@@ -31,6 +30,24 @@ perturbation terms that affect the node position.
 - Largest term: -1.4979 deg * sin(Omega), corresponding to the 18.6-year
   nutation period.
 
+### True Node (osculating state-vector mode)
+
+**Sources:** Standard celestial mechanics geometry (public domain / textbook):
+
+- Orbital angular momentum vector: `h = r × v`
+- Ascending node direction in the reference ecliptic plane: `N = k × h`
+  where `k = (0, 0, 1)`
+- Node longitude: `lambda_node = atan2(Ny, Nx)`
+
+Implementation uses:
+
+- Moon geocentric state (`r`, `v`) from the JPL SPK queried through
+  `dhruv_core::Engine` in ICRF/J2000.
+- Frame rotation to J2000 ecliptic.
+- IAU 2006 3D precession (`precess_ecliptic_j2000_to_date`) to express
+  the orbital normal in ecliptic-of-date coordinates before extracting
+  the node longitude.
+
 ### Supplementary Reference
 
 **Source:** Chapront-Touze, M. & Chapront, J. (1991). "Lunar Tables and
@@ -43,10 +60,14 @@ Programs from 4000 B.C. to A.D. 8000." Willmann-Bell.
 
 - Mean node: convert `fundamental_arguments(t)[4]` from radians to degrees,
   normalize to [0, 360).
-- True node: mean + sum of 13 sinusoidal perturbation terms.
+- True node:
+  - Pure-math API (`lunar_node_deg`): mean + 13 sinusoidal perturbation terms.
+  - Engine-aware API (`lunar_node_deg_for_epoch`): osculating node from
+    Moon state vector geometry.
 - Ketu: always Rahu + 180 deg (exact geometric relationship).
 - All outputs normalized to [0, 360).
-- No kernel files required (pure mathematical computation).
+- Mean mode requires no kernel files (pure mathematical computation).
+- Osculating true mode requires kernel-backed Moon state queries.
 - **Default mode is True** (`NodeMode::True`), matching standard Vedic/jyotish
   practice. The jyotish pipeline (`graha_sidereal_longitudes`) uses true nodes.
   Mean nodes remain available for research/comparison via the `NodeMode` parameter.

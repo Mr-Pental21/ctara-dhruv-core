@@ -1,7 +1,7 @@
 use dhruv_core::{Body, Frame, Observer, Query, StateVector};
 use dhruv_frames::{
-    SphericalCoords, SphericalState, cartesian_to_spherical, icrf_to_ecliptic,
-    nutation_iau2000b, precess_ecliptic_j2000_to_date,
+    SphericalCoords, SphericalState, cartesian_to_spherical, icrf_to_ecliptic, nutation_iau2000b,
+    precess_ecliptic_j2000_to_date,
 };
 use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::{ChandraGrahan, GrahanConfig, SuryaGrahan};
@@ -17,7 +17,7 @@ use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, 
 use dhruv_vedic_base::{
     AshtakavargaResult, AyanamshaSystem, BhavaConfig, BhavaResult, BhinnaAshtakavarga,
     DrishtiEntry, GrahaDrishtiMatrix, LunarNode, Nakshatra28Info, NakshatraInfo, NodeMode, Rashi,
-    RashiInfo, SarvaAshtakavarga, ayanamsha_deg, jd_tdb_to_centuries, lunar_node_deg,
+    RashiInfo, SarvaAshtakavarga, ayanamsha_deg, jd_tdb_to_centuries, lunar_node_deg_for_epoch,
     nakshatra_from_longitude, nakshatra28_from_longitude, rashi_from_longitude,
 };
 
@@ -109,8 +109,7 @@ pub fn position_full(
     let dlon_norm = ((dlon + 180.0).rem_euclid(360.0)) - 180.0;
     let lon_speed = dlon_norm / (2.0 * DT);
     let lat_speed = (sph_plus.lat_deg - sph_minus.lat_deg) / (2.0 * DT);
-    let distance_speed =
-        (sph_plus.distance_km - sph_minus.distance_km) / (2.0 * DT * 86_400.0);
+    let distance_speed = (sph_plus.distance_km - sph_minus.distance_km) / (2.0 * DT * 86_400.0);
 
     Ok(SphericalState {
         lon_deg: sph.lon_deg,
@@ -1000,9 +999,9 @@ pub fn nutation(date: UtcDate) -> Result<(f64, f64), DhruvError> {
 ///
 /// Returns longitude in degrees [0, 360).
 pub fn lunar_node(node: LunarNode, date: UtcDate, mode: NodeMode) -> Result<f64, DhruvError> {
+    let eng = engine()?;
     let jd = utc_to_jd_tdb(date)?;
-    let t = jd_tdb_to_centuries(jd);
-    Ok(lunar_node_deg(node, t, mode))
+    Ok(lunar_node_deg_for_epoch(eng, node, jd, mode)?)
 }
 
 // ---------------------------------------------------------------------------

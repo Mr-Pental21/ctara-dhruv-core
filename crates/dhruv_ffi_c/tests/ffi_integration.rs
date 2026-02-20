@@ -68,6 +68,10 @@ fn make_engine() -> Option<*mut DhruvEngineHandle> {
     Some(engine_ptr)
 }
 
+fn angular_separation_deg(a: f64, b: f64) -> f64 {
+    ((a - b + 180.0).rem_euclid(360.0) - 180.0).abs()
+}
+
 #[test]
 fn query_once_successfully_maps_through_core_contract() {
     let config = match real_config() {
@@ -2972,4 +2976,140 @@ fn ffi_full_kundali_bhava_off_calendar_on() {
     unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
     unsafe { dhruv_engine_free(engine_ptr) };
     unsafe { dhruv_eop_free(eop_ptr) };
+}
+
+#[test]
+fn ffi_lunar_node_with_engine_rejects_null() {
+    let mut out = 0.0_f64;
+    // SAFETY: Null engine pointer is intentional for validation.
+    let status = unsafe {
+        dhruv_lunar_node_deg_with_engine(
+            ptr::null(),
+            DHRUV_NODE_RAHU,
+            DHRUV_NODE_MODE_TRUE,
+            2_451_545.0,
+            &mut out,
+        )
+    };
+    assert_eq!(status, DhruvStatus::NullPointer);
+}
+
+#[test]
+fn ffi_lunar_node_with_engine_mean_matches_pure_utc() {
+    let engine_ptr = match make_engine() {
+        Some(p) => p,
+        None => return,
+    };
+    let lsk_path = match lsk_path_cstr() {
+        Some(p) => p,
+        None => return,
+    };
+    let mut lsk_ptr: *mut DhruvLskHandle = ptr::null_mut();
+    // SAFETY: Valid path and output pointer.
+    let load_status = unsafe { dhruv_lsk_load(lsk_path.as_ptr() as *const u8, &mut lsk_ptr) };
+    assert_eq!(load_status, DhruvStatus::Ok);
+
+    let utc = DhruvUtcTime {
+        year: 1931,
+        month: 12,
+        day: 11,
+        hour: 11,
+        minute: 38,
+        second: 18.0,
+    };
+
+    let mut pure_mean = 0.0_f64;
+    let mut eng_mean = 0.0_f64;
+    // SAFETY: Valid pointers.
+    let s1 = unsafe {
+        dhruv_lunar_node_deg_utc(
+            lsk_ptr as *const _,
+            DHRUV_NODE_RAHU,
+            DHRUV_NODE_MODE_MEAN,
+            &utc,
+            &mut pure_mean,
+        )
+    };
+    // SAFETY: Valid pointers.
+    let s2 = unsafe {
+        dhruv_lunar_node_deg_utc_with_engine(
+            engine_ptr as *const _,
+            DHRUV_NODE_RAHU,
+            DHRUV_NODE_MODE_MEAN,
+            &utc,
+            &mut eng_mean,
+        )
+    };
+    assert_eq!(s1, DhruvStatus::Ok);
+    assert_eq!(s2, DhruvStatus::Ok);
+    assert!(
+        angular_separation_deg(pure_mean, eng_mean) < 1e-9,
+        "mean-node mismatch: pure={pure_mean}, engine={eng_mean}"
+    );
+
+    // SAFETY: Handles created in this test and not yet freed.
+    unsafe { dhruv_lsk_free(lsk_ptr) };
+    // SAFETY: Handle created in this test and not yet freed.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_lunar_node_with_engine_true_differs_from_pure_utc() {
+    let engine_ptr = match make_engine() {
+        Some(p) => p,
+        None => return,
+    };
+    let lsk_path = match lsk_path_cstr() {
+        Some(p) => p,
+        None => return,
+    };
+    let mut lsk_ptr: *mut DhruvLskHandle = ptr::null_mut();
+    // SAFETY: Valid path and output pointer.
+    let load_status = unsafe { dhruv_lsk_load(lsk_path.as_ptr() as *const u8, &mut lsk_ptr) };
+    assert_eq!(load_status, DhruvStatus::Ok);
+
+    let utc = DhruvUtcTime {
+        year: 1931,
+        month: 12,
+        day: 11,
+        hour: 11,
+        minute: 38,
+        second: 18.0,
+    };
+
+    let mut pure_true = 0.0_f64;
+    let mut eng_true = 0.0_f64;
+    // SAFETY: Valid pointers.
+    let s1 = unsafe {
+        dhruv_lunar_node_deg_utc(
+            lsk_ptr as *const _,
+            DHRUV_NODE_RAHU,
+            DHRUV_NODE_MODE_TRUE,
+            &utc,
+            &mut pure_true,
+        )
+    };
+    // SAFETY: Valid pointers.
+    let s2 = unsafe {
+        dhruv_lunar_node_deg_utc_with_engine(
+            engine_ptr as *const _,
+            DHRUV_NODE_RAHU,
+            DHRUV_NODE_MODE_TRUE,
+            &utc,
+            &mut eng_true,
+        )
+    };
+    assert_eq!(s1, DhruvStatus::Ok);
+    assert_eq!(s2, DhruvStatus::Ok);
+
+    let diff = angular_separation_deg(pure_true, eng_true);
+    assert!(
+        diff > 0.3,
+        "expected osculating true-node to differ from pure Meeus true-node; diff={diff} deg"
+    );
+
+    // SAFETY: Handles created in this test and not yet freed.
+    unsafe { dhruv_lsk_free(lsk_ptr) };
+    // SAFETY: Handle created in this test and not yet freed.
+    unsafe { dhruv_engine_free(engine_ptr) };
 }

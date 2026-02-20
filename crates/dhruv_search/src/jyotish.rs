@@ -23,9 +23,9 @@ use dhruv_vedic_base::{
     amsha_longitude, ayanamsha_deg, bhrigu_bindu, calculate_ashtakavarga, compute_bhavas,
     dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise, graha_drishti,
     graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord, jd_tdb_to_centuries,
-    lagna_longitude_rad, lost_planetary_war, lunar_node_deg, masa_lord as graha_masa_lord,
-    nakshatra_from_longitude, navamsa_number, node_dignity_in_rashi, normalize_360, nth_rashi_from,
-    pranapada_lagna, rashi_from_longitude, rashi_lord_by_index,
+    lagna_longitude_rad, lost_planetary_war, lunar_node_deg_for_epoch,
+    masa_lord as graha_masa_lord, nakshatra_from_longitude, navamsa_number, node_dignity_in_rashi,
+    normalize_360, nth_rashi_from, pranapada_lagna, rashi_from_longitude, rashi_lord_by_index,
     samvatsara_lord as graha_samvatsara_lord, sree_lagna, sun_based_upagrahas, time_upagraha_jd,
     vaar_lord as graha_vaar_lord,
 };
@@ -266,7 +266,7 @@ fn query_sapta_graha_declinations(engine: &Engine, jd_tdb: f64) -> Result<[f64; 
 ///
 /// For the 7 physical planets, queries the engine for tropical ecliptic
 /// longitude and subtracts ayanamsha. For Rahu/Ketu, uses true node
-/// positions (mean + short-period perturbation corrections).
+/// positions from the Moon's osculating orbital plane.
 pub fn graha_sidereal_longitudes(
     engine: &Engine,
     jd_tdb: f64,
@@ -275,6 +275,8 @@ pub fn graha_sidereal_longitudes(
 ) -> Result<GrahaLongitudes, SearchError> {
     let t = jd_tdb_to_centuries(jd_tdb);
     let aya = ayanamsha_deg(system, t, use_nutation);
+    let rahu_tropical = lunar_node_deg_for_epoch(engine, LunarNode::Rahu, jd_tdb, NodeMode::True)?;
+    let ketu_tropical = normalize(rahu_tropical + 180.0);
 
     let mut longitudes = [0.0f64; 9];
 
@@ -282,11 +284,9 @@ pub fn graha_sidereal_longitudes(
         let idx = graha.index() as usize;
         match graha {
             Graha::Rahu => {
-                let rahu_tropical = lunar_node_deg(LunarNode::Rahu, t, NodeMode::True);
                 longitudes[idx] = normalize(rahu_tropical - aya);
             }
             Graha::Ketu => {
-                let ketu_tropical = lunar_node_deg(LunarNode::Ketu, t, NodeMode::True);
                 longitudes[idx] = normalize(ketu_tropical - aya);
             }
             _ => {

@@ -109,7 +109,8 @@ pub use hora::{CHALDEAN_SEQUENCE, HORA_COUNT, Hora, hora_at, vaar_day_lord};
 pub use karana::{ALL_KARANAS, KARANA_SEGMENT_DEG, Karana, KaranaPosition, karana_from_elongation};
 pub use lagna::{lagna_and_mc_rad, lagna_longitude_rad, mc_longitude_rad, ramc_rad};
 pub use lunar_nodes::{
-    LunarNode, NodeMode, lunar_node_deg, mean_ketu_deg, mean_rahu_deg, true_ketu_deg, true_rahu_deg,
+    LunarNode, NodeMode, lunar_node_deg, lunar_node_deg_for_epoch, mean_ketu_deg, mean_rahu_deg,
+    true_ketu_deg, true_rahu_deg,
 };
 pub use masa::{ALL_MASAS, Masa, masa_from_rashi_index};
 pub use nakshatra::{

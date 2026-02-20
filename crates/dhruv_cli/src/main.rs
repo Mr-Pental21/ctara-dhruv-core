@@ -3708,10 +3708,14 @@ fn main() {
             });
             let engine = load_engine(&bsp, &lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let t = jd_tdb_to_centuries(jd_tdb);
             let lunar_node = parse_lunar_node(&node);
             let node_mode = parse_node_mode(&mode);
-            let lon = dhruv_vedic_base::lunar_node_deg(lunar_node, t, node_mode);
+            let lon =
+                dhruv_vedic_base::lunar_node_deg_for_epoch(&engine, lunar_node, jd_tdb, node_mode)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    });
             println!("{:?} ({:?}): {:.6}°", lunar_node, node_mode, lon);
         }
 
@@ -4162,8 +4166,7 @@ fn main() {
             let dlon = ((sph_p.lon_deg - sph_m.lon_deg + 180.0).rem_euclid(360.0)) - 180.0;
             let lon_speed = dlon / (2.0 * DT);
             let lat_speed = (sph_p.lat_deg - sph_m.lat_deg) / (2.0 * DT);
-            let dist_speed =
-                (sph_p.distance_km - sph_m.distance_km) / (2.0 * DT * 86_400.0);
+            let dist_speed = (sph_p.distance_km - sph_m.distance_km) / (2.0 * DT * 86_400.0);
             println!("Position of {:?} from {:?}:", t, obs);
             println!("  Longitude:      {:.6}°", sph.lon_deg);
             println!("  Latitude:       {:.6}°", sph.lat_deg);

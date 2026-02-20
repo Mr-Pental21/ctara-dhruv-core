@@ -11,7 +11,10 @@
 //!
 //! Clean-room implementation. See `docs/clean_room_lunar_nodes.md`.
 
-use dhruv_frames::fundamental_arguments;
+use dhruv_core::{Body, Engine, Frame, Observer, Query};
+use dhruv_frames::{fundamental_arguments, icrf_to_ecliptic, precess_ecliptic_j2000_to_date};
+
+use crate::error::VedicError;
 
 /// Which lunar node to compute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,12 +38,15 @@ impl LunarNode {
 /// Mean or true (nutation-perturbed) node position.
 ///
 /// The default is `True`, matching standard Vedic/jyotish practice where
-/// true nodes (mean + short-period perturbation corrections) are preferred.
+/// true nodes are preferred.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum NodeMode {
     /// Mean node: smooth polynomial motion only.
     Mean,
-    /// True node: mean + short-period perturbation corrections.
+    ///
+    /// In pure math mode (`lunar_node_deg`) this is the Meeus 13-term
+    /// perturbation model. In engine-aware mode (`lunar_node_deg_for_epoch`)
+    /// this is the osculating node from the Moon state vector.
     #[default]
     True,
 }
@@ -133,6 +139,56 @@ pub fn true_ketu_deg(t: f64) -> f64 {
     normalize_deg(true_rahu_deg(t) + 180.0)
 }
 
+fn cross(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+/// Osculating Rahu (ascending node) ecliptic-of-date longitude in degrees.
+///
+/// Uses the Moon geocentric state vector from the ephemeris engine:
+/// 1. Query Moon relative to Earth in ICRF/J2000.
+/// 2. Rotate to J2000 ecliptic.
+/// 3. Compute orbital angular momentum vector `h = r × v`.
+/// 4. Precess `h` to ecliptic-of-date (IAU 2006).
+/// 5. Ascending node direction is `N = k × h` where `k = (0,0,1)`.
+/// 6. Longitude = `atan2(Ny, Nx)`.
+fn osculating_rahu_deg(engine: &Engine, jd_tdb: f64) -> Result<f64, VedicError> {
+    let query = Query {
+        target: Body::Moon,
+        observer: Observer::Body(Body::Earth),
+        frame: Frame::IcrfJ2000,
+        epoch_tdb_jd: jd_tdb,
+    };
+    let state = engine.query(query)?;
+
+    let r_ecl_j2000 = icrf_to_ecliptic(&state.position_km);
+    let v_ecl_j2000 = icrf_to_ecliptic(&state.velocity_km_s);
+    let h_j2000 = cross(&r_ecl_j2000, &v_ecl_j2000);
+
+    let h_norm2 = h_j2000[0] * h_j2000[0] + h_j2000[1] * h_j2000[1] + h_j2000[2] * h_j2000[2];
+    if h_norm2 < 1e-30 {
+        return Err(VedicError::InvalidInput("moon angular momentum too small"));
+    }
+
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let h_date = precess_ecliptic_j2000_to_date(&h_j2000, t);
+
+    // N = k × h = (-hy, hx, 0)
+    let nx = -h_date[1];
+    let ny = h_date[0];
+    if nx.abs() < 1e-15 && ny.abs() < 1e-15 {
+        return Err(VedicError::InvalidInput(
+            "ascending node direction ill-defined",
+        ));
+    }
+
+    Ok(normalize_deg(f64::atan2(ny, nx).to_degrees()))
+}
+
 /// Unified entry point: compute lunar node longitude in degrees [0, 360).
 ///
 /// Matches the pattern of `ayanamsha_deg(system, t, use_nutation)`.
@@ -143,6 +199,33 @@ pub fn lunar_node_deg(node: LunarNode, t: f64, mode: NodeMode) -> f64 {
         (LunarNode::Rahu, NodeMode::True) => true_rahu_deg(t),
         (LunarNode::Ketu, NodeMode::True) => true_ketu_deg(t),
     }
+}
+
+/// Engine-aware lunar node longitude in degrees [0, 360).
+///
+/// - `NodeMode::Mean`: mean node polynomial (same as [`lunar_node_deg`]).
+/// - `NodeMode::True`: osculating node from Moon state vectors.
+///
+/// This is the preferred API when an ephemeris engine is available.
+pub fn lunar_node_deg_for_epoch(
+    engine: &Engine,
+    node: LunarNode,
+    jd_tdb: f64,
+    mode: NodeMode,
+) -> Result<f64, VedicError> {
+    let rahu = match mode {
+        NodeMode::Mean => {
+            let t = (jd_tdb - 2_451_545.0) / 36525.0;
+            mean_rahu_deg(t)
+        }
+        NodeMode::True => osculating_rahu_deg(engine, jd_tdb)?,
+    };
+
+    let out = match node {
+        LunarNode::Rahu => rahu,
+        LunarNode::Ketu => normalize_deg(rahu + 180.0),
+    };
+    Ok(out)
 }
 
 #[cfg(test)]

@@ -125,7 +125,7 @@ enum DhruvStatus {
 | `DHRUV_NODE_RAHU` | 0 | Ascending node |
 | `DHRUV_NODE_KETU` | 1 | Descending node |
 | `DHRUV_NODE_MODE_MEAN` | 0 | Mean (polynomial only) |
-| `DHRUV_NODE_MODE_TRUE` | 1 | True (mean + perturbation corrections) |
+| `DHRUV_NODE_MODE_TRUE` | 1 | True node mode (osculating in engine-aware APIs; Meeus perturbation in pure APIs) |
 
 ### Bhava (House) System Codes
 
@@ -700,6 +700,31 @@ DhruvStatus dhruv_lunar_node_deg(
 ```
 
 Compute lunar node longitude. Pure math, no engine needed.
+
+```c
+DhruvStatus dhruv_lunar_node_deg_with_engine(
+    const DhruvEngineHandle* engine,
+    int32_t node_code,  // 0=Rahu, 1=Ketu
+    int32_t mode_code,  // 0=Mean, 1=True
+    double  jd_tdb,
+    double* out_deg     // Longitude in degrees [0, 360)
+);
+```
+
+Compute lunar node longitude using an engine handle. For `mode_code=1`, this
+uses an osculating node from Moon state vectors.
+
+```c
+DhruvStatus dhruv_lunar_node_deg_utc_with_engine(
+    const DhruvEngineHandle* engine,
+    int32_t node_code,  // 0=Rahu, 1=Ketu
+    int32_t mode_code,  // 0=Mean, 1=True
+    const DhruvUtcTime* utc,
+    double* out_deg     // Longitude in degrees [0, 360)
+);
+```
+
+UTC convenience variant of the engine-aware lunar node API.
 
 ```c
 uint32_t dhruv_lunar_node_count(void);
