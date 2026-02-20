@@ -21,7 +21,7 @@
 //! IAU 2015 nominal radii). See docs/clean_room_grahan.md.
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::{cartesian_to_spherical, icrf_to_ecliptic};
+use dhruv_frames::{cartesian_to_spherical, icrf_to_ecliptic, precess_ecliptic_j2000_to_date};
 
 use crate::conjunction::{next_conjunction, prev_conjunction, search_conjunctions};
 use crate::conjunction_types::ConjunctionConfig;
@@ -66,7 +66,7 @@ const CONTACT_MAX_ITER: u32 = 50;
 // Internal geometry helpers
 // ---------------------------------------------------------------------------
 
-/// Query Moon's ecliptic longitude, latitude (deg), and distance from Earth (km).
+/// Query Moon's ecliptic-of-date longitude, latitude (deg), and distance (km).
 fn moon_ecliptic(engine: &Engine, jd_tdb: f64) -> Result<(f64, f64, f64), SearchError> {
     let query = Query {
         target: Body::Moon,
@@ -75,9 +75,11 @@ fn moon_ecliptic(engine: &Engine, jd_tdb: f64) -> Result<(f64, f64, f64), Search
         epoch_tdb_jd: jd_tdb,
     };
     let state = engine.query(query)?;
-    let ecl = icrf_to_ecliptic(&state.position_km);
-    let sph = cartesian_to_spherical(&ecl);
-    Ok((sph.lon_deg, sph.lat_deg, sph.distance_km))
+    let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+    let sph = cartesian_to_spherical(&ecl_date);
+    Ok((sph.lon_deg.rem_euclid(360.0), sph.lat_deg, sph.distance_km))
 }
 
 /// Query Sun's distance from Earth in km.

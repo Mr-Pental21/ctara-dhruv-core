@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
-use dhruv_frames::{cartesian_state_to_spherical_state, nutation_iau2000b};
+use dhruv_frames::{
+    cartesian_to_spherical, icrf_to_ecliptic, nutation_iau2000b, precess_ecliptic_j2000_to_date,
+};
 use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::GrahanConfig;
 use dhruv_search::sankranti_types::SankrantiConfig;
@@ -4134,24 +4136,41 @@ fn main() {
             let obs = require_observer(observer);
             let engine = load_engine(&bsp, &lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let query = Query {
-                target: t,
-                observer: obs,
-                frame: Frame::EclipticJ2000,
-                epoch_tdb_jd: jd_tdb,
+
+            // Helper: ecliptic-of-date spherical coords at a given JD TDB.
+            let ecl_sph = |jd: f64| {
+                let q = Query {
+                    target: t,
+                    observer: obs,
+                    frame: Frame::IcrfJ2000,
+                    epoch_tdb_jd: jd,
+                };
+                let sv = engine.query(q).unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                });
+                let ecl_j2000 = icrf_to_ecliptic(&sv.position_km);
+                let tc = (jd - 2_451_545.0) / 36525.0;
+                let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, tc);
+                cartesian_to_spherical(&ecl_date)
             };
-            let state = engine.query(query).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            });
-            let sph = cartesian_state_to_spherical_state(&state.position_km, &state.velocity_km_s);
+
+            let sph = ecl_sph(jd_tdb);
+            const DT: f64 = 1.0 / 1440.0;
+            let sph_p = ecl_sph(jd_tdb + DT);
+            let sph_m = ecl_sph(jd_tdb - DT);
+            let dlon = ((sph_p.lon_deg - sph_m.lon_deg + 180.0).rem_euclid(360.0)) - 180.0;
+            let lon_speed = dlon / (2.0 * DT);
+            let lat_speed = (sph_p.lat_deg - sph_m.lat_deg) / (2.0 * DT);
+            let dist_speed =
+                (sph_p.distance_km - sph_m.distance_km) / (2.0 * DT * 86_400.0);
             println!("Position of {:?} from {:?}:", t, obs);
             println!("  Longitude:      {:.6}°", sph.lon_deg);
             println!("  Latitude:       {:.6}°", sph.lat_deg);
             println!("  Distance:       {:.6} km", sph.distance_km);
-            println!("  Lon speed:      {:.6} deg/day", sph.lon_speed);
-            println!("  Lat speed:      {:.6} deg/day", sph.lat_speed);
-            println!("  Distance speed: {:.6} km/s", sph.distance_speed);
+            println!("  Lon speed:      {:.6} deg/day", lon_speed);
+            println!("  Lat speed:      {:.6} deg/day", lat_speed);
+            println!("  Distance speed: {:.6} km/s", dist_speed);
         }
 
         Commands::SiderealLongitude {
@@ -4175,20 +4194,17 @@ fn main() {
             let query = Query {
                 target: t,
                 observer: obs,
-                frame: Frame::EclipticJ2000,
+                frame: Frame::IcrfJ2000,
                 epoch_tdb_jd: jd_tdb,
             };
             let state = engine.query(query).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             });
-            let tropical_lon = {
-                let x = state.position_km[0];
-                let y = state.position_km[1];
-                let lon = y.atan2(x).to_degrees();
-                if lon < 0.0 { lon + 360.0 } else { lon }
-            };
             let tc = jd_tdb_to_centuries(jd_tdb);
+            let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
+            let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, tc);
+            let tropical_lon = cartesian_to_spherical(&ecl_date).lon_deg;
             let aya = ayanamsha_deg(system, tc, nutation);
             let sid = (tropical_lon - aya).rem_euclid(360.0);
             println!("Tropical longitude: {:.6}°", tropical_lon);

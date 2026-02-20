@@ -11,7 +11,7 @@
 use std::f64::consts::TAU;
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::cartesian_to_spherical;
+use dhruv_frames::{icrf_to_ecliptic, mean_obliquity_of_date_rad, precess_ecliptic_j2000_to_date};
 use dhruv_time::{
     EopKernel, LeapSecondKernel, gmst_rad, jd_to_tdb_seconds, local_sidereal_time_rad,
     tdb_seconds_to_jd,
@@ -53,12 +53,27 @@ fn sun_equatorial_ra_dec_dist(engine: &Engine, jd_tdb: f64) -> Result<(f64, f64,
         epoch_tdb_jd: jd_tdb,
     };
     let state = engine.query(query)?;
-    let sph = cartesian_to_spherical(&state.position_km);
-    Ok((
-        sph.lon_deg.to_radians(),
-        sph.lat_deg.to_radians(),
-        sph.distance_km,
-    ))
+
+    // ICRF J2000 → ecliptic J2000 → ecliptic of date → equatorial of date.
+    // This aligns RA with the equinox-of-date so that hour angle = LST - RA is correct.
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
+    let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+
+    // Ecliptic-of-date → equatorial-of-date: R_x(-eps_of_date).
+    let eps = mean_obliquity_of_date_rad(t);
+    let (se, ce) = eps.sin_cos();
+    let eq_date = [
+        ecl_date[0],
+        ce * ecl_date[1] - se * ecl_date[2],
+        se * ecl_date[1] + ce * ecl_date[2],
+    ];
+
+    let r = (eq_date[0] * eq_date[0] + eq_date[1] * eq_date[1] + eq_date[2] * eq_date[2]).sqrt();
+    let ra = f64::atan2(eq_date[1], eq_date[0]).rem_euclid(TAU);
+    let dec = (eq_date[2] / r).asin();
+
+    Ok((ra, dec, r))
 }
 
 /// Compute solar angular semidiameter from Earth-Sun distance.

@@ -1144,7 +1144,7 @@ fn non_chakra_parity_golden_values() {
         vim.levels[0][0].start_jd
     );
     assert!(
-        (vim.levels[0][0].end_jd - 2450982.473393).abs() < 1e-6,
+        (vim.levels[0][0].end_jd - 2451058.6743442472).abs() < 1e-6,
         "Vimshottari end_jd: {:.10}",
         vim.levels[0][0].end_jd
     );
@@ -1169,7 +1169,7 @@ fn non_chakra_parity_golden_values() {
         chara.levels[0][0].start_jd
     );
     assert!(
-        (chara.levels[0][0].end_jd - 2450200.268691).abs() < 1e-6,
+        (chara.levels[0][0].end_jd - 2450200.2092723837).abs() < 1e-6,
         "Chara end_jd: {:.10}",
         chara.levels[0][0].end_jd
     );

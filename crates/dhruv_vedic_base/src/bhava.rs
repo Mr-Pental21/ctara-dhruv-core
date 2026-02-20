@@ -11,7 +11,10 @@
 use std::f64::consts::{PI, TAU};
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::{OBLIQUITY_J2000_RAD, cartesian_to_spherical};
+use dhruv_frames::{
+    cartesian_to_spherical, icrf_to_ecliptic, mean_obliquity_of_date_rad,
+    precess_ecliptic_j2000_to_date,
+};
 use dhruv_time::{LeapSecondKernel, jd_to_tdb_seconds, tdb_seconds_to_jd};
 
 use crate::bhava_types::{
@@ -50,8 +53,12 @@ pub fn compute_bhavas(
     // Compute LST once, then derive Lagna, MC, RAMC
     let lst = compute_lst_rad_pub(lsk, eop, location, jd_utc)?;
     let lat_rad = location.latitude_rad();
-    let (asc_rad, mc_rad, ramc) = lagna_mc_ramc_from_lst(lst, lat_rad);
-    let eps = OBLIQUITY_J2000_RAD;
+    let utc_s = jd_to_tdb_seconds(jd_utc);
+    let tdb_s = lsk.utc_to_tdb(utc_s);
+    let jd_tdb = tdb_seconds_to_jd(tdb_s);
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let eps = mean_obliquity_of_date_rad(t);
+    let (asc_rad, mc_rad, ramc) = lagna_mc_ramc_from_lst(lst, lat_rad, eps);
 
     let asc_deg = normalize_deg(asc_rad.to_degrees());
     let mc_deg = normalize_deg(mc_rad.to_degrees());
@@ -148,11 +155,14 @@ fn body_ecliptic_longitude_deg(
     let query = Query {
         target: body,
         observer: Observer::Body(Body::Earth),
-        frame: Frame::EclipticJ2000,
+        frame: Frame::IcrfJ2000,
         epoch_tdb_jd: jd_tdb,
     };
     let state = engine.query(query)?;
-    let sph = cartesian_to_spherical(&state.position_km);
+    let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+    let sph = cartesian_to_spherical(&ecl_date);
     Ok(normalize_deg(sph.lon_deg))
 }
 
@@ -601,6 +611,7 @@ fn build_bhavas(cusps_deg: &[f64; 12], reference_mode: BhavaReferenceMode) -> [B
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dhruv_frames::OBLIQUITY_J2000_RAD;
 
     #[test]
     fn equal_cusps_30_deg_apart() {

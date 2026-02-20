@@ -8,7 +8,7 @@
 //! the target separation. Standard numerical root-finding; no external code referenced.
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::{cartesian_state_to_spherical_state, cartesian_to_spherical, icrf_to_ecliptic};
+use dhruv_frames::{cartesian_to_spherical, icrf_to_ecliptic, precess_ecliptic_j2000_to_date};
 
 use crate::conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 use crate::error::SearchError;
@@ -17,7 +17,11 @@ use crate::search_util::{is_genuine_crossing, normalize_to_pm180};
 /// Maximum scan range in days (~800 days covers all synodic periods).
 const MAX_SCAN_DAYS: f64 = 800.0;
 
-/// Query a body's ecliptic longitude and latitude in degrees.
+/// Query a body's ecliptic-of-date longitude and latitude in degrees.
+///
+/// Queries ICRF/J2000, rotates to J2000 ecliptic, then applies the full IAU 2006
+/// 3D precession to yield ecliptic-of-date coordinates. This is the primary
+/// choke-point for all graha tropical longitudes.
 pub fn body_ecliptic_lon_lat(
     engine: &Engine,
     body: Body,
@@ -30,29 +34,37 @@ pub fn body_ecliptic_lon_lat(
         epoch_tdb_jd: jd_tdb,
     };
     let state = engine.query(query)?;
-    let ecl = icrf_to_ecliptic(&state.position_km);
-    let sph = cartesian_to_spherical(&ecl);
-    Ok((sph.lon_deg, sph.lat_deg))
+    let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+    let sph = cartesian_to_spherical(&ecl_date);
+    Ok((sph.lon_deg.rem_euclid(360.0), sph.lat_deg))
 }
 
-/// Query a body's ecliptic longitude, latitude, and longitude speed.
+/// Query a body's ecliptic-of-date longitude, latitude, and longitude speed.
 ///
 /// Returns `(lon_deg, lat_deg, lon_speed_deg_per_day)`.
-/// Uses `Frame::EclipticJ2000` so the engine rotates both position and velocity.
+///
+/// `lon_speed` is computed by finite-differencing fully-precessed of-date
+/// longitudes at t±1 min. This correctly captures the full dP/dt·r term
+/// (including dΠ_A/dt, dπ_A/dt, and latitude coupling) that a simple
+/// `P·v_j2000 + scalar prec_rate` approximation would miss.
+/// Requires 3 engine queries; acceptable since this path is not the hot path.
 pub(crate) fn body_ecliptic_state(
     engine: &Engine,
     body: Body,
     jd_tdb: f64,
 ) -> Result<(f64, f64, f64), SearchError> {
-    let query = Query {
-        target: body,
-        observer: Observer::Body(Body::Earth),
-        frame: Frame::EclipticJ2000,
-        epoch_tdb_jd: jd_tdb,
-    };
-    let state = engine.query(query)?;
-    let sph = cartesian_state_to_spherical_state(&state.position_km, &state.velocity_km_s);
-    Ok((sph.lon_deg.rem_euclid(360.0), sph.lat_deg, sph.lon_speed))
+    // Position at query epoch via full precession.
+    let (lon, lat) = body_ecliptic_lon_lat(engine, body, jd_tdb)?;
+
+    // lon_speed: finite-difference of of-date longitudes to capture all Ṗ·r terms.
+    const DT: f64 = 1.0 / 1440.0; // 1-minute step in JD days
+    let (lon_plus, _) = body_ecliptic_lon_lat(engine, body, jd_tdb + DT)?;
+    let (lon_minus, _) = body_ecliptic_lon_lat(engine, body, jd_tdb - DT)?;
+    let lon_speed = normalize_to_pm180(lon_plus - lon_minus) / (2.0 * DT);
+
+    Ok((lon, lat, lon_speed))
 }
 
 /// Compute the separation function f(t) = normalize(lon1 - lon2 - target).

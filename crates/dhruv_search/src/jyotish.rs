@@ -4,8 +4,8 @@
 //! Vedic calculation modules. Queries all 9 graha positions at a given
 //! epoch and converts to sidereal longitudes.
 
-use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::{OBLIQUITY_J2000_RAD, cartesian_state_to_spherical_state};
+use dhruv_core::{Body, Engine};
+use dhruv_frames::mean_obliquity_of_date_rad;
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::arudha::all_arudha_padas;
 use dhruv_vedic_base::riseset::compute_rise_set;
@@ -30,7 +30,7 @@ use dhruv_vedic_base::{
     vaar_lord as graha_vaar_lord,
 };
 
-use crate::conjunction::body_ecliptic_lon_lat;
+use crate::conjunction::{body_ecliptic_lon_lat, body_ecliptic_state};
 use crate::dasha::{
     DashaInputs, dasha_hierarchy_with_inputs, dasha_snapshot_with_inputs, is_rashi_system,
     needs_moon_lon, needs_sunrise_sunset,
@@ -226,20 +226,16 @@ impl JyotishContext {
     }
 }
 
-/// Query ecliptic longitude speed (deg/day) for all 7 sapta grahas.
+/// Query ecliptic-of-date longitude speed (deg/day) for all 7 sapta grahas.
+///
+/// Uses `body_ecliptic_state` which finite-differences fully-precessed
+/// of-date longitudes to capture the complete velocity frame correction.
 fn query_sapta_graha_speeds(engine: &Engine, jd_tdb: f64) -> Result<[f64; 7], SearchError> {
     let mut speeds = [0.0f64; 7];
     for graha in SAPTA_GRAHAS {
         let body = graha_to_body(graha).expect("sapta graha has body");
-        let query = Query {
-            target: body,
-            observer: Observer::Body(Body::Earth),
-            frame: Frame::EclipticJ2000,
-            epoch_tdb_jd: jd_tdb,
-        };
-        let state = engine.query(query)?;
-        let sph = cartesian_state_to_spherical_state(&state.position_km, &state.velocity_km_s);
-        speeds[graha.index() as usize] = sph.lon_speed;
+        let (_, _, lon_speed) = body_ecliptic_state(engine, body, jd_tdb)?;
+        speeds[graha.index() as usize] = lon_speed;
     }
     Ok(speeds)
 }
@@ -247,9 +243,11 @@ fn query_sapta_graha_speeds(engine: &Engine, jd_tdb: f64) -> Result<[f64; 7], Se
 /// Query ecliptic declination (deg) for all 7 sapta grahas.
 ///
 /// Declination = arcsin(sin(lat)*cos(eps) + cos(lat)*sin(eps)*sin(lon))
-/// where lon, lat are ecliptic coordinates and eps is the obliquity.
+/// where lon, lat are ecliptic-of-date coordinates and eps is the
+/// mean obliquity of date (IAU 2006).
 fn query_sapta_graha_declinations(engine: &Engine, jd_tdb: f64) -> Result<[f64; 7], SearchError> {
-    let eps = OBLIQUITY_J2000_RAD;
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let eps = mean_obliquity_of_date_rad(t);
     let sin_eps = eps.sin();
     let cos_eps = eps.cos();
     let mut decls = [0.0f64; 7];

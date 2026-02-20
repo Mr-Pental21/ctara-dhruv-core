@@ -10,8 +10,16 @@ pub mod rotation;
 pub mod spherical;
 
 pub use nutation::{fundamental_arguments, nutation_iau2000b};
-pub use obliquity::{COS_OBL, OBLIQUITY_J2000_DEG, OBLIQUITY_J2000_RAD, SIN_OBL};
-pub use precession::{general_precession_longitude_arcsec, general_precession_longitude_deg};
+pub use obliquity::{
+    COS_OBL, OBLIQUITY_J2000_DEG, OBLIQUITY_J2000_RAD, SIN_OBL, mean_obliquity_of_date_arcsec,
+    mean_obliquity_of_date_rad,
+};
+pub use precession::{
+    ecliptic_inclination_arcsec, ecliptic_node_longitude_arcsec,
+    general_precession_longitude_arcsec, general_precession_longitude_deg,
+    general_precession_rate_deg_per_day, precess_ecliptic_date_to_j2000,
+    precess_ecliptic_j2000_to_date,
+};
 pub use rotation::{ecliptic_to_icrf, icrf_to_ecliptic};
 pub use spherical::{
     SphericalCoords, SphericalState, cartesian_state_to_spherical_state, cartesian_to_spherical,

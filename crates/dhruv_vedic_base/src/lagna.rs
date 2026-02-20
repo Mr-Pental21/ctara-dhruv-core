@@ -9,11 +9,25 @@
 
 use std::f64::consts::TAU;
 
-use dhruv_frames::OBLIQUITY_J2000_RAD;
-use dhruv_time::{EopKernel, LeapSecondKernel, gmst_rad, local_sidereal_time_rad};
+use dhruv_frames::mean_obliquity_of_date_rad;
+use dhruv_time::{
+    EopKernel, LeapSecondKernel, gmst_rad, jd_to_tdb_seconds, local_sidereal_time_rad,
+    tdb_seconds_to_jd,
+};
 
 use crate::error::VedicError;
 use crate::riseset_types::GeoLocation;
+
+/// Compute mean obliquity of date (IAU 2006) from a UTC Julian Date.
+///
+/// Converts JD UTC → TDB via the LSK, then evaluates the IAU 2006 polynomial.
+fn obliquity_of_date_rad(lsk: &LeapSecondKernel, jd_utc: f64) -> f64 {
+    let utc_s = jd_to_tdb_seconds(jd_utc);
+    let tdb_s = lsk.utc_to_tdb(utc_s);
+    let jd_tdb = tdb_seconds_to_jd(tdb_s);
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    mean_obliquity_of_date_rad(t)
+}
 
 /// Compute Local Sidereal Time from JD UTC via the UTC->UT1->GMST->LST chain.
 ///
@@ -49,7 +63,7 @@ pub fn lagna_longitude_rad(
     jd_utc: f64,
 ) -> Result<f64, VedicError> {
     let lst = compute_lst_rad(lsk, eop, location, jd_utc)?;
-    let eps = OBLIQUITY_J2000_RAD;
+    let eps = obliquity_of_date_rad(lsk, jd_utc);
     let phi = location.latitude_rad();
 
     let asc = f64::atan2(lst.cos(), -(lst.sin() * eps.cos() + phi.tan() * eps.sin()));
@@ -68,7 +82,7 @@ pub fn mc_longitude_rad(
     jd_utc: f64,
 ) -> Result<f64, VedicError> {
     let lst = compute_lst_rad(lsk, eop, location, jd_utc)?;
-    let eps = OBLIQUITY_J2000_RAD;
+    let eps = obliquity_of_date_rad(lsk, jd_utc);
 
     let mc = f64::atan2(lst.sin(), lst.cos() * eps.cos());
     Ok(mc.rem_euclid(TAU))
@@ -84,7 +98,7 @@ pub fn lagna_and_mc_rad(
     jd_utc: f64,
 ) -> Result<(f64, f64), VedicError> {
     let lst = compute_lst_rad(lsk, eop, location, jd_utc)?;
-    let eps = OBLIQUITY_J2000_RAD;
+    let eps = obliquity_of_date_rad(lsk, jd_utc);
     let phi = location.latitude_rad();
 
     let asc = f64::atan2(lst.cos(), -(lst.sin() * eps.cos() + phi.tan() * eps.sin()));
@@ -109,16 +123,23 @@ pub fn ramc_rad(
 
 /// Internal helper: compute Lagna, MC, and RAMC from a pre-computed LST.
 ///
+/// `eps_rad` is the mean obliquity of the ecliptic in radians. Callers should
+/// pass the obliquity-of-date (IAU 2006) for correct frame alignment with LST.
+/// Unit tests may pass [`OBLIQUITY_J2000_RAD`] when testing formula geometry
+/// independent of the epoch-varying obliquity.
+///
 /// Used by bhava computation to avoid redundant LST calculations.
-pub(crate) fn lagna_mc_ramc_from_lst(lst_rad: f64, latitude_rad: f64) -> (f64, f64, f64) {
-    let eps = OBLIQUITY_J2000_RAD;
-
+pub(crate) fn lagna_mc_ramc_from_lst(
+    lst_rad: f64,
+    latitude_rad: f64,
+    eps_rad: f64,
+) -> (f64, f64, f64) {
     let asc = f64::atan2(
         lst_rad.cos(),
-        -(lst_rad.sin() * eps.cos() + latitude_rad.tan() * eps.sin()),
+        -(lst_rad.sin() * eps_rad.cos() + latitude_rad.tan() * eps_rad.sin()),
     );
 
-    let mc = f64::atan2(lst_rad.sin(), lst_rad.cos() * eps.cos());
+    let mc = f64::atan2(lst_rad.sin(), lst_rad.cos() * eps_rad.cos());
 
     (
         asc.rem_euclid(TAU),
@@ -140,6 +161,7 @@ pub(crate) fn compute_lst_rad_pub(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dhruv_frames::OBLIQUITY_J2000_RAD;
     use std::f64::consts::PI;
 
     /// At equator (phi=0), LST=0:
@@ -150,7 +172,7 @@ mod tests {
     /// So the Ascendant is at ecliptic longitude 90 deg.
     #[test]
     fn ascendant_formula_equator_lst_zero() {
-        let (asc, _, _) = lagna_mc_ramc_from_lst(0.0, 0.0);
+        let (asc, _, _) = lagna_mc_ramc_from_lst(0.0, 0.0, OBLIQUITY_J2000_RAD);
         let expected = PI / 2.0; // 90 deg
         assert!(
             (asc - expected).abs() < 1e-10,
@@ -162,7 +184,7 @@ mod tests {
     /// MC at LST=0: atan2(sin(0), cos(0)*cos(eps)) = atan2(0, cos(eps)) = 0
     #[test]
     fn mc_formula_lst_zero() {
-        let (_, mc, _) = lagna_mc_ramc_from_lst(0.0, 0.0);
+        let (_, mc, _) = lagna_mc_ramc_from_lst(0.0, 0.0, OBLIQUITY_J2000_RAD);
         assert!(
             mc.abs() < 1e-10,
             "MC at LST=0 = {:.4} deg, expected 0",
@@ -181,7 +203,7 @@ mod tests {
 
         for i in 0..n {
             let lst = TAU * (i as f64) / (n as f64);
-            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi);
+            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi, OBLIQUITY_J2000_RAD);
             if asc < min_asc {
                 min_asc = asc;
             }
@@ -202,7 +224,7 @@ mod tests {
 
         let lsts: [f64; 4] = [0.5, 1.5, 3.0, 4.5];
         for &lst in &lsts {
-            let (asc, mc, _) = lagna_mc_ramc_from_lst(lst, phi);
+            let (asc, mc, _) = lagna_mc_ramc_from_lst(lst, phi, OBLIQUITY_J2000_RAD);
 
             let mut diff = (asc - mc).abs();
             if diff > PI {
@@ -223,7 +245,7 @@ mod tests {
     #[test]
     fn ramc_equals_lst() {
         let lst = 1.234;
-        let (_, _, ramc) = lagna_mc_ramc_from_lst(lst, 0.5);
+        let (_, _, ramc) = lagna_mc_ramc_from_lst(lst, 0.5, OBLIQUITY_J2000_RAD);
         assert!(
             (ramc - lst.rem_euclid(TAU)).abs() < 1e-15,
             "ramc={ramc}, lst={lst}"
@@ -259,7 +281,7 @@ mod tests {
         ];
 
         for &(lst, phi, expected_deg) in cases {
-            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi);
+            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi, OBLIQUITY_J2000_RAD);
             let asc_deg = asc.to_degrees();
             // For 0/360 boundary: compare mod 360
             let diff = (asc_deg - expected_deg).rem_euclid(360.0);
@@ -297,7 +319,7 @@ mod tests {
         ];
 
         for &(lst, phi, label) in cases {
-            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi);
+            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi, OBLIQUITY_J2000_RAD);
             // RA of the ecliptic point lambda=asc
             let ra = f64::atan2(asc.sin() * eps.cos(), asc.cos()).rem_euclid(TAU);
             let mut h = (lst - ra).rem_euclid(TAU);
@@ -325,7 +347,7 @@ mod tests {
         ];
 
         for &(lst, phi) in cases {
-            let (asc_helper, _, _) = lagna_mc_ramc_from_lst(lst, phi);
+            let (asc_helper, _, _) = lagna_mc_ramc_from_lst(lst, phi, OBLIQUITY_J2000_RAD);
             // Inline formula (same as used in lagna_longitude_rad and lagna_and_mc_rad)
             let asc_inline =
                 f64::atan2(lst.cos(), -(lst.sin() * eps.cos() + phi.tan() * eps.sin()))
@@ -347,7 +369,7 @@ mod tests {
             let phi = lat_deg.to_radians();
             for i in 0..8 {
                 let lst = TAU * (i as f64) / 8.0;
-                let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi);
+                let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi, OBLIQUITY_J2000_RAD);
                 // rem_euclid(TAU) can return exactly TAU due to f64 rounding
                 assert!(
                     asc.is_finite() && asc >= 0.0 && asc <= TAU,
@@ -363,7 +385,7 @@ mod tests {
     fn ascendant_at_exact_poles() {
         for &lat_deg in &[90.0_f64, -90.0] {
             let phi = lat_deg.to_radians();
-            let (asc, _, _) = lagna_mc_ramc_from_lst(1.0, phi);
+            let (asc, _, _) = lagna_mc_ramc_from_lst(1.0, phi, OBLIQUITY_J2000_RAD);
             assert!(
                 asc.is_finite() && asc >= 0.0 && asc <= TAU,
                 "lat={lat_deg}: asc={asc}"
@@ -376,7 +398,7 @@ mod tests {
     fn ascendant_out_of_range_latitude() {
         for &lat_deg in &[91.0_f64, -91.0, 180.0, 100.0] {
             let phi = lat_deg.to_radians();
-            let (asc, _, _) = lagna_mc_ramc_from_lst(1.0, phi);
+            let (asc, _, _) = lagna_mc_ramc_from_lst(1.0, phi, OBLIQUITY_J2000_RAD);
             assert!(
                 asc.is_finite() && asc >= 0.0 && asc <= TAU,
                 "lat={lat_deg}: asc={asc}"
@@ -390,7 +412,7 @@ mod tests {
     fn ascendant_near_singular_atan2() {
         let phi = (-66.56_f64).to_radians();
         for &lst in &[PI / 2.0 - 0.001, PI / 2.0, PI / 2.0 + 0.001] {
-            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi);
+            let (asc, _, _) = lagna_mc_ramc_from_lst(lst, phi, OBLIQUITY_J2000_RAD);
             assert!(
                 asc.is_finite() && asc >= 0.0 && asc <= TAU,
                 "lst={}, phi=-66.56: asc={}",

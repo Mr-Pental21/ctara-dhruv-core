@@ -1,7 +1,7 @@
 use dhruv_core::{Body, Frame, Observer, Query, StateVector};
 use dhruv_frames::{
-    SphericalCoords, SphericalState, cartesian_state_to_spherical_state, cartesian_to_spherical,
-    nutation_iau2000b,
+    SphericalCoords, SphericalState, cartesian_to_spherical, icrf_to_ecliptic,
+    nutation_iau2000b, precess_ecliptic_j2000_to_date,
 };
 use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::{ChandraGrahan, GrahanConfig, SuryaGrahan};
@@ -49,7 +49,7 @@ fn utc_to_jd_utc(date: UtcDate) -> f64 {
 
 /// Query the global engine for spherical coordinates (lon, lat, distance).
 ///
-/// Uses ecliptic J2000 frame and converts Cartesian output to spherical.
+/// Returns ecliptic-of-date coordinates via full IAU 2006 3D precession.
 pub fn position(
     target: Body,
     observer: Observer,
@@ -60,16 +60,20 @@ pub fn position(
     let query = Query {
         target,
         observer,
-        frame: Frame::EclipticJ2000,
+        frame: Frame::IcrfJ2000,
         epoch_tdb_jd: jd,
     };
     let state = eng.query(query)?;
-    Ok(cartesian_to_spherical(&state.position_km))
+    let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
+    let t = (jd - 2_451_545.0) / 36525.0;
+    let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+    Ok(cartesian_to_spherical(&ecl_date))
 }
 
 /// Query the global engine for full spherical state (position + angular velocities).
 ///
-/// Uses ecliptic J2000 frame and converts Cartesian state to spherical state.
+/// Returns ecliptic-of-date position with finite-differenced speeds that
+/// correctly capture the full Ṗ·r frame-drag term.
 pub fn position_full(
     target: Body,
     observer: Observer,
@@ -77,17 +81,45 @@ pub fn position_full(
 ) -> Result<SphericalState, DhruvError> {
     let eng = engine()?;
     let jd = utc_to_jd_tdb(date)?;
-    let query = Query {
-        target,
-        observer,
-        frame: Frame::EclipticJ2000,
-        epoch_tdb_jd: jd,
+
+    // Helper: ecliptic-of-date spherical coords at a given JD TDB.
+    let ecl_sph = |jd_t: f64| -> Result<dhruv_frames::SphericalCoords, DhruvError> {
+        let q = Query {
+            target,
+            observer,
+            frame: Frame::IcrfJ2000,
+            epoch_tdb_jd: jd_t,
+        };
+        let sv = eng.query(q)?;
+        let ecl_j2000 = icrf_to_ecliptic(&sv.position_km);
+        let t = (jd_t - 2_451_545.0) / 36525.0;
+        let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+        Ok(cartesian_to_spherical(&ecl_date))
     };
-    let state = eng.query(query)?;
-    Ok(cartesian_state_to_spherical_state(
-        &state.position_km,
-        &state.velocity_km_s,
-    ))
+
+    let sph = ecl_sph(jd)?;
+
+    // Finite-difference speeds using t±1 min step.
+    const DT: f64 = 1.0 / 1440.0;
+    let sph_plus = ecl_sph(jd + DT)?;
+    let sph_minus = ecl_sph(jd - DT)?;
+
+    // Normalize longitude difference to [-180, 180] to handle 0°/360° wrap.
+    let dlon = sph_plus.lon_deg - sph_minus.lon_deg;
+    let dlon_norm = ((dlon + 180.0).rem_euclid(360.0)) - 180.0;
+    let lon_speed = dlon_norm / (2.0 * DT);
+    let lat_speed = (sph_plus.lat_deg - sph_minus.lat_deg) / (2.0 * DT);
+    let distance_speed =
+        (sph_plus.distance_km - sph_minus.distance_km) / (2.0 * DT * 86_400.0);
+
+    Ok(SphericalState {
+        lon_deg: sph.lon_deg,
+        lat_deg: sph.lat_deg,
+        distance_km: sph.distance_km,
+        lon_speed,
+        lat_speed,
+        distance_speed,
+    })
 }
 
 /// Query the global engine for ecliptic longitude in degrees.
@@ -159,8 +191,8 @@ pub fn query_batch(
 
 /// Compute sidereal longitude by subtracting ayanamsha from tropical longitude.
 ///
-/// Queries the global engine for tropical ecliptic longitude, then subtracts
-/// the specified ayanamsha. Result is in degrees [0, 360).
+/// Queries the global engine for ecliptic-of-date longitude via full IAU 2006
+/// 3D precession, then subtracts the specified ayanamsha. Result in [0, 360).
 pub fn sidereal_longitude(
     target: Body,
     observer: Observer,
@@ -182,11 +214,13 @@ pub fn sidereal_longitude(
     let state = eng.query(Query {
         target,
         observer,
-        frame: Frame::EclipticJ2000,
+        frame: Frame::IcrfJ2000,
         epoch_tdb_jd: jd,
     })?;
-    let tropical = cartesian_to_spherical(&state.position_km).lon_deg;
+    let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
     let t = jd_tdb_to_centuries(jd);
+    let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+    let tropical = cartesian_to_spherical(&ecl_date).lon_deg;
     let aya = ayanamsha_deg(system, t, use_nutation);
     let sid = (tropical - aya) % 360.0;
     Ok(if sid < 0.0 { sid + 360.0 } else { sid })

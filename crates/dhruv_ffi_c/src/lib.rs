@@ -35,7 +35,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 35;
+pub const DHRUV_API_VERSION: u32 = 36;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -10707,8 +10707,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_35() {
-        assert_eq!(dhruv_api_version(), 35);
+    fn ffi_api_version_is_36() {
+        assert_eq!(dhruv_api_version(), 36);
     }
 
     #[test]
