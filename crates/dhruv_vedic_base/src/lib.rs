@@ -73,8 +73,9 @@ pub use avastha::{
 };
 pub use ayana_type::{ALL_AYANAS, Ayana, ayana_from_sidereal_longitude};
 pub use ayanamsha::{
-    AyanamshaSystem, ayanamsha_deg, ayanamsha_mean_deg, ayanamsha_true_deg, jd_tdb_to_centuries,
-    tdb_seconds_to_centuries,
+    AyanamshaSystem, ayanamsha_deg, ayanamsha_deg_with_model, ayanamsha_mean_deg,
+    ayanamsha_mean_deg_with_model, ayanamsha_true_deg, ayanamsha_true_deg_with_model,
+    jd_tdb_to_centuries, tdb_seconds_to_centuries,
 };
 pub use bhava::compute_bhavas;
 pub use bhava_types::{

@@ -5,7 +5,9 @@
 
 use crate::ayanamsha::AyanamshaSystem;
 use crate::util::normalize_360;
-use dhruv_frames::{cartesian_to_spherical, precess_ecliptic_j2000_to_date};
+use dhruv_frames::{
+    PrecessionModel, cartesian_to_spherical, precess_ecliptic_j2000_to_date_with_model,
+};
 
 #[derive(Debug, Clone, Copy)]
 struct AnchorSpec {
@@ -47,11 +49,15 @@ fn anchor_spec(system: AyanamshaSystem) -> Option<AnchorSpec> {
     }
 }
 
-fn anchor_tropical_longitude_deg(spec: AnchorSpec, t_centuries: f64) -> f64 {
+fn anchor_tropical_longitude_deg(
+    spec: AnchorSpec,
+    t_centuries: f64,
+    model: PrecessionModel,
+) -> f64 {
     let lon = spec.lon_j2000_deg.to_radians();
     let lat = spec.lat_j2000_deg.to_radians();
     let v = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
-    let v_date = precess_ecliptic_j2000_to_date(&v, t_centuries);
+    let v_date = precess_ecliptic_j2000_to_date_with_model(&v, t_centuries, model);
     cartesian_to_spherical(&v_date).lon_deg
 }
 
@@ -59,9 +65,10 @@ fn anchor_tropical_longitude_deg(spec: AnchorSpec, t_centuries: f64) -> f64 {
 pub(crate) fn anchor_relative_ayanamsha_deg(
     system: AyanamshaSystem,
     t_centuries: f64,
+    model: PrecessionModel,
 ) -> Option<f64> {
     let spec = anchor_spec(system)?;
-    let anchor_lon = anchor_tropical_longitude_deg(spec, t_centuries);
+    let anchor_lon = anchor_tropical_longitude_deg(spec, t_centuries, model);
     Some(normalize_360(anchor_lon - spec.target_sidereal_lon_deg))
 }
 
@@ -88,13 +95,33 @@ mod tests {
     fn anchor_lock_invariant_true_lahiri() {
         let spec = anchor_spec(AyanamshaSystem::TrueLahiri).unwrap();
         for t in [-2.0, -1.0, 0.0, 0.5, 1.0, 2.0] {
-            let aya = anchor_relative_ayanamsha_deg(AyanamshaSystem::TrueLahiri, t).unwrap();
-            let anchor_lon = anchor_tropical_longitude_deg(spec, t);
+            let aya = anchor_relative_ayanamsha_deg(
+                AyanamshaSystem::TrueLahiri,
+                t,
+                PrecessionModel::Iau2006,
+            )
+            .unwrap();
+            let anchor_lon = anchor_tropical_longitude_deg(spec, t, PrecessionModel::Iau2006);
             let sid = normalize_360(anchor_lon - aya);
             assert!(
                 (sid - spec.target_sidereal_lon_deg).abs() < 1e-9,
                 "t={t}: sid={sid}"
             );
         }
+    }
+
+    #[test]
+    fn model_parameter_is_wired() {
+        let t = 25.0;
+        let a =
+            anchor_relative_ayanamsha_deg(AyanamshaSystem::TrueLahiri, t, PrecessionModel::Iau2006)
+                .unwrap();
+        let b = anchor_relative_ayanamsha_deg(
+            AyanamshaSystem::TrueLahiri,
+            t,
+            PrecessionModel::Vondrak2011,
+        )
+        .unwrap();
+        assert!((a - b).abs() > 1e-6);
     }
 }

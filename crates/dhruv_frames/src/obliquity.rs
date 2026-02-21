@@ -32,8 +32,9 @@ pub fn mean_obliquity_of_date_arcsec(t: f64) -> f64 {
     let t3 = t2 * t;
     let t4 = t3 * t;
     let t5 = t4 * t;
-    84381.406 - 46.836_769 * t - 0.000_183_1 * t2
-        + 0.002_003_40 * t3 - 0.000_000_576 * t4 - 0.000_000_043_4 * t5
+    84381.406 - 46.836_769 * t - 0.000_183_1 * t2 + 0.002_003_40 * t3
+        - 0.000_000_576 * t4
+        - 0.000_000_043_4 * t5
 }
 
 /// Mean obliquity of the ecliptic at epoch `t`, in radians.
@@ -75,6 +76,9 @@ mod tests {
         // Obliquity is decreasing in the current era (~47"/century)
         let eps_now = mean_obliquity_of_date_arcsec(0.25); // ~2025
         let eps_j2000 = mean_obliquity_of_date_arcsec(0.0);
-        assert!(eps_now < eps_j2000, "eps should decrease from J2000 to 2025");
+        assert!(
+            eps_now < eps_j2000,
+            "eps should decrease from J2000 to 2025"
+        );
     }
 }

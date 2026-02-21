@@ -15,10 +15,14 @@ pub use obliquity::{
     mean_obliquity_of_date_rad,
 };
 pub use precession::{
-    ecliptic_inclination_arcsec, ecliptic_node_longitude_arcsec,
-    general_precession_longitude_arcsec, general_precession_longitude_deg,
-    general_precession_rate_deg_per_day, precess_ecliptic_date_to_j2000,
-    precess_ecliptic_j2000_to_date,
+    DEFAULT_PRECESSION_MODEL, PrecessionModel, ecliptic_inclination_arcsec,
+    ecliptic_inclination_arcsec_with_model, ecliptic_node_longitude_arcsec,
+    ecliptic_node_longitude_arcsec_with_model, general_precession_longitude_arcsec,
+    general_precession_longitude_arcsec_with_model, general_precession_longitude_deg,
+    general_precession_longitude_deg_with_model, general_precession_rate_deg_per_day,
+    general_precession_rate_deg_per_day_with_model, precess_ecliptic_date_to_j2000,
+    precess_ecliptic_date_to_j2000_with_model, precess_ecliptic_j2000_to_date,
+    precess_ecliptic_j2000_to_date_with_model,
 };
 pub use rotation::{ecliptic_to_icrf, icrf_to_ecliptic};
 pub use spherical::{

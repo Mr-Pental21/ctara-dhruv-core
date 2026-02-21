@@ -1,7 +1,8 @@
 //! Types for Sankranti search results.
 
+use dhruv_frames::{DEFAULT_PRECESSION_MODEL, PrecessionModel};
 use dhruv_time::UtcTime;
-use dhruv_vedic_base::{AyanamshaSystem, Rashi};
+use dhruv_vedic_base::{AyanamshaSystem, Rashi, ayanamsha_deg_with_model};
 
 /// Configuration for Sankranti search.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -10,6 +11,8 @@ pub struct SankrantiConfig {
     pub ayanamsha_system: AyanamshaSystem,
     /// Whether to apply nutation correction to the ayanamsha.
     pub use_nutation: bool,
+    /// Precession model used by ayanamsha propagation.
+    pub precession_model: PrecessionModel,
     /// Coarse scan step size in days (default: 1.0).
     pub step_size_days: f64,
     /// Maximum bisection iterations (default: 50).
@@ -21,9 +24,19 @@ pub struct SankrantiConfig {
 impl SankrantiConfig {
     /// Create with specified ayanamsha system and nutation flag, default search parameters.
     pub fn new(ayanamsha_system: AyanamshaSystem, use_nutation: bool) -> Self {
+        Self::new_with_model(ayanamsha_system, use_nutation, DEFAULT_PRECESSION_MODEL)
+    }
+
+    /// Create with specified ayanamsha system, nutation flag, and precession model.
+    pub fn new_with_model(
+        ayanamsha_system: AyanamshaSystem,
+        use_nutation: bool,
+        precession_model: PrecessionModel,
+    ) -> Self {
         Self {
             ayanamsha_system,
             use_nutation,
+            precession_model,
             step_size_days: 1.0,
             max_iterations: 50,
             convergence_days: 1e-8,
@@ -35,10 +48,21 @@ impl SankrantiConfig {
         Self {
             ayanamsha_system: AyanamshaSystem::Lahiri,
             use_nutation: false,
+            precession_model: DEFAULT_PRECESSION_MODEL,
             step_size_days: 1.0,
             max_iterations: 50,
             convergence_days: 1e-8,
         }
+    }
+
+    /// Ayanamsha at `t_centuries`, using this configuration's model settings.
+    pub fn ayanamsha_deg_at_centuries(&self, t_centuries: f64) -> f64 {
+        ayanamsha_deg_with_model(
+            self.ayanamsha_system,
+            t_centuries,
+            self.use_nutation,
+            self.precession_model,
+        )
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {

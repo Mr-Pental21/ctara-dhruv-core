@@ -11,7 +11,7 @@ use dhruv_time::{EopKernel, LeapSecondKernel, UtcTime, calendar_to_jd};
 use dhruv_vedic_base::{
     Ayana, GeoLocation, HORA_COUNT, KARANA_SEGMENT_DEG, NAKSHATRA_SPAN_27, Rashi, RiseSetConfig,
     RiseSetEvent, RiseSetResult, TITHI_SEGMENT_DEG, YOGA_SEGMENT_DEG, approximate_local_noon_jd,
-    ayana_from_sidereal_longitude, ayanamsha_deg, compute_rise_set, ghatika_from_elapsed, hora_at,
+    ayana_from_sidereal_longitude, compute_rise_set, ghatika_from_elapsed, hora_at,
     jd_tdb_to_centuries, karana_from_elongation, masa_from_rashi_index, nakshatra_from_longitude,
     rashi_from_longitude, samvatsara_from_year, tithi_from_elongation, vaar_from_jd, yoga_from_sum,
 };
@@ -35,7 +35,7 @@ fn sun_sidereal_rashi_index(
 ) -> Result<u8, SearchError> {
     let (tropical_lon, _lat) = body_ecliptic_lon_lat(engine, dhruv_core::Body::Sun, jd_tdb)?;
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(config.ayanamsha_system, t, config.use_nutation);
+    let aya = config.ayanamsha_deg_at_centuries(t);
     let sid = (tropical_lon - aya).rem_euclid(360.0);
     Ok(rashi_from_longitude(sid).rashi_index)
 }
@@ -48,7 +48,7 @@ fn sun_sidereal_longitude(
 ) -> Result<f64, SearchError> {
     let (tropical_lon, _lat) = body_ecliptic_lon_lat(engine, dhruv_core::Body::Sun, jd_tdb)?;
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(config.ayanamsha_system, t, config.use_nutation);
+    let aya = config.ayanamsha_deg_at_centuries(t);
     Ok((tropical_lon - aya).rem_euclid(360.0))
 }
 
@@ -223,7 +223,7 @@ pub fn sidereal_sum_at(
     let (moon_trop, _) = body_ecliptic_lon_lat(engine, Body::Moon, jd_tdb)?;
     let (sun_trop, _) = body_ecliptic_lon_lat(engine, Body::Sun, jd_tdb)?;
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(config.ayanamsha_system, t, config.use_nutation);
+    let aya = config.ayanamsha_deg_at_centuries(t);
     let moon_sid = (moon_trop - aya).rem_euclid(360.0);
     let sun_sid = (sun_trop - aya).rem_euclid(360.0);
     Ok((moon_sid + sun_sid).rem_euclid(360.0))
@@ -239,7 +239,7 @@ pub fn moon_sidereal_longitude_at(
 ) -> Result<f64, SearchError> {
     let (moon_trop, _) = body_ecliptic_lon_lat(engine, Body::Moon, jd_tdb)?;
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(config.ayanamsha_system, t, config.use_nutation);
+    let aya = config.ayanamsha_deg_at_centuries(t);
     Ok((moon_trop - aya).rem_euclid(360.0))
 }
 

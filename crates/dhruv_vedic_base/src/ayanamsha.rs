@@ -12,7 +12,10 @@
 //! published system definitions. See `docs/clean_room_ayanamsha.md`.
 
 use crate::ayanamsha_anchor::anchor_relative_ayanamsha_deg;
-use dhruv_frames::{general_precession_longitude_deg, nutation_iau2000b};
+use dhruv_frames::{
+    DEFAULT_PRECESSION_MODEL, PrecessionModel, general_precession_longitude_deg_with_model,
+    nutation_iau2000b,
+};
 use dhruv_time::J2000_JD;
 
 /// Sidereal reference systems for ayanamsha computation.
@@ -197,10 +200,20 @@ impl AyanamshaSystem {
 ///
 /// where p_A is the IAU 2006 general precession in ecliptic longitude (arcsec).
 pub fn ayanamsha_mean_deg(system: AyanamshaSystem, t_centuries: f64) -> f64 {
-    if let Some(aya) = anchor_relative_ayanamsha_deg(system, t_centuries) {
+    ayanamsha_mean_deg_with_model(system, t_centuries, DEFAULT_PRECESSION_MODEL)
+}
+
+/// Mean ayanamsha in degrees at a given epoch for the selected precession model.
+pub fn ayanamsha_mean_deg_with_model(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    model: PrecessionModel,
+) -> f64 {
+    if let Some(aya) = anchor_relative_ayanamsha_deg(system, t_centuries, model) {
         aya
     } else {
-        system.reference_j2000_deg() + general_precession_longitude_deg(t_centuries)
+        system.reference_j2000_deg()
+            + general_precession_longitude_deg_with_model(t_centuries, model)
     }
 }
 
@@ -218,12 +231,27 @@ pub fn ayanamsha_mean_deg(system: AyanamshaSystem, t_centuries: f64) -> f64 {
 /// * `delta_psi_arcsec` — nutation in longitude in arcseconds (from an
 ///   external nutation model such as IAU 2000B)
 pub fn ayanamsha_true_deg(system: AyanamshaSystem, t_centuries: f64, delta_psi_arcsec: f64) -> f64 {
+    ayanamsha_true_deg_with_model(
+        system,
+        t_centuries,
+        delta_psi_arcsec,
+        DEFAULT_PRECESSION_MODEL,
+    )
+}
+
+/// "True"-mode ayanamsha helper for the selected precession model, in degrees.
+pub fn ayanamsha_true_deg_with_model(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    delta_psi_arcsec: f64,
+    model: PrecessionModel,
+) -> f64 {
     if system.is_anchor_relative() {
         // Anchor-relative systems are not modeled as mean + delta_psi.
-        return ayanamsha_mean_deg(system, t_centuries);
+        return ayanamsha_mean_deg_with_model(system, t_centuries, model);
     }
 
-    let mean = ayanamsha_mean_deg(system, t_centuries);
+    let mean = ayanamsha_mean_deg_with_model(system, t_centuries, model);
     if system.uses_true_equinox() {
         mean + delta_psi_arcsec / 3600.0
     } else {
@@ -248,13 +276,23 @@ pub fn ayanamsha_true_deg(system: AyanamshaSystem, t_centuries: f64, delta_psi_a
 /// * `t_centuries` — Julian centuries of TDB since J2000.0
 /// * `use_nutation` — whether to apply nutation correction for true-equinox systems
 pub fn ayanamsha_deg(system: AyanamshaSystem, t_centuries: f64, use_nutation: bool) -> f64 {
+    ayanamsha_deg_with_model(system, t_centuries, use_nutation, DEFAULT_PRECESSION_MODEL)
+}
+
+/// Compute ayanamsha, optionally with nutation correction, with a selected precession model.
+pub fn ayanamsha_deg_with_model(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    use_nutation: bool,
+    model: PrecessionModel,
+) -> f64 {
     if system.is_anchor_relative() {
         // Anchor-relative systems are defined via star-locking and ignore this
         // legacy nutation toggle.
-        return ayanamsha_mean_deg(system, t_centuries);
+        return ayanamsha_mean_deg_with_model(system, t_centuries, model);
     }
 
-    let mean = ayanamsha_mean_deg(system, t_centuries);
+    let mean = ayanamsha_mean_deg_with_model(system, t_centuries, model);
     if use_nutation && system.uses_true_equinox() {
         let (delta_psi_arcsec, _) = nutation_iau2000b(t_centuries);
         mean + delta_psi_arcsec / 3600.0
@@ -405,5 +443,27 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn with_model_wrappers_match_default() {
+        let t = 0.37;
+        let sys = AyanamshaSystem::Lahiri;
+        let mean_default = ayanamsha_mean_deg(sys, t);
+        let mean_explicit = ayanamsha_mean_deg_with_model(sys, t, DEFAULT_PRECESSION_MODEL);
+        assert!((mean_default - mean_explicit).abs() < 1e-15);
+
+        let aya_default = ayanamsha_deg(sys, t, true);
+        let aya_explicit = ayanamsha_deg_with_model(sys, t, true, DEFAULT_PRECESSION_MODEL);
+        assert!((aya_default - aya_explicit).abs() < 1e-15);
+    }
+
+    #[test]
+    fn vondrak_model_path_is_available() {
+        let t = 25.0;
+        let sys = AyanamshaSystem::Lahiri;
+        let iau = ayanamsha_mean_deg_with_model(sys, t, PrecessionModel::Iau2006);
+        let vondrak = ayanamsha_mean_deg_with_model(sys, t, PrecessionModel::Vondrak2011);
+        assert!((iau - vondrak).abs() > 1e-6);
     }
 }

@@ -1108,7 +1108,7 @@ fn rashi_inputs_from_ctx_vs_standalone() {
     }
 }
 
-/// Non-Chakra parity: Vimshottari + Chara golden values match pre-change output.
+/// Non-Chakra parity: Vimshottari + Chara golden values match current defaults.
 #[test]
 fn non_chakra_parity_golden_values() {
     let Some(engine) = load_engine() else { return };
@@ -1120,7 +1120,7 @@ fn non_chakra_parity_golden_values() {
     let aya_config = default_aya_config();
     let variation = DashaVariationConfig::default();
 
-    // Golden values captured from unmodified codebase:
+    // Golden values captured with Vondrak default precession:
     let vim = dasha_hierarchy_for_birth(
         &engine,
         &eop,
@@ -1144,7 +1144,7 @@ fn non_chakra_parity_golden_values() {
         vim.levels[0][0].start_jd
     );
     assert!(
-        (vim.levels[0][0].end_jd - 2451058.6743442472).abs() < 1e-6,
+        (vim.levels[0][0].end_jd - 2451058.6757989605).abs() < 1e-6,
         "Vimshottari end_jd: {:.10}",
         vim.levels[0][0].end_jd
     );
