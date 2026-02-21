@@ -106,7 +106,7 @@ impl FromStr for UtcDate {
         if !(1..=31).contains(&day) {
             return Err(err());
         }
-        if hour > 23 || min > 59 || sec < 0.0 || sec >= 61.0 {
+        if hour > 23 || min > 59 || !(0.0..61.0).contains(&sec) {
             return Err(err());
         }
 

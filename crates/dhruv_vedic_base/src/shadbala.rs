@@ -107,10 +107,9 @@ pub fn saptavargaja_bala(graha: Graha, sid_lon: f64, varga_rashi: &[[u8; 7]; 7])
     }
     let gi = graha.index() as usize;
     let mut total = 0.0;
-    for varga_idx in 0..7 {
-        let rashi_idx = varga_rashi[varga_idx][gi];
-        let dignity =
-            dignity_in_rashi_with_positions(graha, sid_lon, rashi_idx, &varga_rashi[varga_idx]);
+    for row in varga_rashi.iter().take(7) {
+        let rashi_idx = row[gi];
+        let dignity = dignity_in_rashi_with_positions(graha, sid_lon, rashi_idx, row);
         total += saptavargaja_dignity_points(dignity);
     }
     total
@@ -138,8 +137,8 @@ pub fn ojhayugma_bala(graha: Graha, sidereal_lon: f64) -> f64 {
     let navamsa_lon = crate::amsha::amsha_longitude(sidereal_lon, crate::amsha::Amsha::D9, None);
     let navamsa_rashi = (normalize_360(navamsa_lon) / 30.0).floor() as u8;
 
-    let rashi_odd = rashi_idx % 2 == 0; // 0=Mesha(odd), 1=Vrishabha(even), etc.
-    let navamsa_odd = navamsa_rashi % 2 == 0;
+    let rashi_odd = rashi_idx.is_multiple_of(2); // 0=Mesha(odd), 1=Vrishabha(even), etc.
+    let navamsa_odd = navamsa_rashi.is_multiple_of(2);
 
     let mut score = 0.0;
     match gender {
@@ -507,9 +506,7 @@ pub fn ayana_bala(graha: Graha, declination_deg: f64, moon_sun_elong: f64) -> f6
     }
     let kranti = declination_deg.clamp(-24.0, 24.0);
 
-    let nature = if graha == Graha::Chandra {
-        moon_benefic_nature(moon_sun_elong)
-    } else if graha == Graha::Buddh {
+    let nature = if graha == Graha::Chandra || graha == Graha::Buddh {
         moon_benefic_nature(moon_sun_elong)
     } else {
         natural_benefic_malefic(graha)
@@ -1081,7 +1078,7 @@ mod tests {
         // Vrishabha lord = Venus. Mercury-Venus = naisargika Friend.
         // varga1: all grahas at rashi 0 (same sign as Mercury) → tatkalika enemy → Sama
         // varga2: Venus at rashi 1 (near Mercury rashi 1) → tatkalika friend → AdhiMitra
-        let mut varga1: [[u8; 7]; 7] = [[1; 7]; 7]; // all in Vrishabha
+        let varga1: [[u8; 7]; 7] = [[1; 7]; 7]; // all in Vrishabha
         let mut varga2: [[u8; 7]; 7] = [[1; 7]; 7]; // all in Vrishabha
         // In varga2, shift Venus (idx 5) to rashi 2 → dist from Mercury(1)=1 → friend
         for v in &mut varga2 {

@@ -885,6 +885,7 @@ pub fn avastha_for_graha(
 // ---------------------------------------------------------------------------
 
 /// Compute a full dasha hierarchy for a birth chart.
+#[allow(clippy::too_many_arguments)]
 pub fn dasha_hierarchy(
     birth_date: UtcDate,
     eop: &EopKernel,
@@ -915,6 +916,7 @@ pub fn dasha_hierarchy(
 }
 
 /// Compute a dasha snapshot (active periods at query time) for a birth chart.
+#[allow(clippy::too_many_arguments)]
 pub fn dasha_snapshot(
     birth_date: UtcDate,
     query_date: UtcDate,

@@ -212,8 +212,8 @@ pub fn calculate_sav(bavs: &[BhinnaAshtakavarga; 7]) -> SarvaAshtakavarga {
     // Sum BAV points per rashi
     let mut total_points = [0u8; 12];
     for bav in bavs {
-        for i in 0..12 {
-            total_points[i] += bav.points[i];
+        for (i, total) in total_points.iter_mut().enumerate() {
+            *total += bav.points[i];
         }
     }
 

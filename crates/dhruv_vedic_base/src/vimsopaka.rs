@@ -326,9 +326,7 @@ pub fn vimsopaka_bala(
         } else {
             // Extract sapta-graha rashi indices for compound friendship
             let mut sapta_rashi = [0u8; 7];
-            for k in 0..7 {
-                sapta_rashi[k] = varga_rashi_9[k];
-            }
+            sapta_rashi.copy_from_slice(&varga_rashi_9[..7]);
             // For exaltation/debilitation check, use the varga-specific longitude
             let varga_lon = if vw.amsha == Amsha::D1 {
                 normalize_360(sidereal_lon)

@@ -5,7 +5,7 @@
 //! epoch and converts to sidereal longitudes.
 
 use dhruv_core::{Body, Engine};
-use dhruv_frames::mean_obliquity_of_date_rad;
+use dhruv_frames::{DEFAULT_PRECESSION_MODEL, PrecessionModel, mean_obliquity_of_date_rad};
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::arudha::all_arudha_padas;
 use dhruv_vedic_base::riseset::compute_rise_set;
@@ -20,10 +20,10 @@ use dhruv_vedic_base::{
     LunarNode, NodeDignityPolicy, NodeMode, SAPTA_GRAHAS, SayanadiInputs, ShadbalaInputs, Upagraha,
     all_avasthas, all_combustion_status, all_dashavarga_vimsopaka, all_saptavarga_vimsopaka,
     all_shadbalas_from_inputs, all_shadvarga_vimsopaka, all_shodasavarga_vimsopaka,
-    amsha_longitude, ayanamsha_deg, bhrigu_bindu, calculate_ashtakavarga, compute_bhavas,
-    dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise, graha_drishti,
-    graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord, jd_tdb_to_centuries,
-    lagna_longitude_rad, lost_planetary_war, lunar_node_deg_for_epoch,
+    amsha_longitude, ayanamsha_deg_with_model, bhrigu_bindu, calculate_ashtakavarga,
+    compute_bhavas, dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise,
+    graha_drishti, graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord,
+    jd_tdb_to_centuries, lagna_longitude_rad, lost_planetary_war, lunar_node_deg_for_epoch,
     masa_lord as graha_masa_lord, nakshatra_from_longitude, navamsa_number, node_dignity_in_rashi,
     normalize_360, nth_rashi_from, pranapada_lagna, rashi_from_longitude, rashi_lord_by_index,
     samvatsara_lord as graha_samvatsara_lord, sree_lagna, sun_based_upagrahas, time_upagraha_jd,
@@ -85,7 +85,7 @@ impl JyotishContext {
         let jd_tdb = utc.to_jd_tdb(engine.lsk());
         let jd_utc = utc_to_jd_utc(utc);
         let t = jd_tdb_to_centuries(jd_tdb);
-        let ayanamsha = ayanamsha_deg(aya_config.ayanamsha_system, t, aya_config.use_nutation);
+        let ayanamsha = aya_config.ayanamsha_deg_at_centuries(t);
         Self {
             jd_tdb,
             jd_utc,
@@ -106,11 +106,12 @@ impl JyotishContext {
         aya_config: &SankrantiConfig,
     ) -> Result<&'a GrahaLongitudes, SearchError> {
         if self.graha_lons.is_none() {
-            let lons = graha_sidereal_longitudes(
+            let lons = graha_sidereal_longitudes_with_model(
                 engine,
                 self.jd_tdb,
                 aya_config.ayanamsha_system,
                 aya_config.use_nutation,
+                aya_config.precession_model,
             )?;
             self.graha_lons = Some(lons);
         }
@@ -273,8 +274,25 @@ pub fn graha_sidereal_longitudes(
     system: AyanamshaSystem,
     use_nutation: bool,
 ) -> Result<GrahaLongitudes, SearchError> {
+    graha_sidereal_longitudes_with_model(
+        engine,
+        jd_tdb,
+        system,
+        use_nutation,
+        DEFAULT_PRECESSION_MODEL,
+    )
+}
+
+/// Query all 9 graha sidereal longitudes at a given TDB epoch using a specific precession model.
+pub fn graha_sidereal_longitudes_with_model(
+    engine: &Engine,
+    jd_tdb: f64,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+    precession_model: PrecessionModel,
+) -> Result<GrahaLongitudes, SearchError> {
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(system, t, use_nutation);
+    let aya = ayanamsha_deg_with_model(system, t, use_nutation, precession_model);
     let rahu_tropical = lunar_node_deg_for_epoch(engine, LunarNode::Rahu, jd_tdb, NodeMode::True)?;
     let ketu_tropical = normalize(rahu_tropical + 180.0);
 
@@ -387,8 +405,8 @@ fn arudha_padas_for_date_with_ctx(
     let bhava_result = ctx.bhava_result(engine, eop, location, bhava_config)?;
 
     let mut cusp_sid = [0.0f64; 12];
-    for i in 0..12 {
-        cusp_sid[i] = normalize(bhava_result.bhavas[i].cusp_deg - aya);
+    for (i, cusp) in cusp_sid.iter_mut().enumerate() {
+        *cusp = normalize(bhava_result.bhavas[i].cusp_deg - aya);
     }
 
     // Resolve lord longitude for each house
@@ -688,6 +706,7 @@ fn calculate_ashtakavarga_from_positions(positions: &GrahaPositions) -> Ashtakav
 ///
 /// Each point is wrapped in a `GrahaEntry` with rashi always populated,
 /// and nakshatra/bhava optionally populated based on config flags.
+#[allow(clippy::too_many_arguments)]
 pub fn core_bindus(
     engine: &Engine,
     eop: &EopKernel,
@@ -712,6 +731,7 @@ pub fn core_bindus(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn core_bindus_with_ctx(
     engine: &Engine,
     eop: &EopKernel,
@@ -815,6 +835,7 @@ fn core_bindus_with_ctx(
 /// - graha-to-bhava-cusp (12 cusps) if `config.include_bhava`
 /// - graha-to-lagna if `config.include_lagna`
 /// - graha-to-core-bindus (19 points) if `config.include_bindus`
+#[allow(clippy::too_many_arguments)]
 pub fn drishti_for_date(
     engine: &Engine,
     eop: &EopKernel,
@@ -840,6 +861,7 @@ pub fn drishti_for_date(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn drishti_for_date_with_ctx(
     engine: &Engine,
     eop: &EopKernel,
@@ -877,8 +899,8 @@ fn drishti_for_date_with_ctx(
         let mut entries = [[DrishtiEntry::zero(); 12]; 9];
         for g in ALL_GRAHAS {
             let gi = g.index() as usize;
-            for ci in 0..12 {
-                entries[gi][ci] = graha_drishti(g, graha_lons.longitudes[gi], cusp_sid[ci]);
+            for (ci, &cusp) in cusp_sid.iter().enumerate() {
+                entries[gi][ci] = graha_drishti(g, graha_lons.longitudes[gi], cusp);
             }
         }
         entries
@@ -938,6 +960,7 @@ fn drishti_for_date_with_ctx(
 }
 
 /// Compute a full kundali in one shot, sharing intermediates across sections.
+#[allow(clippy::too_many_arguments)]
 pub fn full_kundali_for_date(
     engine: &Engine,
     eop: &EopKernel,
@@ -1171,6 +1194,7 @@ pub fn full_kundali_for_date(
 // ---------------------------------------------------------------------------
 
 /// Build DashaInputs from JyotishContext for a given system.
+#[allow(clippy::too_many_arguments)]
 fn build_dasha_inputs_from_ctx<'a>(
     engine: &Engine,
     eop: &EopKernel,
@@ -1216,6 +1240,12 @@ fn build_dasha_inputs_from_ctx<'a>(
 ///
 /// Implements the fallback contract: per-system failures are skipped (logged),
 /// dense output with preserved ordering, None for all-fail.
+type KundaliDashaResults = (
+    Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
+    Option<Vec<dhruv_vedic_base::DashaSnapshot>>,
+);
+
+#[allow(clippy::too_many_arguments)]
 fn compute_kundali_dashas(
     engine: &Engine,
     eop: &EopKernel,
@@ -1225,13 +1255,7 @@ fn compute_kundali_dashas(
     aya_config: &SankrantiConfig,
     dasha_config: &DashaSelectionConfig,
     ctx: &mut JyotishContext,
-) -> Result<
-    (
-        Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
-        Option<Vec<dhruv_vedic_base::DashaSnapshot>>,
-    ),
-    SearchError,
-> {
+) -> Result<KundaliDashaResults, SearchError> {
     // sanitize() MUST run before validate() — see plan Phase C note
     let mut config = *dasha_config;
     config.sanitize();
@@ -1357,6 +1381,7 @@ pub fn shadbala_for_date(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn shadbala_for_date_with_ctx(
     engine: &Engine,
     eop: &EopKernel,
@@ -1386,6 +1411,7 @@ fn shadbala_for_date_with_ctx(
 }
 
 /// Compute Shadbala for a single sapta graha. Returns error for Rahu/Ketu.
+#[allow(clippy::too_many_arguments)]
 pub fn shadbala_for_graha(
     engine: &Engine,
     eop: &EopKernel,
@@ -1479,6 +1505,7 @@ pub fn vimsopaka_for_graha(
 }
 
 /// Assemble ShadbalaInputs from engine queries and context.
+#[allow(clippy::too_many_arguments)]
 fn assemble_shadbala_inputs(
     engine: &Engine,
     eop: &EopKernel,
@@ -1591,8 +1618,8 @@ fn assemble_varga_rashi_indices(sidereal_lons: &[f64; 9]) -> [[u8; 7]; 7] {
     ];
     let mut result = [[0u8; 7]; 7];
     for (vi, amsha) in SAPTAVARGAJA_AMSHAS.iter().enumerate() {
-        for gi in 0..7 {
-            let varga_lon = amsha_longitude(sidereal_lons[gi], *amsha, None);
+        for (gi, &sid_lon) in sidereal_lons.iter().enumerate().take(7) {
+            let varga_lon = amsha_longitude(sid_lon, *amsha, None);
             result[vi][gi] = ((varga_lon / 30.0).floor() as u8).min(11);
         }
     }
@@ -1635,6 +1662,7 @@ fn resolve_kala_lords(
 // ---------------------------------------------------------------------------
 
 /// Compute avasthas for all 9 grahas at a given UTC date and location.
+#[allow(clippy::too_many_arguments)]
 pub fn avastha_for_date(
     engine: &Engine,
     eop: &EopKernel,
@@ -1659,6 +1687,7 @@ pub fn avastha_for_date(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn avastha_for_date_with_ctx(
     engine: &Engine,
     eop: &EopKernel,
@@ -1685,6 +1714,7 @@ fn avastha_for_date_with_ctx(
 }
 
 /// Compute avasthas for a single graha.
+#[allow(clippy::too_many_arguments)]
 pub fn avastha_for_graha(
     engine: &Engine,
     eop: &EopKernel,
@@ -1710,6 +1740,7 @@ pub fn avastha_for_graha(
 }
 
 /// Assemble AvasthaInputs from engine queries and JyotishContext cache.
+#[allow(clippy::too_many_arguments)]
 fn assemble_avastha_inputs(
     engine: &Engine,
     eop: &EopKernel,
@@ -1774,8 +1805,8 @@ fn assemble_avastha_inputs(
     let mut lost_war = [false; 9];
     let mut sapta_lons = [0.0f64; 7];
     sapta_lons.copy_from_slice(&sidereal_lons[..7]);
-    for i in 2..=6 {
-        lost_war[i] = lost_planetary_war(i, &sapta_lons, &declinations);
+    for (i, lost) in lost_war.iter_mut().enumerate().take(7).skip(2) {
+        *lost = lost_planetary_war(i, &sapta_lons, &declinations);
     }
 
     // 8. Drishti matrix
@@ -1880,12 +1911,12 @@ fn selection_to_requests(sel: &AmshaSelectionConfig) -> Result<Vec<AmshaRequest>
     let mut requests = Vec::with_capacity(sel.count as usize);
     for i in 0..sel.count as usize {
         let amsha = Amsha::from_code(sel.codes[i])
-            .ok_or_else(|| SearchError::InvalidConfig("unknown amsha code"))?;
+            .ok_or(SearchError::InvalidConfig("unknown amsha code"))?;
         let variation = if sel.variations[i] == 0 {
             None
         } else {
             let v = AmshaVariation::from_code(sel.variations[i])
-                .ok_or_else(|| SearchError::InvalidConfig("unknown variation code"))?;
+                .ok_or(SearchError::InvalidConfig("unknown variation code"))?;
             if !v.is_applicable_to(amsha) {
                 return Err(SearchError::InvalidConfig(
                     "variation not applicable to amsha",
@@ -1899,6 +1930,7 @@ fn selection_to_requests(sel: &AmshaSelectionConfig) -> Result<Vec<AmshaRequest>
 }
 
 /// Build an AmshaChart for one amsha request given pre-computed D1 longitudes.
+#[allow(clippy::too_many_arguments)]
 fn build_amsha_chart(
     req: &AmshaRequest,
     graha_lons: &[f64; 9],
@@ -1995,6 +2027,7 @@ fn build_amsha_chart(
 }
 
 /// Compute amsha charts for all entities at a given date.
+#[allow(clippy::too_many_arguments)]
 pub fn amsha_charts_for_date(
     engine: &Engine,
     eop: &EopKernel,
@@ -2018,8 +2051,8 @@ pub fn amsha_charts_for_date(
     let bhava_cusps_sid = if scope.include_bhava_cusps {
         let bhava_result = ctx.bhava_result(engine, eop, location, bhava_config)?;
         let mut cusps = [0.0f64; 12];
-        for i in 0..12 {
-            cusps[i] = normalize(bhava_result.bhavas[i].cusp_deg - aya);
+        for (i, cusp) in cusps.iter_mut().enumerate() {
+            *cusp = normalize(bhava_result.bhavas[i].cusp_deg - aya);
         }
         Some(cusps)
     } else {
@@ -2030,8 +2063,8 @@ pub fn amsha_charts_for_date(
     let arudha_lons = if scope.include_arudha_padas {
         let bhava_result = ctx.bhava_result(engine, eop, location, bhava_config)?;
         let mut cusp_sid = [0.0f64; 12];
-        for i in 0..12 {
-            cusp_sid[i] = normalize(bhava_result.bhavas[i].cusp_deg - aya);
+        for (i, cusp) in cusp_sid.iter_mut().enumerate() {
+            *cusp = normalize(bhava_result.bhavas[i].cusp_deg - aya);
         }
         let mut lord_lons = [0.0f64; 12];
         for i in 0..12 {
@@ -2041,8 +2074,8 @@ pub fn amsha_charts_for_date(
         }
         let raw = all_arudha_padas(&cusp_sid, &lord_lons);
         let mut lons = [0.0f64; 12];
-        for i in 0..12 {
-            lons[i] = raw[i].longitude_deg;
+        for (i, lon) in lons.iter_mut().enumerate() {
+            *lon = raw[i].longitude_deg;
         }
         Some(lons)
     } else {
@@ -2187,8 +2220,8 @@ pub fn amsha_charts_from_kundali(
     let arudha_lons = if scope.include_arudha_padas {
         kundali.bindus.as_ref().map(|b| {
             let mut lons = [0.0f64; 12];
-            for i in 0..12 {
-                lons[i] = b.arudha_padas[i].sidereal_longitude;
+            for (i, lon) in lons.iter_mut().enumerate() {
+                *lon = b.arudha_padas[i].sidereal_longitude;
             }
             lons
         })
@@ -2198,17 +2231,14 @@ pub fn amsha_charts_from_kundali(
 
     // Extract upagrahas if available
     let upagraha_lons = if scope.include_upagrahas {
-        kundali.upagrahas.as_ref().map(|u| all_upagraha_lons(u))
+        kundali.upagrahas.as_ref().map(all_upagraha_lons)
     } else {
         None
     };
 
     // Extract special lagnas if available
     let special_lagna_lons = if scope.include_special_lagnas {
-        kundali
-            .special_lagnas
-            .as_ref()
-            .map(|s| all_special_lagna_lons(s))
+        kundali.special_lagnas.as_ref().map(all_special_lagna_lons)
     } else {
         None
     };
@@ -2259,8 +2289,8 @@ fn amsha_charts_from_kundali_with_ctx(
     let bhava_cusps_sid = if scope.include_bhava_cusps {
         if let Some(ref bhava_result) = ctx.bhava_result {
             let mut cusps = [0.0f64; 12];
-            for i in 0..12 {
-                cusps[i] = normalize(bhava_result.bhavas[i].cusp_deg - ctx.ayanamsha);
+            for (i, cusp) in cusps.iter_mut().enumerate() {
+                *cusp = normalize(bhava_result.bhavas[i].cusp_deg - ctx.ayanamsha);
             }
             Some(cusps)
         } else {
@@ -2273,8 +2303,8 @@ fn amsha_charts_from_kundali_with_ctx(
     let arudha_lons = if scope.include_arudha_padas {
         bindus.as_ref().map(|b| {
             let mut lons = [0.0f64; 12];
-            for i in 0..12 {
-                lons[i] = b.arudha_padas[i].sidereal_longitude;
+            for (i, lon) in lons.iter_mut().enumerate() {
+                *lon = b.arudha_padas[i].sidereal_longitude;
             }
             lons
         })
@@ -2283,13 +2313,13 @@ fn amsha_charts_from_kundali_with_ctx(
     };
 
     let upagraha_lons = if scope.include_upagrahas {
-        upagrahas.as_ref().map(|u| all_upagraha_lons(u))
+        upagrahas.as_ref().map(all_upagraha_lons)
     } else {
         None
     };
 
     let special_lagna_lons = if scope.include_special_lagnas {
-        special_lagnas.as_ref().map(|s| all_special_lagna_lons(s))
+        special_lagnas.as_ref().map(all_special_lagna_lons)
     } else {
         None
     };

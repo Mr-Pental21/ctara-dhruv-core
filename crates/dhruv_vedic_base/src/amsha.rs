@@ -441,11 +441,13 @@ fn amsha_target_rashi(
         Amsha::D2 => match variation {
             AmshaVariation::HoraCancerLeoOnly => {
                 // Odd rashi (1-based 1,3,5,7,9,11 = 0-based 0,2,4,6,8,10)
-                let is_odd_rashi = natal_rashi_idx % 2 == 0;
+                let is_odd_rashi = natal_rashi_idx.is_multiple_of(2);
                 if is_odd_rashi {
                     if div_idx == 0 { 3 } else { 4 } // Cancer, Leo
+                } else if div_idx == 0 {
+                    4 // Leo
                 } else {
-                    if div_idx == 0 { 4 } else { 3 } // Leo, Cancer
+                    3 // Cancer
                 }
             }
             AmshaVariation::TraditionalParashari => {
@@ -498,7 +500,7 @@ fn amsha_target_rashi(
 
         // D30: odd rashi starts from Mesha(0), even rashi from Meena(11)
         Amsha::D30 => {
-            let is_odd = natal_rashi_idx % 2 == 0; // 0-indexed: 0,2,4.. are odd (1-based)
+            let is_odd = natal_rashi_idx.is_multiple_of(2); // 0-indexed: 0,2,4.. are odd (1-based)
             let start: u16 = if is_odd { 0 } else { 11 };
             ((start + div_idx) % 12) as u8
         }
@@ -535,7 +537,7 @@ fn amsha_target_rashi(
 /// Helper for INCREMENT amshas: odd rashi starts from natal, even from natal+offset.
 fn increment_start(natal_rashi_idx: u8, div_idx: u16, even_offset: u16) -> u8 {
     // 0-indexed: 0,2,4,6,8,10 are odd rashis (1-based 1,3,5,7,9,11)
-    let is_odd = natal_rashi_idx % 2 == 0;
+    let is_odd = natal_rashi_idx.is_multiple_of(2);
     let start = if is_odd {
         natal_rashi_idx as u16
     } else {

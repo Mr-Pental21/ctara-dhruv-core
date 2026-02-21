@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
@@ -1712,8 +1712,8 @@ fn parse_utc(s: &str) -> Result<UtcTime, String> {
     Ok(UtcTime::new(year, month, day, hour, minute, second))
 }
 
-fn load_engine(bsp: &PathBuf, lsk: &PathBuf) -> Engine {
-    let config = EngineConfig::with_single_spk(bsp.clone(), lsk.clone(), 256, true);
+fn load_engine(bsp: &Path, lsk: &Path) -> Engine {
+    let config = EngineConfig::with_single_spk(bsp.to_path_buf(), lsk.to_path_buf(), 256, true);
     Engine::new(config).unwrap_or_else(|e| {
         eprintln!("Failed to load engine: {e}");
         std::process::exit(1);
@@ -1727,7 +1727,7 @@ fn require_aya_system(code: i32) -> AyanamshaSystem {
     })
 }
 
-fn load_eop(path: &PathBuf) -> EopKernel {
+fn load_eop(path: &Path) -> EopKernel {
     EopKernel::load(path).unwrap_or_else(|e| {
         eprintln!("Failed to load EOP: {e}");
         std::process::exit(1);
@@ -3083,8 +3083,8 @@ fn main() {
             }
             println!();
             println!("{}", "-".repeat(8 + 8 * 9));
-            for i in 0..9 {
-                print!("{:<8}", graha_names[i]);
+            for (i, name) in graha_names.iter().enumerate() {
+                print!("{:<8}", name);
                 for j in 0..9 {
                     let v = result.graha_to_graha.entries[i][j].total_virupa;
                     if i == j {
@@ -3103,15 +3103,11 @@ fn main() {
                     "Graha", "Dist", "Base", "Special", "Total"
                 );
                 println!("{}", "-".repeat(44));
-                for i in 0..9 {
+                for (i, name) in graha_names.iter().enumerate() {
                     let e = &result.graha_to_lagna[i];
                     println!(
                         "{:<8} {:>7.1}° {:>8.1} {:>8.1} {:>8.1}",
-                        graha_names[i],
-                        e.angular_distance,
-                        e.base_virupa,
-                        e.special_virupa,
-                        e.total_virupa
+                        name, e.angular_distance, e.base_virupa, e.special_virupa, e.total_virupa
                     );
                 }
             }
@@ -3124,8 +3120,8 @@ fn main() {
                 }
                 println!();
                 println!("{}", "-".repeat(8 + 6 * 12));
-                for i in 0..9 {
-                    print!("{:<8}", graha_names[i]);
+                for (i, name) in graha_names.iter().enumerate() {
+                    print!("{:<8}", name);
                     for j in 0..12 {
                         print!("{:>6.1}", result.graha_to_bhava[i][j].total_virupa);
                     }
@@ -3145,8 +3141,8 @@ fn main() {
                 }
                 println!();
                 println!("{}", "-".repeat(8 + 7 * 19));
-                for i in 0..9 {
-                    print!("{:<8}", graha_names[i]);
+                for (i, name) in graha_names.iter().enumerate() {
+                    print!("{:<8}", name);
                     for j in 0..19 {
                         print!("{:>7.1}", result.graha_to_bindus[i][j].total_virupa);
                     }

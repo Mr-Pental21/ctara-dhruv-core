@@ -22,7 +22,7 @@ use dhruv_vedic_base::riseset::compute_rise_set;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult};
 
 use crate::error::SearchError;
-use crate::jyotish::graha_sidereal_longitudes;
+use crate::jyotish::graha_sidereal_longitudes_with_model;
 use crate::panchang::moon_sidereal_longitude_at;
 use crate::sankranti_types::SankrantiConfig;
 
@@ -101,20 +101,22 @@ fn assemble_rashi_inputs(
     aya_config: &SankrantiConfig,
 ) -> Result<RashiDashaInputs, SearchError> {
     let jd_tdb = utc.to_jd_tdb(engine.lsk());
-    let graha_lons = graha_sidereal_longitudes(
+    let graha_lons = graha_sidereal_longitudes_with_model(
         engine,
         jd_tdb,
         aya_config.ayanamsha_system,
         aya_config.use_nutation,
+        aya_config.precession_model,
     )?;
 
     let jd_utc = utc_to_jd_utc(utc);
     let lagna_rad = dhruv_vedic_base::lagna_longitude_rad(engine.lsk(), eop, location, jd_utc)?;
     let t = dhruv_vedic_base::ayanamsha::jd_tdb_to_centuries(jd_tdb);
-    let aya = dhruv_vedic_base::ayanamsha::ayanamsha_deg(
+    let aya = dhruv_vedic_base::ayanamsha::ayanamsha_deg_with_model(
         aya_config.ayanamsha_system,
         t,
         aya_config.use_nutation,
+        aya_config.precession_model,
     );
     let lagna_sid = dhruv_vedic_base::util::normalize_360(lagna_rad.to_degrees() - aya);
 
@@ -280,6 +282,7 @@ fn dispatch_hierarchy(
 }
 
 /// Dispatch to the correct snapshot engine for a given system.
+#[allow(clippy::too_many_arguments)]
 fn dispatch_snapshot(
     system: DashaSystem,
     birth_jd: f64,
@@ -397,6 +400,7 @@ fn dispatch_snapshot(
 }
 
 /// Compute full hierarchy for a birth chart.
+#[allow(clippy::too_many_arguments)]
 pub fn dasha_hierarchy_for_birth(
     engine: &Engine,
     eop: &EopKernel,
@@ -451,6 +455,7 @@ pub fn dasha_hierarchy_for_birth(
 /// Find active periods at a specific time.
 ///
 /// Snapshot-only path: does NOT materialize full hierarchy. Efficient for deep levels.
+#[allow(clippy::too_many_arguments)]
 pub fn dasha_snapshot_at(
     engine: &Engine,
     eop: &EopKernel,
@@ -590,6 +595,7 @@ pub fn dasha_hierarchy_with_moon(
 ///
 /// For Kala dasha, requires sunrise/sunset JDs.
 #[deprecated(since = "0.2.0", note = "Use dasha_snapshot_with_inputs instead")]
+#[allow(clippy::too_many_arguments)]
 pub fn dasha_snapshot_with_moon(
     birth_jd: f64,
     moon_sid_lon: f64,

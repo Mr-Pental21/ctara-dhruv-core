@@ -8,7 +8,7 @@
 
 use dhruv_core::{Body, Engine};
 use dhruv_time::UtcTime;
-use dhruv_vedic_base::{ALL_RASHIS, Rashi, ayanamsha_deg, jd_tdb_to_centuries};
+use dhruv_vedic_base::{ALL_RASHIS, Rashi, jd_tdb_to_centuries};
 
 use crate::conjunction::body_ecliptic_lon_lat;
 use crate::error::SearchError;
@@ -26,7 +26,7 @@ fn sun_sidereal_longitude(
 ) -> Result<f64, SearchError> {
     let (tropical_lon, _lat) = body_ecliptic_lon_lat(engine, Body::Sun, jd_tdb)?;
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(config.ayanamsha_system, t, config.use_nutation);
+    let aya = config.ayanamsha_deg_at_centuries(t);
     let sid = (tropical_lon - aya).rem_euclid(360.0);
     Ok(sid)
 }
@@ -55,7 +55,7 @@ fn build_event(
 ) -> Result<SankrantiEvent, SearchError> {
     let (tropical_lon, _lat) = body_ecliptic_lon_lat(engine, Body::Sun, jd_tdb)?;
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = ayanamsha_deg(config.ayanamsha_system, t, config.use_nutation);
+    let aya = config.ayanamsha_deg_at_centuries(t);
     let sid = (tropical_lon - aya).rem_euclid(360.0);
 
     // Rashi being entered = boundary / 30
@@ -199,19 +199,14 @@ pub fn search_sankrantis(
     let mut cursor = *start;
 
     // Find sankrantis iteratively
-    loop {
-        match next_sankranti(engine, &cursor, config)? {
-            Some(event) => {
-                let event_jd = event.utc.to_jd_tdb(engine.lsk());
-                if event_jd > jd_end {
-                    break;
-                }
-                // Advance cursor slightly past this event
-                cursor = UtcTime::from_jd_tdb(event_jd + 0.01, engine.lsk());
-                events.push(event);
-            }
-            None => break,
+    while let Some(event) = next_sankranti(engine, &cursor, config)? {
+        let event_jd = event.utc.to_jd_tdb(engine.lsk());
+        if event_jd > jd_end {
+            break;
         }
+        // Advance cursor slightly past this event
+        cursor = UtcTime::from_jd_tdb(event_jd + 0.01, engine.lsk());
+        events.push(event);
     }
 
     Ok(events)
@@ -288,6 +283,7 @@ pub fn prev_specific_sankranti(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dhruv_frames::DEFAULT_PRECESSION_MODEL;
     use dhruv_vedic_base::AyanamshaSystem;
 
     #[test]
@@ -329,5 +325,6 @@ mod tests {
         let c = SankrantiConfig::default_lahiri();
         assert_eq!(c.ayanamsha_system, AyanamshaSystem::Lahiri);
         assert!(!c.use_nutation);
+        assert_eq!(c.precession_model, DEFAULT_PRECESSION_MODEL);
     }
 }

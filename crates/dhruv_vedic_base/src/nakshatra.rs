@@ -397,8 +397,8 @@ fn nakshatra_28_boundaries() -> [(f64, f64); 28] {
     let mut bounds = [(0.0_f64, 0.0_f64); 28];
 
     // Nakshatras 0-19: uniform, same as 27-scheme indices 0-19
-    for i in 0..20 {
-        bounds[i] = (i as f64 * span, (i + 1) as f64 * span);
+    for (i, item) in bounds.iter_mut().enumerate().take(20) {
+        *item = (i as f64 * span, (i + 1) as f64 * span);
     }
 
     // Non-uniform region (indices 20-22):
@@ -409,9 +409,9 @@ fn nakshatra_28_boundaries() -> [(f64, f64); 28] {
     bounds[22] = (ABHIJIT_END, 22.0 * span); // Shravana: [280.889, 293.333]
 
     // Nakshatras 23-27: offset by +1 from 27-scheme indices 22-26
-    for i in 23..28 {
+    for (i, item) in bounds.iter_mut().enumerate().skip(23) {
         let nak27_idx = i - 1; // map 28-scheme 23..27 to 27-scheme 22..26
-        bounds[i] = (nak27_idx as f64 * span, (nak27_idx + 1) as f64 * span);
+        *item = (nak27_idx as f64 * span, (nak27_idx + 1) as f64 * span);
     }
 
     bounds

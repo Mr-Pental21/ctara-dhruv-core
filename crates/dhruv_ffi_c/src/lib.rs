@@ -3158,6 +3158,7 @@ fn sankranti_config_from_ffi(cfg: &DhruvSankrantiConfig) -> Option<SankrantiConf
     Some(SankrantiConfig {
         ayanamsha_system: system,
         use_nutation: cfg.use_nutation != 0,
+        precession_model: dhruv_frames::DEFAULT_PRECESSION_MODEL,
         step_size_days: cfg.step_size_days,
         max_iterations: cfg.max_iterations,
         convergence_days: cfg.convergence_days,
@@ -8617,38 +8618,38 @@ fn amsha_chart_to_ffi(chart: &dhruv_search::AmshaChart) -> DhruvAmshaChart {
         AmshaVariation::TraditionalParashari => 0,
         AmshaVariation::HoraCancerLeoOnly => 1,
     };
-    for i in 0..9 {
-        out.grahas[i] = amsha_entry_to_ffi(&chart.grahas[i]);
+    for (i, graha) in chart.grahas.iter().enumerate() {
+        out.grahas[i] = amsha_entry_to_ffi(graha);
     }
     out.lagna = amsha_entry_to_ffi(&chart.lagna);
     if let Some(ref cusps) = chart.bhava_cusps {
         out.bhava_cusps_valid = 1;
-        for i in 0..12 {
-            out.bhava_cusps[i] = amsha_entry_to_ffi(&cusps[i]);
+        for (i, cusp) in cusps.iter().enumerate() {
+            out.bhava_cusps[i] = amsha_entry_to_ffi(cusp);
         }
     }
     if let Some(ref padas) = chart.arudha_padas {
         out.arudha_padas_valid = 1;
-        for i in 0..12 {
-            out.arudha_padas[i] = amsha_entry_to_ffi(&padas[i]);
+        for (i, pada) in padas.iter().enumerate() {
+            out.arudha_padas[i] = amsha_entry_to_ffi(pada);
         }
     }
     if let Some(ref upa) = chart.upagrahas {
         out.upagrahas_valid = 1;
-        for i in 0..11 {
-            out.upagrahas[i] = amsha_entry_to_ffi(&upa[i]);
+        for (i, upagraha) in upa.iter().enumerate() {
+            out.upagrahas[i] = amsha_entry_to_ffi(upagraha);
         }
     }
     if let Some(ref sph) = chart.sphutas {
         out.sphutas_valid = 1;
-        for i in 0..16 {
-            out.sphutas[i] = amsha_entry_to_ffi(&sph[i]);
+        for (i, sphuta) in sph.iter().enumerate() {
+            out.sphutas[i] = amsha_entry_to_ffi(sphuta);
         }
     }
     if let Some(ref sl) = chart.special_lagnas {
         out.special_lagnas_valid = 1;
-        for i in 0..8 {
-            out.special_lagnas[i] = amsha_entry_to_ffi(&sl[i]);
+        for (i, special_lagna) in sl.iter().enumerate() {
+            out.special_lagnas[i] = amsha_entry_to_ffi(special_lagna);
         }
     }
     out

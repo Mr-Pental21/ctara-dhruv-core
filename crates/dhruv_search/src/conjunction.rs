@@ -94,6 +94,7 @@ fn compute_actual_separation(lon1: f64, lon2: f64, target_deg: f64) -> f64 {
 }
 
 /// Bisect to refine the zero crossing between t_a and t_b.
+#[allow(clippy::too_many_arguments)]
 fn bisect_refinement(
     engine: &Engine,
     body1: Body,
