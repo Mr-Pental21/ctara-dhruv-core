@@ -5,8 +5,12 @@
 use std::path::{Path, PathBuf};
 
 use dhruv_core::{Engine, EngineConfig};
+use dhruv_frames::PrecessionModel;
 use dhruv_time::{LeapSecondKernel, UtcTime};
-use dhruv_vedic_base::{LunarNode, NodeMode, jd_tdb_to_centuries, lunar_node_deg_for_epoch};
+use dhruv_vedic_base::{
+    LunarNode, NodeMode, jd_tdb_to_centuries, lunar_node_deg_for_epoch,
+    lunar_node_deg_for_epoch_with_model,
+};
 
 const SPK_CANDIDATES: [&str; 2] = ["../../data/de442s.bsp", "../../kernels/data/de442s.bsp"];
 const LSK_CANDIDATES: [&str; 2] = ["../../data/naif0012.tls", "../../kernels/data/naif0012.tls"];
@@ -80,5 +84,39 @@ fn osculating_rahu_ketu_remain_opposite() {
     assert!(
         (diff - 180.0).abs() < 1e-10,
         "expected Ketu opposite Rahu, got {diff:.12} deg"
+    );
+}
+
+#[test]
+fn osculating_rahu_model_delta_small_at_osho_epoch() {
+    let Some((engine, lsk)) = load_test_resources() else {
+        eprintln!("Skipping lunar_nodes_engine_golden: kernel files not found");
+        return;
+    };
+
+    let utc = UtcTime::new(1931, 12, 11, 11, 38, 18.0);
+    let jd_tdb = utc.to_jd_tdb(&lsk);
+
+    let rahu_iau = lunar_node_deg_for_epoch_with_model(
+        &engine,
+        LunarNode::Rahu,
+        jd_tdb,
+        NodeMode::True,
+        PrecessionModel::Iau2006,
+    )
+    .expect("IAU true Rahu should compute");
+    let rahu_vondrak = lunar_node_deg_for_epoch_with_model(
+        &engine,
+        LunarNode::Rahu,
+        jd_tdb,
+        NodeMode::True,
+        PrecessionModel::Vondrak2011,
+    )
+    .expect("Vondrak true Rahu should compute");
+
+    let delta_arcsec = angular_separation_deg(rahu_vondrak, rahu_iau) * 3600.0;
+    assert!(
+        delta_arcsec < 10.0,
+        "expected Vondrak/IAU node delta < 10\", got {delta_arcsec:.3}\""
     );
 }

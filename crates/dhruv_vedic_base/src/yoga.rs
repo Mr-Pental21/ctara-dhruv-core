@@ -153,7 +153,11 @@ pub struct YogaPosition {
 /// Normalize angle to [0, 360).
 fn normalize_360(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 { r + 360.0 } else { r }
+    if r < 0.0 {
+        r + 360.0
+    } else {
+        r
+    }
 }
 
 /// Determine yoga from the sum of Moon and Sun sidereal longitudes.

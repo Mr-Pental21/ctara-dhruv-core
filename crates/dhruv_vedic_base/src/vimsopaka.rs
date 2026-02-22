@@ -10,11 +10,11 @@
 //!
 //! Clean-room implementation from BPHS.
 
-use crate::amsha::{Amsha, amsha_longitude};
+use crate::amsha::{amsha_longitude, Amsha};
 use crate::error::VedicError;
-use crate::graha::{ALL_GRAHAS, Graha};
+use crate::graha::{Graha, ALL_GRAHAS};
 use crate::graha_relationships::{
-    Dignity, NodeDignityPolicy, dignity_in_rashi_with_positions, node_dignity_in_rashi,
+    dignity_in_rashi_with_positions, node_dignity_in_rashi, Dignity, NodeDignityPolicy,
 };
 use crate::util::normalize_360;
 

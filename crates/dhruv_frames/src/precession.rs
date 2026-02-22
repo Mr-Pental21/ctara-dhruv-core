@@ -170,7 +170,9 @@ fn vondrak2011_pq_raw_rad(t: f64) -> (f64, f64) {
     let mut q_arcsec = -1_600.886_300 + 1.168_981_8 * t - 0.000_000_20 * t2 - 0.000_000_437 * t3;
     for term in VON_TABLE1_TERMS {
         let (s, c) = vondrak2011_periodic_argument_rad(t, term.period_centuries).sin_cos();
-        p_arcsec += term.ap * c + term.bp * s;
+        // Vondrak Table 1 uses opposite sign for the p-series sine term
+        // under this positive argument convention.
+        p_arcsec += term.ap * c - term.bp * s;
         q_arcsec += term.aq * c + term.bq * s;
     }
     (p_arcsec * AS2R, q_arcsec * AS2R)
@@ -632,6 +634,24 @@ mod tests {
         let back = precess_ecliptic_date_to_j2000_with_model(&fwd, t, PrecessionModel::Vondrak2011);
         for i in 0..3 {
             assert!((back[i] - v[i]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn vondrak_pq_tracks_iau_near_modern_epochs() {
+        // Around modern epochs the long-term Vondrak series should closely
+        // track IAU 2006 p/q components (sub-arcsecond scale).
+        for &t in &[-1.0_f64, -0.6804, 0.26, 1.0] {
+            let (p_v, q_v) = vondrak2011_pq_rad(t);
+            let pi_i = (iau2006_ecliptic_inclination_arcsec(t) / 3600.0).to_radians();
+            let cap_i = (iau2006_ecliptic_node_longitude_arcsec(t) / 3600.0).to_radians();
+            let p_i = pi_i.sin() * cap_i.sin();
+            let q_i = pi_i.sin() * cap_i.cos();
+
+            let p_err_arcsec = ((p_v - p_i) / AS2R).abs();
+            let q_err_arcsec = ((q_v - q_i) / AS2R).abs();
+            assert!(p_err_arcsec < 2.0, "t={t}: |Δp|={p_err_arcsec}\"");
+            assert!(q_err_arcsec < 0.1, "t={t}: |Δq|={q_err_arcsec}\"");
         }
     }
 }

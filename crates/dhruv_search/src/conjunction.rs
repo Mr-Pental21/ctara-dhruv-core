@@ -8,7 +8,10 @@
 //! the target separation. Standard numerical root-finding; no external code referenced.
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::{cartesian_to_spherical, icrf_to_ecliptic, precess_ecliptic_j2000_to_date};
+use dhruv_frames::{
+    cartesian_to_spherical, icrf_to_ecliptic, precess_ecliptic_j2000_to_date_with_model,
+    PrecessionModel, DEFAULT_PRECESSION_MODEL,
+};
 
 use crate::conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 use crate::error::SearchError;
@@ -19,13 +22,23 @@ const MAX_SCAN_DAYS: f64 = 800.0;
 
 /// Query a body's ecliptic-of-date longitude and latitude in degrees.
 ///
-/// Queries ICRF/J2000, rotates to J2000 ecliptic, then applies the full IAU 2006
-/// 3D precession to yield ecliptic-of-date coordinates. This is the primary
+/// Queries ICRF/J2000, rotates to J2000 ecliptic, then applies the selected
+/// 3D precession model to yield ecliptic-of-date coordinates. This is the primary
 /// choke-point for all graha tropical longitudes.
 pub fn body_ecliptic_lon_lat(
     engine: &Engine,
     body: Body,
     jd_tdb: f64,
+) -> Result<(f64, f64), SearchError> {
+    body_ecliptic_lon_lat_with_model(engine, body, jd_tdb, DEFAULT_PRECESSION_MODEL)
+}
+
+/// Model-aware variant of [`body_ecliptic_lon_lat`].
+pub fn body_ecliptic_lon_lat_with_model(
+    engine: &Engine,
+    body: Body,
+    jd_tdb: f64,
+    precession_model: PrecessionModel,
 ) -> Result<(f64, f64), SearchError> {
     let query = Query {
         target: body,
@@ -36,7 +49,7 @@ pub fn body_ecliptic_lon_lat(
     let state = engine.query(query)?;
     let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
     let t = (jd_tdb - 2_451_545.0) / 36525.0;
-    let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
+    let ecl_date = precess_ecliptic_j2000_to_date_with_model(&ecl_j2000, t, precession_model);
     let sph = cartesian_to_spherical(&ecl_date);
     Ok((sph.lon_deg.rem_euclid(360.0), sph.lat_deg))
 }

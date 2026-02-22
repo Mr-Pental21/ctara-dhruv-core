@@ -13,24 +13,38 @@ fn jd_from_date(year: i32, month: u32, day: u32) -> f64 {
 
 #[test]
 fn lahiri_at_j2000() {
-    // Indian Astronomical Ephemeris: Lahiri at J2000.0 ≈ 23.85°
+    // Back-computed from IAE anchor:
+    // 23°15'00.658" at 1956-03-21 00:00 TDT.
     let t = jd_tdb_to_centuries(2_451_545.0); // J2000.0
     let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, t);
     assert!(
-        (val - 23.85).abs() < 0.01,
-        "Lahiri at J2000 = {val}, expected ~23.85"
+        (val - 23.861_714_109_876_253).abs() < 1e-12,
+        "Lahiri at J2000 = {val}, expected calibrated reference"
     );
 }
 
 #[test]
 fn lahiri_at_2024() {
-    // Rashtriya Panchang 2024: Lahiri ayanamsha ~24.17°
+    // With the calibrated reference this should be around 24.20°.
     let jd = jd_from_date(2024, 1, 1);
     let t = jd_tdb_to_centuries(jd);
     let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, t);
     assert!(
-        (val - 24.19).abs() < 0.05,
-        "Lahiri at 2024-01-01 = {val}, expected ~24.19"
+        (val - 24.201).abs() < 0.05,
+        "Lahiri at 2024-01-01 = {val}, expected ~24.20"
+    );
+}
+
+#[test]
+fn lahiri_matches_iae_1956_anchor() {
+    // IAE revised value: 23°15'00.658" at 1956-03-21 00:00 TDT.
+    let jd_tdt = 2_435_553.5;
+    let t = jd_tdb_to_centuries(jd_tdt);
+    let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, t);
+    let expected = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
+    assert!(
+        (val - expected).abs() < 1e-10,
+        "Lahiri at 1956-03-21 00:00 TDT = {val}, expected {expected}"
     );
 }
 

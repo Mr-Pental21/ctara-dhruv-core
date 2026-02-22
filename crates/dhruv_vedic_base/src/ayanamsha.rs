@@ -13,8 +13,8 @@
 
 use crate::ayanamsha_anchor::anchor_relative_ayanamsha_deg;
 use dhruv_frames::{
-    DEFAULT_PRECESSION_MODEL, PrecessionModel, general_precession_longitude_deg_with_model,
-    nutation_iau2000b,
+    general_precession_longitude_deg_with_model, nutation_iau2000b, PrecessionModel,
+    DEFAULT_PRECESSION_MODEL,
 };
 use dhruv_time::J2000_JD;
 
@@ -123,10 +123,12 @@ impl AyanamshaSystem {
     /// `docs/clean_room_ayanamsha.md` for derivation details.
     pub const fn reference_j2000_deg(self) -> f64 {
         match self {
-            // Indian govt gazette, Spica at 0 deg Libra sidereal
-            Self::Lahiri => 23.853,
-            // Same anchor as Lahiri; nutation applied separately
-            Self::TrueLahiri => 23.853,
+            // IAE/Panchang Office calibration:
+            // 23°15'00.658" at 1956-03-21 00:00 TDT.
+            // Back-computed to J2000 with this crate's default precession model.
+            Self::Lahiri => 23.861_714_109_876_253,
+            // Same anchor baseline as Lahiri; nutation applied separately.
+            Self::TrueLahiri => 23.861_714_109_876_253,
             // Krishnamurti: minimal offset from Lahiri
             Self::KP => 23.850,
             // B.V. Raman: zero year ~397 CE

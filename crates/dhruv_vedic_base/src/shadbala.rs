@@ -16,8 +16,8 @@
 use crate::drishti::{base_virupa, special_virupa};
 use crate::graha::{Graha, SAPTA_GRAHAS};
 use crate::graha_relationships::{
-    BeneficNature, Dignity, GrahaGender, dignity_in_rashi_with_positions, graha_gender,
-    moon_benefic_nature, natural_benefic_malefic,
+    dignity_in_rashi_with_positions, graha_gender, moon_benefic_nature, natural_benefic_malefic,
+    BeneficNature, Dignity, GrahaGender,
 };
 use crate::util::normalize_360;
 
@@ -412,7 +412,11 @@ pub fn tribhaga_bala(graha: Graha, is_daytime: bool, fraction: f64) -> f64 {
         }
     };
 
-    if graha == strong_graha { 60.0 } else { 0.0 }
+    if graha == strong_graha {
+        60.0
+    } else {
+        0.0
+    }
 }
 
 /// Tribhaga bala for all 7.
@@ -1080,7 +1084,7 @@ mod tests {
         // varga2: Venus at rashi 1 (near Mercury rashi 1) → tatkalika friend → AdhiMitra
         let varga1: [[u8; 7]; 7] = [[1; 7]; 7]; // all in Vrishabha
         let mut varga2: [[u8; 7]; 7] = [[1; 7]; 7]; // all in Vrishabha
-        // In varga2, shift Venus (idx 5) to rashi 2 → dist from Mercury(1)=1 → friend
+                                                    // In varga2, shift Venus (idx 5) to rashi 2 → dist from Mercury(1)=1 → friend
         for v in &mut varga2 {
             v[5] = 2; // Venus in Mithuna
         }

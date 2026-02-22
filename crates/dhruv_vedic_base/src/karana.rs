@@ -117,7 +117,11 @@ pub struct KaranaPosition {
 /// Normalize angle to [0, 360).
 fn normalize_360(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 { r + 360.0 } else { r }
+    if r < 0.0 {
+        r + 360.0
+    } else {
+        r
+    }
 }
 
 /// Map karana sequence index (0-59) to the karana name using traditional rules.

@@ -44,9 +44,11 @@ Implementation uses:
 - Moon geocentric state (`r`, `v`) from the JPL SPK queried through
   `dhruv_core::Engine` in ICRF/J2000.
 - Frame rotation to J2000 ecliptic.
-- IAU 2006 3D precession (`precess_ecliptic_j2000_to_date`) to express
-  the orbital normal in ecliptic-of-date coordinates before extracting
+- 3D ecliptic precession (`precess_ecliptic_j2000_to_date_with_model`) to
+  express the orbital normal in ecliptic-of-date coordinates before extracting
   the node longitude.
+- The precession model is explicit in model-aware APIs and defaults to the
+  crate default model (`dhruv_frames::DEFAULT_PRECESSION_MODEL`) in wrapper APIs.
 
 ### Supplementary Reference
 

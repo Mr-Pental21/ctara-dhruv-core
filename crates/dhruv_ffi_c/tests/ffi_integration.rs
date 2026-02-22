@@ -370,8 +370,8 @@ fn ffi_ayanamsha_mean_lahiri_j2000() {
     let status = unsafe { dhruv_ayanamsha_mean_deg(0, 2_451_545.0, &mut out) };
     assert_eq!(status, DhruvStatus::Ok);
     assert!(
-        (out - 23.85).abs() < 0.01,
-        "Lahiri at J2000 = {out}, expected ~23.85"
+        (out - 23.861_714_109_876_253).abs() < 1e-12,
+        "Lahiri at J2000 = {out}, expected calibrated reference"
     );
 }
 

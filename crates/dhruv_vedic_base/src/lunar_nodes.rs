@@ -12,7 +12,10 @@
 //! Clean-room implementation. See `docs/clean_room_lunar_nodes.md`.
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::{fundamental_arguments, icrf_to_ecliptic, precess_ecliptic_j2000_to_date};
+use dhruv_frames::{
+    fundamental_arguments, icrf_to_ecliptic, precess_ecliptic_j2000_to_date_with_model,
+    PrecessionModel, DEFAULT_PRECESSION_MODEL,
+};
 
 use crate::error::VedicError;
 
@@ -64,7 +67,11 @@ impl NodeMode {
 /// Normalize an angle to [0, 360) degrees.
 fn normalize_deg(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 { r + 360.0 } else { r }
+    if r < 0.0 {
+        r + 360.0
+    } else {
+        r
+    }
 }
 
 /// Mean Rahu (ascending node) ecliptic longitude in degrees [0, 360).
@@ -153,10 +160,14 @@ fn cross(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
 /// 1. Query Moon relative to Earth in ICRF/J2000.
 /// 2. Rotate to J2000 ecliptic.
 /// 3. Compute orbital angular momentum vector `h = r × v`.
-/// 4. Precess `h` to ecliptic-of-date (IAU 2006).
+/// 4. Precess `h` to ecliptic-of-date using the selected precession model.
 /// 5. Ascending node direction is `N = k × h` where `k = (0,0,1)`.
 /// 6. Longitude = `atan2(Ny, Nx)`.
-fn osculating_rahu_deg(engine: &Engine, jd_tdb: f64) -> Result<f64, VedicError> {
+fn osculating_rahu_deg_with_model(
+    engine: &Engine,
+    jd_tdb: f64,
+    precession_model: PrecessionModel,
+) -> Result<f64, VedicError> {
     let query = Query {
         target: Body::Moon,
         observer: Observer::Body(Body::Earth),
@@ -175,7 +186,7 @@ fn osculating_rahu_deg(engine: &Engine, jd_tdb: f64) -> Result<f64, VedicError> 
     }
 
     let t = (jd_tdb - 2_451_545.0) / 36525.0;
-    let h_date = precess_ecliptic_j2000_to_date(&h_j2000, t);
+    let h_date = precess_ecliptic_j2000_to_date_with_model(&h_j2000, t, precession_model);
 
     // N = k × h = (-hy, hx, 0)
     let nx = -h_date[1];
@@ -213,12 +224,24 @@ pub fn lunar_node_deg_for_epoch(
     jd_tdb: f64,
     mode: NodeMode,
 ) -> Result<f64, VedicError> {
+    lunar_node_deg_for_epoch_with_model(engine, node, jd_tdb, mode, DEFAULT_PRECESSION_MODEL)
+}
+
+/// Engine-aware lunar node longitude in degrees [0, 360) with explicit
+/// precession model control for osculating true-node evaluation.
+pub fn lunar_node_deg_for_epoch_with_model(
+    engine: &Engine,
+    node: LunarNode,
+    jd_tdb: f64,
+    mode: NodeMode,
+    precession_model: PrecessionModel,
+) -> Result<f64, VedicError> {
     let rahu = match mode {
         NodeMode::Mean => {
             let t = (jd_tdb - 2_451_545.0) / 36525.0;
             mean_rahu_deg(t)
         }
-        NodeMode::True => osculating_rahu_deg(engine, jd_tdb)?,
+        NodeMode::True => osculating_rahu_deg_with_model(engine, jd_tdb, precession_model)?,
     };
 
     let out = match node {

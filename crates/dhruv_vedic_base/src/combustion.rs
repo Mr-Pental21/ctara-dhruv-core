@@ -5,7 +5,7 @@
 //!
 //! Clean-room implementation from BPHS combustion thresholds.
 
-use crate::graha::{ALL_GRAHAS, Graha};
+use crate::graha::{Graha, ALL_GRAHAS};
 use crate::util::normalize_360;
 
 /// BPHS combustion threshold (degrees from Sun) for a graha.

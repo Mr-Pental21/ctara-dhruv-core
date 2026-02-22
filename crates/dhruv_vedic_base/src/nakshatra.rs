@@ -10,7 +10,7 @@
 //! Clean-room implementation from universal Vedic convention.
 //! See `docs/clean_room_rashi_nakshatra.md`.
 
-use crate::ayanamsha::{AyanamshaSystem, ayanamsha_deg, jd_tdb_to_centuries};
+use crate::ayanamsha::{ayanamsha_deg, jd_tdb_to_centuries, AyanamshaSystem};
 
 /// Span of one nakshatra in the 27-scheme: 360/27 = 13.3333... degrees.
 pub const NAKSHATRA_SPAN_27: f64 = 360.0 / 27.0;
@@ -176,7 +176,11 @@ pub struct NakshatraInfo {
 /// Normalize longitude to [0, 360).
 fn normalize_360(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 { r + 360.0 } else { r }
+    if r < 0.0 {
+        r + 360.0
+    } else {
+        r
+    }
 }
 
 /// Determine nakshatra and pada from sidereal ecliptic longitude (27-scheme).

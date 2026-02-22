@@ -7,7 +7,7 @@
 //! Clean-room implementation from BPHS Shodashavarga definitions.
 //! See `docs/clean_room_amsha.md`.
 
-use crate::rashi::{RashiInfo, rashi_from_longitude};
+use crate::rashi::{rashi_from_longitude, RashiInfo};
 use crate::util::normalize_360;
 
 // ---------------------------------------------------------------------------
@@ -443,7 +443,11 @@ fn amsha_target_rashi(
                 // Odd rashi (1-based 1,3,5,7,9,11 = 0-based 0,2,4,6,8,10)
                 let is_odd_rashi = natal_rashi_idx.is_multiple_of(2);
                 if is_odd_rashi {
-                    if div_idx == 0 { 3 } else { 4 } // Cancer, Leo
+                    if div_idx == 0 {
+                        3
+                    } else {
+                        4
+                    } // Cancer, Leo
                 } else if div_idx == 0 {
                     4 // Leo
                 } else {

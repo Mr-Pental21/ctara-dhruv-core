@@ -15,11 +15,11 @@ use dhruv_frames::{
     cartesian_to_spherical, icrf_to_ecliptic, mean_obliquity_of_date_rad,
     precess_ecliptic_j2000_to_date,
 };
-use dhruv_time::{LeapSecondKernel, jd_to_tdb_seconds, tdb_seconds_to_jd};
+use dhruv_time::{jd_to_tdb_seconds, tdb_seconds_to_jd, LeapSecondKernel};
 
 use crate::bhava_types::{
-    Bhava, BhavaConfig, BhavaReferenceMode, BhavaResult, BhavaStartingPoint, BhavaSystem,
-    normalize_deg,
+    normalize_deg, Bhava, BhavaConfig, BhavaReferenceMode, BhavaResult, BhavaStartingPoint,
+    BhavaSystem,
 };
 use crate::error::VedicError;
 use crate::lagna::{compute_lst_rad_pub, lagna_mc_ramc_from_lst};
@@ -546,7 +546,11 @@ fn compute_alcabitus(
 fn semi_arc_rad(dec: f64, lat: f64, diurnal: bool) -> f64 {
     let cos_ha = -(dec.tan() * lat.tan());
     let ha = cos_ha.clamp(-1.0, 1.0).acos();
-    if diurnal { ha } else { PI - ha }
+    if diurnal {
+        ha
+    } else {
+        PI - ha
+    }
 }
 
 /// Convert equatorial RA to ecliptic longitude.

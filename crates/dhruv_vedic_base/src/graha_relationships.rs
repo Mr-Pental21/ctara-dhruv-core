@@ -7,8 +7,8 @@
 //!
 //! Clean-room implementation from BPHS (Brihat Parashara Hora Shastra).
 
-use crate::graha::{Graha, SAPTA_GRAHAS, rashi_lord_by_index};
-use crate::hora::{Hora, hora_at};
+use crate::graha::{rashi_lord_by_index, Graha, SAPTA_GRAHAS};
+use crate::hora::{hora_at, Hora};
 use crate::masa::Masa;
 use crate::samvatsara::Samvatsara;
 use crate::vaar::Vaar;
@@ -39,7 +39,11 @@ pub const fn debilitation_degree(graha: Graha) -> Option<f64> {
     match exaltation_degree(graha) {
         Some(e) => {
             let d = e + 180.0;
-            if d >= 360.0 { Some(d - 360.0) } else { Some(d) }
+            if d >= 360.0 {
+                Some(d - 360.0)
+            } else {
+                Some(d)
+            }
         }
         None => None,
     }
@@ -546,7 +550,11 @@ pub fn samvatsara_lord(samvatsara: Samvatsara) -> Graha {
 
 fn normalize_360_inner(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 { r + 360.0 } else { r }
+    if r < 0.0 {
+        r + 360.0
+    } else {
+        r
+    }
 }
 
 // ---------------------------------------------------------------------------

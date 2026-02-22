@@ -13,7 +13,7 @@ use super::rashi_dasha::{rashi_hierarchy, rashi_snapshot};
 use super::rashi_strength::RashiDashaInputs;
 use super::rashi_util::is_odd_sign;
 use super::types::{
-    DAYS_PER_YEAR, DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot, DashaSystem,
+    DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot, DashaSystem, DAYS_PER_YEAR,
 };
 use super::variation::{DashaVariationConfig, SubPeriodMethod};
 use crate::error::VedicError;
@@ -49,7 +49,11 @@ pub fn chara_period_years(rashi_index: u8, inputs: &RashiDashaInputs) -> f64 {
     };
 
     let period = distance - 1;
-    if period == 0 { 12.0 } else { period as f64 }
+    if period == 0 {
+        12.0
+    } else {
+        period as f64
+    }
 }
 
 /// Get the effective lord's rashi, handling Scorpio's dual lordship.
