@@ -53,6 +53,36 @@ fn lahiri_e2e(t: f64, p_a_fn: fn(f64) -> f64) -> f64 {
     ref_j2000 + p_a_fn(t) / 3600.0
 }
 
+/// 3D-consistent Lahiri ayanamsha on the ecliptic-of-date.
+///
+/// Instead of scalar `ref + p_A(t)`, this tracks the sidereal zero point
+/// as a 3D vector through the full precession matrix:
+/// 1. At the 1956 anchor, the sidereal zero sits at ecliptic-of-date
+///    longitude = 23°15'00.658".
+/// 2. Precess that direction back to J2000 ecliptic via P⁻¹(t_1956).
+/// 3. At epoch t, precess forward via P(t) and read off the longitude.
+///
+/// This correctly accounts for the tilting ecliptic (π_A) that the scalar
+/// p_A formula ignores.
+fn lahiri_e2e_3d(t: f64, model: PrecessionModel) -> f64 {
+    let anchor_deg: f64 = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
+    let t_1956 = (2_435_553.5 - 2_451_545.0) / 36525.0;
+
+    // Sidereal zero point at 1956: ecliptic-of-date longitude = anchor_deg
+    let anchor_rad = anchor_deg.to_radians();
+    let v_1956 = [anchor_rad.cos(), anchor_rad.sin(), 0.0];
+
+    // Back to J2000 ecliptic
+    let v_j2000 =
+        dhruv_frames::precess_ecliptic_date_to_j2000_with_model(&v_1956, t_1956, model);
+
+    // Forward to ecliptic-of-date at epoch t
+    let v_date = dhruv_frames::precess_ecliptic_j2000_to_date_with_model(&v_j2000, t, model);
+
+    // Ayanamsha = longitude of sidereal zero on ecliptic-of-date
+    v_date[1].atan2(v_date[0]).to_degrees().rem_euclid(360.0)
+}
+
 fn dms(deg: f64) -> String {
     let neg = deg < 0.0;
     let d_abs = deg.abs();
@@ -163,11 +193,12 @@ fn full_multi_epoch_comparison() {
 
     // ═══════════════════════════════════════════════════════════════════
     // TABLE 4: SIDEREAL SUN LONGITUDE (Lahiri, degrees)
-    // Tropical (Vondrák 3D) − Ayanamsha (each model e2e)
+    // Tropical (model 3D) − Ayanamsha (model 3D)
+    // Both measured on ecliptic-of-date for full consistency.
     // ═══════════════════════════════════════════════════════════════════
     println!("\n{}", "=".repeat(130));
-    println!("TABLE 4: SIDEREAL SUN (Lahiri, degrees) = Tropical(model 3D) − Ayanamsha(model e2e)");
-    println!("(Each model uses its own 3D tropical longitude. Blank = out of DE441 range)");
+    println!("TABLE 4: SIDEREAL SUN (Lahiri, degrees) = Tropical(model 3D) − Ayanamsha(model 3D)");
+    println!("(Both tropical and ayanamsha on ecliptic-of-date. Blank = out of DE441 range)");
     println!("{}", "=".repeat(130));
     println!(
         "{:>5} {:>7} {:>14} {:>14} {:>14} {:>16} | {:>10} {:>10}",
@@ -182,9 +213,9 @@ fn full_multi_epoch_comparison() {
         let trop_v = try_tropical(&engine, jd, PrecessionModel::Vondrak2011);
         match (trop_l, trop_i, trop_v) {
             (Some(tl), Some(ti), Some(tv)) => {
-                let a_l = lahiri_e2e(t, lieske_p_a);
-                let a_i = lahiri_e2e(t, iau2006_p_a);
-                let a_v = lahiri_e2e(t, vondrak_p_a);
+                let a_l = lahiri_e2e_3d(t, PrecessionModel::Lieske1977);
+                let a_i = lahiri_e2e_3d(t, PrecessionModel::Iau2006);
+                let a_v = lahiri_e2e_3d(t, PrecessionModel::Vondrak2011);
                 let s_l = (tl - a_l).rem_euclid(360.0);
                 let s_i = (ti - a_i).rem_euclid(360.0);
                 let s_v = (tv - a_v).rem_euclid(360.0);
