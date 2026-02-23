@@ -21,6 +21,15 @@ struct AnchorSpec {
 
 fn anchor_spec(system: AyanamshaSystem) -> Option<AnchorSpec> {
     match system {
+        // Lahiri (mean): sidereal zero point back-precessed from the
+        // IAE anchor (23°15'00.658" at 1956-03-21 00:00 TDT) to J2000
+        // via 3D Vondrák precession. The small lat tracks the ecliptic
+        // tilt between 1956 and J2000.
+        AyanamshaSystem::Lahiri => Some(AnchorSpec {
+            lon_j2000_deg: 23.861_713_990_472_925,
+            lat_j2000_deg: 0.002_728_162_089_316,
+            target_sidereal_lon_deg: 0.0,
+        }),
         // Spica anchor. Calibrated to existing J2000 Lahiri baseline.
         AyanamshaSystem::TrueLahiri => Some(AnchorSpec {
             lon_j2000_deg: 203.853_000,

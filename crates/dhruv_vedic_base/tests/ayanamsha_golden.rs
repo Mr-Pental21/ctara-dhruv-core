@@ -18,7 +18,7 @@ fn lahiri_at_j2000() {
     let t = jd_tdb_to_centuries(2_451_545.0); // J2000.0
     let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, t);
     assert!(
-        (val - 23.861_714_109_876_253).abs() < 1e-12,
+        (val - 23.861_713_990_472_925).abs() < 1e-12,
         "Lahiri at J2000 = {val}, expected calibrated reference"
     );
 }

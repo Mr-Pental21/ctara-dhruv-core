@@ -4,16 +4,17 @@
 //! by the vernal equinox) and a sidereal zodiac (anchored to fixed stars).
 //! As the equinox precesses westward, the ayanamsha increases over time.
 //!
-//! Each system is defined by its J2000.0 reference value. The ayanamsha at
-//! any epoch is computed by adding the IAU 2006 general precession to that
-//! reference.
+//! Each system is defined by its J2000.0 reference value (the J2000 ecliptic
+//! longitude of the sidereal zero point). The ayanamsha at any epoch is
+//! computed by precessing that direction to the ecliptic-of-date using the
+//! full 3D ecliptic precession matrix and reading off the longitude.
 //!
 //! Clean-room implementation: all reference values derived independently from
 //! published system definitions. See `docs/clean_room_ayanamsha.md`.
 
 use crate::ayanamsha_anchor::anchor_relative_ayanamsha_deg;
 use dhruv_frames::{
-    general_precession_longitude_deg_with_model, nutation_iau2000b, PrecessionModel,
+    nutation_iau2000b, precess_ecliptic_j2000_to_date_with_model, PrecessionModel,
     DEFAULT_PRECESSION_MODEL,
 };
 use dhruv_time::J2000_JD;
@@ -125,10 +126,10 @@ impl AyanamshaSystem {
         match self {
             // IAE/Panchang Office calibration:
             // 23°15'00.658" at 1956-03-21 00:00 TDT.
-            // Back-computed to J2000 with this crate's default precession model.
-            Self::Lahiri => 23.861_714_109_876_253,
+            // Back-computed to J2000 via 3D ecliptic precession (Vondrák 2011).
+            Self::Lahiri => 23.861_713_990_472_925,
             // Same anchor baseline as Lahiri; nutation applied separately.
-            Self::TrueLahiri => 23.861_714_109_876_253,
+            Self::TrueLahiri => 23.861_713_990_472_925,
             // Krishnamurti: minimal offset from Lahiri
             Self::KP => 23.850,
             // B.V. Raman: zero year ~397 CE
@@ -181,7 +182,11 @@ impl AyanamshaSystem {
     pub const fn is_anchor_relative(self) -> bool {
         matches!(
             self,
-            Self::TrueLahiri | Self::PushyaPaksha | Self::RohiniPaksha | Self::Aldebaran15Tau
+            Self::Lahiri
+                | Self::TrueLahiri
+                | Self::PushyaPaksha
+                | Self::RohiniPaksha
+                | Self::Aldebaran15Tau
         )
     }
 
@@ -197,10 +202,11 @@ impl AyanamshaSystem {
 /// * `system` — the sidereal reference system
 /// * `t_centuries` — Julian centuries of TDB since J2000.0
 ///
-/// # Formula
-/// `ayanamsha(T) = reference_j2000 + p_A(T) / 3600`
-///
-/// where p_A is the IAU 2006 general precession in ecliptic longitude (arcsec).
+/// # Method
+/// The sidereal zero point (at J2000 ecliptic longitude `reference_j2000_deg`)
+/// is precessed to the ecliptic-of-date using the full 3D ecliptic precession
+/// matrix, and its longitude on the ecliptic-of-date is the ayanamsha.
+/// This is consistent with tropical longitudes computed via the same 3D matrix.
 pub fn ayanamsha_mean_deg(system: AyanamshaSystem, t_centuries: f64) -> f64 {
     ayanamsha_mean_deg_with_model(system, t_centuries, DEFAULT_PRECESSION_MODEL)
 }
@@ -214,9 +220,22 @@ pub fn ayanamsha_mean_deg_with_model(
     if let Some(aya) = anchor_relative_ayanamsha_deg(system, t_centuries, model) {
         aya
     } else {
-        system.reference_j2000_deg()
-            + general_precession_longitude_deg_with_model(t_centuries, model)
+        ayanamsha_3d(system.reference_j2000_deg(), t_centuries, model)
     }
+}
+
+/// Compute ayanamsha by precessing the sidereal zero point to ecliptic-of-date.
+///
+/// `ref_j2000_deg` is the J2000 ecliptic longitude of the sidereal zero point.
+/// Returns its longitude on the ecliptic-of-date, which equals the ayanamsha.
+fn ayanamsha_3d(ref_j2000_deg: f64, t_centuries: f64, model: PrecessionModel) -> f64 {
+    if t_centuries.abs() < 1e-15 {
+        return ref_j2000_deg;
+    }
+    let ref_rad = ref_j2000_deg.to_radians();
+    let v = [ref_rad.cos(), ref_rad.sin(), 0.0];
+    let v_date = precess_ecliptic_j2000_to_date_with_model(&v, t_centuries, model);
+    v_date[1].atan2(v_date[0]).to_degrees().rem_euclid(360.0)
 }
 
 /// "True"-mode ayanamsha helper in degrees.
@@ -468,4 +487,5 @@ mod tests {
         let vondrak = ayanamsha_mean_deg_with_model(sys, t, PrecessionModel::Vondrak2011);
         assert!((iau - vondrak).abs() > 1e-6);
     }
+
 }
