@@ -83,6 +83,43 @@ fn lahiri_e2e_3d(t: f64, model: PrecessionModel) -> f64 {
     v_date[1].atan2(v_date[0]).to_degrees().rem_euclid(360.0)
 }
 
+/// IAU 2000B nutation in longitude (Δψ) at the 1956-03-21 Lahiri anchor epoch.
+///
+/// Returns degrees.  Computed from Dhruv's own IAU 2000B model (77 lunisolar
+/// terms, IERS Conventions 2010).
+fn nutation_at_1956_anchor_deg() -> f64 {
+    let t_1956 = (2_435_553.5 - 2_451_545.0) / 36525.0;
+    let (dpsi_arcsec, _) = dhruv_frames::nutation_iau2000b(t_1956);
+    dpsi_arcsec / 3600.0
+}
+
+/// Lahiri ayanamsha with configurable anchor and calibration/runtime models.
+///
+/// When `mean_anchor` is true, the IAU 2000B nutation in longitude at the
+/// 1956 anchor epoch (Δψ ≈ 16.8") is subtracted from the IAE gazette value
+/// before back-computing the J2000 reference.  This is the traditional
+/// "mean ayanamsha" approach used by many implementations.
+///
+/// Dhruv uses the TRUE anchor (mean_anchor = false) and propagates the 3D
+/// direction with pure precession (no nutation), which produces a larger
+/// ayanamsha by approximately the anchor-epoch nutation.
+fn lahiri_decomposed(
+    t: f64,
+    mean_anchor: bool,
+    cal_model: fn(f64) -> f64,
+    run_model: fn(f64) -> f64,
+) -> f64 {
+    let anchor_true = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
+    let anchor = if mean_anchor {
+        anchor_true - nutation_at_1956_anchor_deg()
+    } else {
+        anchor_true
+    };
+    let t_1956 = (2_435_553.5 - 2_451_545.0) / 36525.0;
+    let ref_j2000 = anchor - cal_model(t_1956) / 3600.0;
+    ref_j2000 + run_model(t) / 3600.0
+}
+
 fn dms(deg: f64) -> String {
     let neg = deg < 0.0;
     let d_abs = deg.abs();
@@ -236,4 +273,64 @@ fn full_multi_epoch_comparison() {
             }
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TABLE 5: TRUE vs MEAN ANCHOR — effect of nutation at the 1956
+    // calibration epoch on the propagated ayanamsha.
+    //
+    // The IAE 1985 gazette value (23°15'00.658") is a TRUE value that
+    // includes nutation.  Many implementations subtract the nutation in
+    // longitude at 1956-03-21 (Δψ ≈ 16.8" per IAU 2000B) to obtain a
+    // MEAN anchor before propagating with precession.
+    //
+    // Dhruv uses the TRUE anchor as a 3D direction and precesses with
+    // Vondrák (no nutation added).  This produces a larger ayanamsha by
+    // approximately the anchor-epoch nutation at all subsequent epochs.
+    //
+    // Columns:
+    //  A = Dhruv 3D (true anchor, Vondrák)     [what Dhruv computes]
+    //  B = Scalar (true anchor, Vondrák)        [scalar equivalent of A]
+    //  C = Scalar (mean anchor, Vondrák)        [mean-anchor approach]
+    //  D = Scalar (mean anchor, Lieske-cal/V-run) [cross-model]
+    //
+    // Deltas (arcsec):
+    //  A−B = 3D ecliptic-tilt effect (π_A cross-coupling)
+    //  A−C = true-vs-mean anchor gap (≈ IAU 2000B Δψ at 1956)
+    //  C−D = Lieske→Vondrák precession model correction (constant)
+    // ═══════════════════════════════════════════════════════════════════
+    println!("\n{}", "=".repeat(140));
+    println!("TABLE 5: TRUE vs MEAN ANCHOR — effect of nutation at the 1956 calibration epoch");
+    println!("  A = 3D Vondrák (true anchor)   B = Scalar Vondrák (true anchor)");
+    println!("  C = Scalar Vondrák (mean anchor)   D = Scalar Lieske-cal/Vondrák-run (mean anchor)");
+    println!("{}", "=".repeat(140));
+    println!(
+        "{:>5} {:>7} {:>14} {:>14} {:>14} {:>14} | {:>9} {:>9} {:>9}",
+        "Year", "T(cy)", "A (3D/true)", "B (sc/true)", "C (sc/mean)", "D (cross)", "A−B\"", "A−C\"", "C−D\""
+    );
+    println!("{}", "-".repeat(140));
+    for &y in &years {
+        let jd = dhruv_time::calendar_to_jd(y, 1, 1.0);
+        let t = (jd - 2_451_545.0) / 36525.0;
+
+        // A: Dhruv's actual 3D method (true anchor, Vondrák)
+        let a = lahiri_e2e_3d(t, PrecessionModel::Vondrak2011);
+        // B: Scalar Vondrák with TRUE anchor
+        let b = lahiri_decomposed(t, false, vondrak_p_a, vondrak_p_a);
+        // C: Scalar Vondrák with MEAN anchor (nutation subtracted at 1956)
+        let c = lahiri_decomposed(t, true, vondrak_p_a, vondrak_p_a);
+        // D: MEAN anchor, calibrated with Lieske, propagated with Vondrák
+        let d = lahiri_decomposed(t, true, lieske_p_a, vondrak_p_a);
+
+        let ab = (a - b) * 3600.0;
+        let ac = (a - c) * 3600.0;
+        let cd = (c - d) * 3600.0;
+        println!(
+            "{y:>5} {t:>7.3} {a:>14.8} {b:>14.8} {c:>14.8} {d:>14.8} | {ab:>+9.4} {ac:>+9.4} {cd:>+9.4}"
+        );
+    }
+    println!();
+    let nut_1956 = nutation_at_1956_anchor_deg() * 3600.0;
+    println!("A−B: 3D ecliptic-tilt effect (π_A cross-coupling via non-zero anchor latitude)");
+    println!("A−C: true-vs-mean anchor gap (≈ IAU 2000B Δψ at 1956 = {nut_1956:.3}\")");
+    println!("C−D: Lieske→Vondrák precession model correction (constant ~0.13\")");
 }
