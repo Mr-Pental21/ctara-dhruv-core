@@ -9,6 +9,8 @@
 //! parameters π_A (inclination) and Π_A (node longitude).
 //!
 //! Sources:
+//! - Lieske, Lederle, Fricke & Morando 1977, A&A 58, 1-16 (IAU 1976).
+//! - Lieske 1979, A&A 73, 282-284 (errata/updates).
 //! - Capitaine, Wallace & Chapront 2003, A&A 412, 567-586, Table 1.
 //! - IERS Conventions 2010, Chapter 5, Table 5.1.
 //! - Vondrák, Capitaine & Wallace 2011, A&A 534, A22.
@@ -18,6 +20,8 @@ use std::f64::consts::{PI, TAU};
 /// Supported precession models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrecessionModel {
+    /// Lieske 1977 / IAU 1976 precession.
+    Lieske1977,
     /// IAU 2006 (Capitaine et al. 2003 / IERS 2010).
     Iau2006,
     /// Vondrák, Capitaine & Wallace 2011 long-term model.
@@ -196,6 +200,31 @@ fn vondrak2011_pi_cap_pi_rad(t: f64) -> (f64, f64) {
     (pi_a, cap_pi_a)
 }
 
+// ---------- Lieske 1977 / IAU 1976 ----------
+// Lieske et al. 1977, A&A 58; Lieske 1979, A&A 73, 282;
+// Explanatory Supplement 1992, Ch. 3.
+
+#[inline]
+fn lieske1977_general_precession_longitude_arcsec(t: f64) -> f64 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    5029.0966 * t + 1.11113 * t2 - 0.000006 * t3
+}
+
+#[inline]
+fn lieske1977_ecliptic_inclination_arcsec(t: f64) -> f64 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    47.0029 * t - 0.06603 * t2 + 0.000598 * t3
+}
+
+#[inline]
+fn lieske1977_ecliptic_node_longitude_arcsec(t: f64) -> f64 {
+    // 174°52'34.982" = 629554.982"
+    let t2 = t * t;
+    629_554.982 + 3289.4789 * t + 0.60622 * t2
+}
+
 #[inline]
 fn iau2006_general_precession_longitude_arcsec(t: f64) -> f64 {
     let t2 = t * t;
@@ -275,6 +304,7 @@ pub fn general_precession_longitude_arcsec(t: f64) -> f64 {
 /// General precession in ecliptic longitude for a specific model, in arcseconds.
 pub fn general_precession_longitude_arcsec_with_model(t: f64, model: PrecessionModel) -> f64 {
     match model {
+        PrecessionModel::Lieske1977 => lieske1977_general_precession_longitude_arcsec(t),
         PrecessionModel::Iau2006 => iau2006_general_precession_longitude_arcsec(t),
         PrecessionModel::Vondrak2011 => vondrak2011_general_precession_longitude_arcsec(t),
     }
@@ -303,6 +333,7 @@ pub fn ecliptic_inclination_arcsec(t: f64) -> f64 {
 /// Inclination of the ecliptic of date to the J2000 ecliptic for a specific model, in arcseconds.
 pub fn ecliptic_inclination_arcsec_with_model(t: f64, model: PrecessionModel) -> f64 {
     match model {
+        PrecessionModel::Lieske1977 => lieske1977_ecliptic_inclination_arcsec(t),
         PrecessionModel::Iau2006 => iau2006_ecliptic_inclination_arcsec(t),
         PrecessionModel::Vondrak2011 => vondrak2011_ecliptic_inclination_arcsec(t),
     }
@@ -321,6 +352,7 @@ pub fn ecliptic_node_longitude_arcsec(t: f64) -> f64 {
 /// ecliptic for a specific model, in arcseconds.
 pub fn ecliptic_node_longitude_arcsec_with_model(t: f64, model: PrecessionModel) -> f64 {
     match model {
+        PrecessionModel::Lieske1977 => lieske1977_ecliptic_node_longitude_arcsec(t),
         PrecessionModel::Iau2006 => iau2006_ecliptic_node_longitude_arcsec(t),
         PrecessionModel::Vondrak2011 => vondrak2011_ecliptic_node_longitude_arcsec(t),
     }
@@ -342,6 +374,9 @@ pub fn general_precession_rate_deg_per_day_with_model(t: f64, model: PrecessionM
     let t4 = t3 * t;
     // d(p_A)/dt in arcsec/century
     let rate = match model {
+        PrecessionModel::Lieske1977 => {
+            5029.0966 + 2.0 * 1.11113 * t - 3.0 * 0.000006 * t2
+        }
         PrecessionModel::Iau2006 => {
             5_028.796_195 + 2.0 * 1.105_434_8 * t + 3.0 * 0.000_079_64 * t2
                 - 4.0 * 0.000_023_857 * t3
