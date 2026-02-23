@@ -100,9 +100,9 @@ fn nutation_at_1956_anchor_deg() -> f64 {
 /// before back-computing the J2000 reference.  This is the traditional
 /// "mean ayanamsha" approach used by many implementations.
 ///
-/// Dhruv uses the TRUE anchor (mean_anchor = false) and propagates the 3D
-/// direction with pure precession (no nutation), which produces a larger
-/// ayanamsha by approximately the anchor-epoch nutation.
+/// Since Dhruv now uses the MEAN anchor (nutation subtracted), column A
+/// in Table 5 uses a hardcoded true-anchor constant as a fixed baseline,
+/// independent of production constants, to preserve the A−C diagnostic.
 fn lahiri_decomposed(
     t: f64,
     mean_anchor: bool,
@@ -279,18 +279,18 @@ fn full_multi_epoch_comparison() {
     // calibration epoch on the propagated ayanamsha.
     //
     // The IAE 1985 gazette value (23°15'00.658") is a TRUE value that
-    // includes nutation.  Many implementations subtract the nutation in
-    // longitude at 1956-03-21 (Δψ ≈ 16.8" per IAU 2000B) to obtain a
-    // MEAN anchor before propagating with precession.
+    // includes nutation.  Dhruv now stores a MEAN anchor (nutation at
+    // 1956 subtracted) and adds Δψ(t) at the target date when
+    // use_nutation=true.
     //
-    // Dhruv uses the TRUE anchor as a 3D direction and precesses with
-    // Vondrák (no nutation added).  This produces a larger ayanamsha by
-    // approximately the anchor-epoch nutation at all subsequent epochs.
+    // Column A uses a hardcoded true-anchor constant (the old
+    // 23°15'00.658" value) as a fixed baseline, independent of
+    // production constants.  This preserves the A−C diagnostic.
     //
     // Columns:
-    //  A = Dhruv 3D (true anchor, Vondrák)     [what Dhruv computes]
+    //  A = 3D Vondrák (old true-anchor baseline) [fixed reference]
     //  B = Scalar (true anchor, Vondrák)        [scalar equivalent of A]
-    //  C = Scalar (mean anchor, Vondrák)        [mean-anchor approach]
+    //  C = Scalar (mean anchor, Vondrák)        [mean-anchor, current production]
     //  D = Scalar (mean anchor, Lieske-cal/V-run) [cross-model]
     //
     // Deltas (arcsec):
@@ -332,5 +332,6 @@ fn full_multi_epoch_comparison() {
     let nut_1956 = nutation_at_1956_anchor_deg() * 3600.0;
     println!("A−B: 3D ecliptic-tilt effect (π_A cross-coupling via non-zero anchor latitude)");
     println!("A−C: true-vs-mean anchor gap (≈ IAU 2000B Δψ at 1956 = {nut_1956:.3}\")");
+    println!("  A = old true-anchor baseline, C = mean-anchor (current production)");
     println!("C−D: Lieske→Vondrák precession model correction (constant ~0.13\")");
 }

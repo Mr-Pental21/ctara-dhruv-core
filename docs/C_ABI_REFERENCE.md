@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 35`
+**ABI version:** `DHRUV_API_VERSION = 36`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -654,8 +654,7 @@ DhruvStatus dhruv_ayanamsha_true_deg(
 ```
 
 `true`-mode helper ayanamsha.
-For anchor-relative systems (including TrueLahiri), this is identical to mean
-ayanamsha and ignores `delta_psi_arcsec`.
+`delta_psi_arcsec` is applied to all systems.
 
 ```c
 DhruvStatus dhruv_ayanamsha_deg(
@@ -667,7 +666,7 @@ DhruvStatus dhruv_ayanamsha_deg(
 ```
 
 Unified function.
-For anchor-relative systems (including TrueLahiri), `use_nutation` is ignored.
+When `use_nutation` is non-zero, nutation in longitude (Δψ) is added for all systems.
 
 ```c
 uint32_t dhruv_ayanamsha_system_count(void);

@@ -124,12 +124,12 @@ impl AyanamshaSystem {
     /// `docs/clean_room_ayanamsha.md` for derivation details.
     pub const fn reference_j2000_deg(self) -> f64 {
         match self {
-            // IAE/Panchang Office calibration:
-            // 23°15'00.658" at 1956-03-21 00:00 TDT.
-            // Back-computed to J2000 via 3D ecliptic precession (Vondrák 2011).
-            Self::Lahiri => 23.861_713_990_472_925,
-            // Same anchor baseline as Lahiri; nutation applied separately.
-            Self::TrueLahiri => 23.861_713_990_472_925,
+            // MEAN anchor: IAE gazette 23°15'00.658" minus IAU 2000B nutation
+            // at 1956-03-21, back-computed to J2000 via 3D Vondrák precession.
+            // Must stay synchronized with anchor_spec(Lahiri).lon_j2000_deg.
+            Self::Lahiri => 23.857_052_898_247_307,
+            // Same mean anchor baseline as Lahiri; nutation applied separately.
+            Self::TrueLahiri => 23.857_052_898_247_307,
             // Krishnamurti: minimal offset from Lahiri
             Self::KP => 23.850,
             // B.V. Raman: zero year ~397 CE
@@ -167,13 +167,6 @@ impl AyanamshaSystem {
             // Aldebaran at 15 deg Taurus
             Self::Aldebaran15Tau => 24.870,
         }
-    }
-
-    /// Whether this system uses the true (nutation-corrected) equinox.
-    ///
-    /// Only `TrueLahiri` returns `true`. All other systems use the mean equinox.
-    pub const fn uses_true_equinox(self) -> bool {
-        matches!(self, Self::TrueLahiri)
     }
 
     /// Whether this system is computed by locking an anchor to a sidereal longitude.
@@ -240,11 +233,8 @@ fn ayanamsha_3d(ref_j2000_deg: f64, t_centuries: f64, model: PrecessionModel) ->
 
 /// "True"-mode ayanamsha helper in degrees.
 ///
-/// Anchor-relative systems (including `TrueLahiri`) return their mean
-/// star-locked value and ignore `delta_psi_arcsec`.
-///
-/// Legacy systems may apply `delta_psi_arcsec` if they use a true-equinox
-/// convention.
+/// Adds `delta_psi_arcsec` (nutation in longitude) to the mean ayanamsha
+/// for all systems.
 ///
 /// # Arguments
 /// * `system` — the sidereal reference system
@@ -261,60 +251,44 @@ pub fn ayanamsha_true_deg(system: AyanamshaSystem, t_centuries: f64, delta_psi_a
 }
 
 /// "True"-mode ayanamsha helper for the selected precession model, in degrees.
+///
+/// `delta_psi_arcsec` is applied for all systems.
 pub fn ayanamsha_true_deg_with_model(
     system: AyanamshaSystem,
     t_centuries: f64,
     delta_psi_arcsec: f64,
     model: PrecessionModel,
 ) -> f64 {
-    if system.is_anchor_relative() {
-        // Anchor-relative systems are not modeled as mean + delta_psi.
-        return ayanamsha_mean_deg_with_model(system, t_centuries, model);
-    }
-
-    let mean = ayanamsha_mean_deg_with_model(system, t_centuries, model);
-    if system.uses_true_equinox() {
-        mean + delta_psi_arcsec / 3600.0
-    } else {
-        mean
-    }
+    ayanamsha_mean_deg_with_model(system, t_centuries, model) + delta_psi_arcsec / 3600.0
 }
 
 /// Compute ayanamsha, optionally with nutation correction.
 ///
-/// For anchor-relative systems (including `TrueLahiri`), `use_nutation` is
-/// ignored.
+/// When `use_nutation` is true, nutation in longitude (Δψ) is computed
+/// internally via IAU 2000B and added to the mean ayanamsha for all systems.
 ///
-/// For legacy systems, when `use_nutation` is true and the system uses the
-/// true equinox, nutation in longitude is computed internally via IAU 2000B
-/// and added to the mean value.
-///
-/// When `use_nutation` is false, or for systems that don't use the true
-/// equinox, this returns the same value as [`ayanamsha_mean_deg`].
+/// When `use_nutation` is false, this returns the same value as
+/// [`ayanamsha_mean_deg`].
 ///
 /// # Arguments
 /// * `system` — the sidereal reference system
 /// * `t_centuries` — Julian centuries of TDB since J2000.0
-/// * `use_nutation` — whether to apply nutation correction for true-equinox systems
+/// * `use_nutation` — whether to apply nutation correction
 pub fn ayanamsha_deg(system: AyanamshaSystem, t_centuries: f64, use_nutation: bool) -> f64 {
     ayanamsha_deg_with_model(system, t_centuries, use_nutation, DEFAULT_PRECESSION_MODEL)
 }
 
 /// Compute ayanamsha, optionally with nutation correction, with a selected precession model.
+///
+/// When `use_nutation` is true, nutation in longitude (Δψ) is added for all systems.
 pub fn ayanamsha_deg_with_model(
     system: AyanamshaSystem,
     t_centuries: f64,
     use_nutation: bool,
     model: PrecessionModel,
 ) -> f64 {
-    if system.is_anchor_relative() {
-        // Anchor-relative systems are defined via star-locking and ignore this
-        // legacy nutation toggle.
-        return ayanamsha_mean_deg_with_model(system, t_centuries, model);
-    }
-
     let mean = ayanamsha_mean_deg_with_model(system, t_centuries, model);
-    if use_nutation && system.uses_true_equinox() {
+    if use_nutation {
         let (delta_psi_arcsec, _) = nutation_iau2000b(t_centuries);
         mean + delta_psi_arcsec / 3600.0
     } else {
@@ -345,7 +319,7 @@ mod tests {
     fn lahiri_at_j2000() {
         let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, 0.0);
         assert!(
-            (val - AyanamshaSystem::Lahiri.reference_j2000_deg()).abs() < 1e-15,
+            (val - AyanamshaSystem::Lahiri.reference_j2000_deg()).abs() < 1e-12,
             "Lahiri at J2000 = {val}"
         );
     }
@@ -375,21 +349,28 @@ mod tests {
     }
 
     #[test]
-    fn true_lahiri_ignores_delta_psi() {
-        let delta_psi = 17.0; // arcseconds, typical nutation amplitude
-        let true_val = ayanamsha_true_deg(AyanamshaSystem::TrueLahiri, 0.0, delta_psi);
-        let expected = ayanamsha_mean_deg(AyanamshaSystem::TrueLahiri, 0.0);
+    fn true_deg_applies_delta_psi() {
+        let delta_psi = 17.0; // arcseconds
+        let t = 0.5;
+        let mean = ayanamsha_mean_deg(AyanamshaSystem::TrueLahiri, t);
+        let true_val = ayanamsha_true_deg(AyanamshaSystem::TrueLahiri, t, delta_psi);
         assert!(
-            (true_val - expected).abs() < 1e-10,
-            "true_val = {true_val}, expected = {expected}"
+            (true_val - (mean + delta_psi / 3600.0)).abs() < 1e-10,
+            "true_val = {true_val}, expected = {}",
+            mean + delta_psi / 3600.0
         );
     }
 
     #[test]
-    fn non_true_ignores_nutation() {
+    fn true_deg_applies_nutation_all_systems() {
+        let dpsi = 17.0; // arcseconds
         let mean = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, 0.0);
-        let true_val = ayanamsha_true_deg(AyanamshaSystem::Lahiri, 0.0, 999.0);
-        assert!((true_val - mean).abs() < 1e-15);
+        let true_val = ayanamsha_true_deg(AyanamshaSystem::Lahiri, 0.0, dpsi);
+        assert!(
+            (true_val - (mean + dpsi / 3600.0)).abs() < 1e-10,
+            "true_val = {true_val}, expected = {}",
+            mean + dpsi / 3600.0
+        );
     }
 
     #[test]
@@ -430,40 +411,33 @@ mod tests {
     }
 
     #[test]
-    fn ayanamsha_deg_with_nutation_true_lahiri() {
+    fn nutation_flag_adds_dpsi() {
         let t = 0.24;
-        let unified = ayanamsha_deg(AyanamshaSystem::TrueLahiri, t, true);
-        let mean = ayanamsha_mean_deg(AyanamshaSystem::TrueLahiri, t);
-        let diff = (unified - mean).abs();
+        let with = ayanamsha_deg(AyanamshaSystem::TrueLahiri, t, true);
+        let without = ayanamsha_deg(AyanamshaSystem::TrueLahiri, t, false);
+        let (dpsi_arcsec, _) = nutation_iau2000b(t);
+        let expected_diff = dpsi_arcsec / 3600.0;
         assert!(
-            diff < 1e-15,
-            "TrueLahiri ignores nutation flag: diff={diff}"
+            (with - without - expected_diff).abs() < 1e-10,
+            "diff={}, expected={}",
+            with - without,
+            expected_diff
         );
     }
 
     #[test]
-    fn ayanamsha_deg_non_true_ignores_nutation_flag() {
+    fn nutation_flag_adds_dpsi_lahiri() {
         let t = 0.24;
         let with = ayanamsha_deg(AyanamshaSystem::Lahiri, t, true);
         let without = ayanamsha_deg(AyanamshaSystem::Lahiri, t, false);
+        let (dpsi_arcsec, _) = nutation_iau2000b(t);
+        let expected_diff = dpsi_arcsec / 3600.0;
         assert!(
-            (with - without).abs() < 1e-15,
-            "Lahiri should ignore nutation flag"
+            (with - without - expected_diff).abs() < 1e-10,
+            "diff={}, expected={}",
+            with - without,
+            expected_diff
         );
-    }
-
-    #[test]
-    fn only_true_lahiri_uses_true_equinox() {
-        for &sys in AyanamshaSystem::all() {
-            if sys == AyanamshaSystem::TrueLahiri {
-                assert!(sys.uses_true_equinox());
-            } else {
-                assert!(
-                    !sys.uses_true_equinox(),
-                    "{sys:?} should not use true equinox"
-                );
-            }
-        }
     }
 
     #[test]
@@ -488,4 +462,27 @@ mod tests {
         assert!((iau - vondrak).abs() > 1e-6);
     }
 
+    #[test]
+    fn lahiri_true_at_1956_matches_gazette() {
+        let t_1956 = (2_435_553.5 - 2_451_545.0) / 36525.0;
+        let gazette = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
+        let val = ayanamsha_deg(AyanamshaSystem::Lahiri, t_1956, true);
+        assert!(
+            (val - gazette).abs() < 1e-6,
+            "Lahiri true at 1956 = {val}, gazette = {gazette}"
+        );
+    }
+
+    #[test]
+    fn lahiri_mean_at_1956() {
+        let t_1956 = (2_435_553.5 - 2_451_545.0) / 36525.0;
+        let gazette = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
+        let (dpsi_arcsec, _) = nutation_iau2000b(t_1956);
+        let expected_mean = gazette - dpsi_arcsec / 3600.0;
+        let val = ayanamsha_deg(AyanamshaSystem::Lahiri, t_1956, false);
+        assert!(
+            (val - expected_mean).abs() < 1e-6,
+            "Lahiri mean at 1956 = {val}, expected = {expected_mean}"
+        );
+    }
 }

@@ -21,13 +21,13 @@ struct AnchorSpec {
 
 fn anchor_spec(system: AyanamshaSystem) -> Option<AnchorSpec> {
     match system {
-        // Lahiri (mean): sidereal zero point back-precessed from the
-        // IAE anchor (23°15'00.658" at 1956-03-21 00:00 TDT) to J2000
-        // via 3D Vondrák precession. The small lat tracks the ecliptic
-        // tilt between 1956 and J2000.
+        // Lahiri (MEAN anchor): IAE gazette 23°15'00.658" at 1956-03-21
+        // 00:00 TDT minus IAU 2000B nutation at that epoch (Δψ ≈ 16.78"),
+        // then back-precessed to J2000 via 3D Vondrák precession.
+        // The small lat tracks the ecliptic tilt between 1956 and J2000.
         AyanamshaSystem::Lahiri => Some(AnchorSpec {
-            lon_j2000_deg: 23.861_713_990_472_925,
-            lat_j2000_deg: 0.002_728_162_089_316,
+            lon_j2000_deg: 23.857_052_898_247_307,
+            lat_j2000_deg: 0.002_727_754_076_653,
             target_sidereal_lon_deg: 0.0,
         }),
         // Spica anchor. Calibrated to existing J2000 Lahiri baseline.
@@ -84,6 +84,18 @@ pub(crate) fn anchor_relative_ayanamsha_deg(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lahiri_anchor_and_reference_consistent() {
+        let spec = anchor_spec(AyanamshaSystem::Lahiri).unwrap();
+        let ref_deg = AyanamshaSystem::Lahiri.reference_j2000_deg();
+        assert!(
+            (spec.lon_j2000_deg - ref_deg).abs() < 1e-15,
+            "anchor lon={}, reference={}",
+            spec.lon_j2000_deg,
+            ref_deg
+        );
+    }
 
     #[test]
     fn converted_systems_are_anchor_relative() {

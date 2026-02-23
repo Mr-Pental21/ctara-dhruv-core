@@ -3,7 +3,7 @@
 //! No kernel files needed — ayanamsha depends only on the IAU 2006
 //! precession polynomial (pure math).
 
-use dhruv_vedic_base::{AyanamshaSystem, ayanamsha_mean_deg, jd_tdb_to_centuries};
+use dhruv_vedic_base::{AyanamshaSystem, ayanamsha_deg, ayanamsha_mean_deg, jd_tdb_to_centuries};
 
 /// Helper: JD TDB for a given year-month-day 0h TDB (approximate).
 /// Uses a simple calendar-to-JD conversion.
@@ -13,12 +13,12 @@ fn jd_from_date(year: i32, month: u32, day: u32) -> f64 {
 
 #[test]
 fn lahiri_at_j2000() {
-    // Back-computed from IAE anchor:
-    // 23°15'00.658" at 1956-03-21 00:00 TDT.
+    // MEAN anchor: IAE gazette 23°15'00.658" minus IAU 2000B nutation at 1956,
+    // back-computed to J2000 via 3D Vondrák precession.
     let t = jd_tdb_to_centuries(2_451_545.0); // J2000.0
     let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, t);
     assert!(
-        (val - 23.861_713_990_472_925).abs() < 1e-12,
+        (val - 23.857_052_898_247_307).abs() < 1e-12,
         "Lahiri at J2000 = {val}, expected calibrated reference"
     );
 }
@@ -36,15 +36,31 @@ fn lahiri_at_2024() {
 }
 
 #[test]
-fn lahiri_matches_iae_1956_anchor() {
+fn lahiri_true_at_1956_matches_gazette() {
     // IAE revised value: 23°15'00.658" at 1956-03-21 00:00 TDT.
+    // With nutation applied, the mean anchor + Δψ(1956) recovers the gazette value.
     let jd_tdt = 2_435_553.5;
     let t = jd_tdb_to_centuries(jd_tdt);
-    let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, t);
-    let expected = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
+    let val = ayanamsha_deg(AyanamshaSystem::Lahiri, t, true);
+    let gazette = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
     assert!(
-        (val - expected).abs() < 1e-10,
-        "Lahiri at 1956-03-21 00:00 TDT = {val}, expected {expected}"
+        (val - gazette).abs() < 1e-6,
+        "Lahiri true at 1956 = {val}, gazette = {gazette}"
+    );
+}
+
+#[test]
+fn lahiri_mean_at_1956() {
+    // Mean anchor at 1956 should be gazette minus nutation at that epoch.
+    let jd_tdt = 2_435_553.5;
+    let t = jd_tdb_to_centuries(jd_tdt);
+    let gazette = 23.0 + 15.0 / 60.0 + 0.658 / 3600.0;
+    let (dpsi_arcsec, _) = dhruv_frames::nutation_iau2000b(t);
+    let expected_mean = gazette - dpsi_arcsec / 3600.0;
+    let val = ayanamsha_mean_deg(AyanamshaSystem::Lahiri, t);
+    assert!(
+        (val - expected_mean).abs() < 1e-6,
+        "Lahiri mean at 1956 = {val}, expected = {expected_mean}"
     );
 }
 

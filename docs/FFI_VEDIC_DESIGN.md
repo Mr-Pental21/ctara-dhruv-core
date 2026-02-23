@@ -94,8 +94,7 @@ DhruvStatus dhruv_ayanamsha_mean_deg(
 );
 
 // "true"-mode ayanamsha helper.
-// For anchor-relative systems (including TrueLahiri), this is identical to
-// mean ayanamsha and ignores delta_psi.
+// delta_psi_arcsec is applied to all systems.
 DhruvStatus dhruv_ayanamsha_true_deg(
     int32_t system_code,
     double  jd_tdb,

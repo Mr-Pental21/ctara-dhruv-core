@@ -85,7 +85,7 @@ domain) converted to ecliptic coordinates using IAU 2006 obliquity.
 | System | Anchor | Sidereal Position | J2000.0 Ecliptic Lon | Ayanamsha |
 |--------|--------|-------------------|---------------------|-----------|
 | Lahiri | Sidereal zero at 1956 anchor | 0 deg (sidereal zero) | 23.862 deg | 23°15'00.658" at 1956-03-21 (IAE gazette) |
-| TrueLahiri | Spica (alpha Vir) | 0 deg Libra (180 deg), star-locked | ~203.85 deg | anchor-relative (not mean+nutation) |
+| TrueLahiri | Spica (alpha Vir) | 0 deg Libra (180 deg), star-locked | ~203.85 deg | anchor-relative (star-locked) |
 | FaganBradley | SVP calibration | Empirical | Empirical | 24.736 deg (published SVP tables) |
 | PushyaPaksha | delta Cancri | 16 deg Cancer (106 deg) | ~127 deg | 21.000 deg |
 | RohiniPaksha | Aldebaran (alpha Tau) | 15 deg 47 min Taurus (45.783 deg) | ~69.87 deg | 24.087 deg |
@@ -144,7 +144,25 @@ on the ecliptic-of-1956 (not J2000). Back-precessing to J2000 produces a
 small ecliptic latitude (0.0027 deg) that must be preserved through the
 round-trip to recover the anchor value exactly.
 
-The legacy `use_nutation` toggle is ignored for anchor-relative systems.
+When `use_nutation` is true, nutation in longitude (Δψ) is added to the mean
+ayanamsha for all systems uniformly. The Lahiri anchor is stored as a MEAN
+value (IAE gazette 23°15'00.658" at 1956-03-21 minus IAU 2000B nutation at
+that epoch, Δψ ≈ 16.78"). This ensures `ayanamsha_deg(Lahiri, t_1956, true)`
+recovers the original gazette value.
+
+### Calibration Record (Lahiri Mean Anchor)
+
+```
+Epoch:         1956-03-21 00:00 TDT (JD 2435553.5)
+Time-scale:    TDT ≈ TDB at 1956 (ΔTT ≈ 0)
+Gazette value: 23°15'00.658" (TRUE, includes nutation)
+Nutation model: IAU 2000B (77 lunisolar terms)
+Δψ(1956):      16.779932" (arcsec)
+Mean anchor:   23°15'00.658" − 16.780" = 23°14'43.878"
+Precession:    Vondrák 2011 (3D ecliptic matrix)
+J2000 lon:     23.857052898247307°
+J2000 lat:     0.002727754076653°
+```
 
 ### Non-Anchor Systems (3D Vector Precession)
 

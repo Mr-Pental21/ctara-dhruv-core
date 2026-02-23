@@ -732,9 +732,7 @@ pub unsafe extern "C" fn dhruv_ayanamsha_mean_deg(
 
 /// "True" ayanamsha helper at a JD TDB.
 ///
-/// For anchor-relative systems (including TrueLahiri), this matches mean
-/// ayanamsha and ignores `delta_psi_arcsec`. Legacy systems may apply
-/// `delta_psi_arcsec` where applicable.
+/// `delta_psi_arcsec` is applied to all systems.
 ///
 /// # Safety
 /// `out_deg` must be a valid, non-null pointer.
@@ -1057,8 +1055,8 @@ pub extern "C" fn dhruv_approximate_local_noon_jd(jd_ut_midnight: f64, longitude
 
 /// Unified ayanamsha computation.
 ///
-/// For anchor-relative systems (including TrueLahiri), `use_nutation` is
-/// ignored. Legacy systems preserve historical behavior.
+/// When `use_nutation` is non-zero, nutation in longitude (Δψ) is added
+/// for all systems.
 ///
 /// # Safety
 /// `out_deg` must be a valid, non-null pointer.
@@ -10451,8 +10449,8 @@ mod tests {
         let status = unsafe { dhruv_ayanamsha_mean_deg(0, 2_451_545.0, &mut out) };
         assert_eq!(status, DhruvStatus::Ok);
         assert!(
-            (out - 23.861_713_990_472_925).abs() < 1e-12,
-            "Lahiri at J2000 = {out}, expected calibrated reference"
+            (out - 23.857_052_898_247_307).abs() < 1e-12,
+            "Lahiri at J2000 = {out}, expected mean anchor reference"
         );
     }
 
@@ -10485,7 +10483,7 @@ mod tests {
     }
 
     #[test]
-    fn ffi_ayanamsha_deg_true_lahiri_ignores_nutation_flag() {
+    fn ffi_ayanamsha_deg_nutation_flag_works() {
         let mut with_nut: f64 = 0.0;
         let mut without: f64 = 0.0;
         let jd = 2_460_310.5; // ~2024-01-01
@@ -10495,8 +10493,16 @@ mod tests {
         let s2 = unsafe { dhruv_ayanamsha_deg(1, jd, 0, &mut without) };
         assert_eq!(s1, DhruvStatus::Ok);
         assert_eq!(s2, DhruvStatus::Ok);
-        let diff = (with_nut - without).abs();
-        assert!(diff < 1e-15, "nutation diff = {diff} deg");
+        // Nutation flag should now produce a measurable difference
+        let t = dhruv_vedic_base::jd_tdb_to_centuries(jd);
+        let (dpsi, _) = dhruv_frames::nutation_iau2000b(t);
+        let expected_diff = dpsi / 3600.0;
+        assert!(
+            (with_nut - without - expected_diff).abs() < 1e-10,
+            "diff={}, expected={}",
+            with_nut - without,
+            expected_diff
+        );
     }
 
     #[test]

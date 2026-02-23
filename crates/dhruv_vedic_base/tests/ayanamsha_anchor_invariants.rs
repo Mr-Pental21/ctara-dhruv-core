@@ -64,9 +64,16 @@ fn anchor_relative_systems_keep_anchor_sidereal_longitude_fixed() {
 }
 
 #[test]
-fn true_lahiri_ignores_nutation_toggle() {
+fn nutation_toggle_affects_anchor_systems() {
     let t = 0.24;
     let with_nut = ayanamsha_deg(AyanamshaSystem::TrueLahiri, t, true);
     let without_nut = ayanamsha_deg(AyanamshaSystem::TrueLahiri, t, false);
-    assert!((with_nut - without_nut).abs() < 1e-15);
+    let (dpsi_arcsec, _) = dhruv_frames::nutation_iau2000b(t);
+    let expected_diff = dpsi_arcsec / 3600.0;
+    assert!(
+        (with_nut - without_nut - expected_diff).abs() < 1e-10,
+        "diff={}, expected={}",
+        with_nut - without_nut,
+        expected_diff
+    );
 }

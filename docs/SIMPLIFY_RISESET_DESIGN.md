@@ -167,9 +167,8 @@ let semidiameter_arcmin = (SUN_RADIUS_KM / distance_km).asin().to_degrees() * 60
 ```rust
 /// Compute ayanamsha, optionally with nutation correction.
 ///
-/// When `use_nutation` is true and the system uses the true equinox
-/// (currently only TrueLahiri), nutation in longitude is computed
-/// internally via IAU 2000B and added to the mean value.
+/// When `use_nutation` is true, nutation in longitude is computed
+/// internally via IAU 2000B and added to the mean value for all systems.
 pub fn ayanamsha_deg(
     system: AyanamshaSystem,
     t_centuries: f64,

@@ -360,9 +360,6 @@ impl AyanamshaSystem {
     /// Reference ayanamsha at J2000.0 in degrees.
     pub const fn reference_j2000_deg(self) -> f64 { ... }
 
-    /// Whether this system uses the true (nutation-corrected) equinox.
-    pub const fn uses_true_equinox(self) -> bool { ... }
-
     /// All defined systems.
     pub const fn all() -> &'static [AyanamshaSystem] { ... }
 }
@@ -380,12 +377,9 @@ pub fn ayanamsha_mean_deg(system: AyanamshaSystem, t_centuries: f64) -> f64
 
 /// True (nutation-corrected) ayanamsha in degrees.
 ///
-/// For TrueLahiri, adds delta_psi (nutation in longitude) to the mean value.
-/// For all other systems, returns the mean value unchanged.
+/// Adds delta_psi (nutation in longitude) to the mean value for all systems.
 ///
 /// delta_psi_arcsec: nutation in longitude in arcseconds.
-/// A full nutation model (IAU 2000B) is a separate future module.
-/// Callers who have nutation from an external source can pass it here.
 pub fn ayanamsha_true_deg(
     system: AyanamshaSystem,
     t_centuries: f64,
@@ -423,12 +417,14 @@ impl DerivedComputation for AyanamshaComputation {
 | Test | Check |
 |------|-------|
 | `all_systems_count` | `AyanamshaSystem::all().len() == 20` |
-| `lahiri_at_j2000` | `ayanamsha_mean_deg(Lahiri, 0.0) == reference_j2000_deg()` |
+| `lahiri_at_j2000` | `ayanamsha_mean_deg(Lahiri, 0.0) ≈ reference_j2000_deg()` |
 | `precession_forward` | `Lahiri at T=1 > Lahiri at T=0` (by ~1.40°) |
 | `precession_backward` | `Lahiri at T=-1 < Lahiri at T=0` |
 | `true_lahiri_zero_nutation` | `true_deg(TrueLahiri, T, 0.0) == mean_deg(TrueLahiri, T)` |
-| `true_lahiri_nutation_offset` | `true_deg(TrueLahiri, 0, 17.0) ≈ ref + 0.00472°` |
-| `non_true_ignores_nutation` | `true_deg(Lahiri, 0, 999.0) == mean_deg(Lahiri, 0)` |
+| `true_deg_applies_delta_psi` | `true_deg(TrueLahiri, T, dpsi) ≈ mean + dpsi/3600` |
+| `true_deg_applies_nutation_all_systems` | `true_deg(Lahiri, 0, dpsi) ≈ mean + dpsi/3600` |
+| `nutation_flag_adds_dpsi` | `deg(TrueLahiri, t, true) − deg(TrueLahiri, t, false) ≈ Δψ(t)/3600` |
+| `nutation_flag_adds_dpsi_lahiri` | Same check for Lahiri |
 | `reference_values_in_range` | All references between 19° and 28° |
 | `century_conversion_roundtrip` | `jd_tdb_to_centuries` ↔ inverse consistency |
 
@@ -817,9 +813,9 @@ Step 3 (GMST) depends on step 2 (EOP) because callers need EOP to convert UTC→
 5. **Polar cases return NeverRises/NeverSets**: These are valid astronomical
    conditions, not errors.
 
-6. **TrueLahiri nutation is deferred**: The API accepts `delta_psi_arcsec` so
-   callers with an external nutation source can use it. A full IAU 2000B
-   nutation module (~77 terms) is a separate follow-up.
+6. **Nutation applies uniformly**: `use_nutation=true` adds IAU 2000B Δψ(t)
+   to the mean ayanamsha for all 20 systems. The `ayanamsha_true_deg` function
+   accepts an external `delta_psi_arcsec` for callers with their own model.
 
 7. **Surya Siddhanta uses IAU precession**: For mathematical consistency across
    all systems. The traditional fixed 54″/year rate would diverge significantly
