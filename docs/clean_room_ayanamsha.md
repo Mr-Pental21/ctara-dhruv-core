@@ -1,40 +1,59 @@
 # Clean-Room Record: Ayanamsha Module
 
-## Precession Polynomial
+## Precession Models
 
-**Source**: Capitaine, N., Wallace, P.T. & Chapront, J. (2003).
-"Expressions for the Celestial Intermediate Pole and Celestial Ephemeris
-Origin consistent with the IAU 2000A precession-nutation model."
-_Astronomy & Astrophysics_, 412, 567-586. Table 1.
+Three precession models are supported via `PrecessionModel`:
 
-Also published as: IERS Conventions (2010), Chapter 5, Table 5.1.
+| Model | Source | Polynomial Order |
+|-------|--------|-----------------|
+| Lieske 1977 (IAU 1976) | Lieske et al. 1977, A&A 58; Lieske 1979, A&A 73, 282 | 3rd-order |
+| IAU 2006 | Capitaine, Wallace & Chapront 2003, A&A 412, 567-586, Table 1; IERS Conventions 2010, Ch.5, Table 5.1 | 5th-order |
+| Vondrák 2011 | Vondrák, Capitaine & Wallace 2011, A&A 534, A22 | Long-term periodic series |
 
-**License**: Public domain (IAU standard, intergovernmental scientific body).
+**License**: All public domain (IAU standards, peer-reviewed journals).
 
-**Implementation**: `dhruv_frames::precession::general_precession_longitude_arcsec()`
-implements the 5th-order polynomial directly from the published coefficients.
+**Default**: `Vondrak2011` (best long-term accuracy).
+
+Each model provides three ecliptic precession parameters:
+- p_A: general precession in ecliptic longitude
+- π_A: inclination of ecliptic-of-date to J2000 ecliptic
+- Π_A: longitude of ascending node of ecliptic-of-date on J2000 ecliptic
 
 ---
 
-## Ecliptic-of-Date Coordinate Requirement
+## Ecliptic-of-Date Consistency
 
-**Critical design note (implemented Phase 18 / API v36):**
+Both the tropical longitude and the ayanamsha are computed on the ecliptic-of-
+date using the full 3D precession matrix. This ensures `sidereal = tropical −
+ayanamsha` is geometrically consistent.
 
-The ayanamsha formula requires the **tropical ecliptic longitude measured in the
-ecliptic of date** as its input. Using J2000 ecliptic coordinates introduces a
-systematic error of approximately 104 arcsec/century (~50"/century precession
-correction not applied).
+### Tropical longitude
 
 **Coordinate chain:**
 ```
 ICRF J2000 (engine output)
   → Ecliptic J2000  [icrf_to_ecliptic()]
   → Ecliptic of Date  [precess_ecliptic_j2000_to_date(v, t)]
-  → tropical longitude (deg)
-  → sidereal longitude = tropical − ayanamsha
+  → tropical longitude = atan2(y, x)
 ```
 
-**Precession rotation** (IAU 2006, Capitaine et al. 2003, Table 1):
+### Ayanamsha (ecliptic-of-date)
+
+The sidereal zero point is tracked as a 3D direction vector through the same
+precession matrix. Its longitude on the ecliptic-of-date IS the ayanamsha:
+
+```
+v_j2000 = [cos(ref), sin(ref), lat_component]   (on J2000 ecliptic)
+v_date  = P(t) · v_j2000                         (precessed to ecliptic-of-date)
+ayanamsha = atan2(v_date.y, v_date.x)
+```
+
+The earlier scalar formula `ayanamsha = ref + p_A(t)` ignored the ecliptic tilt
+(π_A ≈ 47"/century), creating a small but growing inconsistency with the 3D
+tropical longitude. The 3D approach eliminates this.
+
+### Precession rotation
+
 ```
 P = R3(-(Π_A + p_A)) · R1(π_A) · R3(Π_A)
 ```
@@ -58,14 +77,14 @@ Each system's J2000.0 reference value was independently derived from the
 system's published definition. No values were copied from any copyleft or
 denylisted source code.
 
-### Star-Anchored Systems
+### Star/Anchor-Based Systems
 
 Star positions at J2000.0 from the Hipparcos catalog (ESA, 1997, public
 domain) converted to ecliptic coordinates using IAU 2006 obliquity.
 
-| System | Anchor Star | Sidereal Position | J2000.0 Ecliptic Lon | Ayanamsha |
-|--------|-------------|-------------------|---------------------|-----------|
-| Lahiri | Spica (alpha Vir) | 0 deg Libra (180 deg) | ~203.83 deg | 23.853 deg (Indian govt gazette) |
+| System | Anchor | Sidereal Position | J2000.0 Ecliptic Lon | Ayanamsha |
+|--------|--------|-------------------|---------------------|-----------|
+| Lahiri | Sidereal zero at 1956 anchor | 0 deg (sidereal zero) | 23.862 deg | 23°15'00.658" at 1956-03-21 (IAE gazette) |
 | TrueLahiri | Spica (alpha Vir) | 0 deg Libra (180 deg), star-locked | ~203.85 deg | anchor-relative (not mean+nutation) |
 | FaganBradley | SVP calibration | Empirical | Empirical | 24.736 deg (published SVP tables) |
 | PushyaPaksha | delta Cancri | 16 deg Cancer (106 deg) | ~127 deg | 21.000 deg |
@@ -94,31 +113,55 @@ from published tables or adopted values for that system at J2000.0.
 | Jagganatha | Jagganatha | 23.250 deg | Published Jagganatha tables |
 | SuryaSiddhanta | Ancient Indian treatise | 22.459 deg | Back-computed with IAU precession |
 
-### Design Decision: IAU Precession for All Systems
+### Design Decision: 3D Precession for All Systems
 
-All 20 systems use the IAU 2006 general precession polynomial for time
-propagation. This ensures mathematical consistency across systems. Some
-traditional systems (e.g., Surya Siddhanta) historically used a fixed
-54 arcsec/year rate, which diverges from the IAU model over centuries.
-Our reference values are calibrated so that the IAU-based formula matches
-published tables at J2000.0.
+All 20 systems use the full 3D ecliptic precession matrix (default: Vondrák
+2011) for time propagation. The precession model is selectable via
+`PrecessionModel` (Lieske1977, Iau2006, Vondrak2011). Some traditional
+systems (e.g., Surya Siddhanta) historically used a fixed 54 arcsec/year
+rate, which diverges from modern models over centuries. Our reference values
+are calibrated so that the modern formula matches published tables at J2000.0.
 
 ### Anchor-Relative Systems
 
-Some systems are now evaluated by locking an anchor to a sidereal longitude
-at every epoch instead of using a fixed J2000 offset:
+Five systems are evaluated by tracking a 3D anchor direction through the
+precession matrix, preserving full ecliptic-of-date consistency including
+the ecliptic tilt (π_A):
 
+- Lahiri (sidereal zero point at 0 deg, back-precessed from 1956 anchor)
 - TrueLahiri (Spica at 180 deg)
 - PushyaPaksha (Pushya anchor at 106 deg)
 - RohiniPaksha (Aldebaran at 15 deg 47 min Taurus)
 - Aldebaran15Tau (Aldebaran at 15 deg Taurus)
 
-For these systems, the implementation computes anchor tropical longitude in
-ecliptic-of-date coordinates and derives ayanamsha as:
+For these systems, the implementation stores the anchor's J2000 ecliptic
+longitude and latitude, precesses to ecliptic-of-date, and derives:
 
 `ayanamsha = anchor_tropical_longitude - target_sidereal_longitude`
 
+Lahiri was converted to anchor-relative because its 1956 anchor epoch is
+on the ecliptic-of-1956 (not J2000). Back-precessing to J2000 produces a
+small ecliptic latitude (0.0027 deg) that must be preserved through the
+round-trip to recover the anchor value exactly.
+
 The legacy `use_nutation` toggle is ignored for anchor-relative systems.
+
+### Non-Anchor Systems (3D Vector Precession)
+
+The remaining 15 systems store a J2000 ecliptic longitude (`reference_j2000_deg`)
+for their sidereal zero point. The ayanamsha is computed by placing a unit vector
+at that longitude on the J2000 ecliptic (latitude = 0), precessing to ecliptic-of-
+date via the 3D matrix, and reading off the longitude:
+
+```
+v = [cos(ref_rad), sin(ref_rad), 0]
+v_date = P(t) · v
+ayanamsha = atan2(v_date.y, v_date.x)
+```
+
+This replaces the earlier scalar `ref + p_A(t)` formula. At J2000 (t=0), the
+result is identical. At distant epochs the difference is sub-arcsecond but
+ensures consistency with the 3D tropical longitude.
 
 ---
 
