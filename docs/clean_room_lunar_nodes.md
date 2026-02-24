@@ -19,16 +19,22 @@ nutation," fifth argument (mean longitude of the ascending node).
 - Already implemented in `dhruv_frames::nutation::fundamental_arguments()`
   as the 5th Delaunay argument. We reuse it directly (made `pub`).
 
-### True Node (perturbation corrections)
+### True Node (perturbation corrections — pure-math path)
 
-**Source:** Meeus, Jean. *Astronomical Algorithms*, 2nd edition (1998),
-Chapter 47 ("Position of the Moon"), specifically the apparent longitude
-perturbation terms that affect the node position.
+**Source:** Self-derived coefficients via black-box matching pursuit against
+the osculating node output of our own DE442s engine (1900–2100, every 3 days,
+~24 350 data points).
 
-- Published textbook, widely cited in astronomical software.
-- 13 sinusoidal terms, each a function of the five Delaunay arguments.
-- Largest term: -1.4979 deg * sin(Omega), corresponding to the 18.6-year
-  nutation period.
+- 50 sin+cos terms, each a linear combination of the five Delaunay arguments
+  (IERS 2010).
+- Argument combinations identified by exhaustive projection over
+  |nl|≤3, |nl'|≤2, |nF|≤4, |nD|≤4, |nΩ|≤2 (~14 000 candidates).
+- Iterative matching pursuit: fit the largest term, subtract, repeat.
+- RMS residual ≈ 5″, max residual ≈ 20″ over the fitting interval.
+- Largest term: -1.498 deg * sin(-2F + 2D), period ≈ 173 days (half of the
+  eclipse year, the dominant oscillation of the osculating node).
+- No external coefficient tables or GPL/copyleft code were used; the
+  amplitudes are entirely self-derived from our own engine output.
 
 ### True Node (osculating state-vector mode)
 
@@ -63,7 +69,8 @@ Programs from 4000 B.C. to A.D. 8000." Willmann-Bell.
 - Mean node: convert `fundamental_arguments(t)[4]` from radians to degrees,
   normalize to [0, 360).
 - True node:
-  - Pure-math API (`lunar_node_deg`): mean + 13 sinusoidal perturbation terms.
+  - Pure-math API (`lunar_node_deg`): mean + 50-term sin/cos perturbation
+    series (fitted against DE442s osculating node).
   - Engine-aware API (`lunar_node_deg_for_epoch`): osculating node from
     Moon state vector geometry.
 - Ketu: always Rahu + 180 deg (exact geometric relationship).

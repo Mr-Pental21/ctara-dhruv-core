@@ -125,7 +125,7 @@ enum DhruvStatus {
 | `DHRUV_NODE_RAHU` | 0 | Ascending node |
 | `DHRUV_NODE_KETU` | 1 | Descending node |
 | `DHRUV_NODE_MODE_MEAN` | 0 | Mean (polynomial only) |
-| `DHRUV_NODE_MODE_TRUE` | 1 | True node mode (osculating in engine-aware APIs; Meeus perturbation in pure APIs) |
+| `DHRUV_NODE_MODE_TRUE` | 1 | True node mode (osculating in engine-aware APIs; 50-term fitted series in pure APIs) |
 
 ### Bhava (House) System Codes
 

@@ -3103,9 +3103,12 @@ fn ffi_lunar_node_with_engine_true_differs_from_pure_utc() {
     assert_eq!(s2, DhruvStatus::Ok);
 
     let diff = angular_separation_deg(pure_true, eng_true);
+    // Pure-math 50-term fitted series should closely track the osculating
+    // node (RMS ≈ 5″).  Allow up to 30″ = 0.0083° at any single epoch.
     assert!(
-        diff > 0.3,
-        "expected osculating true-node to differ from pure Meeus true-node; diff={diff} deg"
+        diff < 0.0084,
+        "expected fitted true-node to be close to osculating; diff={diff} deg ({:.1}\")",
+        diff * 3600.0,
     );
 
     // SAFETY: Handles created in this test and not yet freed.

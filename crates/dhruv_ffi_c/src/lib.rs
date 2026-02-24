@@ -1529,9 +1529,10 @@ pub const DHRUV_NODE_MODE_MEAN: i32 = 0;
 /// Node mode: true.
 ///
 /// In pure-math APIs (`dhruv_lunar_node_deg`, `dhruv_lunar_node_deg_utc`),
-/// this uses the Meeus perturbation model. In engine-aware APIs
-/// (`dhruv_lunar_node_deg_with_engine`, `dhruv_lunar_node_deg_utc_with_engine`),
-/// this uses the osculating node from Moon state vectors.
+/// this uses a 50-term perturbation series fitted against DE442s.
+/// In engine-aware APIs (`dhruv_lunar_node_deg_with_engine`,
+/// `dhruv_lunar_node_deg_utc_with_engine`), this uses the osculating node
+/// from Moon state vectors.
 pub const DHRUV_NODE_MODE_TRUE: i32 = 1;
 
 /// Map integer code to LunarNode enum.

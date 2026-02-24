@@ -6,8 +6,12 @@
 //! Mean node: polynomial from IERS Conventions 2010, Table 5.2e (the 5th
 //! Delaunay argument, already in `dhruv_frames::fundamental_arguments`).
 //!
-//! True node: mean + short-period perturbation corrections (13 sinusoidal
-//! terms from Meeus, *Astronomical Algorithms* 2nd ed., Chapter 47).
+//! True node (pure-math): mean + 50-term sin/cos perturbation series fitted
+//! by matching pursuit against DE442s osculating node output (1900–2100).
+//! RMS residual ≈ 5″ vs the osculating node.
+//!
+//! True node (engine-aware): osculating node from Moon state vectors via
+//! `r × v` cross product — the most accurate path.
 //!
 //! Clean-room implementation. See `docs/clean_room_lunar_nodes.md`.
 
@@ -47,9 +51,10 @@ pub enum NodeMode {
     /// Mean node: smooth polynomial motion only.
     Mean,
     ///
-    /// In pure math mode (`lunar_node_deg`) this is the Meeus 13-term
-    /// perturbation model. In engine-aware mode (`lunar_node_deg_for_epoch`)
-    /// this is the osculating node from the Moon state vector.
+    /// In pure math mode (`lunar_node_deg`) this is a 50-term perturbation
+    /// series fitted against DE442s.  In engine-aware mode
+    /// (`lunar_node_deg_for_epoch`) this is the osculating node from the
+    /// Moon state vector.
     #[default]
     True,
 }
@@ -91,32 +96,75 @@ pub fn mean_ketu_deg(t: f64) -> f64 {
     normalize_deg(mean_rahu_deg(t) + 180.0)
 }
 
-/// Short-period perturbation correction for the true node, in degrees.
+/// Short-period perturbation correction for the true (osculating) node, in
+/// degrees.
 ///
-/// 13 sinusoidal terms from Meeus, *Astronomical Algorithms* (2nd ed.),
-/// Chapter 47, Table 47.B. Each term is a sine of a linear combination
-/// of Delaunay arguments, with amplitude in degrees.
+/// 50 sin+cos terms fitted by matching pursuit against the osculating node
+/// computed from DE442s Moon state vectors over 1900–2100.  Each term is a
+/// linear combination of the five Delaunay fundamental arguments (l, l′, F,
+/// D, Ω) from IERS Conventions 2010.
+///
+/// Coefficients are entirely self-derived (black-box fit against our own
+/// engine output).  RMS residual ≈ 5″, max residual ≈ 20″ over the
+/// fitting interval.
 ///
 /// `args` = `[l, l', F, D, Omega]` in radians (from `fundamental_arguments`).
 fn node_perturbation_deg(args: &[f64; 5]) -> f64 {
-    // Table 47.B coefficients: [nl, nl', nF, nD, nOmega, amplitude_deg]
-    // Amplitudes from Meeus Ch. 47 (published textbook, public knowledge).
+    // [nl, nl', nF, nD, nΩ, sin_coeff_deg, cos_coeff_deg]
+    // Sorted by amplitude descending.  Fitted against DE442s osculating node.
     #[rustfmt::skip]
-    static TERMS: [[f64; 6]; 13] = [
-        // nl   nl'   nF    nD    nOm   amplitude (deg)
-        [ 0.0,  0.0,  0.0,  0.0,  1.0, -1.4979],
-        [ 0.0,  0.0,  2.0, -2.0,  0.0,  0.1500],
-        [ 0.0,  0.0,  2.0,  0.0,  0.0, -0.1226],
-        [ 0.0,  0.0,  0.0,  0.0,  2.0,  0.1176],
-        [ 1.0,  0.0,  0.0,  0.0,  0.0, -0.0801],
-        [ 0.0,  1.0,  0.0,  0.0,  0.0,  0.0056],
-        [ 0.0,  0.0,  2.0,  0.0, -2.0, -0.0047],
-        [ 1.0,  0.0,  2.0,  0.0,  0.0, -0.0043],
-        [ 0.0,  0.0,  2.0, -2.0,  2.0,  0.0040],
-        [ 0.0,  1.0,  0.0,  0.0, -1.0,  0.0037],
-        [ 0.0,  0.0,  0.0,  2.0,  0.0, -0.0030],
-        [ 2.0,  0.0,  0.0,  0.0,  0.0, -0.0020],
-        [ 0.0,  1.0,  2.0, -2.0,  0.0,  0.0015],
+    static TERMS: [[f64; 7]; 50] = [
+        // nl   nl'    nF    nD   nΩ   sin(deg)           cos(deg)
+        [ 0.0,  0.0, -2.0,  2.0, 0.0, -1.4979239402150,  -0.0001059954323],
+        [ 0.0, -1.0,  0.0,  0.0, 0.0,  0.1498131460645,  -0.0002566757114],
+        [ 0.0,  0.0,  0.0, -2.0, 0.0,  0.1226972764118,   0.0000633183059],
+        [ 0.0,  0.0, -2.0,  0.0, 0.0, -0.1176387004673,   0.0000037920799],
+        [-2.0,  0.0,  2.0,  0.0, 0.0,  0.0801154663235,   0.0000045983752],
+        [ 0.0, -1.0, -2.0,  2.0, 0.0, -0.0615035637560,  -0.0000230232572],
+        [-1.0,  0.0,  0.0,  2.0, 0.0,  0.0490306269972,  -0.0000627376583],
+        [-1.0,  0.0,  2.0,  0.0, 0.0, -0.0409462201268,   0.0001215828415],
+        [-1.0,  0.0,  0.0,  0.0, 0.0, -0.0326640101257,  -0.0000083779560],
+        [ 0.0, -1.0,  2.0, -2.0, 0.0, -0.0323676251895,   0.0000461986351],
+        [ 0.0, -1.0,  1.0, -1.0, 2.0,  0.0105862544290,   0.0247349213374],
+        [ 0.0,  0.0, -4.0,  4.0, 0.0,  0.0196523144925,  -0.0000130241587],
+        [-1.0,  0.0, -2.0,  2.0, 0.0,  0.0180124482540,  -0.0000014144096],
+        [-1.0,  0.0,  2.0, -2.0, 0.0,  0.0150193555877,   0.0000079768060],
+        [-2.0,  0.0,  0.0,  2.0, 0.0,  0.0149525434406,  -0.0000115038755],
+        [ 0.0, -1.0,  0.0,  2.0, 0.0, -0.0077970609612,   0.0000051298335],
+        [-1.0,  0.0,  0.0, -2.0, 0.0,  0.0044753709267,  -0.0000008380343],
+        [-1.0,  0.0, -2.0,  0.0, 0.0, -0.0043333719096,  -0.0000007123179],
+        [-1.0,  0.0,  0.0,  1.0, 0.0, -0.0042435671107,   0.0000005299924],
+        [ 0.0, -1.0,  1.0, -1.0, 1.0,  0.0006018308748,   0.0033749627600],
+        [ 0.0, -1.0,  2.0,  0.0, 0.0,  0.0031019394365,  -0.0000177404232],
+        [-1.0, -1.0,  0.0,  2.0, 0.0,  0.0030710763677,  -0.0000039706595],
+        [ 0.0,  0.0, -4.0,  2.0, 0.0,  0.0029128692216,  -0.0000044198555],
+        [ 0.0, -1.0, -2.0,  0.0, 0.0, -0.0027589128046,  -0.0000008005825],
+        [-1.0,  0.0, -2.0,  4.0, 0.0, -0.0024689956523,   0.0000014212893],
+        [-2.0,  0.0,  4.0, -2.0, 0.0, -0.0021054933220,  -0.0000018198760],
+        [ 0.0,  0.0,  0.0, -1.0, 0.0,  0.0020573466822,  -0.0000086245967],
+        [ 0.0, -2.0, -2.0,  2.0, 0.0, -0.0019272942128,  -0.0000048694608],
+        [ 0.0, -2.0,  0.0,  0.0, 0.0,  0.0018419389048,  -0.0000219712994],
+        [ 0.0,  0.0, -2.0,  4.0, 0.0, -0.0017027717609,  -0.0000036069022],
+        [-1.0,  0.0,  2.0, -1.0, 0.0, -0.0016217910062,   0.0000018771620],
+        [ 0.0, -1.0, -4.0,  4.0, 0.0,  0.0016146139731,   0.0000012605950],
+        [ 0.0, -1.0,  0.0, -2.0, 0.0, -0.0014688298642,  -0.0000003017546],
+        [-2.0,  0.0, -2.0,  4.0, 0.0, -0.0012702416125,   0.0000032064006],
+        [-1.0,  1.0,  0.0,  0.0, 0.0, -0.0012680607596,   0.0000019674753],
+        [-1.0,  1.0,  2.0,  0.0, 0.0, -0.0012423007025,  -0.0000012197705],
+        [-1.0,  0.0,  0.0,  4.0, 0.0, -0.0011066872687,   0.0000003689599],
+        [-1.0,  1.0,  2.0, -2.0, 0.0,  0.0010945100799,   0.0000053974541],
+        [ 0.0,  0.0, -2.0,  1.0, 0.0, -0.0010615232349,  -0.0000003272183],
+        [-1.0,  0.0,  4.0, -2.0, 0.0,  0.0010610200700,   0.0000026862412],
+        [-1.0, -1.0, -2.0,  2.0, 0.0,  0.0010261101587,  -0.0000001341425],
+        [ 0.0,  0.0, -2.0,  3.0, 0.0,  0.0010218527830,   0.0000012554115],
+        [-1.0,  0.0,  2.0,  2.0, 0.0,  0.0009986768280,  -0.0000001030201],
+        [-1.0, -1.0,  2.0,  0.0, 0.0, -0.0009420095351,   0.0000010485120],
+        [ 0.0, -1.0,  4.0, -4.0, 0.0,  0.0008538382564,  -0.0000016699627],
+        [-2.0,  1.0,  2.0,  0.0, 0.0,  0.0007779981254,  -0.0000007401061],
+        [-2.0, -2.0,  3.0, -1.0, 1.0, -0.0001081629910,  -0.0006983566589],
+        [ 0.0, -1.0, -1.0,  1.0, 2.0, -0.0002644205545,  -0.0006499502213],
+        [ 0.0,  0.0, -2.0,  2.0,-1.0,  0.0006989603379,   0.0001074642632],
+        [-1.0, -1.0,  0.0,  0.0, 0.0, -0.0006731873598,  -0.0000011196782],
     ];
 
     let mut correction = 0.0_f64;
@@ -126,7 +174,8 @@ fn node_perturbation_deg(args: &[f64; 5]) -> f64 {
             + term[2] * args[2]
             + term[3] * args[3]
             + term[4] * args[4];
-        correction += term[5] * angle.sin();
+        let (sn, cs) = angle.sin_cos();
+        correction += term[5] * sn + term[6] * cs;
     }
     correction
 }
