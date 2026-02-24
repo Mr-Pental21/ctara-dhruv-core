@@ -374,9 +374,7 @@ pub fn general_precession_rate_deg_per_day_with_model(t: f64, model: PrecessionM
     let t4 = t3 * t;
     // d(p_A)/dt in arcsec/century
     let rate = match model {
-        PrecessionModel::Lieske1977 => {
-            5029.0966 + 2.0 * 1.11113 * t - 3.0 * 0.000006 * t2
-        }
+        PrecessionModel::Lieske1977 => 5029.0966 + 2.0 * 1.11113 * t - 3.0 * 0.000006 * t2,
         PrecessionModel::Iau2006 => {
             5_028.796_195 + 2.0 * 1.105_434_8 * t + 3.0 * 0.000_079_64 * t2
                 - 4.0 * 0.000_023_857 * t3

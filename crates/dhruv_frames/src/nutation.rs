@@ -269,6 +269,10 @@ mod tests {
     #[test]
     fn ee_nonzero_at_j2000() {
         let (ee, _) = equation_of_equinoxes_and_true_obliquity(0.0);
-        assert!(ee.abs() > 1e-6, "|EE| at J2000 = {:.2e}, should be > 1e-6", ee.abs());
+        assert!(
+            ee.abs() > 1e-6,
+            "|EE| at J2000 = {:.2e}, should be > 1e-6",
+            ee.abs()
+        );
     }
 }

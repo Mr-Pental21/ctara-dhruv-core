@@ -5,7 +5,7 @@
 //! epoch and converts to sidereal longitudes.
 
 use dhruv_core::{Body, Engine};
-use dhruv_frames::{mean_obliquity_of_date_rad, PrecessionModel, DEFAULT_PRECESSION_MODEL};
+use dhruv_frames::{DEFAULT_PRECESSION_MODEL, PrecessionModel, mean_obliquity_of_date_rad};
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::arudha::all_arudha_padas;
 use dhruv_vedic_base::riseset::compute_rise_set;
@@ -14,6 +14,10 @@ use dhruv_vedic_base::special_lagna::all_special_lagnas;
 use dhruv_vedic_base::upagraha::TIME_BASED_UPAGRAHAS;
 use dhruv_vedic_base::vaar::vaar_from_jd;
 use dhruv_vedic_base::{
+    ALL_GRAHAS, AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaRequest,
+    AmshaVariation, ArudhaResult, AshtakavargaResult, AvasthaInputs, AyanamshaSystem, BhavaConfig,
+    BhavaResult, Dignity, DrishtiEntry, Graha, GrahaAvasthas, KalaBalaInputs, LajjitadiInputs,
+    LunarNode, NodeDignityPolicy, NodeMode, SAPTA_GRAHAS, SayanadiInputs, ShadbalaInputs, Upagraha,
     all_avasthas, all_combustion_status, all_dashavarga_vimsopaka, all_saptavarga_vimsopaka,
     all_shadbalas_from_inputs, all_shadvarga_vimsopaka, all_shodasavarga_vimsopaka,
     amsha_longitude, ayanamsha_deg_with_model, bhrigu_bindu, calculate_ashtakavarga,
@@ -24,26 +28,21 @@ use dhruv_vedic_base::{
     navamsa_number, node_dignity_in_rashi, normalize_360, nth_rashi_from, pranapada_lagna,
     rashi_from_longitude, rashi_lord_by_index, samvatsara_lord as graha_samvatsara_lord,
     sree_lagna, sun_based_upagrahas, time_upagraha_jd, vaar_lord as graha_vaar_lord,
-    AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaRequest, AmshaVariation,
-    ArudhaResult, AshtakavargaResult, AvasthaInputs, AyanamshaSystem, BhavaConfig, BhavaResult,
-    Dignity, DrishtiEntry, Graha, GrahaAvasthas, KalaBalaInputs, LajjitadiInputs, LunarNode,
-    NodeDignityPolicy, NodeMode, SayanadiInputs, ShadbalaInputs, Upagraha, ALL_GRAHAS,
-    SAPTA_GRAHAS,
 };
 
 use crate::conjunction::{
     body_ecliptic_lon_lat, body_ecliptic_lon_lat_with_model, body_ecliptic_state,
 };
 use crate::dasha::{
-    dasha_hierarchy_with_inputs, dasha_snapshot_with_inputs, is_rashi_system, needs_moon_lon,
-    needs_sunrise_sunset, DashaInputs,
+    DashaInputs, dasha_hierarchy_with_inputs, dasha_snapshot_with_inputs, is_rashi_system,
+    needs_moon_lon, needs_sunrise_sunset,
 };
 use crate::error::SearchError;
 use crate::jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
     BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult, FullKundaliConfig,
     FullKundaliResult, GrahaEntry, GrahaLongitudes, GrahaPositions, GrahaPositionsConfig,
-    ShadbalaEntry, ShadbalaResult, VimsopakaEntry, VimsopakaResult, MAX_AMSHA_REQUESTS,
+    MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, VimsopakaEntry, VimsopakaResult,
 };
 use crate::panchang::{
     hora_from_sunrises, masa_for_date, panchang_for_date, varsha_for_date, vedic_day_sunrises,
@@ -1361,11 +1360,7 @@ fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
 /// Normalize longitude to [0, 360).
 fn normalize(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 {
-        r + 360.0
-    } else {
-        r
-    }
+    if r < 0.0 { r + 360.0 } else { r }
 }
 
 // ---------------------------------------------------------------------------

@@ -230,7 +230,7 @@ pub fn yogini_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dasha::types::{DashaEntity, DAYS_PER_YEAR};
+    use crate::dasha::types::{DAYS_PER_YEAR, DashaEntity};
     use crate::dasha::yogini_data::yogini_config;
 
     #[test]

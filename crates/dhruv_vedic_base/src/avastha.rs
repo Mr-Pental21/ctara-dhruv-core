@@ -11,9 +11,9 @@
 //! See `docs/clean_room_avastha.md`.
 
 use crate::drishti::GrahaDrishtiMatrix;
-use crate::graha::{Graha, ALL_GRAHAS};
+use crate::graha::{ALL_GRAHAS, Graha};
 use crate::graha_relationships::{
-    naisargika_maitri, natural_benefic_malefic, BeneficNature, Dignity, NaisargikaMaitri,
+    BeneficNature, Dignity, NaisargikaMaitri, naisargika_maitri, natural_benefic_malefic,
 };
 use crate::util::normalize_360;
 

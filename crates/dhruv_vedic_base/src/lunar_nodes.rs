@@ -17,8 +17,8 @@
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
 use dhruv_frames::{
-    fundamental_arguments, icrf_to_ecliptic, precess_ecliptic_j2000_to_date_with_model,
-    PrecessionModel, DEFAULT_PRECESSION_MODEL,
+    DEFAULT_PRECESSION_MODEL, PrecessionModel, fundamental_arguments, icrf_to_ecliptic,
+    precess_ecliptic_j2000_to_date_with_model,
 };
 
 use crate::error::VedicError;
@@ -72,11 +72,7 @@ impl NodeMode {
 /// Normalize an angle to [0, 360) degrees.
 fn normalize_deg(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 {
-        r + 360.0
-    } else {
-        r
-    }
+    if r < 0.0 { r + 360.0 } else { r }
 }
 
 /// Mean Rahu (ascending node) ecliptic longitude in degrees [0, 360).

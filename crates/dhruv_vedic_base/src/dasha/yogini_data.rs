@@ -5,7 +5,7 @@
 
 use crate::graha::Graha;
 
-use super::types::{DashaEntity, DAYS_PER_YEAR};
+use super::types::{DAYS_PER_YEAR, DashaEntity};
 use super::variation::SubPeriodMethod;
 
 /// Yogini names (0-indexed).

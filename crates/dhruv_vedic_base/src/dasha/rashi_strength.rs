@@ -7,7 +7,7 @@
 //! dasha computations. This struct is assembled by the orchestration layer.
 
 use super::rashi_util::is_odd_sign;
-use crate::graha::{rashi_lord_by_index, Graha, ALL_GRAHAS};
+use crate::graha::{ALL_GRAHAS, Graha, rashi_lord_by_index};
 use crate::rashi::ALL_RASHIS;
 
 /// Chart inputs needed by all rashi-based dasha systems.
@@ -136,11 +136,7 @@ pub fn stronger_rashi(a: u8, b: u8, inputs: &RashiDashaInputs) -> u8 {
     }
 
     // Rule 6: Higher rashi index (final tiebreaker)
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 /// Check if a rashi's lord is in the same sign as Jupiter or Mercury.

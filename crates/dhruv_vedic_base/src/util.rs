@@ -3,11 +3,7 @@
 /// Normalize an angle to [0, 360) degrees.
 pub fn normalize_360(deg: f64) -> f64 {
     let r = deg % 360.0;
-    if r < 0.0 {
-        r + 360.0
-    } else {
-        r
-    }
+    if r < 0.0 { r + 360.0 } else { r }
 }
 
 #[cfg(test)]

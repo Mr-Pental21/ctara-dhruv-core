@@ -1040,7 +1040,8 @@ fn ffi_lagna_deg_new_delhi() {
     // Rising-condition check: the FFI returns tropical lagna in degrees.
     // Reconstruct apparent LST (GAST) and true obliquity — matching production.
     {
-        let lsk_rust = dhruv_time::LeapSecondKernel::load(&kernel_base().join("naif0012.tls")).unwrap();
+        let lsk_rust =
+            dhruv_time::LeapSecondKernel::load(&kernel_base().join("naif0012.tls")).unwrap();
         let eop_rust = dhruv_time::EopKernel::load(&kernel_base().join("finals2000A.all")).unwrap();
         let jd_ut1 = eop_rust.utc_to_ut1_jd(jd_utc).expect("EOP lookup");
         let gmst = gmst_rad(jd_ut1);
@@ -3075,10 +3076,38 @@ fn ffi_lunar_node_fitted_tracks_osculating_utc() {
 
     // Test at multiple epochs spanning the fit interval (1900–2100).
     let epochs = [
-        DhruvUtcTime { year: 1931, month: 12, day: 11, hour: 11, minute: 38, second: 18.0 },
-        DhruvUtcTime { year: 1970, month: 1, day: 1, hour: 0, minute: 0, second: 0.0 },
-        DhruvUtcTime { year: 2000, month: 6, day: 21, hour: 12, minute: 0, second: 0.0 },
-        DhruvUtcTime { year: 2024, month: 3, day: 15, hour: 6, minute: 30, second: 0.0 },
+        DhruvUtcTime {
+            year: 1931,
+            month: 12,
+            day: 11,
+            hour: 11,
+            minute: 38,
+            second: 18.0,
+        },
+        DhruvUtcTime {
+            year: 1970,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        },
+        DhruvUtcTime {
+            year: 2000,
+            month: 6,
+            day: 21,
+            hour: 12,
+            minute: 0,
+            second: 0.0,
+        },
+        DhruvUtcTime {
+            year: 2024,
+            month: 3,
+            day: 15,
+            hour: 6,
+            minute: 30,
+            second: 0.0,
+        },
     ];
 
     for utc in &epochs {

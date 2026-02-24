@@ -73,8 +73,7 @@ fn lahiri_e2e_3d(t: f64, model: PrecessionModel) -> f64 {
     let v_1956 = [anchor_rad.cos(), anchor_rad.sin(), 0.0];
 
     // Back to J2000 ecliptic
-    let v_j2000 =
-        dhruv_frames::precess_ecliptic_date_to_j2000_with_model(&v_1956, t_1956, model);
+    let v_j2000 = dhruv_frames::precess_ecliptic_date_to_j2000_with_model(&v_1956, t_1956, model);
 
     // Forward to ecliptic-of-date at epoch t
     let v_date = dhruv_frames::precess_ecliptic_j2000_to_date_with_model(&v_j2000, t, model);
@@ -169,7 +168,8 @@ fn full_multi_epoch_comparison() {
         let v = vondrak_p_a(t);
         println!(
             "{y:>5} {t:>7.3} {l:>14.3} {i:>14.3} {v:>14.3} | {:>+10.4} {:>+10.4}",
-            l - v, i - v
+            l - v,
+            i - v
         );
     }
 
@@ -177,7 +177,9 @@ fn full_multi_epoch_comparison() {
     // TABLE 2: LAHIRI AYANAMSHA (degrees) — self-consistent end-to-end
     // ═══════════════════════════════════════════════════════════════════
     println!("\n{}", "=".repeat(105));
-    println!("TABLE 2: LAHIRI AYANAMSHA (degrees) — self-consistent end-to-end, same model for ref + runtime");
+    println!(
+        "TABLE 2: LAHIRI AYANAMSHA (degrees) — self-consistent end-to-end, same model for ref + runtime"
+    );
     println!("{}", "=".repeat(105));
     println!(
         "{:>5} {:>7} {:>14} {:>14} {:>14} | {:>10} {:>10}",
@@ -192,7 +194,8 @@ fn full_multi_epoch_comparison() {
         let v = lahiri_e2e(t, vondrak_p_a);
         println!(
             "{y:>5} {t:>7.3} {l:>14.8} {i:>14.8} {v:>14.8} | {:>+10.4} {:>+10.4}",
-            (l - v) * 3600.0, (i - v) * 3600.0
+            (l - v) * 3600.0,
+            (i - v) * 3600.0
         );
     }
 
@@ -206,7 +209,14 @@ fn full_multi_epoch_comparison() {
     println!("{}", "=".repeat(130));
     println!(
         "{:>5} {:>7} {:>16} {:>16} {:>16} {:>16} | {:>10} {:>10}",
-        "Year", "T(cy)", "Trop(Lieske)", "Trop(IAU2006)", "Trop(Vondrák)", "DMS(Vondrák)", "Δ(L−V)\"", "Δ(I−V)\""
+        "Year",
+        "T(cy)",
+        "Trop(Lieske)",
+        "Trop(IAU2006)",
+        "Trop(Vondrák)",
+        "DMS(Vondrák)",
+        "Δ(L−V)\"",
+        "Δ(I−V)\""
     );
     println!("{}", "-".repeat(130));
     for &y in &years {
@@ -219,11 +229,16 @@ fn full_multi_epoch_comparison() {
             (Some(lon_l), Some(lon_i), Some(lon_v)) => {
                 println!(
                     "{y:>5} {t:>7.3} {lon_l:>16.8} {lon_i:>16.8} {lon_v:>16.8} {:>16} | {:>+10.6} {:>+10.6}",
-                    dms(lon_v), (lon_l - lon_v) * 3600.0, (lon_i - lon_v) * 3600.0
+                    dms(lon_v),
+                    (lon_l - lon_v) * 3600.0,
+                    (lon_i - lon_v) * 3600.0
                 );
             }
             _ => {
-                println!("{y:>5} {t:>7.3} {:>16} {:>16} {:>16} {:>16} |", "", "", "", "");
+                println!(
+                    "{y:>5} {t:>7.3} {:>16} {:>16} {:>16} {:>16} |",
+                    "", "", "", ""
+                );
             }
         }
     }
@@ -239,7 +254,14 @@ fn full_multi_epoch_comparison() {
     println!("{}", "=".repeat(130));
     println!(
         "{:>5} {:>7} {:>14} {:>14} {:>14} {:>16} | {:>10} {:>10}",
-        "Year", "T(cy)", "Sid(Lieske)", "Sid(IAU2006)", "Sid(Vondrák)", "DMS(Vondrák)", "Δ(L−V)\"", "Δ(I−V)\""
+        "Year",
+        "T(cy)",
+        "Sid(Lieske)",
+        "Sid(IAU2006)",
+        "Sid(Vondrák)",
+        "DMS(Vondrák)",
+        "Δ(L−V)\"",
+        "Δ(I−V)\""
     );
     println!("{}", "-".repeat(130));
     for &y in &years {
@@ -258,18 +280,31 @@ fn full_multi_epoch_comparison() {
                 let s_v = (tv - a_v).rem_euclid(360.0);
                 // Wrap-safe delta
                 let mut dl = (s_l - s_v) * 3600.0;
-                if dl > 648_000.0 { dl -= 1_296_000.0; }
-                if dl < -648_000.0 { dl += 1_296_000.0; }
+                if dl > 648_000.0 {
+                    dl -= 1_296_000.0;
+                }
+                if dl < -648_000.0 {
+                    dl += 1_296_000.0;
+                }
                 let mut di = (s_i - s_v) * 3600.0;
-                if di > 648_000.0 { di -= 1_296_000.0; }
-                if di < -648_000.0 { di += 1_296_000.0; }
+                if di > 648_000.0 {
+                    di -= 1_296_000.0;
+                }
+                if di < -648_000.0 {
+                    di += 1_296_000.0;
+                }
                 println!(
                     "{y:>5} {t:>7.3} {s_l:>14.8} {s_i:>14.8} {s_v:>14.8} {:>16} | {:>+10.4} {:>+10.4}",
-                    dms(s_v), dl, di
+                    dms(s_v),
+                    dl,
+                    di
                 );
             }
             _ => {
-                println!("{y:>5} {t:>7.3} {:>14} {:>14} {:>14} {:>16} |", "", "", "", "");
+                println!(
+                    "{y:>5} {t:>7.3} {:>14} {:>14} {:>14} {:>16} |",
+                    "", "", "", ""
+                );
             }
         }
     }
@@ -301,11 +336,21 @@ fn full_multi_epoch_comparison() {
     println!("\n{}", "=".repeat(140));
     println!("TABLE 5: TRUE vs MEAN ANCHOR — effect of nutation at the 1956 calibration epoch");
     println!("  A = 3D Vondrák (true anchor)   B = Scalar Vondrák (true anchor)");
-    println!("  C = Scalar Vondrák (mean anchor)   D = Scalar Lieske-cal/Vondrák-run (mean anchor)");
+    println!(
+        "  C = Scalar Vondrák (mean anchor)   D = Scalar Lieske-cal/Vondrák-run (mean anchor)"
+    );
     println!("{}", "=".repeat(140));
     println!(
         "{:>5} {:>7} {:>14} {:>14} {:>14} {:>14} | {:>9} {:>9} {:>9}",
-        "Year", "T(cy)", "A (3D/true)", "B (sc/true)", "C (sc/mean)", "D (cross)", "A−B\"", "A−C\"", "C−D\""
+        "Year",
+        "T(cy)",
+        "A (3D/true)",
+        "B (sc/true)",
+        "C (sc/mean)",
+        "D (cross)",
+        "A−B\"",
+        "A−C\"",
+        "C−D\""
     );
     println!("{}", "-".repeat(140));
     for &y in &years {

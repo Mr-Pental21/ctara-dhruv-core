@@ -294,11 +294,7 @@ pub fn time_upagraha_jd(
     };
 
     let (start, end) = portion_jd_range(index, base_jd, end_jd);
-    if use_end {
-        end
-    } else {
-        start
-    }
+    if use_end { end } else { start }
 }
 
 #[cfg(test)]

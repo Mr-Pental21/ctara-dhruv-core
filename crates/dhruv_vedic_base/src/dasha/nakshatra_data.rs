@@ -7,7 +7,7 @@
 
 use crate::graha::Graha;
 
-use super::types::{DashaEntity, DashaSystem, DAYS_PER_YEAR};
+use super::types::{DAYS_PER_YEAR, DashaEntity, DashaSystem};
 use super::variation::SubPeriodMethod;
 
 /// Configuration for a nakshatra-based dasha system.
