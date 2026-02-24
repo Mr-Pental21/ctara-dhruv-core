@@ -7,7 +7,6 @@ use std::f64::consts::{PI, TAU};
 use std::path::Path;
 
 use dhruv_core::{Body, Engine, EngineConfig};
-use dhruv_frames::OBLIQUITY_J2000_RAD;
 use dhruv_time::{EopKernel, LeapSecondKernel, gmst_rad, local_sidereal_time_rad};
 use dhruv_vedic_base::{
     BhavaConfig, BhavaReferenceMode, BhavaStartingPoint, BhavaSystem, GeoLocation, compute_bhavas,
@@ -301,8 +300,9 @@ fn middle_of_first_shifts_cusps() {
 }
 
 /// Helper: verify the ascendant (tropical, radians) is a rising point (H < 0).
-fn assert_lagna_is_rising(tropical_lagna_rad: f64, lst_rad: f64) {
-    let eps = OBLIQUITY_J2000_RAD;
+///
+/// Uses the provided obliquity (should be true obliquity to match production).
+fn assert_lagna_is_rising(tropical_lagna_rad: f64, lst_rad: f64, eps: f64) {
     let lambda = tropical_lagna_rad;
     let ra = f64::atan2(lambda.sin() * eps.cos(), lambda.cos()).rem_euclid(TAU);
     let mut h = (lst_rad - ra).rem_euclid(TAU);
@@ -334,13 +334,19 @@ fn lagna_is_rising_point() {
     let result = compute_bhavas(&_engine, &_lsk, &eop, &loc, jd_utc, &config)
         .expect("compute_bhavas should succeed");
 
-    // Reconstruct LST via the same chain as production code
+    // Reconstruct apparent LST (GAST) and true obliquity — matching production
     let jd_ut1 = eop.utc_to_ut1_jd(jd_utc).expect("EOP lookup");
     let gmst = gmst_rad(jd_ut1);
-    let lst = local_sidereal_time_rad(gmst, loc.longitude_rad());
+    let utc_s = dhruv_time::jd_to_tdb_seconds(jd_utc);
+    let tdb_s = _lsk.utc_to_tdb(utc_s);
+    let jd_tdb = dhruv_time::tdb_seconds_to_jd(tdb_s);
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let (ee, eps_true) = dhruv_frames::equation_of_equinoxes_and_true_obliquity(t);
+    let gast = gmst + ee;
+    let lst = local_sidereal_time_rad(gast, loc.longitude_rad());
 
     let tropical_lagna_rad = result.lagna_deg.to_radians();
-    assert_lagna_is_rising(tropical_lagna_rad, lst);
+    assert_lagna_is_rising(tropical_lagna_rad, lst, eps_true);
 }
 
 /// Verify Desc (cusp 7) = Lagna + 180 deg for Sripati system.

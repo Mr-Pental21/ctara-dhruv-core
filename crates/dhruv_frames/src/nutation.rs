@@ -187,6 +187,21 @@ pub fn nutation_iau2000b(t: f64) -> (f64, f64) {
     (dpsi_arcsec, deps_arcsec)
 }
 
+/// Equation of equinoxes (radians) and true obliquity (radians).
+///
+/// Computes `nutation_iau2000b(t)` once, then:
+/// - EE = Δψ·cos(ε_mean)       (IERS 2010, Section 5.5.3)
+/// - ε_true = ε_mean + Δε
+///
+/// Returns `(ee_rad, eps_true_rad)`.
+pub fn equation_of_equinoxes_and_true_obliquity(t: f64) -> (f64, f64) {
+    let (dpsi_arcsec, deps_arcsec) = nutation_iau2000b(t);
+    let eps_mean = crate::obliquity::mean_obliquity_of_date_rad(t);
+    let ee = (dpsi_arcsec / 3600.0).to_radians() * eps_mean.cos();
+    let eps_true = eps_mean + (deps_arcsec / 3600.0).to_radians();
+    (ee, eps_true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +244,31 @@ mod tests {
             (dpsi1 - dpsi2).abs() < 5.0,
             "Δψ at T={t1}: {dpsi1}, at T={t2}: {dpsi2}"
         );
+    }
+
+    #[test]
+    fn ee_and_true_obliquity_bounded() {
+        // |EE| < 1.2e-4 rad (~25") and |eps_true - eps_mean| < 7.3e-5 rad (~15")
+        // for t in [-2, 2] (roughly 1800–2200).
+        for &t in &[-2.0, -1.0, 0.0, 0.5, 1.0, 2.0] {
+            let (ee, eps_true) = equation_of_equinoxes_and_true_obliquity(t);
+            let eps_mean = crate::obliquity::mean_obliquity_of_date_rad(t);
+            assert!(
+                ee.abs() < 1.2e-4,
+                "t={t}: |EE| = {:.2e} rad, exceeds 1.2e-4",
+                ee.abs()
+            );
+            assert!(
+                (eps_true - eps_mean).abs() < 7.3e-5,
+                "t={t}: |eps_true - eps_mean| = {:.2e} rad, exceeds 7.3e-5",
+                (eps_true - eps_mean).abs()
+            );
+        }
+    }
+
+    #[test]
+    fn ee_nonzero_at_j2000() {
+        let (ee, _) = equation_of_equinoxes_and_true_obliquity(0.0);
+        assert!(ee.abs() > 1e-6, "|EE| at J2000 = {:.2e}, should be > 1e-6", ee.abs());
     }
 }

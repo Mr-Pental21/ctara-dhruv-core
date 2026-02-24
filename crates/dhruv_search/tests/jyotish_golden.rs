@@ -8,7 +8,6 @@ use std::f64::consts::{PI, TAU};
 use std::path::Path;
 
 use dhruv_core::{Engine, EngineConfig};
-use dhruv_frames::OBLIQUITY_J2000_RAD;
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::{GrahaPositionsConfig, graha_positions};
 use dhruv_time::{EopKernel, LeapSecondKernel, UtcTime, gmst_rad, local_sidereal_time_rad};
@@ -1005,7 +1004,7 @@ fn lagna_is_rising_in_graha_positions() {
     let tropical_lagna_deg = sidereal_lagna_deg + aya;
     let tropical_lagna_rad = tropical_lagna_deg.to_radians();
 
-    // Compute LST via the full UTC->UT1->GMST->LST chain
+    // Compute apparent LST (GAST) and true obliquity — matching production
     let jd_utc = dhruv_time::calendar_to_jd(
         utc.year,
         utc.month,
@@ -1013,12 +1012,17 @@ fn lagna_is_rising_in_graha_positions() {
     );
     let jd_ut1 = eop.utc_to_ut1_jd(jd_utc).expect("EOP lookup");
     let gmst = gmst_rad(jd_ut1);
-    let lst = local_sidereal_time_rad(gmst, location.longitude_rad());
+    let utc_s = dhruv_time::jd_to_tdb_seconds(jd_utc);
+    let tdb_s = _lsk.utc_to_tdb(utc_s);
+    let jd_tdb_v = dhruv_time::tdb_seconds_to_jd(tdb_s);
+    let t_v = (jd_tdb_v - 2_451_545.0) / 36525.0;
+    let (ee, eps_true) = dhruv_frames::equation_of_equinoxes_and_true_obliquity(t_v);
+    let gast = gmst + ee;
+    let lst = local_sidereal_time_rad(gast, location.longitude_rad());
 
     // Rising condition: hour angle H < 0 (eastern horizon)
-    let eps = OBLIQUITY_J2000_RAD;
     let ra = f64::atan2(
-        tropical_lagna_rad.sin() * eps.cos(),
+        tropical_lagna_rad.sin() * eps_true.cos(),
         tropical_lagna_rad.cos(),
     )
     .rem_euclid(TAU);

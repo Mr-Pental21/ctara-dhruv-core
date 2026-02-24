@@ -9,7 +9,7 @@ pub mod precession;
 pub mod rotation;
 pub mod spherical;
 
-pub use nutation::{fundamental_arguments, nutation_iau2000b};
+pub use nutation::{equation_of_equinoxes_and_true_obliquity, fundamental_arguments, nutation_iau2000b};
 pub use obliquity::{
     COS_OBL, OBLIQUITY_J2000_DEG, OBLIQUITY_J2000_RAD, SIN_OBL, mean_obliquity_of_date_arcsec,
     mean_obliquity_of_date_rad,

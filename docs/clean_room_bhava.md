@@ -29,13 +29,13 @@ MC = atan2(sin(LST), cos(LST)*cos(eps))
 Standard spherical astronomy textbook formula. Independently derivable from
 the spherical triangle (pole, zenith, vernal equinox).
 
-**Obliquity:** Mean obliquity of date computed from the IAU 2006 polynomial
-(`dhruv_frames::obliquity::mean_obliquity_of_date_rad(t)`, where t is Julian
-centuries from J2000.0 in TDB). This removes the ~0.014°/century error that
-would accumulate if the fixed J2000 obliquity constant were used instead.
+**Obliquity:** True obliquity of date: IAU 2006 mean obliquity polynomial plus
+IAU 2000B nutation in obliquity (Δε). Standard convention for house cusp
+computation (Meeus Ch. 13, IERS 2010).
 
-**Sidereal time chain:** UTC -> UT1 (via IERS EOP DUT1) -> GMST (Capitaine 2003)
--> LST (GMST + east longitude). Reuses existing `dhruv_time` functions.
+**Sidereal time chain:** UTC → UT1 (via IERS EOP DUT1) → GMST (Capitaine 2003)
+→ GAST (GMST + equation of equinoxes, where EE = Δψ·cos(ε_mean))
+→ LAST (GAST + east longitude). Matches standard astrological practice.
 
 ### House Systems
 

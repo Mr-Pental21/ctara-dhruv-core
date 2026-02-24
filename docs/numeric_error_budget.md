@@ -74,10 +74,11 @@ by cross-kernel differences).
 
 ### 4b. Obliquity of date (ecliptic → equatorial)
 
-Sunrise/sunset uses `mean_obliquity_of_date_rad(t)` (IAU 2006, 84381.406"
-at T=0). Bhava/Lagna computations also use the obliquity of date rather than
-the J2000 constant. Residual vs true obliquity: nutation in obliquity (~9.2"
-peak) is not included here; it is < 0.003° and acceptable for Vedic computation.
+Bhava/Lagna now use true obliquity (mean + Δε from IAU 2000B) and apparent
+sidereal time (GAST = GMST + Δψ·cos(ε_mean)). Nutation in obliquity (~9.2"
+peak) and equation of equinoxes (~16" peak) are fully included. Sunrise/sunset
+continues to use mean obliquity (residual < 0.003°, < 1 second of time in
+rise/set).
 
 ### 5. Chain resolution (accumulation)
 

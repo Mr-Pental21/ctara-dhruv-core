@@ -1169,7 +1169,7 @@ fn non_chakra_parity_golden_values() {
         chara.levels[0][0].start_jd
     );
     assert!(
-        (chara.levels[0][0].end_jd - 2450200.5546847382).abs() < 1e-6,
+        (chara.levels[0][0].end_jd - 2450200.1027327343).abs() < 1e-6,
         "Chara end_jd: {:.10}",
         chara.levels[0][0].end_jd
     );

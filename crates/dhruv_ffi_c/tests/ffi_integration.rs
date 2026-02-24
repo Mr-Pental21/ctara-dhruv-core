@@ -7,7 +7,6 @@ use std::f64::consts::{PI, TAU};
 
 use dhruv_core::{Body, Frame, Observer};
 use dhruv_ffi_c::*;
-use dhruv_frames::OBLIQUITY_J2000_RAD;
 use dhruv_time::{calendar_to_jd, gmst_rad, local_sidereal_time_rad};
 
 fn kernel_base() -> PathBuf {
@@ -1039,16 +1038,22 @@ fn ffi_lagna_deg_new_delhi() {
     );
 
     // Rising-condition check: the FFI returns tropical lagna in degrees.
-    // Reconstruct LST via the full UTC->UT1->GMST->LST chain.
+    // Reconstruct apparent LST (GAST) and true obliquity — matching production.
     {
+        let lsk_rust = dhruv_time::LeapSecondKernel::load(&kernel_base().join("naif0012.tls")).unwrap();
         let eop_rust = dhruv_time::EopKernel::load(&kernel_base().join("finals2000A.all")).unwrap();
         let jd_ut1 = eop_rust.utc_to_ut1_jd(jd_utc).expect("EOP lookup");
         let gmst = gmst_rad(jd_ut1);
-        let lst = local_sidereal_time_rad(gmst, loc.longitude_deg.to_radians());
+        let utc_s = dhruv_time::jd_to_tdb_seconds(jd_utc);
+        let tdb_s = lsk_rust.utc_to_tdb(utc_s);
+        let jd_tdb = dhruv_time::tdb_seconds_to_jd(tdb_s);
+        let t = (jd_tdb - 2_451_545.0) / 36525.0;
+        let (ee, eps_true) = dhruv_frames::equation_of_equinoxes_and_true_obliquity(t);
+        let gast = gmst + ee;
+        let lst = local_sidereal_time_rad(gast, loc.longitude_deg.to_radians());
 
-        let eps = OBLIQUITY_J2000_RAD;
         let lagna_rad = asc.to_radians();
-        let ra = f64::atan2(lagna_rad.sin() * eps.cos(), lagna_rad.cos()).rem_euclid(TAU);
+        let ra = f64::atan2(lagna_rad.sin() * eps_true.cos(), lagna_rad.cos()).rem_euclid(TAU);
         let mut h = (lst - ra).rem_euclid(TAU);
         if h > PI {
             h -= TAU;

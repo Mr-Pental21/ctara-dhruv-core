@@ -5,15 +5,15 @@
 //! and Alcabitus house systems.
 //!
 //! Sources: standard spherical astronomy (Meeus, Montenbruck & Pfleger),
-//! Polich/Page original 1961 methodology, IAU 1976 obliquity.
+//! Polich/Page original 1961 methodology, true obliquity
+//! (IAU 2006 + IAU 2000B nutation).
 //! See `docs/clean_room_bhava.md`.
 
 use std::f64::consts::{PI, TAU};
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
 use dhruv_frames::{
-    cartesian_to_spherical, icrf_to_ecliptic, mean_obliquity_of_date_rad,
-    precess_ecliptic_j2000_to_date,
+    cartesian_to_spherical, icrf_to_ecliptic, precess_ecliptic_j2000_to_date,
 };
 use dhruv_time::{jd_to_tdb_seconds, tdb_seconds_to_jd, LeapSecondKernel};
 
@@ -22,7 +22,7 @@ use crate::bhava_types::{
     BhavaSystem,
 };
 use crate::error::VedicError;
-use crate::lagna::{compute_lst_rad_pub, lagna_mc_ramc_from_lst};
+use crate::lagna::{apparent_lst_and_true_eps, lagna_mc_ramc_from_lst};
 use crate::riseset_types::GeoLocation;
 
 use dhruv_time::EopKernel;
@@ -50,15 +50,10 @@ pub fn compute_bhavas(
     jd_utc: f64,
     config: &BhavaConfig,
 ) -> Result<BhavaResult, VedicError> {
-    // Compute LST once, then derive Lagna, MC, RAMC
-    let lst = compute_lst_rad_pub(lsk, eop, location, jd_utc)?;
+    // Compute apparent (GAST-based) LST and true obliquity once
+    let (lst_apparent, eps_true) = apparent_lst_and_true_eps(lsk, eop, location, jd_utc)?;
     let lat_rad = location.latitude_rad();
-    let utc_s = jd_to_tdb_seconds(jd_utc);
-    let tdb_s = lsk.utc_to_tdb(utc_s);
-    let jd_tdb = tdb_seconds_to_jd(tdb_s);
-    let t = (jd_tdb - 2_451_545.0) / 36525.0;
-    let eps = mean_obliquity_of_date_rad(t);
-    let (asc_rad, mc_rad, ramc) = lagna_mc_ramc_from_lst(lst, lat_rad, eps);
+    let (asc_rad, mc_rad, ramc) = lagna_mc_ramc_from_lst(lst_apparent, lat_rad, eps_true);
 
     let asc_deg = normalize_deg(asc_rad.to_degrees());
     let mc_deg = normalize_deg(mc_rad.to_degrees());
@@ -73,22 +68,22 @@ pub fn compute_bhavas(
         BhavaSystem::Sripati => compute_sripati(asc_deg, mc_deg),
         BhavaSystem::KP => {
             check_latitude(location)?;
-            compute_placidus(asc_deg, mc_deg, ramc, lat_rad, eps)?
+            compute_placidus(asc_deg, mc_deg, ramc, lat_rad, eps_true)?
         }
         BhavaSystem::Koch => {
             check_latitude(location)?;
-            compute_koch(asc_deg, mc_deg, ramc, lat_rad, eps)?
+            compute_koch(asc_deg, mc_deg, ramc, lat_rad, eps_true)?
         }
-        BhavaSystem::Regiomontanus => compute_regiomontanus(ramc, lat_rad, eps),
-        BhavaSystem::Campanus => compute_campanus(ramc, lat_rad, eps),
-        BhavaSystem::AxialRotation => compute_axial_rotation(ramc, eps),
+        BhavaSystem::Regiomontanus => compute_regiomontanus(ramc, lat_rad, eps_true),
+        BhavaSystem::Campanus => compute_campanus(ramc, lat_rad, eps_true),
+        BhavaSystem::AxialRotation => compute_axial_rotation(ramc, eps_true),
         BhavaSystem::Topocentric => {
             check_latitude(location)?;
-            compute_topocentric(asc_deg, mc_deg, ramc, lat_rad, eps)?
+            compute_topocentric(asc_deg, mc_deg, ramc, lat_rad, eps_true)?
         }
         BhavaSystem::Alcabitus => {
             check_latitude(location)?;
-            compute_alcabitus(asc_deg, mc_deg, ramc, lat_rad, eps)?
+            compute_alcabitus(asc_deg, mc_deg, ramc, lat_rad, eps_true)?
         }
     };
 

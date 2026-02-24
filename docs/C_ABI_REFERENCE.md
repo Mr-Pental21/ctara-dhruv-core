@@ -827,7 +827,8 @@ DhruvStatus dhruv_lagna_deg(
 );
 ```
 
-Compute Ascendant ecliptic longitude in degrees. No engine needed.
+Compute Ascendant ecliptic longitude in degrees. Uses apparent (GAST) sidereal
+time and true obliquity. No engine needed.
 
 ```c
 DhruvStatus dhruv_mc_deg(
@@ -839,7 +840,8 @@ DhruvStatus dhruv_mc_deg(
 );
 ```
 
-Compute MC (Midheaven) ecliptic longitude in degrees. No engine needed.
+Compute MC (Midheaven) ecliptic longitude in degrees. Uses apparent (GAST)
+sidereal time and true obliquity. No engine needed.
 
 ---
 
@@ -855,7 +857,8 @@ DhruvStatus dhruv_ramc_deg(
 );
 ```
 
-Compute the RAMC (Right Ascension of the MC / Local Sidereal Time) in degrees. No engine needed.
+Compute the RAMC (Right Ascension of the MC / apparent Local Sidereal Time) in
+degrees. Uses apparent (GAST) sidereal time. No engine needed.
 
 ```c
 DhruvStatus dhruv_ramc_deg_utc(
@@ -867,7 +870,7 @@ DhruvStatus dhruv_ramc_deg_utc(
 );
 ```
 
-UTC variant of `dhruv_ramc_deg`.
+UTC variant of `dhruv_ramc_deg`. Uses apparent (GAST) sidereal time.
 
 ---
 

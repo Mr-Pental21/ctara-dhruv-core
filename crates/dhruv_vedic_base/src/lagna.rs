@@ -3,13 +3,17 @@
 //! Standalone reusable module implementing the standard spherical astronomy
 //! formulas for the ecliptic longitude of the Lagna and MC.
 //!
+//! Uses apparent (GAST-based) local sidereal time and true obliquity
+//! (IAU 2006 mean + IAU 2000B nutation), matching the standard astrological
+//! convention (Meeus Ch. 13, IERS 2010).
+//!
 //! Sources: Meeus, "Astronomical Algorithms" (2nd ed), Chapter 13;
 //! standard spherical astronomy (Montenbruck & Pfleger).
 //! See `docs/clean_room_bhava.md`.
 
 use std::f64::consts::TAU;
 
-use dhruv_frames::mean_obliquity_of_date_rad;
+use dhruv_frames::equation_of_equinoxes_and_true_obliquity;
 use dhruv_time::{
     gmst_rad, jd_to_tdb_seconds, local_sidereal_time_rad, tdb_seconds_to_jd, EopKernel,
     LeapSecondKernel,
@@ -18,33 +22,40 @@ use dhruv_time::{
 use crate::error::VedicError;
 use crate::riseset_types::GeoLocation;
 
-/// Compute mean obliquity of date (IAU 2006) from a UTC Julian Date.
+/// Compute apparent (GAST-based) local sidereal time and true obliquity.
 ///
-/// Converts JD UTC → TDB via the LSK, then evaluates the IAU 2006 polynomial.
-fn obliquity_of_date_rad(lsk: &LeapSecondKernel, jd_utc: f64) -> f64 {
+/// Calls `nutation_iau2000b(t)` once via [`equation_of_equinoxes_and_true_obliquity`], then:
+/// - GAST = GMST + Δψ·cos(ε_mean)  (equation of equinoxes, IERS 2010)
+/// - True ε = ε_mean + Δε           (nutation in obliquity)
+///
+/// Returns `(apparent_lst_rad, true_eps_rad)`.
+pub(crate) fn apparent_lst_and_true_eps(
+    lsk: &LeapSecondKernel,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    jd_utc: f64,
+) -> Result<(f64, f64), VedicError> {
+    // GMST-based LST
+    let jd_ut1 = eop.utc_to_ut1_jd(jd_utc)?;
+    let gmst = gmst_rad(jd_ut1);
+    let lst_mean = local_sidereal_time_rad(gmst, location.longitude_rad());
+
+    // TDB epoch for nutation and obliquity
     let utc_s = jd_to_tdb_seconds(jd_utc);
     let tdb_s = lsk.utc_to_tdb(utc_s);
     let jd_tdb = tdb_seconds_to_jd(tdb_s);
     let t = (jd_tdb - 2_451_545.0) / 36525.0;
-    mean_obliquity_of_date_rad(t)
-}
 
-/// Compute Local Sidereal Time from JD UTC via the UTC->UT1->GMST->LST chain.
-///
-/// Returns LST in radians, range [0, 2*pi).
-fn compute_lst_rad(
-    _lsk: &LeapSecondKernel,
-    eop: &EopKernel,
-    location: &GeoLocation,
-    jd_utc: f64,
-) -> Result<f64, VedicError> {
-    let jd_ut1 = eop.utc_to_ut1_jd(jd_utc)?;
-    let gmst = gmst_rad(jd_ut1);
-    let lst = local_sidereal_time_rad(gmst, location.longitude_rad());
-    Ok(lst.rem_euclid(TAU))
+    // Single nutation call → both EE and true obliquity
+    let (ee_rad, eps_true) = equation_of_equinoxes_and_true_obliquity(t);
+    let lst_apparent = (lst_mean + ee_rad).rem_euclid(TAU);
+
+    Ok((lst_apparent, eps_true))
 }
 
 /// Ecliptic longitude of the Lagna (Ascendant) in radians.
+///
+/// Uses apparent (GAST-based) local sidereal time and true obliquity.
 ///
 /// Formula (Meeus Ch. 13):
 /// `Asc = atan2(cos(LST), -(sin(LST)*cos(eps) + tan(phi)*sin(eps)))`
@@ -62,8 +73,7 @@ pub fn lagna_longitude_rad(
     location: &GeoLocation,
     jd_utc: f64,
 ) -> Result<f64, VedicError> {
-    let lst = compute_lst_rad(lsk, eop, location, jd_utc)?;
-    let eps = obliquity_of_date_rad(lsk, jd_utc);
+    let (lst, eps) = apparent_lst_and_true_eps(lsk, eop, location, jd_utc)?;
     let phi = location.latitude_rad();
 
     let asc = f64::atan2(lst.cos(), -(lst.sin() * eps.cos() + phi.tan() * eps.sin()));
@@ -71,6 +81,8 @@ pub fn lagna_longitude_rad(
 }
 
 /// Ecliptic longitude of the MC (Midheaven) in radians.
+///
+/// Uses apparent (GAST-based) local sidereal time and true obliquity.
 ///
 /// Formula: `MC = atan2(sin(LST), cos(LST)*cos(eps))`
 ///
@@ -81,14 +93,15 @@ pub fn mc_longitude_rad(
     location: &GeoLocation,
     jd_utc: f64,
 ) -> Result<f64, VedicError> {
-    let lst = compute_lst_rad(lsk, eop, location, jd_utc)?;
-    let eps = obliquity_of_date_rad(lsk, jd_utc);
+    let (lst, eps) = apparent_lst_and_true_eps(lsk, eop, location, jd_utc)?;
 
     let mc = f64::atan2(lst.sin(), lst.cos() * eps.cos());
     Ok(mc.rem_euclid(TAU))
 }
 
-/// Compute both Lagna and MC (shares LST computation).
+/// Compute both Lagna and MC (shares LST and obliquity computation).
+///
+/// Uses apparent (GAST-based) local sidereal time and true obliquity.
 ///
 /// Returns `(lagna_rad, mc_rad)`, both in [0, 2*pi).
 pub fn lagna_and_mc_rad(
@@ -97,8 +110,7 @@ pub fn lagna_and_mc_rad(
     location: &GeoLocation,
     jd_utc: f64,
 ) -> Result<(f64, f64), VedicError> {
-    let lst = compute_lst_rad(lsk, eop, location, jd_utc)?;
-    let eps = obliquity_of_date_rad(lsk, jd_utc);
+    let (lst, eps) = apparent_lst_and_true_eps(lsk, eop, location, jd_utc)?;
     let phi = location.latitude_rad();
 
     let asc = f64::atan2(lst.cos(), -(lst.sin() * eps.cos() + phi.tan() * eps.sin()));
@@ -110,7 +122,8 @@ pub fn lagna_and_mc_rad(
 
 /// RAMC (Right Ascension of the MC) in radians.
 ///
-/// By definition, RAMC equals LST. Needed by Regiomontanus, Campanus, etc.
+/// Returns apparent (GAST-based) local sidereal time, which equals RAMC
+/// by definition. Needed by Regiomontanus, Campanus, etc.
 /// Returns a value in [0, 2*pi).
 pub fn ramc_rad(
     lsk: &LeapSecondKernel,
@@ -118,15 +131,16 @@ pub fn ramc_rad(
     location: &GeoLocation,
     jd_utc: f64,
 ) -> Result<f64, VedicError> {
-    compute_lst_rad(lsk, eop, location, jd_utc)
+    let (lst_apparent, _) = apparent_lst_and_true_eps(lsk, eop, location, jd_utc)?;
+    Ok(lst_apparent)
 }
 
 /// Internal helper: compute Lagna, MC, and RAMC from a pre-computed LST.
 ///
-/// `eps_rad` is the mean obliquity of the ecliptic in radians. Callers should
-/// pass the obliquity-of-date (IAU 2006) for correct frame alignment with LST.
-/// Unit tests may pass [`OBLIQUITY_J2000_RAD`] when testing formula geometry
-/// independent of the epoch-varying obliquity.
+/// `eps_rad` is the obliquity of the ecliptic in radians. Production callers
+/// should pass true obliquity (IAU 2006 mean + IAU 2000B nutation). Unit tests
+/// may pass [`OBLIQUITY_J2000_RAD`] when testing formula geometry independent
+/// of the epoch-varying obliquity.
 ///
 /// Used by bhava computation to avoid redundant LST calculations.
 pub(crate) fn lagna_mc_ramc_from_lst(
@@ -146,16 +160,6 @@ pub(crate) fn lagna_mc_ramc_from_lst(
         mc.rem_euclid(TAU),
         lst_rad.rem_euclid(TAU),
     )
-}
-
-/// Compute LST — public(crate) for bhava module reuse.
-pub(crate) fn compute_lst_rad_pub(
-    lsk: &LeapSecondKernel,
-    eop: &EopKernel,
-    location: &GeoLocation,
-    jd_utc: f64,
-) -> Result<f64, VedicError> {
-    compute_lst_rad(lsk, eop, location, jd_utc)
 }
 
 #[cfg(test)]
