@@ -3054,7 +3054,7 @@ fn ffi_lunar_node_with_engine_mean_matches_pure_utc() {
 }
 
 #[test]
-fn ffi_lunar_node_with_engine_true_differs_from_pure_utc() {
+fn ffi_lunar_node_fitted_tracks_osculating_utc() {
     let engine_ptr = match make_engine() {
         Some(p) => p,
         None => return,
@@ -3068,48 +3068,50 @@ fn ffi_lunar_node_with_engine_true_differs_from_pure_utc() {
     let load_status = unsafe { dhruv_lsk_load(lsk_path.as_ptr() as *const u8, &mut lsk_ptr) };
     assert_eq!(load_status, DhruvStatus::Ok);
 
-    let utc = DhruvUtcTime {
-        year: 1931,
-        month: 12,
-        day: 11,
-        hour: 11,
-        minute: 38,
-        second: 18.0,
-    };
+    // Test at multiple epochs spanning the fit interval (1900–2100).
+    let epochs = [
+        DhruvUtcTime { year: 1931, month: 12, day: 11, hour: 11, minute: 38, second: 18.0 },
+        DhruvUtcTime { year: 1970, month: 1, day: 1, hour: 0, minute: 0, second: 0.0 },
+        DhruvUtcTime { year: 2000, month: 6, day: 21, hour: 12, minute: 0, second: 0.0 },
+        DhruvUtcTime { year: 2024, month: 3, day: 15, hour: 6, minute: 30, second: 0.0 },
+    ];
 
-    let mut pure_true = 0.0_f64;
-    let mut eng_true = 0.0_f64;
-    // SAFETY: Valid pointers.
-    let s1 = unsafe {
-        dhruv_lunar_node_deg_utc(
-            lsk_ptr as *const _,
-            DHRUV_NODE_RAHU,
-            DHRUV_NODE_MODE_TRUE,
-            &utc,
-            &mut pure_true,
-        )
-    };
-    // SAFETY: Valid pointers.
-    let s2 = unsafe {
-        dhruv_lunar_node_deg_utc_with_engine(
-            engine_ptr as *const _,
-            DHRUV_NODE_RAHU,
-            DHRUV_NODE_MODE_TRUE,
-            &utc,
-            &mut eng_true,
-        )
-    };
-    assert_eq!(s1, DhruvStatus::Ok);
-    assert_eq!(s2, DhruvStatus::Ok);
+    for utc in &epochs {
+        let mut pure_true = 0.0_f64;
+        let mut eng_true = 0.0_f64;
+        // SAFETY: Valid pointers.
+        let s1 = unsafe {
+            dhruv_lunar_node_deg_utc(
+                lsk_ptr as *const _,
+                DHRUV_NODE_RAHU,
+                DHRUV_NODE_MODE_TRUE,
+                utc,
+                &mut pure_true,
+            )
+        };
+        // SAFETY: Valid pointers.
+        let s2 = unsafe {
+            dhruv_lunar_node_deg_utc_with_engine(
+                engine_ptr as *const _,
+                DHRUV_NODE_RAHU,
+                DHRUV_NODE_MODE_TRUE,
+                utc,
+                &mut eng_true,
+            )
+        };
+        assert_eq!(s1, DhruvStatus::Ok);
+        assert_eq!(s2, DhruvStatus::Ok);
 
-    let diff = angular_separation_deg(pure_true, eng_true);
-    // Pure-math 50-term fitted series should closely track the osculating
-    // node (RMS ≈ 5″).  Allow up to 30″ = 0.0083° at any single epoch.
-    assert!(
-        diff < 0.0084,
-        "expected fitted true-node to be close to osculating; diff={diff} deg ({:.1}\")",
-        diff * 3600.0,
-    );
+        let diff = angular_separation_deg(pure_true, eng_true);
+        // Pure-math 50-term fitted series should closely track the osculating
+        // node (RMS ≈ 5″).  Allow up to 30″ = 0.0083° at any single epoch.
+        assert!(
+            diff < 0.0084,
+            "year={}: fitted vs osculating diff={diff} deg ({:.1}\")",
+            utc.year,
+            diff * 3600.0,
+        );
+    }
 
     // SAFETY: Handles created in this test and not yet freed.
     unsafe { dhruv_lsk_free(lsk_ptr) };

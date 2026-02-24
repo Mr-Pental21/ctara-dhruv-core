@@ -702,6 +702,9 @@ DhruvStatus dhruv_lunar_node_deg(
 ```
 
 Compute lunar node longitude. Pure math, no engine needed.
+For `mode_code=1` (True), the 50-term perturbation series was fitted over 1900–2100;
+accuracy degrades outside that interval. Prefer the `_with_engine` variant for
+production use.
 
 ```c
 DhruvStatus dhruv_lunar_node_deg_with_engine(

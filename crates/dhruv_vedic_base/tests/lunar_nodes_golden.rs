@@ -127,6 +127,34 @@ fn unified_api_consistency() {
     );
 }
 
+/// Golden regression values for the 50-term fitted true-node perturbation.
+///
+/// Pinning true_rahu_deg() at multiple epochs guards against accidental
+/// coefficient edits.  Values were computed once after the matching-pursuit
+/// calibration and frozen here.
+#[test]
+fn true_rahu_golden_regression() {
+    // (t_centuries, expected_true_rahu_deg, tolerance_deg)
+    // Frozen golden values (tolerance 1e-6 deg ≈ 0.004″).
+    // Guards against accidental coefficient table edits.
+    let cases: &[(f64, f64, f64)] = &[
+        (-1.0,  260.268_099_187_091, 0.000_001),  // ~1900
+        (-0.5,   12.559_763_064_112, 0.000_001),  // ~1950
+        ( 0.0,  123.957_670_559_221, 0.000_001),  // J2000
+        ( 0.24,  21.034_317_050_499, 0.000_001),  // ~2024
+        ( 0.5,  239.495_488_326_634, 0.000_001),  // ~2050
+        ( 1.0,  349.826_345_052_908, 0.000_001),  // ~2100
+    ];
+    for &(t, expected, tol) in cases {
+        let actual = true_rahu_deg(t);
+        let diff = (actual - expected).abs();
+        assert!(
+            diff < tol,
+            "t={t}: true_rahu_deg={actual:.6}°, expected={expected:.6}°, diff={diff:.9}°",
+        );
+    }
+}
+
 #[test]
 fn all_outputs_in_valid_range() {
     for &t in &[-10.0, -1.0, 0.0, 1.0, 10.0] {

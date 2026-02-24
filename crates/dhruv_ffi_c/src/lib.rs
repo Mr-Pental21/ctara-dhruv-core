@@ -1551,7 +1551,9 @@ fn node_mode_from_code(code: i32) -> Option<NodeMode> {
 
 /// Compute lunar node longitude in degrees [0, 360).
 ///
-/// Pure math, no engine needed.
+/// Pure math, no engine needed.  For `mode_code=1` (True), the 50-term
+/// perturbation series was fitted over 1900–2100; accuracy degrades outside
+/// that interval.  Prefer the `_with_engine` variant for production use.
 ///
 /// # Arguments
 /// * `node_code` — 0 = Rahu, 1 = Ketu
