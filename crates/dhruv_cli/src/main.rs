@@ -9,6 +9,7 @@ use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::GrahanConfig;
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::stationary_types::StationaryConfig;
+use dhruv_tara::{EarthState, TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{EopKernel, UtcTime, calendar_to_jd};
 use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
@@ -1682,6 +1683,45 @@ enum Commands {
         /// Path to IERS EOP file (finals2000A.all)
         #[arg(long)]
         eop: PathBuf,
+    },
+    /// List all fixed stars in a catalog
+    TaraList {
+        /// Path to star catalog JSON
+        #[arg(long)]
+        catalog: PathBuf,
+        /// Filter by category: yogatara, rashi, special, galactic (optional)
+        #[arg(long)]
+        category: Option<String>,
+    },
+    /// Compute fixed star position (equatorial, ecliptic, or sidereal)
+    TaraPosition {
+        /// Star name (e.g., "Chitra", "Arcturus")
+        #[arg(long)]
+        star: String,
+        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+        #[arg(long)]
+        date: String,
+        /// Path to star catalog JSON
+        #[arg(long)]
+        catalog: PathBuf,
+        /// Path to leap second kernel
+        #[arg(long)]
+        lsk: PathBuf,
+        /// Ayanamsha system code (0-19, for sidereal output)
+        #[arg(long, default_value = "0")]
+        ayanamsha: i32,
+        /// Apply nutation correction
+        #[arg(long)]
+        nutation: bool,
+        /// Use Apparent accuracy tier (requires --bsp for Earth state)
+        #[arg(long)]
+        apparent: bool,
+        /// Apply parallax correction (requires --bsp for Earth state)
+        #[arg(long)]
+        parallax: bool,
+        /// Path to SPK kernel (required for --apparent or --parallax)
+        #[arg(long)]
+        bsp: Option<PathBuf>,
     },
 }
 
@@ -5203,6 +5243,197 @@ fn main() {
                     }
                     println!();
                 }
+            }
+        }
+        Commands::TaraList { catalog, category } => {
+            let cat = TaraCatalog::load(&catalog).unwrap_or_else(|e| {
+                eprintln!("Failed to load catalog: {e}");
+                std::process::exit(1);
+            });
+            let filter = category.as_deref();
+            println!(
+                "{:<20} {:<12} {:>8} {:>10} {:>10} {:>8}",
+                "ID", "Category", "RA(°)", "Dec(°)", "Plx(mas)", "Vmag"
+            );
+            println!("{}", "-".repeat(78));
+            for (id, entry) in cat.iter() {
+                let cat_name = format!("{:?}", id.category());
+                if let Some(f) = filter {
+                    let matches = match f {
+                        "yogatara" => {
+                            matches!(id.category(), dhruv_tara::TaraCategory::Yogatara)
+                        }
+                        "rashi" => {
+                            matches!(id.category(), dhruv_tara::TaraCategory::RashiConstellation)
+                        }
+                        "special" => {
+                            matches!(id.category(), dhruv_tara::TaraCategory::SpecialVedic)
+                        }
+                        "galactic" => {
+                            matches!(id.category(), dhruv_tara::TaraCategory::GalacticReference)
+                        }
+                        _ => true,
+                    };
+                    if !matches {
+                        continue;
+                    }
+                }
+                println!(
+                    "{:<20} {:<12} {:>8.3} {:>10.3} {:>10.2} {:>8.2}",
+                    id.as_str(),
+                    cat_name,
+                    entry.ra_deg,
+                    entry.dec_deg,
+                    entry.parallax_mas,
+                    entry.v_mag,
+                );
+            }
+        }
+        Commands::TaraPosition {
+            star,
+            date,
+            catalog,
+            lsk,
+            ayanamsha,
+            nutation,
+            apparent,
+            parallax,
+            bsp,
+        } => {
+            let id = TaraId::from_str(&star).unwrap_or_else(|| {
+                eprintln!("Unknown star: {star}");
+                std::process::exit(1);
+            });
+            let cat = TaraCatalog::load(&catalog).unwrap_or_else(|e| {
+                eprintln!("Failed to load catalog: {e}");
+                std::process::exit(1);
+            });
+            let utc = parse_utc(&date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let lsk_kernel = dhruv_time::LeapSecondKernel::load(&lsk).unwrap_or_else(|e| {
+                eprintln!("Failed to load LSK: {e}");
+                std::process::exit(1);
+            });
+            let epoch = dhruv_time::Epoch::from_utc(
+                utc.year,
+                utc.month,
+                utc.day,
+                utc.hour,
+                utc.minute,
+                utc.second as f64,
+                &lsk_kernel,
+            );
+            let jd_tdb = epoch.as_jd_tdb();
+
+            let config = TaraConfig {
+                accuracy: if apparent {
+                    TaraAccuracy::Apparent
+                } else {
+                    TaraAccuracy::Astrometric
+                },
+                apply_parallax: parallax,
+            };
+
+            // Get Earth state if needed
+            let earth_state = if apparent || parallax {
+                let bsp_path = bsp.as_ref().unwrap_or_else(|| {
+                    eprintln!("--bsp is required for --apparent or --parallax");
+                    std::process::exit(1);
+                });
+                let engine = load_engine(bsp_path, &lsk);
+                let q = Query {
+                    target: Body::Earth,
+                    observer: Observer::SolarSystemBarycenter,
+                    frame: Frame::IcrfJ2000,
+                    epoch_tdb_jd: jd_tdb,
+                };
+                let state = engine.query(q).unwrap_or_else(|e| {
+                    eprintln!("Failed to query Earth state: {e}");
+                    std::process::exit(1);
+                });
+                let au_km = dhruv_tara::propagation::AU_KM;
+                let km_s_to_au_day = 86400.0 / au_km;
+                Some(EarthState {
+                    position_au: [
+                        state.position_km[0] / au_km,
+                        state.position_km[1] / au_km,
+                        state.position_km[2] / au_km,
+                    ],
+                    velocity_au_day: [
+                        state.velocity_km_s[0] * km_s_to_au_day,
+                        state.velocity_km_s[1] * km_s_to_au_day,
+                        state.velocity_km_s[2] * km_s_to_au_day,
+                    ],
+                })
+            } else {
+                None
+            };
+
+            // Equatorial position
+            match dhruv_tara::position_equatorial_with_config(
+                &cat,
+                id,
+                jd_tdb,
+                &config,
+                earth_state.as_ref(),
+            ) {
+                Ok(pos) => {
+                    println!("Equatorial (ICRS):");
+                    println!("  RA:       {:.6}°", pos.ra_deg);
+                    println!("  Dec:      {:.6}°", pos.dec_deg);
+                    println!("  Distance: {:.2} AU", pos.distance_au);
+                }
+                Err(e) => eprintln!("Equatorial error: {e}"),
+            }
+
+            // Ecliptic position
+            match dhruv_tara::position_ecliptic_with_config(
+                &cat,
+                id,
+                jd_tdb,
+                &config,
+                earth_state.as_ref(),
+            ) {
+                Ok(sc) => {
+                    println!("Ecliptic (of date):");
+                    println!("  Longitude: {:.6}°", sc.lon_deg);
+                    println!("  Latitude:  {:.6}°", sc.lat_deg);
+                }
+                Err(e) => eprintln!("Ecliptic error: {e}"),
+            }
+
+            // Sidereal longitude
+            let system = require_aya_system(ayanamsha);
+            let t = jd_tdb_to_centuries(jd_tdb);
+            let aya = ayanamsha_deg(system, t, nutation);
+            match dhruv_tara::sidereal_longitude_with_config(
+                &cat,
+                id,
+                jd_tdb,
+                aya,
+                &config,
+                earth_state.as_ref(),
+            ) {
+                Ok(lon) => {
+                    let rashi_info = rashi_from_longitude(lon);
+                    let nak_info = nakshatra_from_longitude(lon);
+                    println!("Sidereal ({:?}, nutation={nutation}):", system);
+                    println!("  Longitude: {:.6}°", lon);
+                    println!(
+                        "  Rashi:     {} ({})",
+                        rashi_info.rashi.name(),
+                        rashi_info.rashi.western_name()
+                    );
+                    println!(
+                        "  Nakshatra: {} (pada {})",
+                        nak_info.nakshatra.name(),
+                        nak_info.pada
+                    );
+                    println!("  Ayanamsha: {:.6}°", aya);
+                }
+                Err(e) => eprintln!("Sidereal error: {e}"),
             }
         }
     }

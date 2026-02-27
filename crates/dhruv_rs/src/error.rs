@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use dhruv_core::EngineError;
 use dhruv_search::SearchError;
+use dhruv_tara::TaraError;
 use dhruv_time::TimeError;
 use dhruv_vedic_base::VedicError;
 
@@ -24,6 +25,8 @@ pub enum DhruvError {
     Search(SearchError),
     /// Error from vedic base computation (rise/set, bhava, etc.).
     Vedic(VedicError),
+    /// Error from fixed star computation.
+    Tara(TaraError),
 }
 
 impl Display for DhruvError {
@@ -38,6 +41,7 @@ impl Display for DhruvError {
             Self::Time(e) => write!(f, "time error: {e}"),
             Self::Search(e) => write!(f, "search error: {e}"),
             Self::Vedic(e) => write!(f, "vedic error: {e}"),
+            Self::Tara(e) => write!(f, "tara error: {e}"),
         }
     }
 }
@@ -49,6 +53,7 @@ impl Error for DhruvError {
             Self::Time(e) => Some(e),
             Self::Search(e) => Some(e),
             Self::Vedic(e) => Some(e),
+            Self::Tara(e) => Some(e),
             _ => None,
         }
     }
@@ -75,6 +80,12 @@ impl From<SearchError> for DhruvError {
 impl From<VedicError> for DhruvError {
     fn from(e: VedicError) -> Self {
         Self::Vedic(e)
+    }
+}
+
+impl From<TaraError> for DhruvError {
+    fn from(e: TaraError) -> Self {
+        Self::Tara(e)
     }
 }
 

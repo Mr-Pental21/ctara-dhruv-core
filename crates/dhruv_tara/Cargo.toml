@@ -1,0 +1,22 @@
+[package]
+name = "dhruv_tara"
+description = "Fixed star positions with proper motion propagation"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dhruv_time = { path = "../dhruv_time" }
+dhruv_frames = { path = "../dhruv_frames" }
+
+[dev-dependencies]
+criterion = { workspace = true }
+dhruv_vedic_base = { path = "../dhruv_vedic_base" }
+
+[[bench]]
+name = "tara_bench"
+harness = false
+
+[lints]
+workspace = true

@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 36`
+**ABI version:** `DHRUV_API_VERSION = 37`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -39,6 +39,7 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
    - [Pure-Math Ashtakavarga](#pure-math-ashtakavarga)
    - [Pure-Math Drishti](#pure-math-drishti)
    - [Pure-Math Ghatika / Hora](#pure-math-ghatika--hora)
+   - [Fixed Stars (Tara)](#fixed-stars-tara)
 
 ---
 
@@ -1460,8 +1461,17 @@ Determine the hora lord for a given weekday and hora position. Returns the lord'
 | 79 | `dhruv_dasha_hierarchy_free` | | | | yes |
 | 80 | `dhruv_full_kundali_result_free` | | | | yes |
 | 81 | `dhruv_full_kundali_config_default` | | | | yes |
+| 82 | `dhruv_tara_catalog_load` | | | | yes |
+| 83 | `dhruv_tara_catalog_free` | | | | yes |
+| 84 | `dhruv_tara_position_equatorial` | | | | yes |
+| 85 | `dhruv_tara_position_equatorial_ex` | | | | yes |
+| 86 | `dhruv_tara_position_ecliptic` | | | | yes |
+| 87 | `dhruv_tara_position_ecliptic_ex` | | | | yes |
+| 88 | `dhruv_tara_sidereal_longitude` | | | | yes |
+| 89 | `dhruv_tara_sidereal_longitude_ex` | | | | yes |
+| 90 | `dhruv_tara_galactic_center_ecliptic` | | | | yes |
 
-**Total exported symbols: 69 functions**
+**Total exported symbols: 78 functions**
 
 ---
 
@@ -1524,7 +1534,195 @@ All JD values in dasha APIs use **JD UTC** (not TDB):
 
 ---
 
+### Fixed Stars (Tara)
+
+Fixed star position computation. Stars are loaded from a JSON catalog file.
+All time inputs are JD TDB. Positions are computed via space-motion-vector
+propagation (proper motion, parallax, radial velocity) with optional apparent-place
+corrections (aberration, gravitational light deflection, nutation).
+
+#### Tara Types
+
+##### `DhruvEquatorialPosition`
+
+```c
+struct DhruvEquatorialPosition {
+    double ra_deg;       // Right ascension (degrees, 0-360)
+    double dec_deg;      // Declination (degrees, -90 to +90)
+    double distance_au;  // Distance (AU)
+};
+```
+
+##### `DhruvEarthState`
+
+```c
+struct DhruvEarthState {
+    double position_au[3];      // ICRS barycentric position (AU)
+    double velocity_au_day[3];  // ICRS barycentric velocity (AU/day)
+};
+```
+
+Required for Apparent tier and parallax. Caller obtains these from the
+ephemeris engine (e.g., Earth relative to SSB).
+
+##### `DhruvTaraConfig`
+
+```c
+struct DhruvTaraConfig {
+    int32_t accuracy;       // 0 = Astrometric (default), 1 = Apparent
+    uint8_t apply_parallax; // 1 = apply parallax correction, 0 = don't
+};
+```
+
+- **Astrometric** (0): geometric/catalog place. Space motion propagation + frame rotation + precession. Optionally adds parallax if `apply_parallax == 1`.
+- **Apparent** (1): adds annual aberration, gravitational light deflection, and nutation. Requires non-null `earth_state`.
+
+##### `DhruvTaraCatalogHandle`
+
+Opaque handle to a loaded star catalog. Created by `dhruv_tara_catalog_load`,
+freed by `dhruv_tara_catalog_free`.
+
+##### `TaraId` codes
+
+Stars are identified by `int32_t` codes. Ranges:
+- 0-27: Nakshatra yogataras (e.g., 0=Ashwini, 13=Chitra/Spica)
+- 100+: Rashi constellation stars
+- 200+: Special Vedic stars (e.g., 200=Polaris, 201=Arcturus)
+- 300+: Galactic reference points (300=GalacticCenter, 301=GalacticAntiCenter)
+
+#### Tara Functions
+
+```c
+DhruvStatus dhruv_tara_catalog_load(
+    const uint8_t* path_utf8,   // catalog JSON file path (UTF-8, not null-terminated)
+    uint32_t       path_len,    // byte length of path
+    DhruvTaraCatalogHandle** out_handle
+);
+```
+
+Load a star catalog from a JSON file. On success, `*out_handle` is set to an
+opaque handle. Caller must free with `dhruv_tara_catalog_free`.
+
+```c
+void dhruv_tara_catalog_free(
+    DhruvTaraCatalogHandle* handle  // may be null (no-op)
+);
+```
+
+Free a catalog handle. Safe to call with null.
+
+```c
+DhruvStatus dhruv_tara_position_equatorial(
+    const DhruvTaraCatalogHandle* handle,
+    int32_t                       tara_id,
+    double                        jd_tdb,
+    DhruvEquatorialPosition*      out
+);
+```
+
+Compute equatorial position (Astrometric, no parallax). Returns RA/Dec/distance
+at the given TDB epoch.
+
+```c
+DhruvStatus dhruv_tara_position_equatorial_ex(
+    const DhruvTaraCatalogHandle* handle,
+    int32_t                       tara_id,
+    double                        jd_tdb,
+    const DhruvTaraConfig*        config,
+    const DhruvEarthState*        earth_state,  // may be null for Astrometric without parallax
+    DhruvEquatorialPosition*      out
+);
+```
+
+Compute equatorial position with config. Pass `earth_state` for Apparent tier
+or when `config.apply_parallax == 1`.
+
+```c
+DhruvStatus dhruv_tara_position_ecliptic(
+    const DhruvTaraCatalogHandle* handle,
+    int32_t                       tara_id,
+    double                        jd_tdb,
+    DhruvSphericalCoords*         out
+);
+```
+
+Compute ecliptic position of date (Astrometric, no parallax). Output in
+`DhruvSphericalCoords` (lon_deg, lat_deg, distance_km).
+
+```c
+DhruvStatus dhruv_tara_position_ecliptic_ex(
+    const DhruvTaraCatalogHandle* handle,
+    int32_t                       tara_id,
+    double                        jd_tdb,
+    const DhruvTaraConfig*        config,
+    const DhruvEarthState*        earth_state,  // may be null for Astrometric without parallax
+    DhruvSphericalCoords*         out
+);
+```
+
+Compute ecliptic position with config.
+
+```c
+DhruvStatus dhruv_tara_sidereal_longitude(
+    const DhruvTaraCatalogHandle* handle,
+    int32_t                       tara_id,
+    double                        jd_tdb,
+    double                        ayanamsha_deg,
+    double*                       out
+);
+```
+
+Compute sidereal longitude (Astrometric, no parallax). Result is
+`tropical_ecliptic_longitude - ayanamsha_deg`, normalized to [0, 360).
+Caller computes `ayanamsha_deg` separately (e.g., via `dhruv_ayanamsha_deg`).
+
+```c
+DhruvStatus dhruv_tara_sidereal_longitude_ex(
+    const DhruvTaraCatalogHandle* handle,
+    int32_t                       tara_id,
+    double                        jd_tdb,
+    double                        ayanamsha_deg,
+    const DhruvTaraConfig*        config,
+    const DhruvEarthState*        earth_state,  // may be null for Astrometric without parallax
+    double*                       out
+);
+```
+
+Compute sidereal longitude with config.
+
+```c
+DhruvStatus dhruv_tara_galactic_center_ecliptic(
+    const DhruvTaraCatalogHandle* handle,
+    double                        jd_tdb,
+    DhruvSphericalCoords*         out
+);
+```
+
+Compute ecliptic position of the Galactic Center (IAU 2000 ICRS direction,
+no proper motion). Equivalent to calling `dhruv_tara_position_ecliptic` with
+`TaraId::GalacticCenter` (code 300).
+
+#### Ownership & Lifetime (Tara)
+
+| Handle | Allocated by | Freed by | Notes |
+|--------|-------------|----------|-------|
+| `DhruvTaraCatalogHandle` | `dhruv_tara_catalog_load` | `dhruv_tara_catalog_free` | Caller owns. Must free exactly once. |
+
+#### Error Mapping (Tara)
+
+| Condition | DhruvStatus |
+|-----------|-------------|
+| Null pointer argument | `NullPointer` (7) |
+| Invalid `tara_id` code | `InvalidQuery` (2) |
+| Star not found in catalog | `InvalidQuery` (2) |
+| Apparent/parallax without `earth_state` | `InvalidConfig` (5) |
+| Catalog file load failure | `KernelLoad` (1) |
+
+---
+
 ## Changelog
+
+**v37**: Added fixed star (tara) support. New types: `DhruvEquatorialPosition`, `DhruvEarthState`, `DhruvTaraConfig`. New functions: `dhruv_tara_catalog_load`, `dhruv_tara_catalog_free`, `dhruv_tara_position_equatorial`, `dhruv_tara_position_equatorial_ex`, `dhruv_tara_position_ecliptic`, `dhruv_tara_position_ecliptic_ex`, `dhruv_tara_sidereal_longitude`, `dhruv_tara_sidereal_longitude_ex`, `dhruv_tara_galactic_center_ecliptic`. Catalog loaded from JSON file (opaque handle). Two accuracy tiers: Astrometric (default) and Apparent (aberration + light deflection + nutation, requires `DhruvEarthState`). Optional parallax correction.
 
 **v35.1** (Rust API): `NodeMode::default()` now returns `NodeMode::True` (was `NodeMode::Mean`). This aligns the Rust enum default with the jyotish pipeline which already used true nodes. The C ABI is unaffected — `dhruv_lunar_node_deg` requires an explicit `mode_code` parameter. CLI `lunar-node --mode` default changed from `mean` to `true`.
 

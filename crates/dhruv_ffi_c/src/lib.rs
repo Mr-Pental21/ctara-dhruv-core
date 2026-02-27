@@ -21,6 +21,7 @@ use dhruv_search::{
     special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises,
     varsha_for_date, vedic_day_sunrises, vimsopaka_for_date, yoga_at, yoga_for_date,
 };
+use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraError, TaraId};
 use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
     Amsha, AmshaRequest, AmshaVariation, AyanamshaSystem, BhavaConfig, BhavaReferenceMode,
@@ -36,7 +37,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 36;
+pub const DHRUV_API_VERSION: u32 = 37;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -10353,6 +10354,375 @@ pub unsafe extern "C" fn dhruv_dasha_snapshot_utc(
     }
 }
 
+// ---- Fixed Star (Tara) types and functions ----
+
+impl From<&TaraError> for DhruvStatus {
+    fn from(value: &TaraError) -> Self {
+        match value {
+            TaraError::StarNotFound(_) => Self::InvalidQuery,
+            TaraError::CatalogLoad(_) => Self::KernelLoad,
+            TaraError::EarthStateRequired => Self::InvalidInput,
+        }
+    }
+}
+
+/// Opaque catalog handle for tara functions.
+pub type DhruvTaraCatalogHandle = TaraCatalog;
+
+/// C-compatible equatorial position.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvEquatorialPosition {
+    pub ra_deg: f64,
+    pub dec_deg: f64,
+    pub distance_au: f64,
+}
+
+/// C-compatible Earth state vector.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvEarthState {
+    pub position_au: [f64; 3],
+    pub velocity_au_day: [f64; 3],
+}
+
+/// C-compatible tara config.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvTaraConfig {
+    /// 0 = Astrometric, 1 = Apparent
+    pub accuracy: i32,
+    /// 1 = apply parallax, 0 = don't
+    pub apply_parallax: u8,
+}
+
+/// Load a star catalog from a JSON file.
+///
+/// # Safety
+/// `path_utf8` must be a valid null-terminated UTF-8 string.
+/// `out_handle` must be a valid non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_catalog_load(
+    path_utf8: *const u8,
+    path_len: u32,
+    out_handle: *mut *mut DhruvTaraCatalogHandle,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if path_utf8.is_null() || out_handle.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let path_bytes = unsafe { std::slice::from_raw_parts(path_utf8, path_len as usize) };
+        let path_str = match std::str::from_utf8(path_bytes) {
+            Ok(s) => s,
+            Err(_) => return DhruvStatus::InvalidConfig,
+        };
+        let out = unsafe { &mut *out_handle };
+        match TaraCatalog::load(std::path::Path::new(path_str)) {
+            Ok(catalog) => {
+                *out = Box::into_raw(Box::new(catalog));
+                DhruvStatus::Ok
+            }
+            Err(e) => {
+                *out = ptr::null_mut();
+                DhruvStatus::from(&e)
+            }
+        }
+    })
+}
+
+/// Free a star catalog handle.
+///
+/// # Safety
+/// `handle` must be a valid pointer previously returned by `dhruv_tara_catalog_load`,
+/// or null (no-op).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_catalog_free(handle: *mut DhruvTaraCatalogHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+fn tara_config_from_c(config: &DhruvTaraConfig) -> TaraConfig {
+    TaraConfig {
+        accuracy: if config.accuracy == 1 {
+            TaraAccuracy::Apparent
+        } else {
+            TaraAccuracy::Astrometric
+        },
+        apply_parallax: config.apply_parallax != 0,
+    }
+}
+
+fn earth_state_from_c(es: *const DhruvEarthState) -> Option<dhruv_tara::EarthState> {
+    if es.is_null() {
+        None
+    } else {
+        let es_ref = unsafe { &*es };
+        Some(dhruv_tara::EarthState {
+            position_au: es_ref.position_au,
+            velocity_au_day: es_ref.velocity_au_day,
+        })
+    }
+}
+
+/// Compute equatorial position (Astrometric, no parallax).
+///
+/// # Safety
+/// `handle` and `out` must be valid non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_position_equatorial(
+    handle: *const DhruvTaraCatalogHandle,
+    tara_id: i32,
+    jd_tdb: f64,
+    out: *mut DhruvEquatorialPosition,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let catalog = unsafe { &*handle };
+        let id = match TaraId::from_code(tara_id) {
+            Some(id) => id,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match dhruv_tara::position_equatorial(catalog, id, jd_tdb) {
+            Ok(pos) => {
+                unsafe {
+                    *out = DhruvEquatorialPosition {
+                        ra_deg: pos.ra_deg,
+                        dec_deg: pos.dec_deg,
+                        distance_au: pos.distance_au,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute equatorial position with config and optional earth state.
+///
+/// # Safety
+/// `handle`, `config`, and `out` must be valid non-null pointers.
+/// `earth_state` may be null for Astrometric without parallax.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_position_equatorial_ex(
+    handle: *const DhruvTaraCatalogHandle,
+    tara_id: i32,
+    jd_tdb: f64,
+    config: *const DhruvTaraConfig,
+    earth_state: *const DhruvEarthState,
+    out: *mut DhruvEquatorialPosition,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let catalog = unsafe { &*handle };
+        let cfg = tara_config_from_c(unsafe { &*config });
+        let es = earth_state_from_c(earth_state);
+        let id = match TaraId::from_code(tara_id) {
+            Some(id) => id,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match dhruv_tara::position_equatorial_with_config(catalog, id, jd_tdb, &cfg, es.as_ref()) {
+            Ok(pos) => {
+                unsafe {
+                    *out = DhruvEquatorialPosition {
+                        ra_deg: pos.ra_deg,
+                        dec_deg: pos.dec_deg,
+                        distance_au: pos.distance_au,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute ecliptic position (Astrometric, no parallax).
+///
+/// # Safety
+/// `handle` and `out` must be valid non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_position_ecliptic(
+    handle: *const DhruvTaraCatalogHandle,
+    tara_id: i32,
+    jd_tdb: f64,
+    out: *mut DhruvSphericalCoords,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let catalog = unsafe { &*handle };
+        let id = match TaraId::from_code(tara_id) {
+            Some(id) => id,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match dhruv_tara::position_ecliptic(catalog, id, jd_tdb) {
+            Ok(sc) => {
+                unsafe {
+                    *out = DhruvSphericalCoords {
+                        lon_deg: sc.lon_deg,
+                        lat_deg: sc.lat_deg,
+                        distance_km: sc.distance_km,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute ecliptic position with config and optional earth state.
+///
+/// # Safety
+/// `handle`, `config`, and `out` must be valid non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_position_ecliptic_ex(
+    handle: *const DhruvTaraCatalogHandle,
+    tara_id: i32,
+    jd_tdb: f64,
+    config: *const DhruvTaraConfig,
+    earth_state: *const DhruvEarthState,
+    out: *mut DhruvSphericalCoords,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let catalog = unsafe { &*handle };
+        let cfg = tara_config_from_c(unsafe { &*config });
+        let es = earth_state_from_c(earth_state);
+        let id = match TaraId::from_code(tara_id) {
+            Some(id) => id,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match dhruv_tara::position_ecliptic_with_config(catalog, id, jd_tdb, &cfg, es.as_ref()) {
+            Ok(sc) => {
+                unsafe {
+                    *out = DhruvSphericalCoords {
+                        lon_deg: sc.lon_deg,
+                        lat_deg: sc.lat_deg,
+                        distance_km: sc.distance_km,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute sidereal longitude (Astrometric, no parallax).
+///
+/// # Safety
+/// `handle` and `out` must be valid non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_sidereal_longitude(
+    handle: *const DhruvTaraCatalogHandle,
+    tara_id: i32,
+    jd_tdb: f64,
+    ayanamsha_deg: f64,
+    out: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let catalog = unsafe { &*handle };
+        let id = match TaraId::from_code(tara_id) {
+            Some(id) => id,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match dhruv_tara::sidereal_longitude(catalog, id, jd_tdb, ayanamsha_deg) {
+            Ok(lon) => {
+                unsafe { *out = lon };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute sidereal longitude with config and optional earth state.
+///
+/// # Safety
+/// `handle`, `config`, and `out` must be valid non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_sidereal_longitude_ex(
+    handle: *const DhruvTaraCatalogHandle,
+    tara_id: i32,
+    jd_tdb: f64,
+    ayanamsha_deg: f64,
+    config: *const DhruvTaraConfig,
+    earth_state: *const DhruvEarthState,
+    out: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || config.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let catalog = unsafe { &*handle };
+        let cfg = tara_config_from_c(unsafe { &*config });
+        let es = earth_state_from_c(earth_state);
+        let id = match TaraId::from_code(tara_id) {
+            Some(id) => id,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        match dhruv_tara::sidereal_longitude_with_config(
+            catalog,
+            id,
+            jd_tdb,
+            ayanamsha_deg,
+            &cfg,
+            es.as_ref(),
+        ) {
+            Ok(lon) => {
+                unsafe { *out = lon };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Compute ecliptic position of the Galactic Center.
+///
+/// # Safety
+/// `out` must be a valid non-null pointer. `handle` is required but
+/// the GC position is catalog-independent.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_galactic_center_ecliptic(
+    handle: *const DhruvTaraCatalogHandle,
+    jd_tdb: f64,
+    out: *mut DhruvSphericalCoords,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let catalog = unsafe { &*handle };
+        match dhruv_tara::position_ecliptic(catalog, TaraId::GalacticCenter, jd_tdb) {
+            Ok(sc) => {
+                unsafe {
+                    *out = DhruvSphericalCoords {
+                        lon_deg: sc.lon_deg,
+                        lat_deg: sc.lat_deg,
+                        distance_km: sc.distance_km,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -10814,8 +11184,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_36() {
-        assert_eq!(dhruv_api_version(), 36);
+    fn ffi_api_version_is_37() {
+        assert_eq!(dhruv_api_version(), 37);
     }
 
     #[test]

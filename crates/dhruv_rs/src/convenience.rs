@@ -1777,3 +1777,142 @@ pub fn graha_drishti(
 pub fn graha_drishti_matrix(longitudes: &[f64; 9]) -> GrahaDrishtiMatrix {
     dhruv_vedic_base::graha_drishti_matrix(longitudes)
 }
+
+// ───── Fixed Star (Tara) convenience functions ─────
+
+/// Equatorial position of a fixed star (Astrometric, no parallax).
+pub fn tara_position_equatorial(
+    catalog: &dhruv_tara::TaraCatalog,
+    id: dhruv_tara::TaraId,
+    date: UtcDate,
+) -> Result<dhruv_tara::EquatorialPosition, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_tara::position_equatorial(catalog, id, jd)?)
+}
+
+/// Ecliptic position of a fixed star (Astrometric, no parallax).
+pub fn tara_position_ecliptic(
+    catalog: &dhruv_tara::TaraCatalog,
+    id: dhruv_tara::TaraId,
+    date: UtcDate,
+) -> Result<SphericalCoords, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    Ok(dhruv_tara::position_ecliptic(catalog, id, jd)?)
+}
+
+/// Sidereal longitude of a fixed star (Astrometric, no parallax).
+///
+/// Computes ayanamsha internally from the given system and nutation flag.
+pub fn tara_sidereal_longitude(
+    catalog: &dhruv_tara::TaraCatalog,
+    id: dhruv_tara::TaraId,
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+) -> Result<f64, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let t = jd_tdb_to_centuries(jd);
+    let aya = ayanamsha_deg(system, t, use_nutation);
+    Ok(dhruv_tara::sidereal_longitude(catalog, id, jd, aya)?)
+}
+
+/// Equatorial position of a fixed star with config (supports Apparent tier and parallax).
+///
+/// When `config.accuracy == Apparent` or `config.apply_parallax`, the global engine
+/// is used to obtain Earth's state vector at the query epoch.
+pub fn tara_position_equatorial_with_config(
+    catalog: &dhruv_tara::TaraCatalog,
+    id: dhruv_tara::TaraId,
+    date: UtcDate,
+    config: &dhruv_tara::TaraConfig,
+) -> Result<dhruv_tara::EquatorialPosition, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let es = tara_earth_state_if_needed(config, jd)?;
+    Ok(dhruv_tara::position_equatorial_with_config(
+        catalog,
+        id,
+        jd,
+        config,
+        es.as_ref(),
+    )?)
+}
+
+/// Ecliptic position of a fixed star with config (supports Apparent tier and parallax).
+pub fn tara_position_ecliptic_with_config(
+    catalog: &dhruv_tara::TaraCatalog,
+    id: dhruv_tara::TaraId,
+    date: UtcDate,
+    config: &dhruv_tara::TaraConfig,
+) -> Result<SphericalCoords, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let es = tara_earth_state_if_needed(config, jd)?;
+    Ok(dhruv_tara::position_ecliptic_with_config(
+        catalog,
+        id,
+        jd,
+        config,
+        es.as_ref(),
+    )?)
+}
+
+/// Sidereal longitude of a fixed star with config (supports Apparent tier and parallax).
+pub fn tara_sidereal_longitude_with_config(
+    catalog: &dhruv_tara::TaraCatalog,
+    id: dhruv_tara::TaraId,
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+    config: &dhruv_tara::TaraConfig,
+) -> Result<f64, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let t = jd_tdb_to_centuries(jd);
+    let aya = ayanamsha_deg(system, t, use_nutation);
+    let es = tara_earth_state_if_needed(config, jd)?;
+    Ok(dhruv_tara::sidereal_longitude_with_config(
+        catalog,
+        id,
+        jd,
+        aya,
+        config,
+        es.as_ref(),
+    )?)
+}
+
+/// Compute Earth's ICRS barycentric state from the global engine if needed by config.
+fn tara_earth_state_if_needed(
+    config: &dhruv_tara::TaraConfig,
+    jd_tdb: f64,
+) -> Result<Option<dhruv_tara::EarthState>, DhruvError> {
+    let needs_earth =
+        config.apply_parallax || matches!(config.accuracy, dhruv_tara::TaraAccuracy::Apparent);
+    if !needs_earth {
+        return Ok(None);
+    }
+    let eng = engine()?;
+    // Earth position relative to SSB (barycenter)
+    let q_pos = Query {
+        target: Body::Earth,
+        observer: Observer::SolarSystemBarycenter,
+        frame: Frame::IcrfJ2000,
+        epoch_tdb_jd: jd_tdb,
+    };
+    let state = eng.query(q_pos)?;
+    // Position in AU (km → AU)
+    let au_km = dhruv_tara::propagation::AU_KM;
+    let position_au = [
+        state.position_km[0] / au_km,
+        state.position_km[1] / au_km,
+        state.position_km[2] / au_km,
+    ];
+    // Velocity in AU/day (km/s → AU/day: ×86400/AU_KM)
+    let km_s_to_au_day = 86400.0 / au_km;
+    let velocity_au_day = [
+        state.velocity_km_s[0] * km_s_to_au_day,
+        state.velocity_km_s[1] * km_s_to_au_day,
+        state.velocity_km_s[2] * km_s_to_au_day,
+    ];
+    Ok(Some(dhruv_tara::EarthState {
+        position_au,
+        velocity_au_day,
+    }))
+}

@@ -9,6 +9,7 @@ members = [
   "crates/dhruv_cli",
   "crates/dhruv_rs",
   "crates/dhruv_search",
+  "crates/dhruv_tara",
 ]
 resolver = "2"
 
