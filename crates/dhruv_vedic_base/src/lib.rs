@@ -22,6 +22,7 @@ pub mod avastha;
 pub mod ayana_type;
 pub mod ayanamsha;
 mod ayanamsha_anchor;
+mod ayanamsha_tara;
 pub mod bhava;
 pub mod bhava_types;
 pub mod combustion;
@@ -73,7 +74,9 @@ pub use avastha::{
 };
 pub use ayana_type::{ALL_AYANAS, Ayana, ayana_from_sidereal_longitude};
 pub use ayanamsha::{
-    AyanamshaSystem, ayanamsha_deg, ayanamsha_deg_with_model, ayanamsha_mean_deg,
+    AyanamshaSystem, ayanamsha_deg, ayanamsha_deg_with_catalog,
+    ayanamsha_deg_with_catalog_and_model, ayanamsha_deg_with_model, ayanamsha_mean_deg,
+    ayanamsha_mean_deg_with_catalog, ayanamsha_mean_deg_with_catalog_and_model,
     ayanamsha_mean_deg_with_model, ayanamsha_true_deg, ayanamsha_true_deg_with_model,
     jd_tdb_to_centuries, tdb_seconds_to_centuries,
 };

@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 37`
+**ABI version:** `DHRUV_API_VERSION = 38`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -674,6 +674,44 @@ uint32_t dhruv_ayanamsha_system_count(void);
 ```
 
 Returns number of supported systems (currently 20).
+
+#### Star-catalog-aware variants
+
+These functions accept an optional `DhruvTaraCatalogHandle*` parameter.
+When non-null, star-anchored systems (TrueLahiri, PushyaPaksha, RohiniPaksha,
+Aldebaran15Tau, GalacticCenter0Sag, ChandraHari) use proper-motion-corrected
+star positions from the catalog. When null, behavior is identical to the
+non-catalog versions.
+
+```c
+DhruvStatus dhruv_ayanamsha_mean_deg_with_catalog(
+    int32_t system_code,
+    double  jd_tdb,
+    const DhruvTaraCatalogHandle* catalog,  // may be NULL
+    double* out_deg
+);
+```
+
+```c
+DhruvStatus dhruv_ayanamsha_deg_with_catalog(
+    int32_t system_code,
+    double  jd_tdb,
+    uint8_t use_nutation,
+    const DhruvTaraCatalogHandle* catalog,  // may be NULL
+    double* out_deg
+);
+```
+
+```c
+DhruvStatus dhruv_ayanamsha_deg_with_catalog_utc(
+    const DhruvLskHandle* lsk,
+    int32_t system_code,
+    const DhruvUtcTime*   utc,
+    uint8_t use_nutation,
+    const DhruvTaraCatalogHandle* catalog,  // may be NULL
+    double* out_deg
+);
+```
 
 ---
 
@@ -1470,8 +1508,11 @@ Determine the hora lord for a given weekday and hora position. Returns the lord'
 | 88 | `dhruv_tara_sidereal_longitude` | | | | yes |
 | 89 | `dhruv_tara_sidereal_longitude_ex` | | | | yes |
 | 90 | `dhruv_tara_galactic_center_ecliptic` | | | | yes |
+| 91 | `dhruv_ayanamsha_mean_deg_with_catalog` | | | | yes |
+| 92 | `dhruv_ayanamsha_deg_with_catalog` | | | | yes |
+| 93 | `dhruv_ayanamsha_deg_with_catalog_utc` | | yes | | |
 
-**Total exported symbols: 78 functions**
+**Total exported symbols: 81 functions**
 
 ---
 

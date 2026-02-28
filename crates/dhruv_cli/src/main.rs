@@ -15,9 +15,9 @@ use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
 use dhruv_vedic_base::{
     ALL_GRAHAS, AyanamshaSystem, Graha, LunarNode, NodeDignityPolicy, NodeMode, Rashi,
-    ayanamsha_deg, deg_to_dms, jd_tdb_to_centuries, nakshatra_from_longitude,
-    nakshatra_from_tropical, nakshatra28_from_longitude, nakshatra28_from_tropical,
-    rashi_from_longitude, rashi_from_tropical,
+    ayanamsha_deg, ayanamsha_deg_with_catalog, deg_to_dms, jd_tdb_to_centuries,
+    nakshatra_from_longitude, nakshatra_from_tropical, nakshatra28_from_longitude,
+    nakshatra28_from_tropical, rashi_from_longitude, rashi_from_tropical,
 };
 
 #[derive(Parser)]
@@ -799,6 +799,9 @@ enum Commands {
         bsp: PathBuf,
         #[arg(long)]
         lsk: PathBuf,
+        /// Optional star catalog for proper-motion-corrected anchors
+        #[arg(long)]
+        catalog: Option<PathBuf>,
     },
     /// Compute nutation (dpsi, deps) for a date
     NutationCompute {
@@ -3550,6 +3553,7 @@ fn main() {
             nutation,
             bsp,
             lsk,
+            catalog,
         } => {
             let utc = parse_utc(&date).unwrap_or_else(|e| {
                 eprintln!("{e}");
@@ -3559,12 +3563,23 @@ fn main() {
             let engine = load_engine(&bsp, &lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let t = jd_tdb_to_centuries(jd_tdb);
-            let aya = ayanamsha_deg(system, t, nutation);
+            let cat = catalog.map(|p| {
+                TaraCatalog::load(&p).unwrap_or_else(|e| {
+                    eprintln!("Failed to load star catalog: {e}");
+                    std::process::exit(1);
+                })
+            });
+            let aya = ayanamsha_deg_with_catalog(system, t, nutation, cat.as_ref());
             println!(
-                "Ayanamsha ({:?}): {:.6}°{}",
+                "Ayanamsha ({:?}): {:.6}°{}{}",
                 system,
                 aya,
-                if nutation { " (with nutation)" } else { "" }
+                if nutation { " (with nutation)" } else { "" },
+                if cat.is_some() {
+                    " (with star catalog)"
+                } else {
+                    ""
+                }
             );
         }
 

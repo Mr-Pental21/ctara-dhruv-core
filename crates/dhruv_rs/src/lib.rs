@@ -42,6 +42,7 @@ pub use convenience::{
     ayana,
     ayana_from_sidereal_longitude,
     ayanamsha,
+    ayanamsha_with_catalog,
     beeja_sphuta,
     bhava_lagna,
     bhavas,

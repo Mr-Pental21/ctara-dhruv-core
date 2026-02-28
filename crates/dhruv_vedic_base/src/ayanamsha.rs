@@ -13,10 +13,12 @@
 //! published system definitions. See `docs/clean_room_ayanamsha.md`.
 
 use crate::ayanamsha_anchor::anchor_relative_ayanamsha_deg;
+use crate::ayanamsha_tara::tara_anchor_ayanamsha_deg;
 use dhruv_frames::{
     DEFAULT_PRECESSION_MODEL, PrecessionModel, nutation_iau2000b,
     precess_ecliptic_j2000_to_date_with_model,
 };
+use dhruv_tara::TaraCatalog;
 use dhruv_time::J2000_JD;
 
 /// Sidereal reference systems for ayanamsha computation.
@@ -180,6 +182,8 @@ impl AyanamshaSystem {
                 | Self::PushyaPaksha
                 | Self::RohiniPaksha
                 | Self::Aldebaran15Tau
+                | Self::GalacticCenter0Sag
+                | Self::ChandraHari
         )
     }
 
@@ -288,6 +292,80 @@ pub fn ayanamsha_deg_with_model(
     model: PrecessionModel,
 ) -> f64 {
     let mean = ayanamsha_mean_deg_with_model(system, t_centuries, model);
+    if use_nutation {
+        let (delta_psi_arcsec, _) = nutation_iau2000b(t_centuries);
+        mean + delta_psi_arcsec / 3600.0
+    } else {
+        mean
+    }
+}
+
+/// Mean ayanamsha using star catalog for proper-motion-corrected anchors.
+///
+/// When `catalog` is `Some`, star-anchored systems (TrueLahiri, PushyaPaksha,
+/// RohiniPaksha, Aldebaran15Tau, GalacticCenter0Sag, ChandraHari) use
+/// dynamically propagated star positions instead of static J2000 coordinates.
+///
+/// When `catalog` is `None`, behavior is identical to [`ayanamsha_mean_deg`].
+pub fn ayanamsha_mean_deg_with_catalog(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    catalog: Option<&TaraCatalog>,
+) -> f64 {
+    ayanamsha_mean_deg_with_catalog_and_model(
+        system,
+        t_centuries,
+        catalog,
+        DEFAULT_PRECESSION_MODEL,
+    )
+}
+
+/// Mean ayanamsha with catalog and precession model selection.
+pub fn ayanamsha_mean_deg_with_catalog_and_model(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    catalog: Option<&TaraCatalog>,
+    model: PrecessionModel,
+) -> f64 {
+    // Try catalog-based star ephemeris first
+    if let Some(aya) =
+        catalog.and_then(|cat| tara_anchor_ayanamsha_deg(system, t_centuries, model, cat))
+    {
+        return aya;
+    }
+    // Fall back to existing static path
+    ayanamsha_mean_deg_with_model(system, t_centuries, model)
+}
+
+/// Compute ayanamsha with optional nutation and star catalog.
+///
+/// When `catalog` is `Some`, star-anchored systems use dynamically propagated
+/// star positions. When `catalog` is `None`, behavior is identical to
+/// [`ayanamsha_deg`].
+pub fn ayanamsha_deg_with_catalog(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    use_nutation: bool,
+    catalog: Option<&TaraCatalog>,
+) -> f64 {
+    ayanamsha_deg_with_catalog_and_model(
+        system,
+        t_centuries,
+        use_nutation,
+        catalog,
+        DEFAULT_PRECESSION_MODEL,
+    )
+}
+
+/// Compute ayanamsha with optional nutation, star catalog, and precession model.
+pub fn ayanamsha_deg_with_catalog_and_model(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    use_nutation: bool,
+    catalog: Option<&TaraCatalog>,
+    model: PrecessionModel,
+) -> f64 {
+    let mean = ayanamsha_mean_deg_with_catalog_and_model(system, t_centuries, catalog, model);
     if use_nutation {
         let (delta_psi_arcsec, _) = nutation_iau2000b(t_centuries);
         mean + delta_psi_arcsec / 3600.0

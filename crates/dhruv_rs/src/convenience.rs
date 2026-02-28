@@ -17,8 +17,9 @@ use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, 
 use dhruv_vedic_base::{
     AshtakavargaResult, AyanamshaSystem, BhavaConfig, BhavaResult, BhinnaAshtakavarga,
     DrishtiEntry, GrahaDrishtiMatrix, LunarNode, Nakshatra28Info, NakshatraInfo, NodeMode, Rashi,
-    RashiInfo, SarvaAshtakavarga, ayanamsha_deg, jd_tdb_to_centuries, lunar_node_deg_for_epoch,
-    nakshatra_from_longitude, nakshatra28_from_longitude, rashi_from_longitude,
+    RashiInfo, SarvaAshtakavarga, ayanamsha_deg, ayanamsha_deg_with_catalog, jd_tdb_to_centuries,
+    lunar_node_deg_for_epoch, nakshatra_from_longitude, nakshatra28_from_longitude,
+    rashi_from_longitude,
 };
 
 use crate::date::UtcDate;
@@ -981,6 +982,23 @@ pub fn ayanamsha(
     let jd = utc_to_jd_tdb(date)?;
     let t = jd_tdb_to_centuries(jd);
     Ok(ayanamsha_deg(system, t, use_nutation))
+}
+
+/// Compute ayanamsha with optional star catalog for proper-motion-corrected anchors.
+///
+/// When `catalog` is `Some`, star-anchored systems (TrueLahiri, PushyaPaksha,
+/// RohiniPaksha, Aldebaran15Tau, GalacticCenter0Sag, ChandraHari) use
+/// dynamically propagated star positions. When `catalog` is `None`, behavior
+/// is identical to [`ayanamsha`].
+pub fn ayanamsha_with_catalog(
+    date: UtcDate,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+    catalog: Option<&dhruv_tara::TaraCatalog>,
+) -> Result<f64, DhruvError> {
+    let jd = utc_to_jd_tdb(date)?;
+    let t = jd_tdb_to_centuries(jd);
+    Ok(ayanamsha_deg_with_catalog(system, t, use_nutation, catalog))
 }
 
 /// Compute IAU 2000B nutation values for the given date.

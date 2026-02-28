@@ -323,6 +323,7 @@ dependencies = [
  "criterion",
  "dhruv_core",
  "dhruv_frames",
+ "dhruv_tara",
  "dhruv_time",
 ]
 

@@ -54,6 +54,22 @@ fn anchor_spec(system: AyanamshaSystem) -> Option<AnchorSpec> {
             lat_j2000_deg: -5.467_327,
             target_sidereal_lon_deg: 45.0,
         }),
+        // Galactic Center at 0° Sagittarius sidereal (240° sidereal longitude).
+        // J2000 ecliptic coords computed from IAU 2000 GC ICRS direction
+        // (α≈266.405°, δ≈-28.936°) via IAU 2006 obliquity rotation.
+        AyanamshaSystem::GalacticCenter0Sag => Some(AnchorSpec {
+            lon_j2000_deg: 266.839_617,
+            lat_j2000_deg: -5.536_308,
+            target_sidereal_lon_deg: 240.0,
+        }),
+        // Chandra Hari: λ Scorpii (Mula yogatara) at 0° Sagittarius sidereal.
+        // J2000 ecliptic coords from SIMBAD ICRS (α=263.402°, δ=-37.104°)
+        // via IAU 2006 obliquity rotation.
+        AyanamshaSystem::ChandraHari => Some(AnchorSpec {
+            lon_j2000_deg: 264.585_715,
+            lat_j2000_deg: -13.788_451,
+            target_sidereal_lon_deg: 240.0,
+        }),
         _ => None,
     }
 }
@@ -104,6 +120,8 @@ mod tests {
             AyanamshaSystem::PushyaPaksha,
             AyanamshaSystem::RohiniPaksha,
             AyanamshaSystem::Aldebaran15Tau,
+            AyanamshaSystem::GalacticCenter0Sag,
+            AyanamshaSystem::ChandraHari,
         ] {
             assert!(
                 anchor_spec(sys).is_some(),

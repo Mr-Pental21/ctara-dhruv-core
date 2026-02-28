@@ -27,7 +27,8 @@ use dhruv_vedic_base::{
     Amsha, AmshaRequest, AmshaVariation, AyanamshaSystem, BhavaConfig, BhavaReferenceMode,
     BhavaStartingPoint, BhavaSystem, GeoLocation, LunarNode, NodeMode, RiseSetConfig, RiseSetEvent,
     RiseSetResult, SunLimb, VedicError, amsha_longitude, amsha_rashi_info,
-    approximate_local_noon_jd, ayana_from_sidereal_longitude, ayanamsha_deg, ayanamsha_mean_deg,
+    approximate_local_noon_jd, ayana_from_sidereal_longitude, ayanamsha_deg,
+    ayanamsha_deg_with_catalog, ayanamsha_mean_deg, ayanamsha_mean_deg_with_catalog,
     ayanamsha_true_deg, compute_all_events, compute_bhavas, compute_rise_set, deg_to_dms,
     jd_tdb_to_centuries, karana_from_elongation, lunar_node_deg, lunar_node_deg_for_epoch,
     masa_from_rashi_index, nakshatra_from_longitude, nakshatra_from_tropical,
@@ -37,7 +38,7 @@ use dhruv_vedic_base::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 37;
+pub const DHRUV_API_VERSION: u32 = 38;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -1080,6 +1081,86 @@ pub unsafe extern "C" fn dhruv_ayanamsha_deg(
 
         let t = jd_tdb_to_centuries(jd_tdb);
         let deg = ayanamsha_deg(system, t, use_nutation != 0);
+
+        // SAFETY: Pointer is checked for null; write one value.
+        unsafe { *out_deg = deg };
+        DhruvStatus::Ok
+    })
+}
+
+/// Mean ayanamsha with star catalog for proper-motion-corrected anchors.
+///
+/// When `catalog` is non-null, star-anchored systems (TrueLahiri, PushyaPaksha,
+/// RohiniPaksha, Aldebaran15Tau, GalacticCenter0Sag, ChandraHari) use
+/// dynamically propagated star positions. When `catalog` is null, behavior is
+/// identical to `dhruv_ayanamsha_mean_deg`.
+///
+/// # Safety
+/// `out_deg` must be a valid, non-null pointer. `catalog` may be null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ayanamsha_mean_deg_with_catalog(
+    system_code: i32,
+    jd_tdb: f64,
+    catalog: *const DhruvTaraCatalogHandle,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let system = match ayanamsha_system_from_code(system_code) {
+            Some(s) => s,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let t = jd_tdb_to_centuries(jd_tdb);
+        let cat_opt = if catalog.is_null() {
+            None
+        } else {
+            Some(unsafe { &*catalog })
+        };
+        let deg = ayanamsha_mean_deg_with_catalog(system, t, cat_opt);
+
+        // SAFETY: Pointer is checked for null; write one value.
+        unsafe { *out_deg = deg };
+        DhruvStatus::Ok
+    })
+}
+
+/// Unified ayanamsha with star catalog for proper-motion-corrected anchors.
+///
+/// When `catalog` is non-null, star-anchored systems use dynamically propagated
+/// star positions. When `catalog` is null, behavior is identical to
+/// `dhruv_ayanamsha_deg`.
+///
+/// # Safety
+/// `out_deg` must be a valid, non-null pointer. `catalog` may be null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ayanamsha_deg_with_catalog(
+    system_code: i32,
+    jd_tdb: f64,
+    use_nutation: u8,
+    catalog: *const DhruvTaraCatalogHandle,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let system = match ayanamsha_system_from_code(system_code) {
+            Some(s) => s,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let t = jd_tdb_to_centuries(jd_tdb);
+        let cat_opt = if catalog.is_null() {
+            None
+        } else {
+            Some(unsafe { &*catalog })
+        };
+        let deg = ayanamsha_deg_with_catalog(system, t, use_nutation != 0, cat_opt);
 
         // SAFETY: Pointer is checked for null; write one value.
         unsafe { *out_deg = deg };
@@ -5465,6 +5546,44 @@ pub unsafe extern "C" fn dhruv_ayanamsha_deg_utc(
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(lsk_ref);
         let t = jd_tdb_to_centuries(jd_tdb);
         unsafe { *out_deg = ayanamsha_deg(system, t, use_nutation != 0) };
+        DhruvStatus::Ok
+    })
+}
+
+/// Unified ayanamsha with star catalog and UTC input.
+///
+/// When `catalog` is non-null, star-anchored systems use dynamically propagated
+/// star positions. When `catalog` is null, behavior is identical to
+/// `dhruv_ayanamsha_deg_utc`.
+///
+/// # Safety
+/// `lsk` and `out_deg` must be valid, non-null pointers. `catalog` may be null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ayanamsha_deg_with_catalog_utc(
+    lsk: *const DhruvLskHandle,
+    system_code: i32,
+    utc: *const DhruvUtcTime,
+    use_nutation: u8,
+    catalog: *const DhruvTaraCatalogHandle,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if lsk.is_null() || utc.is_null() || out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let system = match ayanamsha_system_from_code(system_code) {
+            Some(s) => s,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let lsk_ref = unsafe { &*lsk };
+        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(lsk_ref);
+        let t = jd_tdb_to_centuries(jd_tdb);
+        let cat_opt = if catalog.is_null() {
+            None
+        } else {
+            Some(unsafe { &*catalog })
+        };
+        unsafe { *out_deg = ayanamsha_deg_with_catalog(system, t, use_nutation != 0, cat_opt) };
         DhruvStatus::Ok
     })
 }
@@ -11184,8 +11303,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_37() {
-        assert_eq!(dhruv_api_version(), 37);
+    fn ffi_api_version_is_38() {
+        assert_eq!(dhruv_api_version(), 38);
     }
 
     #[test]
