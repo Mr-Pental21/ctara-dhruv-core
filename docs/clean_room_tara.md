@@ -141,7 +141,7 @@
 ## Validation
 - Black-box references used (I/O comparison only):
   - SIMBAD J2000.0 ICRS coordinates for HIP 65474 (Spica) — queried via TAP, frozen in
-    test comments. Used to verify propagation round-trip (J2016.0 → J2000.0).
+    test comments. Used to verify catalog position at J2000.0 (Δt=0 identity).
   - IAU standard aberration constant κ = 20.4955″ — textbook value for unit test.
 - Golden test vectors added:
   1. Spica equatorial at J2000.0 (tolerance 0.01°)
