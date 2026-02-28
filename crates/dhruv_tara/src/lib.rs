@@ -1,8 +1,9 @@
 //! Fixed star positions with proper motion propagation.
 //!
 //! Provides position computation for 122 Vedic and astronomical reference stars
-//! using SIMBAD ICRS J2000.0 astrometric data. Supports equatorial, ecliptic, and
-//! sidereal coordinate output with optional apparent-place corrections.
+//! using HGCA ICRS J2016.0 astrometric data (Brandt 2021, ApJS 254, 42).
+//! Supports equatorial, ecliptic, and sidereal coordinate output with optional
+//! apparent-place corrections.
 
 pub mod apparent;
 pub mod catalog;

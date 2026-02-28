@@ -5,7 +5,8 @@
 //! gracefully.
 //!
 //! Reference sources for expected values:
-//! - SIMBAD CDS (simbad.u-strasbg.fr) — ICRS J2000.0 positions
+//! - HGCA (Brandt 2021, ApJS 254, 42) — ICRS J2016.0 positions
+//! - SIMBAD CDS — pre-converted J2016.0 for bright stars absent from HGCA
 //! - IAU 2000 galactic coordinate system — GC direction
 //! - Butkevich & Lindegren (2014) — propagation algorithm
 //! - SOFA/IAU standards — aberration, light deflection
@@ -42,7 +43,7 @@ fn load_catalog() -> Option<TaraCatalog> {
 // ── Test 1: Spica equatorial at J2000.0 ──
 // Expected: RA ≈ 201.298°, Dec ≈ −11.161°
 // Source: SIMBAD ICRS J2000.0 for HIP 65474 (α Vir / Spica)
-// Tolerance: 0.01° (≈36″) — catalog epoch is J2000.0 so Δt=0
+// Tolerance: 0.01° (≈36″) — back-propagated 16yr from J2016.0 catalog
 #[test]
 fn test1_spica_equatorial_at_j2000() {
     let Some(cat) = load_catalog() else { return };
@@ -111,12 +112,14 @@ fn test4_galactic_center_ecliptic() {
 
 // ── Test 5: Zero-dt identity ──
 // Propagating with Δt=0 must return catalog input exactly.
+// Uses catalog.reference_epoch_jy to compute the zero-offset JD.
 // Tolerance: 1e-10°
 #[test]
 fn test5_zero_dt_identity() {
     let Some(cat) = load_catalog() else { return };
-    // Catalog epoch is J2000.0 (2000.0), so Δt=0 at J2000_JD
-    let pos = position_equatorial(&cat, TaraId::Chitra, J2000_JD).expect("Chitra at J2000");
+    // Compute JD at catalog reference epoch (J2016.0 for HGCA)
+    let epoch_jd = J2000_JD + (cat.reference_epoch_jy - 2000.0) * 365.25;
+    let pos = position_equatorial(&cat, TaraId::Chitra, epoch_jd).expect("Chitra at catalog epoch");
     let entry = cat.get(TaraId::Chitra).expect("Chitra in catalog");
     assert!(
         (pos.ra_deg - entry.ra_deg).abs() < 1e-10,

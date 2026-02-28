@@ -62,43 +62,45 @@
 
 ## Data Provenance
 
-### SIMBAD (Phase 1 — current)
+### SIMBAD (Phase 1 — superseded)
 - Source: Centre de Données astronomiques de Strasbourg (CDS), SIMBAD TAP service.
 - License: CC-BY / Open Licence for public information (CDS GTCU, Jan 2026).
-- What we use: ICRS J2000.0 positions (RA, Dec), proper motions (μα*, μδ), parallax,
-  radial velocities, visual magnitudes for 120 bright stars (2 galactic reference points
-  have no catalog entries — they use fixed IAU frame constants).
+- What was used: ICRS J2000.0 positions (RA, Dec), proper motions (μα*, μδ), parallax,
+  radial velocities, visual magnitudes for 120 bright stars.
 - Reference epoch: J2000.0 (ICRS).
+- Status: Superseded by HGCA Phase 2 for astrometry. Visual magnitudes (v_mag) still
+  sourced from SIMBAD (HGCA does not provide magnitudes).
 - Attribution: "This research has made use of the SIMBAD database, operated at CDS,
   Strasbourg, France (Wenger et al. 2000)."
-- Note: The catalog file is named `hgca_tara.json` for forward compatibility with Phase 2.
-  The `source` field in the JSON is `"SIMBAD_ICRS_J2000"`.
 
-### HGCA (Phase 2 — planned, not yet used)
+### HGCA (Phase 2 — current)
 - Source: Brandt, T. D. (2021). "The Hipparcos-Gaia Catalog of Accelerations: Gaia EDR3
   Edition." ApJS 254, 42.
-- Available via: VizieR catalog J/ApJS/254/42
+- Available via: VizieR catalog J/ApJS/254/42 (115,346 stars)
 - License: VizieR distributes public astronomical catalogs under CC-BY / Open Licence
   (CDS data use policy, https://cds.unistra.fr/legals/). Citation required.
 - Data type: Astrometric parameters (positions, proper motions, parallaxes) — factual
-  scientific measurements derived from Hipparcos and Gaia EDR3 observations. Factual data
-  are not copyrightable creative works.
-- What would change: Reference epoch moves to J2016.0 (HGCA native epoch), improved
-  proper motions from Hipparcos+Gaia EDR3 cross-calibration. The catalog schema and
-  pipeline code are already designed to handle any reference epoch via `reference_epoch_jy`.
+  scientific measurements derived from Hipparcos and Gaia EDR3 observations.
+- Reference epoch: J2016.0 (Gaia EDR3 epoch, treated as TDB per TCB/TDB note below).
+- What we use: J2016.0 positions (RA_ICRS, DE_ICRS), Gaia EDR3 parallax (plx),
+  Hipparcos-Gaia long-baseline proper motions (pmRAhg, pmDEhg), radial velocity (RV).
+  The long-baseline PM (~25 year baseline) averages out short-term perturbations and
+  provides the best estimate of long-term space motion for propagation over centuries.
+- Coverage: 49 of 108 unique HIP IDs found in HGCA. The remaining 59 bright stars
+  (mostly v_mag < 3, including Sirius, Spica, Aldebaran, Arcturus, Vega) are absent
+  from HGCA due to Gaia EDR3 saturation for very bright stars. These 59 stars use
+  SIMBAD J2000 astrometry pre-converted to J2016.0 via the full Cartesian propagation
+  pipeline (propagate_cartesian_au with dt=16yr), ensuring epoch consistency.
+- The catalog file `hgca_tara.json` has `"source": "HGCA_EDR3"` and
+  `"reference_epoch_jy": 2016.0`.
 - Attribution: "This work has made use of data from the Hipparcos-Gaia Catalog of
   Accelerations (Brandt 2021), accessed via the CDS VizieR service."
 
-### SIMBAD (cross-identification)
-- Also used for: Cross-identification of star names (Bayer designations → HIP numbers).
-  See "SIMBAD (Phase 1)" above for license and attribution.
-
-### Gaia DR3 (Phase 2 — NOT YET USED)
-- Source: ESA Gaia mission, Gaia Collaboration (2023).
-- License: CC-BY-SA 3.0 IGO. The ShareAlike clause requires derivative works to carry
-  the same license, which may conflict with MIT redistribution of extracted subsets.
-- Status: DEFERRED to Phase 2 pending explicit license compatibility review.
-  The HGCA already incorporates Gaia EDR3 astrometry, so Phase 1 has full coverage.
+### SIMBAD (cross-identification + fallback)
+- Used for: Cross-identification of star names (Bayer designations → HIP numbers),
+  visual magnitudes for all 120 stars, and full astrometry for 59 bright stars absent
+  from HGCA (pre-converted from J2000.0 to J2016.0).
+- License: CC-BY / Open Licence (see Phase 1 above).
 
 ### Star identification data
 - Nakshatra yogataras: Standard Vedic astronomical texts (Surya Siddhanta, Brihat Samhita).
@@ -140,17 +142,23 @@
 
 ## Validation
 - Black-box references used (I/O comparison only):
-  - SIMBAD J2000.0 ICRS coordinates for HIP 65474 (Spica) — queried via TAP, frozen in
-    test comments. Used to verify catalog position at J2000.0 (Δt=0 identity).
+  - SIMBAD J2000.0 ICRS coordinates for HIP 65474 (Spica) — used to verify back-propagated
+    positions from J2016.0 catalog. All 49 HGCA stars back-propagated to J2000.0 agree with
+    SIMBAD values within 0.5″.
   - IAU standard aberration constant κ = 20.4955″ — textbook value for unit test.
-- Golden test vectors added:
-  1. Spica equatorial at J2000.0 (tolerance 0.01°)
-  2. Spica ecliptic longitude at J2024.0 (tolerance 0.1°)
+- Phase 2 ingestion sanity checks:
+  - PM sign consistency: all HGCA long-baseline PMs match SIMBAD PM signs.
+  - PM magnitude: all within 30% of SIMBAD values.
+  - Back-propagation cross-check: all 49 HGCA stars agree within 0.5″ of SIMBAD J2000.
+  - Pre-conversion roundtrip: J2000→J2016→J2000 for 59 fallback stars, max error 0.004″.
+- Golden test vectors (11 tests):
+  1. Spica equatorial at J2000.0 (tolerance 0.01°, back-propagated 16yr from J2016.0)
+  2. Spica ecliptic longitude at J2024.0 (tolerance 0.2°)
   3. Spica sidereal longitude Lahiri ≈ 180° (tolerance 0.15°)
   4. Galactic Center ecliptic longitude (tolerance 0.5°)
-  5. Zero-Δt identity (tolerance 1e-10°)
-  6. Arcturus large PM direction sanity (tolerance 0.01°)
-  7. Aberration magnitude ≈ 20.5″ (tolerance 0.1″)
+  5. Zero-Δt identity at catalog reference epoch (tolerance 1e-10°)
+  6. Arcturus large PM direction sanity (tolerance 0.02°)
+  7. Aberration magnitude ≈ 20.5″ (tolerance 5″)
   8. Light deflection at χ=45° and χ=90° (tolerance 0.5 mas)
   9. Null earth_state rejected for Apparent tier
   10. Astrometric vs Apparent bounded difference
