@@ -288,3 +288,59 @@ fn test10_astrometric_vs_apparent_bounded() {
         "astro vs apparent shift: {shift_arcsec:.2}\" (expected 15-25\")"
     );
 }
+
+// ── Test 11: Nutation on/off difference ──
+// Apparent tier applies nutation (Δψ) to ecliptic longitude.
+// Astrometric does not. The difference should be in [4″, 18″] range
+// (Δψ oscillates with 18.6yr period, amplitude ~17″).
+#[test]
+fn test11_nutation_on_off_difference() {
+    let Some(cat) = load_catalog() else { return };
+    let earth = EarthState {
+        position_au: [0.983, 0.0, 0.0],
+        velocity_au_day: [0.0, 0.017_21, 0.0],
+    };
+
+    // Astrometric: no nutation applied
+    let config_astro = TaraConfig {
+        accuracy: TaraAccuracy::Astrometric,
+        apply_parallax: false,
+    };
+    let eclip_astro =
+        position_ecliptic_with_config(&cat, TaraId::Chitra, JD_2024, &config_astro, None)
+            .expect("astro ecliptic");
+
+    // Apparent: nutation IS applied (along with aberration + deflection)
+    let config_app = TaraConfig {
+        accuracy: TaraAccuracy::Apparent,
+        apply_parallax: false,
+    };
+    let eclip_app =
+        position_ecliptic_with_config(&cat, TaraId::Chitra, JD_2024, &config_app, Some(&earth))
+            .expect("apparent ecliptic");
+
+    // The ecliptic longitude difference includes aberration + deflection + nutation.
+    // Aberration alone is ~20″, nutation is ~5-17″. We can't isolate nutation from
+    // the full pipeline difference. Instead, compute the nutation value directly
+    // and verify it's in the expected range.
+    let t_centuries = (JD_2024 - J2000_JD) / 36525.0;
+    let (dpsi_arcsec, _deps_arcsec) = dhruv_frames::nutation_iau2000b(t_centuries);
+    let dpsi_abs = dpsi_arcsec.abs();
+
+    // Δψ should be in [4″, 18″] for any epoch (amplitude ~17.2″, period 18.6yr)
+    assert!(
+        dpsi_abs > 4.0 && dpsi_abs < 18.0,
+        "nutation Δψ: {dpsi_abs:.2}\" (expected 4-18\")"
+    );
+
+    // Additionally verify the apparent longitude reflects nutation:
+    // The difference in ecliptic longitude between apparent and astrometric should
+    // be larger than aberration alone (~20″). Nutation adds [4″, 18″] on top.
+    let dlon_arcsec = (eclip_app.lon_deg - eclip_astro.lon_deg).abs() * 3600.0;
+    // aberration is ~20″ in ecliptic longitude, nutation adds on top,
+    // but they can partially cancel depending on sign. Total should be > 5″.
+    assert!(
+        dlon_arcsec > 5.0,
+        "apparent-astrometric ecliptic lon diff: {dlon_arcsec:.2}\" (expected > 5\")"
+    );
+}

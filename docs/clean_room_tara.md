@@ -6,9 +6,13 @@
 - Date: 2026-02-27
 
 ## Scope
-- What is being implemented: Fixed star position computation for ~152 Vedic/astronomical
-  reference stars, including space motion propagation, ecliptic/sidereal coordinate transforms,
-  annual aberration, and gravitational light deflection.
+- What is being implemented: Fixed star position computation for 122 Vedic/astronomical
+  reference stars (28 nakshatra yogataras, 80 rashi constellation stars, 12 special Vedic
+  stars, 2 galactic reference points), including space motion propagation,
+  ecliptic/sidereal coordinate transforms, annual aberration, and gravitational light deflection.
+- Note: The original plan estimated ~152 stars. The final count is 122 after deduplication
+  (e.g., Agastya/Canopus, Lubdhaka/Sirius share physical stars across categories) and
+  removing stars without reliable Hipparcos astrometry.
 - Public API surface impacted: New crate `dhruv_tara`, FFI functions (`dhruv_tara_*`),
   CLI subcommands (TaraList, TaraPosition), dhruv_rs wrapper functions.
 
@@ -58,7 +62,19 @@
 
 ## Data Provenance
 
-### HGCA (Hipparcos-Gaia Catalog of Accelerations)
+### SIMBAD (Phase 1 — current)
+- Source: Centre de Données astronomiques de Strasbourg (CDS), SIMBAD TAP service.
+- License: CC-BY / Open Licence for public information (CDS GTCU, Jan 2026).
+- What we use: ICRS J2000.0 positions (RA, Dec), proper motions (μα*, μδ), parallax,
+  radial velocities, visual magnitudes for 120 bright stars (2 galactic reference points
+  have no catalog entries — they use fixed IAU frame constants).
+- Reference epoch: J2000.0 (ICRS).
+- Attribution: "This research has made use of the SIMBAD database, operated at CDS,
+  Strasbourg, France (Wenger et al. 2000)."
+- Note: The catalog file is named `hgca_tara.json` for forward compatibility with Phase 2.
+  The `source` field in the JSON is `"SIMBAD_ICRS_J2000"`.
+
+### HGCA (Phase 2 — planned, not yet used)
 - Source: Brandt, T. D. (2021). "The Hipparcos-Gaia Catalog of Accelerations: Gaia EDR3
   Edition." ApJS 254, 42.
 - Available via: VizieR catalog J/ApJS/254/42
@@ -67,18 +83,15 @@
 - Data type: Astrometric parameters (positions, proper motions, parallaxes) — factual
   scientific measurements derived from Hipparcos and Gaia EDR3 observations. Factual data
   are not copyrightable creative works.
-- What we use: RA, Dec (ICRS at reference epoch J2016.0), proper motions (μα*, μδ),
-  parallax, for ~152 bright stars. We extract a small subset (~152 of ~115,000 entries).
+- What would change: Reference epoch moves to J2016.0 (HGCA native epoch), improved
+  proper motions from Hipparcos+Gaia EDR3 cross-calibration. The catalog schema and
+  pipeline code are already designed to handle any reference epoch via `reference_epoch_jy`.
 - Attribution: "This work has made use of data from the Hipparcos-Gaia Catalog of
   Accelerations (Brandt 2021), accessed via the CDS VizieR service."
 
-### SIMBAD
-- Source: Centre de Données astronomiques de Strasbourg (CDS)
-- License: CC-BY / Open Licence for public information (CDS GTCU, Jan 2026).
-- What we use: Cross-identification of star names (Bayer designations → HIP numbers),
-  radial velocities, visual magnitudes. Factual astronomical data.
-- Attribution: "This research has made use of the SIMBAD database, operated at CDS,
-  Strasbourg, France (Wenger et al. 2000)."
+### SIMBAD (cross-identification)
+- Also used for: Cross-identification of star names (Bayer designations → HIP numbers).
+  See "SIMBAD (Phase 1)" above for license and attribution.
 
 ### Gaia DR3 (Phase 2 — NOT YET USED)
 - Source: ESA Gaia mission, Gaia Collaboration (2023).

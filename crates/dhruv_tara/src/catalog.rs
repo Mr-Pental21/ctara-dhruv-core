@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::TaraError;
-use crate::tara_id::TaraId;
+use crate::tara_id::{TaraCategory, TaraId};
 
 /// A single star entry from the catalog.
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +34,13 @@ pub struct TaraEntry {
     pub radial_velocity_km_s: f64,
     /// Visual magnitude.
     pub v_mag: f64,
+    /// Star category (derived from TaraId code range).
+    pub category: TaraCategory,
+    /// Nakshatra index (0-27) if this star is a yogatara. None for non-yogataras.
+    pub nakshatra: Option<u8>,
+    /// Rashi constellation name (e.g., "Aries", "Taurus") if this star is a rashi
+    /// constellation star. None for yogataras, special stars, and galactic references.
+    pub rashi_constellation: Option<&'static str>,
 }
 
 /// Immutable star catalog. Send + Sync after construction.
@@ -164,6 +171,14 @@ fn parse_star_entry(obj: &str) -> Option<TaraEntry> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0.0);
 
+    let category = id.category();
+    let nakshatra = if category == TaraCategory::Yogatara {
+        Some(id as i32 as u8)
+    } else {
+        None
+    };
+    let rashi_constellation = rashi_for_id(id);
+
     Some(TaraEntry {
         id,
         bayer,
@@ -176,7 +191,36 @@ fn parse_star_entry(obj: &str) -> Option<TaraEntry> {
         pm_dec_mas_yr,
         radial_velocity_km_s,
         v_mag,
+        category,
+        nakshatra,
+        rashi_constellation,
     })
+}
+
+/// Map rashi constellation stars to their constellation name.
+fn rashi_for_id(id: TaraId) -> Option<&'static str> {
+    use TaraId::*;
+    match id {
+        Hamal | Mesarthim => Some("Aries"),
+        ElNath | Ain | Merope | Electra | Taygeta | Maia | Atlas => Some("Taurus"),
+        Castor | Alhena | Mebsuta | Tejat | Propus => Some("Gemini"),
+        Acubens | Altarf | Praesepe => Some("Cancer"),
+        Algieba | Zosma | Adhafera | RasElased | Algenubi | Chertan => Some("Leo"),
+        Zavijava | Porrima | Auva | Vindemiatrix | Heze | Zaniah => Some("Virgo"),
+        Zubeneschamali | Zubenelgenubi | Brachium => Some("Libra"),
+        Shaula | Sargas | Dschubba | Acrab | Lesath | AlNiyat | AlniyatTau => Some("Scorpio"),
+        KausMedia | KausAustralis | KausBorealis | Nunki | Ascella | Rukbat | Arkab => {
+            Some("Sagittarius")
+        }
+        DenebAlgedi | Dabih | Algedi | Nashira => Some("Capricorn"),
+        Sadalsuud | Sadalmelik | Skat | Albali | Ancha => Some("Aquarius"),
+        Fomalhaut | EtaPsc | OmicronPsc | Alrescha => Some("Pisces"),
+        // Other rashi constellation stars (cross-constellation)
+        Sirius | Canopus | Rigel | Procyon | Capella | Bellatrix | Mintaka | Alnilam | Alnitak
+        | Saiph | Wezen | Adhara | Mirzam | Aludra | Menkib | Phact | Naos | Alphard | Gienah
+        | Minkar | Algorab => Some("Other"),
+        _ => None,
+    }
 }
 
 /// Extract a string value for a given key from a JSON object.
