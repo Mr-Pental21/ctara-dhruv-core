@@ -110,7 +110,7 @@ from published tables or adopted values for that system at J2000.0.
 | Yukteshwar | Sri Yukteshwar (1894) | 22.376 deg | "The Holy Science" adopted value |
 | JnBhasin | J.N. Bhasin | 22.376 deg | Published J.N. Bhasin tables |
 | ChandraHari | Chandra Hari | 23.250 deg | Published Chandra Hari tables |
-| Jagganatha | Jagganatha | 23.250 deg | Published Jagganatha tables |
+| Jagganatha | Spica at 180° on invariable plane | 23.853 deg | Anchor-relative, invariable plane (see `clean_room_invariable_plane.md`) |
 | SuryaSiddhanta | Ancient Indian treatise | 22.459 deg | Back-computed with IAU precession |
 
 ### Design Decision: 3D Precession for All Systems
@@ -124,15 +124,18 @@ are calibrated so that the modern formula matches published tables at J2000.0.
 
 ### Anchor-Relative Systems
 
-Five systems are evaluated by tracking a 3D anchor direction through the
-precession matrix, preserving full ecliptic-of-date consistency including
-the ecliptic tilt (π_A):
+Eight systems are evaluated by tracking a 3D anchor direction through the
+precession matrix (or invariable-plane rotation for Jagganatha), preserving
+full consistency including the ecliptic tilt (π_A):
 
 - Lahiri (sidereal zero point at 0 deg, back-precessed from 1956 anchor)
 - TrueLahiri (Spica at 180 deg)
 - PushyaPaksha (Pushya anchor at 106 deg)
 - RohiniPaksha (Aldebaran at 15 deg 47 min Taurus)
 - Aldebaran15Tau (Aldebaran at 15 deg Taurus)
+- GalacticCenter0Sag (Galactic center at 240 deg)
+- ChandraHari (λ Sco at 240 deg)
+- Jagganatha (Spica at 180 deg, invariable plane — see below)
 
 For these systems, the implementation stores the anchor's J2000 ecliptic
 longitude and latitude, precesses to ecliptic-of-date, and derives:
@@ -180,6 +183,43 @@ ayanamsha = atan2(v_date.y, v_date.x)
 This replaces the earlier scalar `ref + p_A(t)` formula. At J2000 (t=0), the
 result is identical. At distant epochs the difference is sub-arcsecond but
 ensures consistency with the 3D tropical longitude.
+
+### Jagganatha: Invariable Plane System
+
+The Jagganatha ayanamsha differs from all other systems in that it operates on
+the **invariable plane** instead of the ecliptic. It is defined as "True Lahiri
+on the invariable plane": Spica (Chitra) locked to 180° sidereal, with all
+positional measurements on the invariable plane.
+
+**Reference plane**: Invariable (Souami & Souchay 2012, A&A 543, A133)
+
+**Anchor**: Spica at 180° sidereal (same star as TrueLahiri)
+
+**Coordinate chain for ayanamsha**:
+```
+Spica ICRF position (from catalog)
+  → Invariable plane [icrf_to_invariable()]
+  → spherical longitude (no precession — plane is fixed)
+  → ayanamsha = star_invariable_lon - 180°
+```
+
+**Coordinate chain for planet sidereal longitude**:
+```
+Planet ICRF position (from engine)
+  → Invariable plane [icrf_to_invariable()]
+  → spherical longitude (no precession)
+  → sidereal_lon = planet_invariable_lon - ayanamsha
+```
+
+**Key differences from ecliptic systems**:
+- No precession correction needed (invariable plane is fixed)
+- Nutation has no effect (`use_nutation` is ignored)
+- Lagna/bhava cusps projected from ecliptic to invariable plane before
+  sidereal conversion
+- Lunar node computed via angular momentum on the invariable plane
+
+See `docs/clean_room_invariable_plane.md` for full details on the invariable
+plane definition, constants, and rotation matrix.
 
 ---
 
