@@ -470,6 +470,35 @@ typedef struct {
 } DhruvMaxSpeedEvent;
 ```
 
+### DhruvSankrantiConfig
+
+```c
+typedef struct {
+    int32_t  ayanamsha_system;   // System code (0-19)
+    uint8_t  use_nutation;       // 0=false, 1=true
+    int32_t  reference_plane;    // 0=Ecliptic, 1=Invariable, -1=system default
+    double   step_size_days;     // Coarse scan step (default 1.0)
+    uint32_t max_iterations;     // Max bisection iterations (default 50)
+    double   convergence_days;   // Convergence threshold (default 1e-8)
+} DhruvSankrantiConfig;
+```
+
+Configuration for Sankranti search, panchang, dasha, and related functions.
+The `reference_plane` field controls which plane longitudes and ayanamsha are
+measured on. Set to -1 to use the system's default (Ecliptic for most systems,
+Invariable for Jagganatha). Obtain defaults via `dhruv_sankranti_config_default()`.
+
+### DhruvSankrantiEvent
+
+```c
+typedef struct {
+    DhruvUtcTime utc;                    // Event time (UTC)
+    int32_t      rashi_index;            // 0-based (0=Mesha .. 11=Meena)
+    double       sun_sidereal_longitude_deg;  // On configured reference plane
+    double       sun_tropical_longitude_deg;  // Always ecliptic tropical
+} DhruvSankrantiEvent;
+```
+
 ---
 
 ## Functions
@@ -734,6 +763,13 @@ int32_t dhruv_reference_plane_default(int32_t system_code);
 Returns the default reference plane code for a given ayanamsha system.
 Returns 0 (Ecliptic) for all systems except Jagganatha (code 16), which
 returns 1 (Invariable). Returns -1 for invalid system codes.
+
+```c
+DhruvSankrantiConfig dhruv_sankranti_config_default(void);
+```
+
+Returns a default `DhruvSankrantiConfig` (Lahiri, no nutation,
+`reference_plane = -1` for system default, standard search parameters).
 
 ---
 
