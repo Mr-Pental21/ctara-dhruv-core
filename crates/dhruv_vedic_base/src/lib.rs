@@ -74,9 +74,11 @@ pub use avastha::{
 };
 pub use ayana_type::{ALL_AYANAS, Ayana, ayana_from_sidereal_longitude};
 pub use ayanamsha::{
-    AyanamshaSystem, ayanamsha_deg, ayanamsha_deg_on_plane, ayanamsha_deg_with_catalog,
-    ayanamsha_deg_with_catalog_and_model, ayanamsha_deg_with_catalog_on_plane,
-    ayanamsha_deg_with_model, ayanamsha_mean_deg, ayanamsha_mean_deg_with_catalog,
+    AyanamshaSystem, ayanamsha_deg, ayanamsha_deg_on_plane, ayanamsha_deg_static,
+    ayanamsha_deg_with_catalog, ayanamsha_deg_with_catalog_and_model,
+    ayanamsha_deg_with_catalog_on_plane, ayanamsha_deg_with_model, ayanamsha_mean_deg,
+    ayanamsha_mean_deg_static, ayanamsha_mean_deg_static_on_plane,
+    ayanamsha_mean_deg_static_with_model, ayanamsha_mean_deg_with_catalog,
     ayanamsha_mean_deg_with_catalog_and_model, ayanamsha_mean_deg_with_model,
     ayanamsha_true_deg, ayanamsha_true_deg_with_model, jd_tdb_to_centuries,
     tdb_seconds_to_centuries,

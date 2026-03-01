@@ -31,28 +31,35 @@ fn anchor_spec(system: AyanamshaSystem) -> Option<AnchorSpec> {
             lat_j2000_deg: 0.002_727_754_076_653,
             target_sidereal_lon_deg: 0.0,
         }),
-        // Spica anchor. Calibrated to existing J2000 Lahiri baseline.
+        // Spica anchor. J2000 ecliptic from HGCA J2016.0 catalog propagated
+        // back to J2000 (-16yr) via Butkevich & Lindegren proper motion,
+        // then ICRS→ecliptic via IAU 2006 obliquity.
+        // Derivation: ayanamsha_anchor::tests::derive_anchor_coordinates_from_catalog
         AyanamshaSystem::TrueLahiri => Some(AnchorSpec {
-            lon_j2000_deg: 203.853_000,
-            lat_j2000_deg: -2.054_489,
+            lon_j2000_deg: 203.841_363,
+            lat_j2000_deg: -2.054_491,
             target_sidereal_lon_deg: 180.0,
         }),
-        // Pushya anchor. The legacy model defines this as 106° sidereal.
+        // Pushya anchor: delta Cancri (Asellus Australis, HIP 42911) at 106° sidereal.
+        // J2000 ecliptic from HGCA J2016.0 (RA 131.171°, Dec 18.153°) propagated
+        // back to J2000 via proper motion, then converted to ecliptic coordinates.
         AyanamshaSystem::PushyaPaksha => Some(AnchorSpec {
-            lon_j2000_deg: 127.0,
-            lat_j2000_deg: 0.0,
+            lon_j2000_deg: 128.722,
+            lat_j2000_deg: 0.076,
             target_sidereal_lon_deg: 106.0,
         }),
         // Aldebaran anchor at 15°47' Taurus.
+        // J2000 ecliptic from HGCA J2016.0 catalog, same derivation as TrueLahiri.
         AyanamshaSystem::RohiniPaksha => Some(AnchorSpec {
-            lon_j2000_deg: 69.870_333,
-            lat_j2000_deg: -5.467_327,
+            lon_j2000_deg: 69.789_181,
+            lat_j2000_deg: -5.467_329,
             target_sidereal_lon_deg: 45.783_333,
         }),
         // Aldebaran anchor at 15° Taurus.
+        // Same Aldebaran J2000 ecliptic coordinates.
         AyanamshaSystem::Aldebaran15Tau => Some(AnchorSpec {
-            lon_j2000_deg: 69.870_000,
-            lat_j2000_deg: -5.467_327,
+            lon_j2000_deg: 69.789_181,
+            lat_j2000_deg: -5.467_329,
             target_sidereal_lon_deg: 45.0,
         }),
         // Galactic Center at 0° Sagittarius sidereal (240° sidereal longitude).
@@ -72,10 +79,10 @@ fn anchor_spec(system: AyanamshaSystem) -> Option<AnchorSpec> {
             target_sidereal_lon_deg: 240.0,
         }),
         // Jagganatha: Spica (Chitra) at 180° sidereal on the invariable plane.
-        // Same J2000 ecliptic coords as TrueLahiri anchor (Spica).
+        // Same J2000 ecliptic coords as TrueLahiri anchor (Spica from HGCA catalog).
         AyanamshaSystem::Jagganatha => Some(AnchorSpec {
-            lon_j2000_deg: 203.853_000,
-            lat_j2000_deg: -2.054_489,
+            lon_j2000_deg: 203.841_363,
+            lat_j2000_deg: -2.054_491,
             target_sidereal_lon_deg: 180.0,
         }),
         _ => None,
@@ -142,6 +149,54 @@ pub(crate) fn anchor_relative_ayanamsha_deg_on_plane(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Documents the derivation of AnchorSpec hardcoded values.
+    /// Pipeline: HGCA J2016.0 catalog → propagate to J2000 (-16yr) → ICRS→ecliptic J2000.
+    #[test]
+    fn derive_anchor_coordinates_from_catalog() {
+        use dhruv_tara::{TaraCatalog, TaraId, position_ecliptic};
+
+        let cat = TaraCatalog::embedded();
+        let j2000_jd = 2_451_545.0;
+
+        // Verify each anchor star's hardcoded value matches catalog to <0.001° (3.6")
+        let ecl = position_ecliptic(cat, TaraId::Chitra, j2000_jd).unwrap();
+        let spec = anchor_spec(AyanamshaSystem::TrueLahiri).unwrap();
+        assert!(
+            (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
+            "Spica lon: catalog={:.6}, anchor={:.6}",
+            ecl.lon_deg, spec.lon_j2000_deg
+        );
+        assert!(
+            (ecl.lat_deg - spec.lat_j2000_deg).abs() < 0.001,
+            "Spica lat: catalog={:.6}, anchor={:.6}",
+            ecl.lat_deg, spec.lat_j2000_deg
+        );
+
+        let ecl = position_ecliptic(cat, TaraId::Aldebaran, j2000_jd).unwrap();
+        let spec = anchor_spec(AyanamshaSystem::RohiniPaksha).unwrap();
+        assert!(
+            (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
+            "Aldebaran lon: catalog={:.6}, anchor={:.6}",
+            ecl.lon_deg, spec.lon_j2000_deg
+        );
+
+        let ecl = position_ecliptic(cat, TaraId::DeltaCnc, j2000_jd).unwrap();
+        let spec = anchor_spec(AyanamshaSystem::PushyaPaksha).unwrap();
+        assert!(
+            (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
+            "DeltaCnc lon: catalog={:.6}, anchor={:.6}",
+            ecl.lon_deg, spec.lon_j2000_deg
+        );
+
+        let ecl = position_ecliptic(cat, TaraId::LambdaSco, j2000_jd).unwrap();
+        let spec = anchor_spec(AyanamshaSystem::ChandraHari).unwrap();
+        assert!(
+            (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
+            "LambdaSco lon: catalog={:.6}, anchor={:.6}",
+            ecl.lon_deg, spec.lon_j2000_deg
+        );
+    }
 
     #[test]
     fn lahiri_anchor_and_reference_consistent() {

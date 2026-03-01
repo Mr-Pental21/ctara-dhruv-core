@@ -5,9 +5,17 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::LazyLock;
 
 use crate::error::TaraError;
 use crate::tara_id::{TaraCategory, TaraId};
+
+const EMBEDDED_CATALOG_JSON: &str = include_str!("../../../kernels/data/hgca_tara.json");
+
+static EMBEDDED_CATALOG: LazyLock<TaraCatalog> = LazyLock::new(|| {
+    TaraCatalog::parse(EMBEDDED_CATALOG_JSON)
+        .expect("embedded HGCA catalog must parse — this is a compile-time resource")
+});
 
 /// A single star entry from the catalog.
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +63,14 @@ pub struct TaraCatalog {
 }
 
 impl TaraCatalog {
+    /// Returns the embedded HGCA star catalog (HGCA J2016.0, compiled in).
+    ///
+    /// Parsed once on first access. Panics at initialization if the embedded
+    /// JSON is corrupt (should never happen — it's a compile-time resource).
+    pub fn embedded() -> &'static TaraCatalog {
+        &EMBEDDED_CATALOG
+    }
+
     /// Load a catalog from a JSON file on disk.
     pub fn load(path: &Path) -> Result<Self, TaraError> {
         let content =
@@ -333,6 +349,35 @@ mod tests {
         let json = r#"{"reference_epoch_jy":2016.0,"stars":[]}"#;
         let result = TaraCatalog::parse(json);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn embedded_catalog_parses() {
+        let cat = TaraCatalog::embedded();
+        assert!(!cat.is_empty());
+        assert_eq!(cat.source, "HGCA_EDR3");
+        assert!((cat.reference_epoch_jy - 2016.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn embedded_catalog_has_anchor_stars() {
+        let cat = TaraCatalog::embedded();
+        for id in [
+            TaraId::Chitra,
+            TaraId::Aldebaran,
+            TaraId::DeltaCnc,
+            TaraId::LambdaSco,
+        ] {
+            let entry = cat.get(id).unwrap_or_else(|| panic!("{id:?} must be in embedded catalog"));
+            assert!(entry.ra_deg > 0.0, "{id:?} RA");
+            assert!(entry.pm_ra_mas_yr.abs() > 0.0 || entry.pm_dec_mas_yr.abs() > 0.0, "{id:?} PM");
+        }
+    }
+
+    #[test]
+    fn embedded_catalog_star_count() {
+        let cat = TaraCatalog::embedded();
+        assert!(cat.len() >= 100, "embedded catalog has {} stars, expected >= 100", cat.len());
     }
 
     #[test]

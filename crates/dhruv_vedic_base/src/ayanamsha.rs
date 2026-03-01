@@ -138,10 +138,11 @@ impl AyanamshaSystem {
             Self::Raman => 22.370,
             // Fagan-Bradley SVP calibration
             Self::FaganBradley => 24.736,
-            // delta Cancri at 106 deg sidereal
-            Self::PushyaPaksha => 21.000,
-            // Aldebaran at 15 deg 47 min Taurus
-            Self::RohiniPaksha => 24.087,
+            // delta Cancri (Asellus Australis) at 106 deg sidereal
+            // 128.722 (J2000 ecl lon) - 106.0 = 22.722
+            Self::PushyaPaksha => 22.722,
+            // Aldebaran at 15 deg 47 min Taurus (69.789 - 45.783)
+            Self::RohiniPaksha => 24.006,
             // Robert DeLuce
             Self::DeLuce => 21.619,
             // Esoteric/Bailey tradition
@@ -161,15 +162,15 @@ impl AyanamshaSystem {
             // Chandra Hari: λ Sco at 240° sidereal → J2000 ecl lon 264.586 - 240.0
             Self::ChandraHari => 24.586,
             // Jagganatha: Spica at 180° sidereal on invariable plane.
-            // Same Spica J2000 anchor as TrueLahiri (ecl lon ≈ 203.853°, target 180°).
-            // Fallback reference ≈ 203.853 - 180.0 = 23.853 (ecliptic approximation).
-            Self::Jagganatha => 23.853,
+            // Spica J2000 ecliptic lon ≈ 203.841° (HGCA catalog), target 180°.
+            // Fallback reference ≈ 203.841 - 180.0 = 23.841 (ecliptic approximation).
+            Self::Jagganatha => 23.841,
             // Surya Siddhanta (IAU precession back-computed)
             Self::SuryaSiddhanta => 22.459,
             // Galactic Center at 0° Sag: J2000 ecl lon 266.840 - 240.0
             Self::GalacticCenter0Sag => 26.840,
-            // Aldebaran at 15 deg Taurus
-            Self::Aldebaran15Tau => 24.870,
+            // Aldebaran at 15 deg Taurus (69.789 - 45.0)
+            Self::Aldebaran15Tau => 24.789,
         }
     }
 
@@ -224,16 +225,23 @@ pub fn ayanamsha_mean_deg(system: AyanamshaSystem, t_centuries: f64) -> f64 {
 }
 
 /// Mean ayanamsha in degrees at a given epoch for the selected precession model.
+///
+/// For star-anchored systems, uses the embedded HGCA star catalog with
+/// proper-motion-corrected positions. Falls back to static anchor coordinates
+/// for non-star-anchored systems (Lahiri, KP, Raman, etc.).
 pub fn ayanamsha_mean_deg_with_model(
     system: AyanamshaSystem,
     t_centuries: f64,
     model: PrecessionModel,
 ) -> f64 {
-    if let Some(aya) = anchor_relative_ayanamsha_deg(system, t_centuries, model) {
-        aya
-    } else {
-        ayanamsha_3d(system.reference_j2000_deg(), t_centuries, model)
+    // Use embedded catalog (proper-motion-corrected star positions)
+    if let Some(aya) =
+        tara_anchor_ayanamsha_deg(system, t_centuries, model, TaraCatalog::embedded())
+    {
+        return aya;
     }
+    // Static fallback for non-star-anchored systems
+    ayanamsha_mean_deg_static_with_model(system, t_centuries, model)
 }
 
 /// Compute ayanamsha on a specified reference plane.
@@ -261,6 +269,8 @@ pub fn ayanamsha_deg_on_plane(
 }
 
 /// Plane-aware mean ayanamsha with catalog support.
+///
+/// When `catalog` is `None`, uses the embedded HGCA catalog.
 pub fn ayanamsha_deg_with_catalog_on_plane(
     system: AyanamshaSystem,
     t_centuries: f64,
@@ -275,18 +285,25 @@ pub fn ayanamsha_deg_with_catalog_on_plane(
         }
         ReferencePlane::Invariable => {
             // Nutation not applicable on invariable plane.
-            // Try catalog-based star ephemeris first
-            if let Some(aya) = catalog.and_then(|cat| {
-                tara_anchor_ayanamsha_deg_on_plane(system, t_centuries, model, cat, plane)
-            }) {
+            let effective_catalog = catalog.unwrap_or_else(|| TaraCatalog::embedded());
+            if let Some(aya) = tara_anchor_ayanamsha_deg_on_plane(
+                system,
+                t_centuries,
+                model,
+                effective_catalog,
+                plane,
+            ) {
                 return aya;
             }
-            ayanamsha_mean_deg_on_plane(system, t_centuries, model, plane)
+            ayanamsha_mean_deg_static_on_plane(system, t_centuries, model, plane)
         }
     }
 }
 
 /// Mean ayanamsha on a specified reference plane.
+///
+/// For star-anchored systems, uses the embedded HGCA star catalog.
+/// Falls back to static anchor coordinates for non-star-anchored systems.
 fn ayanamsha_mean_deg_on_plane(
     system: AyanamshaSystem,
     t_centuries: f64,
@@ -296,13 +313,18 @@ fn ayanamsha_mean_deg_on_plane(
     match plane {
         ReferencePlane::Ecliptic => ayanamsha_mean_deg_with_model(system, t_centuries, model),
         ReferencePlane::Invariable => {
-            if let Some(aya) =
-                anchor_relative_ayanamsha_deg_on_plane(system, t_centuries, model, plane)
-            {
-                aya
-            } else {
-                ayanamsha_3d_on_plane(system.reference_j2000_deg(), t_centuries, model, plane)
+            // Use embedded catalog first
+            if let Some(aya) = tara_anchor_ayanamsha_deg_on_plane(
+                system,
+                t_centuries,
+                model,
+                TaraCatalog::embedded(),
+                plane,
+            ) {
+                return aya;
             }
+            // Static fallback
+            ayanamsha_mean_deg_static_on_plane(system, t_centuries, model, plane)
         }
     }
 }
@@ -410,11 +432,9 @@ pub fn ayanamsha_deg_with_model(
 
 /// Mean ayanamsha using star catalog for proper-motion-corrected anchors.
 ///
-/// When `catalog` is `Some`, star-anchored systems (TrueLahiri, PushyaPaksha,
-/// RohiniPaksha, Aldebaran15Tau, GalacticCenter0Sag, ChandraHari) use
-/// dynamically propagated star positions instead of static J2000 coordinates.
-///
-/// When `catalog` is `None`, behavior is identical to [`ayanamsha_mean_deg`].
+/// When `catalog` is `Some`, star-anchored systems use the provided catalog.
+/// When `catalog` is `None`, uses the embedded HGCA catalog (identical to
+/// [`ayanamsha_mean_deg`]).
 pub fn ayanamsha_mean_deg_with_catalog(
     system: AyanamshaSystem,
     t_centuries: f64,
@@ -429,27 +449,28 @@ pub fn ayanamsha_mean_deg_with_catalog(
 }
 
 /// Mean ayanamsha with catalog and precession model selection.
+///
+/// When `catalog` is `Some`, uses the provided catalog. When `None`, uses
+/// the embedded HGCA catalog (identical to [`ayanamsha_mean_deg_with_model`]).
 pub fn ayanamsha_mean_deg_with_catalog_and_model(
     system: AyanamshaSystem,
     t_centuries: f64,
     catalog: Option<&TaraCatalog>,
     model: PrecessionModel,
 ) -> f64 {
-    // Try catalog-based star ephemeris first
-    if let Some(aya) =
-        catalog.and_then(|cat| tara_anchor_ayanamsha_deg(system, t_centuries, model, cat))
-    {
+    // Use provided catalog, or fall back to embedded catalog
+    let effective_catalog = catalog.unwrap_or_else(|| TaraCatalog::embedded());
+    if let Some(aya) = tara_anchor_ayanamsha_deg(system, t_centuries, model, effective_catalog) {
         return aya;
     }
-    // Fall back to existing static path
-    ayanamsha_mean_deg_with_model(system, t_centuries, model)
+    // Static fallback for non-star-anchored systems
+    ayanamsha_mean_deg_static_with_model(system, t_centuries, model)
 }
 
 /// Compute ayanamsha with optional nutation and star catalog.
 ///
-/// When `catalog` is `Some`, star-anchored systems use dynamically propagated
-/// star positions. When `catalog` is `None`, behavior is identical to
-/// [`ayanamsha_deg`].
+/// When `catalog` is `Some`, uses the provided catalog. When `None`, uses
+/// the embedded HGCA catalog (identical to [`ayanamsha_deg`]).
 pub fn ayanamsha_deg_with_catalog(
     system: AyanamshaSystem,
     t_centuries: f64,
@@ -479,6 +500,69 @@ pub fn ayanamsha_deg_with_catalog_and_model(
         mean + delta_psi_arcsec / 3600.0
     } else {
         mean
+    }
+}
+
+// ---- Static (no-catalog) API for testing and validation ----
+
+/// Mean ayanamsha using static anchor coordinates only (no star catalog).
+///
+/// Uses hardcoded J2000 ecliptic coordinates for star-anchored systems.
+/// Production code should use [`ayanamsha_mean_deg`] which uses the embedded
+/// HGCA star catalog with proper-motion-corrected positions.
+pub fn ayanamsha_mean_deg_static(system: AyanamshaSystem, t_centuries: f64) -> f64 {
+    ayanamsha_mean_deg_static_with_model(system, t_centuries, DEFAULT_PRECESSION_MODEL)
+}
+
+/// Mean ayanamsha using static anchor coordinates with explicit precession model.
+pub fn ayanamsha_mean_deg_static_with_model(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    model: PrecessionModel,
+) -> f64 {
+    if let Some(aya) = anchor_relative_ayanamsha_deg(system, t_centuries, model) {
+        aya
+    } else {
+        ayanamsha_3d(system.reference_j2000_deg(), t_centuries, model)
+    }
+}
+
+/// Ayanamsha (with optional nutation) using static anchor coordinates only.
+pub fn ayanamsha_deg_static(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    use_nutation: bool,
+) -> f64 {
+    let mean = ayanamsha_mean_deg_static(system, t_centuries);
+    if use_nutation {
+        let (dpsi, _) = nutation_iau2000b(t_centuries);
+        mean + dpsi / 3600.0
+    } else {
+        mean
+    }
+}
+
+/// Plane-aware mean ayanamsha using static anchor coordinates only.
+///
+/// For `ReferencePlane::Invariable`, projects the hardcoded J2000 ecliptic
+/// anchor to the invariable plane.
+pub fn ayanamsha_mean_deg_static_on_plane(
+    system: AyanamshaSystem,
+    t_centuries: f64,
+    model: PrecessionModel,
+    plane: ReferencePlane,
+) -> f64 {
+    match plane {
+        ReferencePlane::Ecliptic => ayanamsha_mean_deg_static_with_model(system, t_centuries, model),
+        ReferencePlane::Invariable => {
+            if let Some(aya) =
+                anchor_relative_ayanamsha_deg_on_plane(system, t_centuries, model, plane)
+            {
+                aya
+            } else {
+                ayanamsha_3d_on_plane(system.reference_j2000_deg(), t_centuries, model, plane)
+            }
+        }
     }
 }
 
@@ -673,30 +757,59 @@ mod tests {
     }
 
     #[test]
-    fn with_catalog_none_matches_legacy_mean() {
+    fn default_uses_embedded_catalog() {
+        // Default path (no catalog param) must equal explicit embedded catalog path
         let t = 0.24;
         for &sys in AyanamshaSystem::all() {
-            let legacy = ayanamsha_mean_deg(sys, t);
-            let catalog = ayanamsha_mean_deg_with_catalog(sys, t, None);
+            let default_val = ayanamsha_mean_deg(sys, t);
+            let explicit_catalog =
+                ayanamsha_mean_deg_with_catalog(sys, t, Some(TaraCatalog::embedded()));
             assert!(
-                (legacy - catalog).abs() < 1e-15,
-                "{sys:?}: legacy={legacy}, catalog(None)={catalog}"
+                (default_val - explicit_catalog).abs() < 1e-15,
+                "{sys:?}: default={default_val}, explicit_catalog={explicit_catalog}"
             );
         }
     }
 
     #[test]
-    fn with_catalog_none_matches_legacy_deg() {
+    fn with_catalog_none_uses_embedded() {
+        // _with_catalog(None) must also use embedded catalog, not static
         let t = 0.24;
-        for use_nut in [false, true] {
-            for &sys in AyanamshaSystem::all() {
-                let legacy = ayanamsha_deg(sys, t, use_nut);
-                let catalog = ayanamsha_deg_with_catalog(sys, t, use_nut, None);
-                assert!(
-                    (legacy - catalog).abs() < 1e-15,
-                    "{sys:?} nut={use_nut}: legacy={legacy}, catalog(None)={catalog}"
-                );
-            }
+        for &sys in AyanamshaSystem::all() {
+            let with_none = ayanamsha_mean_deg_with_catalog(sys, t, None);
+            let default_val = ayanamsha_mean_deg(sys, t);
+            assert!(
+                (with_none - default_val).abs() < 1e-15,
+                "{sys:?}: with_catalog(None)={with_none}, default={default_val}"
+            );
+        }
+    }
+
+    #[test]
+    fn static_path_self_consistent() {
+        let t = 0.24;
+        for &sys in AyanamshaSystem::all() {
+            let static_val = ayanamsha_mean_deg_static(sys, t);
+            assert!(
+                static_val > 19.0 && static_val < 28.0,
+                "{sys:?}: {static_val}"
+            );
+        }
+    }
+
+    #[test]
+    fn static_and_default_bounded_difference() {
+        // Static vs default (catalog) should differ by less than 5"
+        // at J2000, since anchor coords were derived from the same catalog
+        let t = 0.0;
+        for &sys in AyanamshaSystem::all() {
+            let default_val = ayanamsha_mean_deg(sys, t);
+            let static_val = ayanamsha_mean_deg_static(sys, t);
+            let diff_arcsec = (default_val - static_val).abs() * 3600.0;
+            assert!(
+                diff_arcsec < 5.0,
+                "{sys:?}: default={default_val}, static={static_val} (diff={diff_arcsec}\")"
+            );
         }
     }
 

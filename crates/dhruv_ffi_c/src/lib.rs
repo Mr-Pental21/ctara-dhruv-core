@@ -11041,7 +11041,8 @@ mod tests {
     // --- Ayanamsha catalog-variant tests ---
 
     #[test]
-    fn ffi_ayanamsha_mean_catalog_null_matches_legacy() {
+    fn ffi_ayanamsha_mean_catalog_null_matches_default() {
+        // Both legacy and catalog(null) use embedded catalog → identical
         let jd = 2_451_545.0;
         for code in 0..20_i32 {
             let mut legacy: f64 = 0.0;
@@ -11061,7 +11062,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_ayanamsha_deg_catalog_null_matches_legacy() {
+    fn ffi_ayanamsha_deg_catalog_null_matches_default() {
+        // Both legacy and catalog(null) use embedded catalog → identical
         let jd = 2_460_310.5; // ~2024
         for code in 0..20_i32 {
             let mut legacy: f64 = 0.0;

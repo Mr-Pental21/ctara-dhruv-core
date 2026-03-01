@@ -79,18 +79,34 @@ denylisted source code.
 
 ### Star/Anchor-Based Systems
 
-Star positions at J2000.0 from the Hipparcos catalog (ESA, 1997, public
-domain) converted to ecliptic coordinates using IAU 2006 obliquity.
+Star positions at J2000.0 derived from the HGCA EDR3 star catalog (Brandt
+2021, ApJS 254, 42), propagated from J2016.0 to J2000.0 via proper motion
+(Butkevich & Lindegren 2014), then converted to ecliptic coordinates using
+IAU 2006 obliquity (ε = 23.439291°).
+
+The embedded HGCA catalog (`kernels/data/hgca_tara.json`) is compiled into
+the binary and used as the **default** computation path for all star-anchored
+systems. Static hardcoded coordinates serve as a fallback and validation path.
 
 | System | Anchor | Sidereal Position | J2000.0 Ecliptic Lon | Ayanamsha |
 |--------|--------|-------------------|---------------------|-----------|
 | Lahiri | Sidereal zero at 1956 anchor | 0 deg (sidereal zero) | 23.862 deg | 23°15'00.658" at 1956-03-21 (IAE gazette) |
-| TrueLahiri | Spica (alpha Vir) | 0 deg Libra (180 deg), star-locked | ~203.85 deg | anchor-relative (star-locked) |
+| TrueLahiri | Spica (alpha Vir) | 0 deg Libra (180 deg), star-locked | 203.841 deg | anchor-relative (star-locked) |
 | FaganBradley | SVP calibration | Empirical | Empirical | 24.736 deg (published SVP tables) |
-| PushyaPaksha | delta Cancri | 16 deg Cancer (106 deg) | ~127 deg | 21.000 deg |
-| RohiniPaksha | Aldebaran (alpha Tau) | 15 deg 47 min Taurus (45.783 deg) | ~69.87 deg | 24.087 deg |
-| GalacticCenter0Sag | Galactic Center | 0 deg Sagittarius (240 deg) | ~266.86 deg | 26.860 deg |
-| Aldebaran15Tau | Aldebaran | 15 deg Taurus (45 deg) | ~69.87 deg | 24.870 deg |
+| PushyaPaksha | delta Cancri | 16 deg Cancer (106 deg) | 128.722 deg | 22.722 deg |
+| RohiniPaksha | Aldebaran (alpha Tau) | 15 deg 47 min Taurus (45.783 deg) | 69.789 deg | 24.006 deg |
+| GalacticCenter0Sag | Galactic Center | 0 deg Sagittarius (240 deg) | 266.840 deg | 26.840 deg |
+| Aldebaran15Tau | Aldebaran | 15 deg Taurus (45 deg) | 69.789 deg | 24.789 deg |
+
+### Anchor Star Coordinate Provenance
+
+Source catalog: HGCA EDR3 (Brandt 2021, ApJS 254, 42)
+Reference epoch: J2016.0 (ICRS)
+Propagation: Butkevich & Lindegren (2014) to J2000.0
+Ecliptic conversion: IAU 2006 obliquity (ε = 23.439291°)
+
+Embedded catalog: `kernels/data/hgca_tara.json` (compiled into binary)
+Derivation test: `ayanamsha_anchor::tests::derive_anchor_coordinates_from_catalog()`
 
 ### Epoch-Defined Systems
 
@@ -109,8 +125,8 @@ from published tables or adopted values for that system at J2000.0.
 | UshaShashi | Usha-Shashi | 20.103 deg | Published Usha-Shashi tables |
 | Yukteshwar | Sri Yukteshwar (1894) | 22.376 deg | "The Holy Science" adopted value |
 | JnBhasin | J.N. Bhasin | 22.376 deg | Published J.N. Bhasin tables |
-| ChandraHari | Chandra Hari | 23.250 deg | Published Chandra Hari tables |
-| Jagganatha | Spica at 180° on invariable plane | 23.853 deg | Anchor-relative, invariable plane (see `clean_room_invariable_plane.md`) |
+| ChandraHari | λ Sco at 240° sidereal | 24.586 deg | Anchor-relative (star-locked) |
+| Jagganatha | Spica at 180° on invariable plane | 23.841 deg | Anchor-relative, invariable plane (see `clean_room_invariable_plane.md`) |
 | SuryaSiddhanta | Ancient Indian treatise | 22.459 deg | Back-computed with IAU precession |
 
 ### Design Decision: 3D Precession for All Systems
