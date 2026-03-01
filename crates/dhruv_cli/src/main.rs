@@ -27,6 +27,1317 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(clap::Args)]
+struct RashiTropicalArgs {
+    /// Tropical ecliptic longitude in degrees
+    lon: f64,
+    /// Ayanamsha system code (0-19)
+    #[arg(long)]
+    ayanamsha: i32,
+    /// Julian Date TDB
+    #[arg(long)]
+    jd: f64,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+}
+
+#[derive(clap::Args)]
+struct NakshatraTropicalArgs {
+    /// Tropical ecliptic longitude in degrees
+    lon: f64,
+    /// Ayanamsha system code (0-19)
+    #[arg(long)]
+    ayanamsha: i32,
+    /// Julian Date TDB
+    #[arg(long)]
+    jd: f64,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Scheme: 27 (default) or 28
+    #[arg(long, default_value = "27")]
+    scheme: u32,
+}
+
+#[derive(clap::Args)]
+struct NextSankrantiArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct MasaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct AyanaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct VarshaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct YogaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct MoonNakshatraArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct VaarArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct HoraArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct GhatikaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SphutasArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SpecialLagnasArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct ArudhaPadasArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct PanchangArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Include calendar elements (masa, ayana, varsha)
+    #[arg(long)]
+    calendar: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct AshtakavargaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct UpagrahasArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct GrahaPositionsArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Include nakshatra and pada
+    #[arg(long)]
+    nakshatra: bool,
+    /// Include lagna (ascendant)
+    #[arg(long)]
+    lagna: bool,
+    /// Include outer planets (Uranus, Neptune, Pluto)
+    #[arg(long)]
+    outer: bool,
+    /// Include bhava placement
+    #[arg(long)]
+    bhava: bool,
+    /// Output tropical (ecliptic-of-date) longitudes instead of sidereal
+    #[arg(long, conflicts_with_all = ["nakshatra", "lagna", "outer", "bhava"])]
+    tropical: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct CoreBindusArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Include nakshatra and pada
+    #[arg(long)]
+    nakshatra: bool,
+    /// Include bhava placement
+    #[arg(long)]
+    bhava: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct DrishtiArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Include graha-to-bhava-cusp drishti
+    #[arg(long)]
+    bhava: bool,
+    /// Include graha-to-lagna drishti
+    #[arg(long)]
+    lagna: bool,
+    /// Include graha-to-core-bindus drishti
+    #[arg(long)]
+    bindus: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct KundaliArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+    /// Comma-separated dasha systems (e.g. "vimshottari,chara")
+    #[arg(long)]
+    dasha_systems: Option<String>,
+    /// Max dasha hierarchy depth (0-4, default 2)
+    #[arg(long, default_value = "2")]
+    dasha_max_level: u8,
+    /// UTC datetime for dasha snapshot query
+    #[arg(long)]
+    dasha_snapshot_date: Option<String>,
+    /// Include graha positions
+    #[arg(long)]
+    include_graha: bool,
+    /// Include core bindus
+    #[arg(long)]
+    include_bindus: bool,
+    /// Include drishti
+    #[arg(long)]
+    include_drishti: bool,
+    /// Include ashtakavarga
+    #[arg(long)]
+    include_ashtakavarga: bool,
+    /// Include upagrahas
+    #[arg(long)]
+    include_upagrahas: bool,
+    /// Include special lagnas
+    #[arg(long)]
+    include_special_lagnas: bool,
+    /// Include amsha (divisional charts)
+    #[arg(long)]
+    include_amshas: bool,
+    /// Include shadbala
+    #[arg(long)]
+    include_shadbala: bool,
+    /// Include vimsopaka bala
+    #[arg(long)]
+    include_vimsopaka: bool,
+    /// Include graha avasthas
+    #[arg(long)]
+    include_avastha: bool,
+    /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra)
+    #[arg(long)]
+    include_panchang: bool,
+    /// Include calendar (masa, ayana, varsha). Implies --include-panchang
+    #[arg(long)]
+    include_calendar: bool,
+    /// Node dignity policy: "sign-lord" (default) or "sama"
+    #[arg(long)]
+    node_policy: Option<String>,
+    /// Enable all sections (except dasha, which requires --dasha-systems)
+    #[arg(long)]
+    all: bool,
+}
+
+#[derive(clap::Args)]
+struct PrevSankrantiArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchPurnimasArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchAmavasyasArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchSankrantisArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct NextSpecificSankrantiArgs {
+    #[arg(long)]
+    date: String,
+    /// Rashi index (0=Mesha .. 11=Meena)
+    #[arg(long)]
+    rashi: u8,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct PrevSpecificSankrantiArgs {
+    #[arg(long)]
+    date: String,
+    /// Rashi index (0=Mesha .. 11=Meena)
+    #[arg(long)]
+    rashi: u8,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct AyanamshaComputeArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Optional star catalog for proper-motion-corrected anchors
+    #[arg(long)]
+    catalog: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct SunriseArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    lat: f64,
+    #[arg(long)]
+    lon: f64,
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct BhavasArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    lat: f64,
+    #[arg(long)]
+    lon: f64,
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct LagnaComputeArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    lat: f64,
+    #[arg(long)]
+    lon: f64,
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct LunarNodeArgs {
+    #[arg(long)]
+    date: String,
+    /// Node: rahu or ketu
+    #[arg(long, default_value = "rahu")]
+    node: String,
+    /// Mode: mean or true
+    #[arg(long, default_value = "true")]
+    mode: String,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct NextConjunctionArgs {
+    #[arg(long)]
+    date: String,
+    /// NAIF body code for first body (e.g. 10=Sun, 301=Moon)
+    #[arg(long)]
+    body1: i32,
+    /// NAIF body code for second body
+    #[arg(long)]
+    body2: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct PrevConjunctionArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    body1: i32,
+    #[arg(long)]
+    body2: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchConjunctionsArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long)]
+    body1: i32,
+    #[arg(long)]
+    body2: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchChandraGrahanArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchSuryaGrahanArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct NextStationaryArgs {
+    #[arg(long)]
+    date: String,
+    /// NAIF body code (e.g. 499=Mars, 599=Jupiter)
+    #[arg(long)]
+    body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct PrevStationaryArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchStationaryArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long)]
+    body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct NextMaxSpeedArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct PrevMaxSpeedArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SearchMaxSpeedArgs {
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+    #[arg(long)]
+    body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct PositionArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// NAIF body code for target (e.g. 10=Sun, 301=Moon, 499=Mars)
+    #[arg(long)]
+    target: i32,
+    /// NAIF body code for observer (0=SSB, 399=Earth)
+    #[arg(long, default_value = "399")]
+    observer: i32,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SiderealLongitudeArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// NAIF body code for target
+    #[arg(long)]
+    target: i32,
+    /// NAIF body code for observer (default 399=Earth)
+    #[arg(long, default_value = "399")]
+    observer: i32,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct GrahaLongitudesArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct KshetraSphutaArgs {
+    #[arg(long)]
+    venus: f64,
+    #[arg(long)]
+    moon: f64,
+    #[arg(long)]
+    mars: f64,
+    #[arg(long)]
+    jupiter: f64,
+    #[arg(long)]
+    lagna: f64,
+}
+
+#[derive(clap::Args)]
+struct SookshmaTrisphutaArgs {
+    #[arg(long)]
+    lagna: f64,
+    #[arg(long)]
+    moon: f64,
+    #[arg(long)]
+    gulika: f64,
+    #[arg(long)]
+    sun: f64,
+}
+
+#[derive(clap::Args)]
+struct SiderealSumAtArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct BodyLonLatArgs {
+    #[arg(long)]
+    date: String,
+    /// NAIF body code
+    #[arg(long)]
+    body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct VedicDaySunrisesArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    lat: f64,
+    #[arg(long)]
+    lon: f64,
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct TithiAtArgs {
+    #[arg(long)]
+    date: String,
+    /// Pre-computed elongation in degrees
+    #[arg(long)]
+    elongation: f64,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct KaranaAtArgs {
+    #[arg(long)]
+    date: String,
+    #[arg(long)]
+    elongation: f64,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct YogaAtArgs {
+    #[arg(long)]
+    date: String,
+    /// Pre-computed sidereal sum in degrees
+    #[arg(long)]
+    sum: f64,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct NakshatraAtArgs {
+    #[arg(long)]
+    date: String,
+    /// Moon sidereal longitude in degrees
+    #[arg(long)]
+    moon_sid: f64,
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    #[arg(long)]
+    nutation: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct ShadbalaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Optional graha filter (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn)
+    #[arg(long)]
+    graha: Option<String>,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct VimsopakaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Optional graha filter (Sun..Ketu)
+    #[arg(long)]
+    graha: Option<String>,
+    /// Node dignity policy: sign-lord (default) or sama
+    #[arg(long, default_value = "sign-lord")]
+    node_policy: String,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct AvasthaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Optional graha filter (Sun..Ketu)
+    #[arg(long)]
+    graha: Option<String>,
+    /// Node dignity policy: sign-lord (default) or sama
+    #[arg(long, default_value = "sign-lord")]
+    node_policy: String,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct DashaArgs {
+    /// Dasha system (vimshottari)
+    #[arg(long, default_value = "vimshottari")]
+    system: String,
+    /// Birth UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    birth_date: String,
+    /// Query UTC datetime for snapshot mode (omit for hierarchy-only)
+    #[arg(long)]
+    query_date: Option<String>,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Maximum dasha depth (0-4, default 2)
+    #[arg(long, default_value = "2")]
+    max_level: u8,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct TaraPositionArgs {
+    /// Star name (e.g., "Chitra", "Arcturus")
+    #[arg(long)]
+    star: String,
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Path to star catalog JSON
+    #[arg(long)]
+    catalog: PathBuf,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: PathBuf,
+    /// Ayanamsha system code (0-19, for sidereal output)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Use Apparent accuracy tier (requires --bsp for Earth state)
+    #[arg(long)]
+    apparent: bool,
+    /// Apply parallax correction (requires --bsp for Earth state)
+    #[arg(long)]
+    parallax: bool,
+    /// Path to SPK kernel (required for --apparent or --parallax)
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+}
+
+
 #[derive(Subcommand)]
 enum Commands {
     /// Rashi from sidereal longitude
@@ -43,36 +1354,9 @@ enum Commands {
         scheme: u32,
     },
     /// Rashi from tropical longitude + ayanamsha
-    RashiTropical {
-        /// Tropical ecliptic longitude in degrees
-        lon: f64,
-        /// Ayanamsha system code (0-19)
-        #[arg(long)]
-        ayanamsha: i32,
-        /// Julian Date TDB
-        #[arg(long)]
-        jd: f64,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-    },
+    RashiTropical(RashiTropicalArgs),
     /// Nakshatra from tropical longitude + ayanamsha
-    NakshatraTropical {
-        /// Tropical ecliptic longitude in degrees
-        lon: f64,
-        /// Ayanamsha system code (0-19)
-        #[arg(long)]
-        ayanamsha: i32,
-        /// Julian Date TDB
-        #[arg(long)]
-        jd: f64,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Scheme: 27 (default) or 28
-        #[arg(long, default_value = "27")]
-        scheme: u32,
-    },
+    NakshatraTropical(NakshatraTropicalArgs),
     /// Convert degrees to DMS
     Dms {
         /// Angle in decimal degrees
@@ -103,77 +1387,13 @@ enum Commands {
         lsk: PathBuf,
     },
     /// Find next Sankranti (Sun entering a rashi)
-    NextSankranti {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    NextSankranti(NextSankrantiArgs),
     /// Determine the Masa (lunar month) for a date
-    Masa {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    Masa(MasaArgs),
     /// Determine the Ayana (Uttarayana/Dakshinayana) for a date
-    Ayana {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    Ayana(AyanaArgs),
     /// Determine the Varsha (60-year samvatsara cycle) for a date
-    Varsha {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    Varsha(VarshaArgs),
     /// Determine the Tithi (lunar day) for a date
     Tithi {
         /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
@@ -199,497 +1419,35 @@ enum Commands {
         lsk: PathBuf,
     },
     /// Determine the Yoga (luni-solar yoga) for a date
-    Yoga {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    Yoga(YogaArgs),
     /// Determine the Moon's Nakshatra (27-scheme) with start/end times for a date
-    MoonNakshatra {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    MoonNakshatra(MoonNakshatraArgs),
     /// Determine the Vaar (Vedic weekday) for a date and location
-    Vaar {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Vaar(VaarArgs),
     /// Determine the Hora (planetary hour) for a date and location
-    Hora {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Hora(HoraArgs),
     /// Determine the Ghatika (1-60) for a date and location
-    Ghatika {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Ghatika(GhatikaArgs),
     /// Compute all 16 sphutas for a date and location
-    Sphutas {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Sphutas(SphutasArgs),
     /// Compute all 8 special lagnas for a date and location
-    SpecialLagnas {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    SpecialLagnas(SpecialLagnasArgs),
     /// Compute all 12 arudha padas for a date and location
-    ArudhaPadas {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    ArudhaPadas(ArudhaPadasArgs),
     /// Combined panchang: tithi, karana, yoga, vaar, hora, ghatika
-    Panchang {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Include calendar elements (masa, ayana, varsha)
-        #[arg(long)]
-        calendar: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Panchang(PanchangArgs),
     /// Compute Ashtakavarga (BAV + SAV) for a date and location
-    Ashtakavarga {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Ashtakavarga(AshtakavargaArgs),
     /// Compute all 11 upagrahas for a date and location
-    Upagrahas {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Upagrahas(UpagrahasArgs),
     /// Compute comprehensive graha positions
-    GrahaPositions {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Include nakshatra and pada
-        #[arg(long)]
-        nakshatra: bool,
-        /// Include lagna (ascendant)
-        #[arg(long)]
-        lagna: bool,
-        /// Include outer planets (Uranus, Neptune, Pluto)
-        #[arg(long)]
-        outer: bool,
-        /// Include bhava placement
-        #[arg(long)]
-        bhava: bool,
-        /// Output tropical (ecliptic-of-date) longitudes instead of sidereal
-        #[arg(long, conflicts_with_all = ["nakshatra", "lagna", "outer", "bhava"])]
-        tropical: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    GrahaPositions(GrahaPositionsArgs),
     /// Compute curated sensitive points (bindus) with optional nakshatra/bhava
-    CoreBindus {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Include nakshatra and pada
-        #[arg(long)]
-        nakshatra: bool,
-        /// Include bhava placement
-        #[arg(long)]
-        bhava: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    CoreBindus(CoreBindusArgs),
     /// Compute graha drishti (planetary aspects) with virupa strength
-    Drishti {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Include graha-to-bhava-cusp drishti
-        #[arg(long)]
-        bhava: bool,
-        /// Include graha-to-lagna drishti
-        #[arg(long)]
-        lagna: bool,
-        /// Include graha-to-core-bindus drishti
-        #[arg(long)]
-        bindus: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Drishti(DrishtiArgs),
     /// Compute full kundali in one call (shared intermediates across sections)
-    Kundali {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-        /// Comma-separated dasha systems (e.g. "vimshottari,chara")
-        #[arg(long)]
-        dasha_systems: Option<String>,
-        /// Max dasha hierarchy depth (0-4, default 2)
-        #[arg(long, default_value = "2")]
-        dasha_max_level: u8,
-        /// UTC datetime for dasha snapshot query
-        #[arg(long)]
-        dasha_snapshot_date: Option<String>,
-        /// Include graha positions
-        #[arg(long)]
-        include_graha: bool,
-        /// Include core bindus
-        #[arg(long)]
-        include_bindus: bool,
-        /// Include drishti
-        #[arg(long)]
-        include_drishti: bool,
-        /// Include ashtakavarga
-        #[arg(long)]
-        include_ashtakavarga: bool,
-        /// Include upagrahas
-        #[arg(long)]
-        include_upagrahas: bool,
-        /// Include special lagnas
-        #[arg(long)]
-        include_special_lagnas: bool,
-        /// Include amsha (divisional charts)
-        #[arg(long)]
-        include_amshas: bool,
-        /// Include shadbala
-        #[arg(long)]
-        include_shadbala: bool,
-        /// Include vimsopaka bala
-        #[arg(long)]
-        include_vimsopaka: bool,
-        /// Include graha avasthas
-        #[arg(long)]
-        include_avastha: bool,
-        /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra)
-        #[arg(long)]
-        include_panchang: bool,
-        /// Include calendar (masa, ayana, varsha). Implies --include-panchang
-        #[arg(long)]
-        include_calendar: bool,
-        /// Node dignity policy: "sign-lord" (default) or "sama"
-        #[arg(long)]
-        node_policy: Option<String>,
-        /// Enable all sections (except dasha, which requires --dasha-systems)
-        #[arg(long)]
-        all: bool,
-    },
+    Kundali(KundaliArgs),
     /// Find previous Purnima (full moon)
     PrevPurnima {
         #[arg(long)]
@@ -709,103 +1467,19 @@ enum Commands {
         lsk: PathBuf,
     },
     /// Find previous Sankranti
-    PrevSankranti {
-        #[arg(long)]
-        date: String,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    PrevSankranti(PrevSankrantiArgs),
     /// Search Purnimas in a date range
-    SearchPurnimas {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchPurnimas(SearchPurnimasArgs),
     /// Search Amavasyas in a date range
-    SearchAmavasyas {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchAmavasyas(SearchAmavasyasArgs),
     /// Search Sankrantis in a date range
-    SearchSankrantis {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchSankrantis(SearchSankrantisArgs),
     /// Find next entry of Sun into a specific Rashi
-    NextSpecificSankranti {
-        #[arg(long)]
-        date: String,
-        /// Rashi index (0=Mesha .. 11=Meena)
-        #[arg(long)]
-        rashi: u8,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    NextSpecificSankranti(NextSpecificSankrantiArgs),
     /// Find previous entry of Sun into a specific Rashi
-    PrevSpecificSankranti {
-        #[arg(long)]
-        date: String,
-        /// Rashi index (0=Mesha .. 11=Meena)
-        #[arg(long)]
-        rashi: u8,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    PrevSpecificSankranti(PrevSpecificSankrantiArgs),
     /// Compute ayanamsha for a date
-    AyanamshaCompute {
-        #[arg(long)]
-        date: String,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Optional star catalog for proper-motion-corrected anchors
-        #[arg(long)]
-        catalog: Option<PathBuf>,
-    },
+    AyanamshaCompute(AyanamshaComputeArgs),
     /// Compute nutation (dpsi, deps) for a date
     NutationCompute {
         #[arg(long)]
@@ -816,114 +1490,19 @@ enum Commands {
         lsk: PathBuf,
     },
     /// Compute sunrise/sunset and twilight events
-    Sunrise {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        lat: f64,
-        #[arg(long)]
-        lon: f64,
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Sunrise(SunriseArgs),
     /// Compute bhava (house) cusps
-    Bhavas {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        lat: f64,
-        #[arg(long)]
-        lon: f64,
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Bhavas(BhavasArgs),
     /// Compute Lagna (Ascendant), MC, and RAMC
-    LagnaCompute {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        lat: f64,
-        #[arg(long)]
-        lon: f64,
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    LagnaCompute(LagnaComputeArgs),
     /// Compute Rahu/Ketu (lunar node) longitude
-    LunarNode {
-        #[arg(long)]
-        date: String,
-        /// Node: rahu or ketu
-        #[arg(long, default_value = "rahu")]
-        node: String,
-        /// Mode: mean or true
-        #[arg(long, default_value = "true")]
-        mode: String,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    LunarNode(LunarNodeArgs),
     /// Find next conjunction between two bodies
-    NextConjunction {
-        #[arg(long)]
-        date: String,
-        /// NAIF body code for first body (e.g. 10=Sun, 301=Moon)
-        #[arg(long)]
-        body1: i32,
-        /// NAIF body code for second body
-        #[arg(long)]
-        body2: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    NextConjunction(NextConjunctionArgs),
     /// Find previous conjunction between two bodies
-    PrevConjunction {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        body1: i32,
-        #[arg(long)]
-        body2: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    PrevConjunction(PrevConjunctionArgs),
     /// Search conjunctions between two bodies in a date range
-    SearchConjunctions {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long)]
-        body1: i32,
-        #[arg(long)]
-        body2: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchConjunctions(SearchConjunctionsArgs),
     /// Find next lunar eclipse
     NextChandraGrahan {
         #[arg(long)]
@@ -943,16 +1522,7 @@ enum Commands {
         lsk: PathBuf,
     },
     /// Search lunar eclipses in a date range
-    SearchChandraGrahan {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchChandraGrahan(SearchChandraGrahanArgs),
     /// Find next solar eclipse
     NextSuryaGrahan {
         #[arg(long)]
@@ -972,147 +1542,25 @@ enum Commands {
         lsk: PathBuf,
     },
     /// Search solar eclipses in a date range
-    SearchSuryaGrahan {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchSuryaGrahan(SearchSuryaGrahanArgs),
     /// Find next stationary point of a planet
-    NextStationary {
-        #[arg(long)]
-        date: String,
-        /// NAIF body code (e.g. 499=Mars, 599=Jupiter)
-        #[arg(long)]
-        body: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    NextStationary(NextStationaryArgs),
     /// Find previous stationary point of a planet
-    PrevStationary {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        body: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    PrevStationary(PrevStationaryArgs),
     /// Search stationary points of a planet in a date range
-    SearchStationary {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long)]
-        body: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchStationary(SearchStationaryArgs),
     /// Find next max-speed event of a planet
-    NextMaxSpeed {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        body: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    NextMaxSpeed(NextMaxSpeedArgs),
     /// Find previous max-speed event of a planet
-    PrevMaxSpeed {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        body: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    PrevMaxSpeed(PrevMaxSpeedArgs),
     /// Search max-speed events of a planet in a date range
-    SearchMaxSpeed {
-        #[arg(long)]
-        start: String,
-        #[arg(long)]
-        end: String,
-        #[arg(long)]
-        body: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SearchMaxSpeed(SearchMaxSpeedArgs),
     /// Query spherical position of a body (lon, lat, distance)
-    Position {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// NAIF body code for target (e.g. 10=Sun, 301=Moon, 499=Mars)
-        #[arg(long)]
-        target: i32,
-        /// NAIF body code for observer (0=SSB, 399=Earth)
-        #[arg(long, default_value = "399")]
-        observer: i32,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    Position(PositionArgs),
     /// Sidereal longitude of a body
-    SiderealLongitude {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// NAIF body code for target
-        #[arg(long)]
-        target: i32,
-        /// NAIF body code for observer (default 399=Earth)
-        #[arg(long, default_value = "399")]
-        observer: i32,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SiderealLongitude(SiderealLongitudeArgs),
     /// Sidereal longitudes of all 9 grahas
-    GrahaLongitudes {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    GrahaLongitudes(GrahaLongitudesArgs),
 
     // -------------------------------------------------------------------
     // Individual Sphuta Formulas (pure math)
@@ -1180,18 +1628,7 @@ enum Commands {
         lagna: f64,
     },
     /// Compute Kshetra Sphuta from Venus, Moon, Mars, Jupiter, Lagna
-    KshetraSphuta {
-        #[arg(long)]
-        venus: f64,
-        #[arg(long)]
-        moon: f64,
-        #[arg(long)]
-        mars: f64,
-        #[arg(long)]
-        jupiter: f64,
-        #[arg(long)]
-        lagna: f64,
-    },
+    KshetraSphuta(KshetraSphutaArgs),
     /// Compute Beeja Sphuta from Sun, Venus, Jupiter
     BeejaSphuta {
         #[arg(long)]
@@ -1225,16 +1662,7 @@ enum Commands {
         rahu: f64,
     },
     /// Compute Sookshma TriSphuta = Lagna + Moon + Gulika + Sun
-    SookshmaTrisphuta {
-        #[arg(long)]
-        lagna: f64,
-        #[arg(long)]
-        moon: f64,
-        #[arg(long)]
-        gulika: f64,
-        #[arg(long)]
-        sun: f64,
-    },
+    SookshmaTrisphuta(SookshmaTrisphutaArgs),
     /// Compute Avayoga Sphuta
     AvayogaSphuta {
         #[arg(long)]
@@ -1410,102 +1838,19 @@ enum Commands {
         lsk: PathBuf,
     },
     /// Compute sidereal sum (Moon + Sun) at a date
-    SiderealSumAt {
-        #[arg(long)]
-        date: String,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    SiderealSumAt(SiderealSumAtArgs),
     /// Query body ecliptic longitude and latitude
-    BodyLonLat {
-        #[arg(long)]
-        date: String,
-        /// NAIF body code
-        #[arg(long)]
-        body: i32,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    BodyLonLat(BodyLonLatArgs),
     /// Compute Vedic day sunrise bracket (today's and next sunrise)
-    VedicDaySunrises {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        lat: f64,
-        #[arg(long)]
-        lon: f64,
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    VedicDaySunrises(VedicDaySunrisesArgs),
     /// Compute Tithi from pre-computed elongation at a date
-    TithiAt {
-        #[arg(long)]
-        date: String,
-        /// Pre-computed elongation in degrees
-        #[arg(long)]
-        elongation: f64,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    TithiAt(TithiAtArgs),
     /// Compute Karana from pre-computed elongation at a date
-    KaranaAt {
-        #[arg(long)]
-        date: String,
-        #[arg(long)]
-        elongation: f64,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    KaranaAt(KaranaAtArgs),
     /// Compute Yoga from pre-computed sidereal sum at a date
-    YogaAt {
-        #[arg(long)]
-        date: String,
-        /// Pre-computed sidereal sum in degrees
-        #[arg(long)]
-        sum: f64,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    YogaAt(YogaAtArgs),
     /// Compute Moon nakshatra from pre-computed sidereal longitude at a date
-    NakshatraAt {
-        #[arg(long)]
-        date: String,
-        /// Moon sidereal longitude in degrees
-        #[arg(long)]
-        moon_sid: f64,
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        #[arg(long)]
-        nutation: bool,
-        #[arg(long)]
-        bsp: PathBuf,
-        #[arg(long)]
-        lsk: PathBuf,
-    },
+    NakshatraAt(NakshatraAtArgs),
 
     // -------------------------------------------------------------------
     // Low-level Ashtakavarga / Drishti
@@ -1538,74 +1883,9 @@ enum Commands {
         longitudes: String,
     },
     /// Compute Shadbala (six-fold planetary strength) for a date and location
-    Shadbala {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Optional graha filter (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn)
-        #[arg(long)]
-        graha: Option<String>,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Shadbala(ShadbalaArgs),
     /// Compute Vimsopaka Bala (20-point varga dignity strength) for a date and location
-    Vimsopaka {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Optional graha filter (Sun..Ketu)
-        #[arg(long)]
-        graha: Option<String>,
-        /// Node dignity policy: sign-lord (default) or sama
-        #[arg(long, default_value = "sign-lord")]
-        node_policy: String,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Vimsopaka(VimsopakaArgs),
     /// Transform a sidereal longitude through amsha (divisional chart) mappings
     Amsha {
         /// Sidereal longitude in degrees
@@ -1616,80 +1896,9 @@ enum Commands {
         amsha: String,
     },
     /// Compute Graha Avasthas (planetary states) for a date and location
-    Avastha {
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Optional graha filter (Sun..Ketu)
-        #[arg(long)]
-        graha: Option<String>,
-        /// Node dignity policy: sign-lord (default) or sama
-        #[arg(long, default_value = "sign-lord")]
-        node_policy: String,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Avastha(AvasthaArgs),
     /// Compute Dasha (planetary period) hierarchy or snapshot
-    Dasha {
-        /// Dasha system (vimshottari)
-        #[arg(long, default_value = "vimshottari")]
-        system: String,
-        /// Birth UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        birth_date: String,
-        /// Query UTC datetime for snapshot mode (omit for hierarchy-only)
-        #[arg(long)]
-        query_date: Option<String>,
-        /// Latitude in degrees (north positive)
-        #[arg(long)]
-        lat: f64,
-        /// Longitude in degrees (east positive)
-        #[arg(long)]
-        lon: f64,
-        /// Altitude in meters (default 0)
-        #[arg(long, default_value = "0")]
-        alt: f64,
-        /// Maximum dasha depth (0-4, default 2)
-        #[arg(long, default_value = "2")]
-        max_level: u8,
-        /// Ayanamsha system code (0-19, default 0=Lahiri)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Path to SPK kernel
-        #[arg(long)]
-        bsp: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Path to IERS EOP file (finals2000A.all)
-        #[arg(long)]
-        eop: PathBuf,
-    },
+    Dasha(DashaArgs),
     /// List all fixed stars in a catalog
     TaraList {
         /// Path to star catalog JSON
@@ -1700,35 +1909,7 @@ enum Commands {
         category: Option<String>,
     },
     /// Compute fixed star position (equatorial, ecliptic, or sidereal)
-    TaraPosition {
-        /// Star name (e.g., "Chitra", "Arcturus")
-        #[arg(long)]
-        star: String,
-        /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
-        #[arg(long)]
-        date: String,
-        /// Path to star catalog JSON
-        #[arg(long)]
-        catalog: PathBuf,
-        /// Path to leap second kernel
-        #[arg(long)]
-        lsk: PathBuf,
-        /// Ayanamsha system code (0-19, for sidereal output)
-        #[arg(long, default_value = "0")]
-        ayanamsha: i32,
-        /// Apply nutation correction
-        #[arg(long)]
-        nutation: bool,
-        /// Use Apparent accuracy tier (requires --bsp for Earth state)
-        #[arg(long)]
-        apparent: bool,
-        /// Apply parallax correction (requires --bsp for Earth state)
-        #[arg(long)]
-        parallax: bool,
-        /// Path to SPK kernel (required for --apparent or --parallax)
-        #[arg(long)]
-        bsp: Option<PathBuf>,
-    },
+    TaraPosition(TaraPositionArgs),
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -1959,19 +2140,14 @@ fn main() {
             }
         },
 
-        Commands::RashiTropical {
-            lon,
-            ayanamsha,
-            jd,
-            nutation,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let t = jd_tdb_to_centuries(jd);
-            let aya = ayanamsha_deg(system, t, nutation);
-            let info = rashi_from_tropical(lon, system, jd, nutation);
+        Commands::RashiTropical(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let t = jd_tdb_to_centuries(args.jd);
+            let aya = ayanamsha_deg(system, t, args.nutation);
+            let info = rashi_from_tropical(args.lon, system, args.jd, args.nutation);
             let dms = info.dms;
             println!("Ayanamsha: {:.4} deg", aya);
-            println!("Sidereal: {:.4} deg", lon - aya);
+            println!("Sidereal: {:.4} deg", args.lon - aya);
             println!(
                 "{} ({}) - {} deg {} min {:.1} sec ({:.4} deg in rashi)",
                 info.rashi.name(),
@@ -1983,21 +2159,15 @@ fn main() {
             );
         }
 
-        Commands::NakshatraTropical {
-            lon,
-            ayanamsha,
-            jd,
-            nutation,
-            scheme,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let t = jd_tdb_to_centuries(jd);
-            let aya = ayanamsha_deg(system, t, nutation);
+        Commands::NakshatraTropical(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let t = jd_tdb_to_centuries(args.jd);
+            let aya = ayanamsha_deg(system, t, args.nutation);
             println!("Ayanamsha: {:.4} deg", aya);
-            println!("Sidereal: {:.4} deg", lon - aya);
-            match scheme {
+            println!("Sidereal: {:.4} deg", args.lon - aya);
+            match args.scheme {
                 27 => {
-                    let info = nakshatra_from_tropical(lon, system, jd, nutation);
+                    let info = nakshatra_from_tropical(args.lon, system, args.jd, args.nutation);
                     println!(
                         "{} (index {}) - Pada {} ({:.4} deg in nakshatra, {:.4} deg in pada)",
                         info.nakshatra.name(),
@@ -2008,7 +2178,7 @@ fn main() {
                     );
                 }
                 28 => {
-                    let info = nakshatra28_from_tropical(lon, system, jd, nutation);
+                    let info = nakshatra28_from_tropical(args.lon, system, args.jd, args.nutation);
                     println!(
                         "{} (index {}) - Pada {} ({:.4} deg in nakshatra)",
                         info.nakshatra.name(),
@@ -2018,7 +2188,7 @@ fn main() {
                     );
                 }
                 _ => {
-                    eprintln!("Invalid scheme: {scheme}. Use 27 or 28.");
+                    eprintln!("Invalid scheme: {}. Use 27 or 28.", args.scheme);
                     std::process::exit(1);
                 }
             }
@@ -2073,20 +2243,14 @@ fn main() {
             }
         }
 
-        Commands::NextSankranti {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::NextSankranti(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::next_sankranti(&engine, &utc, &config) {
                 Ok(Some(ev)) => {
                     println!(
@@ -2108,20 +2272,14 @@ fn main() {
             }
         }
 
-        Commands::Masa {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Masa(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::masa_for_date(&engine, &utc, &config) {
                 Ok(info) => {
                     let adhika_str = if info.adhika { " (Adhika)" } else { "" };
@@ -2136,20 +2294,14 @@ fn main() {
             }
         }
 
-        Commands::Ayana {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Ayana(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::ayana_for_date(&engine, &utc, &config) {
                 Ok(info) => {
                     println!("Ayana: {}", info.ayana.name());
@@ -2163,20 +2315,14 @@ fn main() {
             }
         }
 
-        Commands::Varsha {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Varsha(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::varsha_for_date(&engine, &utc, &config) {
                 Ok(info) => {
                     println!(
@@ -2241,20 +2387,14 @@ fn main() {
             }
         }
 
-        Commands::Yoga {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Yoga(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::yoga_for_date(&engine, &utc, &config) {
                 Ok(info) => {
                     println!("Yoga: {} (index {})", info.yoga.name(), info.yoga_index);
@@ -2268,20 +2408,14 @@ fn main() {
             }
         }
 
-        Commands::MoonNakshatra {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::MoonNakshatra(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::nakshatra_for_date(&engine, &utc, &config) {
                 Ok(info) => {
                     println!(
@@ -2300,22 +2434,14 @@ fn main() {
             }
         }
 
-        Commands::Vaar {
-            date,
-            lat,
-            lon,
-            alt,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Vaar(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
             match dhruv_search::vaar_for_date(&engine, &eop_kernel, &utc, &location, &rs_config) {
                 Ok(info) => {
@@ -2330,22 +2456,14 @@ fn main() {
             }
         }
 
-        Commands::Hora {
-            date,
-            lat,
-            lon,
-            alt,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Hora(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
             match dhruv_search::hora_for_date(&engine, &eop_kernel, &utc, &location, &rs_config) {
                 Ok(info) => {
@@ -2364,22 +2482,14 @@ fn main() {
             }
         }
 
-        Commands::Ghatika {
-            date,
-            lat,
-            lon,
-            alt,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Ghatika(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
             match dhruv_search::ghatika_for_date(&engine, &eop_kernel, &utc, &location, &rs_config)
             {
@@ -2395,30 +2505,20 @@ fn main() {
             }
         }
 
-        Commands::Sphutas {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Sphutas(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
 
             // Get graha sidereal longitudes
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let graha_lons =
-                dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, nutation)
+                dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, args.nutation)
                     .unwrap_or_else(|e| {
                         eprintln!("Error computing graha longitudes: {e}");
                         std::process::exit(1);
@@ -2433,7 +2533,7 @@ fn main() {
                         std::process::exit(1);
                     });
             let t = dhruv_vedic_base::jd_tdb_to_centuries(jd_tdb);
-            let aya = dhruv_vedic_base::ayanamsha_deg(system, t, nutation);
+            let aya = dhruv_vedic_base::ayanamsha_deg(system, t, args.nutation);
             let lagna_sid = (asc_rad.to_degrees() - aya).rem_euclid(360.0);
 
             // Get 8th lord longitude
@@ -2456,11 +2556,11 @@ fn main() {
             };
 
             let results = dhruv_vedic_base::all_sphutas(&inputs);
-            println!("Sphutas for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Sphutas for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
             println!(
                 "Graha longitudes (sidereal, aya code={} {}):",
-                ayanamsha,
-                if nutation { "+nutation" } else { "" }
+                args.ayanamsha,
+                if args.nutation { "+nutation" } else { "" }
             );
             for graha in dhruv_vedic_base::graha::ALL_GRAHAS {
                 println!("  {:8} {:>8.4}°", graha.name(), graha_lons.longitude(graha));
@@ -2485,25 +2585,15 @@ fn main() {
             );
         }
 
-        Commands::SpecialLagnas {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = aya_system_from_code(ayanamsha)
-                .unwrap_or_else(|| panic!("Invalid ayanamsha code: {ayanamsha}"));
-            let utc = parse_utc(&date).unwrap_or_else(|e| panic!("Invalid date: {e}"));
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+        Commands::SpecialLagnas(args) => {
+            let system = aya_system_from_code(args.ayanamsha)
+                .unwrap_or_else(|| panic!("Invalid ayanamsha code: {}", args.ayanamsha));
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| panic!("Invalid date: {e}"));
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
-            let config = SankrantiConfig::new(system, nutation);
+            let config = SankrantiConfig::new(system, args.nutation);
 
             let result = dhruv_search::special_lagnas_for_date(
                 &engine,
@@ -2517,7 +2607,7 @@ fn main() {
 
             println!(
                 "Special Lagnas for {} at {:.4}°N, {:.4}°E\n",
-                date, lat, lon
+                args.date, args.lat, args.lon
             );
             println!("  Bhava Lagna:     {:>10.4}°", result.bhava_lagna);
             println!("  Hora Lagna:      {:>10.4}°", result.hora_lagna);
@@ -2529,27 +2619,17 @@ fn main() {
             println!("  Indu Lagna:      {:>10.4}°", result.indu_lagna);
         }
 
-        Commands::ArudhaPadas {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::ArudhaPadas(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
-            let aya_config = SankrantiConfig::new(system, nutation);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
 
             let results = dhruv_search::arudha_padas_for_date(
                 &engine,
@@ -2564,7 +2644,7 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Arudha Padas for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Arudha Padas for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
             for r in &results {
                 let rashi_info = dhruv_vedic_base::rashi_from_longitude(r.longitude_deg);
                 println!(
@@ -2579,28 +2659,17 @@ fn main() {
             }
         }
 
-        Commands::Panchang {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            calendar,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Panchang(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
-            let config = SankrantiConfig::new(system, nutation);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::panchang_for_date(
                 &engine,
                 &eop_kernel,
@@ -2608,10 +2677,10 @@ fn main() {
                 &location,
                 &rs_config,
                 &config,
-                calendar,
+                args.calendar,
             ) {
                 Ok(info) => {
-                    println!("Panchang for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+                    println!("Panchang for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
                     println!(
                         "Tithi:    {} (index {})",
                         info.tithi.tithi.name(),
@@ -2683,26 +2752,16 @@ fn main() {
             }
         }
 
-        Commands::Ashtakavarga {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Ashtakavarga(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
-            let config = dhruv_search::sankranti_types::SankrantiConfig::new(system, nutation);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let config = dhruv_search::sankranti_types::SankrantiConfig::new(system, args.nutation);
 
             let result =
                 dhruv_search::ashtakavarga_for_date(&engine, &eop_kernel, &utc, &location, &config)
@@ -2718,7 +2777,7 @@ fn main() {
                 "Mes", "Vrs", "Mit", "Kar", "Sim", "Kan", "Tul", "Vri", "Dha", "Mak", "Kum", "Mee",
             ];
 
-            println!("Ashtakavarga for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Ashtakavarga for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
 
             // BAV tables
             println!("Bhinna Ashtakavarga (BAV):\n");
@@ -2769,27 +2828,17 @@ fn main() {
             println!("{:>7}", ek_total);
         }
 
-        Commands::Upagrahas {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Upagrahas(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
-            let config = dhruv_search::sankranti_types::SankrantiConfig::new(system, nutation);
+            let config = dhruv_search::sankranti_types::SankrantiConfig::new(system, args.nutation);
 
             let result = dhruv_search::all_upagrahas_for_date(
                 &engine,
@@ -2804,7 +2853,7 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Upagrahas for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Upagrahas for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
             println!("Time-based:");
             for (name, lon) in [
                 ("Gulika", result.gulika),
@@ -2845,29 +2894,14 @@ fn main() {
                 );
             }
         }
-        Commands::GrahaPositions {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            nakshatra,
-            lagna,
-            outer,
-            bhava,
-            tropical,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::GrahaPositions(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
 
-            if tropical {
+            if args.tropical {
                 let jd_tdb = utc.to_jd_tdb(engine.lsk());
                 let result = dhruv_search::graha_tropical_longitudes(&engine, jd_tdb)
                     .unwrap_or_else(|e| {
@@ -2877,7 +2911,7 @@ fn main() {
 
                 println!(
                     "Graha Positions for {} at {:.4}°N, {:.4}°E\n",
-                    date, lat, lon
+                    args.date, args.lat, args.lon
                 );
 
                 let graha_names = [
@@ -2893,16 +2927,16 @@ fn main() {
                     println!("{:<10} {:>9.4}°", graha_names[idx], lon);
                 }
             } else {
-                let system = require_aya_system(ayanamsha);
-                let eop_kernel = load_eop(&eop);
-                let location = GeoLocation::new(lat, lon, alt);
+                let system = require_aya_system(args.ayanamsha);
+                let eop_kernel = load_eop(&args.eop);
+                let location = GeoLocation::new(args.lat, args.lon, args.alt);
                 let bhava_config = BhavaConfig::default();
-                let aya_config = SankrantiConfig::new(system, nutation);
+                let aya_config = SankrantiConfig::new(system, args.nutation);
                 let gp_config = dhruv_search::GrahaPositionsConfig {
-                    include_nakshatra: nakshatra,
-                    include_lagna: lagna,
-                    include_outer_planets: outer,
-                    include_bhava: bhava,
+                    include_nakshatra: args.nakshatra,
+                    include_lagna: args.lagna,
+                    include_outer_planets: args.outer,
+                    include_bhava: args.bhava,
                 };
 
                 let result = dhruv_search::graha_positions(
@@ -2921,7 +2955,7 @@ fn main() {
 
                 println!(
                     "Graha Positions for {} at {:.4}°N, {:.4}°E\n",
-                    date, lat, lon
+                    args.date, args.lat, args.lon
                 );
 
                 // Header
@@ -2930,14 +2964,14 @@ fn main() {
                     "Ketu",
                 ];
                 print!("{:<10} {:>10}  {:<10}", "Graha", "Longitude", "Rashi");
-                if nakshatra {
+                if args.nakshatra {
                     print!("  {:<18} {:>4}", "Nakshatra", "Pada");
                 }
-                if bhava {
+                if args.bhava {
                     print!("  {:>5}", "Bhava");
                 }
                 println!();
-                let width = 32 + if nakshatra { 24 } else { 0 } + if bhava { 7 } else { 0 };
+                let width = 32 + if args.nakshatra { 24 } else { 0 } + if args.bhava { 7 } else { 0 };
                 println!("{}", "-".repeat(width));
 
                 let print_entry =
@@ -2948,7 +2982,7 @@ fn main() {
                             entry.sidereal_longitude,
                             entry.rashi.name(),
                         );
-                        if nakshatra {
+                        if args.nakshatra {
                             print!(
                                 "  {:<18} {:>4}",
                                 entry.nakshatra.name(),
@@ -2959,7 +2993,7 @@ fn main() {
                                 },
                             );
                         }
-                        if bhava {
+                        if args.bhava {
                             let bh = force_bhava.unwrap_or(entry.bhava_number);
                             print!(
                                 "  {:>5}",
@@ -2973,11 +3007,11 @@ fn main() {
                     print_entry(graha_names[i], entry, None);
                 }
 
-                if lagna {
+                if args.lagna {
                     print_entry("Lagna", &result.lagna, Some(1));
                 }
 
-                if outer {
+                if args.outer {
                     let planet_names = ["Uranus", "Neptune", "Pluto"];
                     for (i, entry) in result.outer_planets.iter().enumerate() {
                         print_entry(planet_names[i], entry, None);
@@ -2985,33 +3019,21 @@ fn main() {
                 }
             }
         }
-        Commands::CoreBindus {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            nakshatra,
-            bhava,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::CoreBindus(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
             let rs_config = RiseSetConfig::default();
-            let aya_config = SankrantiConfig::new(system, nutation);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
             let bindus_config = dhruv_search::BindusConfig {
-                include_nakshatra: nakshatra,
-                include_bhava: bhava,
+                include_nakshatra: args.nakshatra,
+                include_bhava: args.bhava,
             };
 
             let result = dhruv_search::core_bindus(
@@ -3029,18 +3051,18 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Core Bindus for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Core Bindus for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
 
             // Header
             print!("{:<16} {:>10}  {:<10}", "Name", "Longitude", "Rashi");
-            if nakshatra {
+            if args.nakshatra {
                 print!("  {:<18} {:>4}", "Nakshatra", "Pada");
             }
-            if bhava {
+            if args.bhava {
                 print!("  {:>5}", "Bhava");
             }
             println!();
-            let width = 38 + if nakshatra { 24 } else { 0 } + if bhava { 7 } else { 0 };
+            let width = 38 + if args.nakshatra { 24 } else { 0 } + if args.bhava { 7 } else { 0 };
             println!("{}", "-".repeat(width));
 
             let print_entry = |name: &str, entry: &dhruv_search::GrahaEntry| {
@@ -3050,7 +3072,7 @@ fn main() {
                     entry.sidereal_longitude,
                     entry.rashi.name(),
                 );
-                if nakshatra {
+                if args.nakshatra {
                     print!(
                         "  {:<18} {:>4}",
                         entry.nakshatra.name(),
@@ -3061,7 +3083,7 @@ fn main() {
                         },
                     );
                 }
-                if bhava {
+                if args.bhava {
                     print!(
                         "  {:>5}",
                         if entry.bhava_number > 0 {
@@ -3102,35 +3124,22 @@ fn main() {
             print_entry("Ghati Lagna", &result.ghati_lagna);
             print_entry("Sree Lagna", &result.sree_lagna);
         }
-        Commands::Drishti {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            bhava,
-            lagna,
-            bindus,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Drishti(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
             let rs_config = RiseSetConfig::default();
-            let aya_config = SankrantiConfig::new(system, nutation);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
             let drishti_config = dhruv_search::DrishtiConfig {
-                include_bhava: bhava,
-                include_lagna: lagna,
-                include_bindus: bindus,
+                include_bhava: args.bhava,
+                include_lagna: args.lagna,
+                include_bindus: args.bindus,
             };
 
             let result = dhruv_search::drishti_for_date(
@@ -3152,7 +3161,7 @@ fn main() {
                 "Sun", "Moon", "Mars", "Merc", "Jup", "Ven", "Sat", "Rahu", "Ketu",
             ];
 
-            println!("Graha Drishti for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Graha Drishti for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
 
             // 9x9 graha-to-graha matrix
             println!("Graha-to-Graha (total virupa):");
@@ -3175,7 +3184,7 @@ fn main() {
                 println!();
             }
 
-            if lagna {
+            if args.lagna {
                 println!("\nGraha-to-Lagna:");
                 println!(
                     "{:<8} {:>8} {:>8} {:>8} {:>8}",
@@ -3191,7 +3200,7 @@ fn main() {
                 }
             }
 
-            if bhava {
+            if args.bhava {
                 println!("\nGraha-to-Bhava Cusps (total virupa):");
                 print!("{:<8}", "Graha");
                 for b in 1..=12 {
@@ -3208,7 +3217,7 @@ fn main() {
                 }
             }
 
-            if bindus {
+            if args.bindus {
                 let bindu_names = [
                     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
                     "BhrBin", "Prana", "Gulik", "Maand", "HoraL", "GhatiL", "SreeL",
@@ -3229,51 +3238,24 @@ fn main() {
                 }
             }
         }
-        Commands::Kundali {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            eop,
-            dasha_systems,
-            dasha_max_level,
-            dasha_snapshot_date,
-            include_graha,
-            include_bindus,
-            include_drishti,
-            include_ashtakavarga,
-            include_upagrahas,
-            include_special_lagnas,
-            include_amshas,
-            include_shadbala,
-            include_vimsopaka,
-            include_avastha,
-            include_panchang,
-            include_calendar,
-            node_policy,
-            all,
-        } => {
-            if dasha_snapshot_date.is_some() && dasha_systems.is_none() {
+        Commands::Kundali(args) => {
+            if args.dasha_snapshot_date.is_some() && args.dasha_systems.is_none() {
                 eprintln!("Error: --dasha-snapshot-date requires --dasha-systems");
                 std::process::exit(1);
             }
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
             let rs_config = RiseSetConfig::default();
-            let aya_config = SankrantiConfig::new(system, nutation);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
 
-            let node_dignity_policy = match node_policy.as_deref() {
+            let node_dignity_policy = match args.node_policy.as_deref() {
                 Some("sama") => NodeDignityPolicy::AlwaysSama,
                 Some("sign-lord") | None => NodeDignityPolicy::SignLordBased,
                 Some(other) => {
@@ -3283,22 +3265,22 @@ fn main() {
             };
 
             let resolved = resolve_kundali_flags(
-                all,
-                include_graha,
-                include_bindus,
-                include_drishti,
-                include_ashtakavarga,
-                include_upagrahas,
-                include_special_lagnas,
-                include_amshas,
-                include_shadbala,
-                include_vimsopaka,
-                include_avastha,
-                include_panchang,
-                include_calendar,
+                args.all,
+                args.include_graha,
+                args.include_bindus,
+                args.include_drishti,
+                args.include_ashtakavarga,
+                args.include_upagrahas,
+                args.include_special_lagnas,
+                args.include_amshas,
+                args.include_shadbala,
+                args.include_vimsopaka,
+                args.include_avastha,
+                args.include_panchang,
+                args.include_calendar,
             );
 
-            let snapshot_jd = dasha_snapshot_date.as_ref().map(|d| {
+            let snapshot_jd = args.dasha_snapshot_date.as_ref().map(|d| {
                 let snap_utc = parse_utc(d).unwrap_or_else(|e| {
                     eprintln!("{e}");
                     std::process::exit(1);
@@ -3308,8 +3290,8 @@ fn main() {
 
             let full_config = build_kundali_config(
                 &resolved,
-                dasha_systems.as_deref(),
-                dasha_max_level,
+                args.dasha_systems.as_deref(),
+                args.dasha_max_level,
                 snapshot_jd,
                 node_dignity_policy,
             );
@@ -3329,7 +3311,7 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Kundali for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Kundali for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
             print_kundali(&mut std::io::stdout(), &result, &resolved).unwrap_or_else(|e| {
                 eprintln!("Error writing output: {e}");
                 std::process::exit(1);
@@ -3380,20 +3362,14 @@ fn main() {
             }
         }
 
-        Commands::PrevSankranti {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::PrevSankranti(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::prev_sankranti(&engine, &utc, &config) {
                 Ok(Some(ev)) => {
                     println!(
@@ -3415,21 +3391,16 @@ fn main() {
             }
         }
 
-        Commands::SearchPurnimas {
-            start,
-            end,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchPurnimas(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
             match dhruv_search::search_purnimas(&engine, &s, &e) {
                 Ok(events) => {
                     println!("Found {} Purnimas:", events.len());
@@ -3447,21 +3418,16 @@ fn main() {
             }
         }
 
-        Commands::SearchAmavasyas {
-            start,
-            end,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchAmavasyas(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
             match dhruv_search::search_amavasyas(&engine, &s, &e) {
                 Ok(events) => {
                     println!("Found {} Amavasyas:", events.len());
@@ -3479,25 +3445,18 @@ fn main() {
             }
         }
 
-        Commands::SearchSankrantis {
-            start,
-            end,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchSankrantis(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::search_sankrantis(&engine, &s, &e, &config) {
                 Ok(events) => {
                     println!("Found {} Sankrantis:", events.len());
@@ -3519,22 +3478,15 @@ fn main() {
             }
         }
 
-        Commands::NextSpecificSankranti {
-            date,
-            rashi,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::NextSpecificSankranti(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let target = rashi_from_index(rashi);
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let target = rashi_from_index(args.rashi);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::next_specific_sankranti(&engine, &utc, target, &config) {
                 Ok(Some(ev)) => {
                     println!("Next {} Sankranti: {}", ev.rashi.name(), ev.utc);
@@ -3551,22 +3503,15 @@ fn main() {
             }
         }
 
-        Commands::PrevSpecificSankranti {
-            date,
-            rashi,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::PrevSpecificSankranti(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let target = rashi_from_index(rashi);
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
-            let config = SankrantiConfig::new(system, nutation);
+            let target = rashi_from_index(args.rashi);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::prev_specific_sankranti(&engine, &utc, target, &config) {
                 Ok(Some(ev)) => {
                     println!("Previous {} Sankranti: {}", ev.rashi.name(), ev.utc);
@@ -3583,34 +3528,27 @@ fn main() {
             }
         }
 
-        Commands::AyanamshaCompute {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            catalog,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::AyanamshaCompute(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let t = jd_tdb_to_centuries(jd_tdb);
-            let cat = catalog.map(|p| {
+            let cat = args.catalog.map(|p| {
                 TaraCatalog::load(&p).unwrap_or_else(|e| {
                     eprintln!("Failed to load star catalog: {e}");
                     std::process::exit(1);
                 })
             });
-            let aya = ayanamsha_deg_with_catalog(system, t, nutation, cat.as_ref());
+            let aya = ayanamsha_deg_with_catalog(system, t, args.nutation, cat.as_ref());
             println!(
                 "Ayanamsha ({:?}): {:.6}°{}{}",
                 system,
                 aya,
-                if nutation { " (with nutation)" } else { "" },
+                if args.nutation { " (with nutation)" } else { "" },
                 if cat.is_some() {
                     " (with star catalog)"
                 } else {
@@ -3633,22 +3571,14 @@ fn main() {
             println!("  deps (obliquity): {:.6} arcsec", deps);
         }
 
-        Commands::Sunrise {
-            date,
-            lat,
-            lon,
-            alt,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Sunrise(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
             let jd_utc = utc_to_jd_utc(&utc);
             let jd_noon =
@@ -3669,7 +3599,7 @@ fn main() {
 
             println!(
                 "Rise/Set events for {} at {:.4}°N, {:.4}°E:\n",
-                date, lat, lon
+                args.date, args.lat, args.lon
             );
             for result in &events {
                 match result {
@@ -3682,22 +3612,14 @@ fn main() {
             }
         }
 
-        Commands::Bhavas {
-            date,
-            lat,
-            lon,
-            alt,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Bhavas(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
             let jd_utc = utc_to_jd_utc(&utc);
 
@@ -3714,7 +3636,7 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Bhavas for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+            println!("Bhavas for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
             println!(
                 "  Lagna: {:.4}°  MC: {:.4}°\n",
                 result.lagna_deg, result.mc_deg
@@ -3732,22 +3654,14 @@ fn main() {
             }
         }
 
-        Commands::LagnaCompute {
-            date,
-            lat,
-            lon,
-            alt,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::LagnaCompute(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let jd_utc = utc_to_jd_utc(&utc);
 
             let lagna =
@@ -3782,21 +3696,15 @@ fn main() {
             );
         }
 
-        Commands::LunarNode {
-            date,
-            node,
-            mode,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::LunarNode(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let lunar_node = parse_lunar_node(&node);
-            let node_mode = parse_node_mode(&mode);
+            let lunar_node = parse_lunar_node(&args.node);
+            let node_mode = parse_node_mode(&args.mode);
             let lon =
                 dhruv_vedic_base::lunar_node_deg_for_epoch(&engine, lunar_node, jd_tdb, node_mode)
                     .unwrap_or_else(|e| {
@@ -3806,20 +3714,14 @@ fn main() {
             println!("{:?} ({:?}): {:.6}°", lunar_node, node_mode, lon);
         }
 
-        Commands::NextConjunction {
-            date,
-            body1,
-            body2,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::NextConjunction(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b1 = require_body(body1);
-            let b2 = require_body(body2);
-            let engine = load_engine(&bsp, &lsk);
+            let b1 = require_body(args.body1);
+            let b2 = require_body(args.body2);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let config = ConjunctionConfig::conjunction(1.0);
             match dhruv_search::next_conjunction(&engine, b1, b2, jd_tdb, &config) {
@@ -3832,20 +3734,14 @@ fn main() {
             }
         }
 
-        Commands::PrevConjunction {
-            date,
-            body1,
-            body2,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::PrevConjunction(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b1 = require_body(body1);
-            let b2 = require_body(body2);
-            let engine = load_engine(&bsp, &lsk);
+            let b1 = require_body(args.body1);
+            let b2 = require_body(args.body2);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let config = ConjunctionConfig::conjunction(1.0);
             match dhruv_search::prev_conjunction(&engine, b1, b2, jd_tdb, &config) {
@@ -3858,25 +3754,18 @@ fn main() {
             }
         }
 
-        Commands::SearchConjunctions {
-            start,
-            end,
-            body1,
-            body2,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchConjunctions(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b1 = require_body(body1);
-            let b2 = require_body(body2);
-            let engine = load_engine(&bsp, &lsk);
+            let b1 = require_body(args.body1);
+            let b2 = require_body(args.body2);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = s.to_jd_tdb(engine.lsk());
             let jd_end = e.to_jd_tdb(engine.lsk());
             let config = ConjunctionConfig::conjunction(1.0);
@@ -3936,21 +3825,16 @@ fn main() {
             }
         }
 
-        Commands::SearchChandraGrahan {
-            start,
-            end,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchChandraGrahan(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = s.to_jd_tdb(engine.lsk());
             let jd_end = e.to_jd_tdb(engine.lsk());
             let config = GrahanConfig {
@@ -4013,21 +3897,16 @@ fn main() {
             }
         }
 
-        Commands::SearchSuryaGrahan {
-            start,
-            end,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchSuryaGrahan(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = s.to_jd_tdb(engine.lsk());
             let jd_end = e.to_jd_tdb(engine.lsk());
             let config = GrahanConfig {
@@ -4048,18 +3927,13 @@ fn main() {
             }
         }
 
-        Commands::NextStationary {
-            date,
-            body,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::NextStationary(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(body);
-            let engine = load_engine(&bsp, &lsk);
+            let b = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let config = StationaryConfig::inner_planet();
             match dhruv_search::next_stationary(&engine, b, jd_tdb, &config) {
@@ -4072,18 +3946,13 @@ fn main() {
             }
         }
 
-        Commands::PrevStationary {
-            date,
-            body,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::PrevStationary(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(body);
-            let engine = load_engine(&bsp, &lsk);
+            let b = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let config = StationaryConfig::inner_planet();
             match dhruv_search::prev_stationary(&engine, b, jd_tdb, &config) {
@@ -4096,23 +3965,17 @@ fn main() {
             }
         }
 
-        Commands::SearchStationary {
-            start,
-            end,
-            body,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchStationary(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(body);
-            let engine = load_engine(&bsp, &lsk);
+            let b = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = s.to_jd_tdb(engine.lsk());
             let jd_end = e.to_jd_tdb(engine.lsk());
             let config = StationaryConfig::inner_planet();
@@ -4130,18 +3993,13 @@ fn main() {
             }
         }
 
-        Commands::NextMaxSpeed {
-            date,
-            body,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::NextMaxSpeed(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(body);
-            let engine = load_engine(&bsp, &lsk);
+            let b = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let config = StationaryConfig::inner_planet();
             match dhruv_search::next_max_speed(&engine, b, jd_tdb, &config) {
@@ -4154,18 +4012,13 @@ fn main() {
             }
         }
 
-        Commands::PrevMaxSpeed {
-            date,
-            body,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::PrevMaxSpeed(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(body);
-            let engine = load_engine(&bsp, &lsk);
+            let b = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let config = StationaryConfig::inner_planet();
             match dhruv_search::prev_max_speed(&engine, b, jd_tdb, &config) {
@@ -4178,23 +4031,17 @@ fn main() {
             }
         }
 
-        Commands::SearchMaxSpeed {
-            start,
-            end,
-            body,
-            bsp,
-            lsk,
-        } => {
-            let s = parse_utc(&start).unwrap_or_else(|e| {
+        Commands::SearchMaxSpeed(args) => {
+            let s = parse_utc(&args.start).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let e = parse_utc(&end).unwrap_or_else(|e| {
+            let e = parse_utc(&args.end).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(body);
-            let engine = load_engine(&bsp, &lsk);
+            let b = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = s.to_jd_tdb(engine.lsk());
             let jd_end = e.to_jd_tdb(engine.lsk());
             let config = StationaryConfig::inner_planet();
@@ -4212,20 +4059,14 @@ fn main() {
             }
         }
 
-        Commands::Position {
-            date,
-            target,
-            observer,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Position(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let t = require_body(target);
-            let obs = require_observer(observer);
-            let engine = load_engine(&bsp, &lsk);
+            let t = require_body(args.target);
+            let obs = require_observer(args.observer);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
 
             // Helper: ecliptic-of-date spherical coords at a given JD TDB.
@@ -4263,23 +4104,15 @@ fn main() {
             println!("  Distance speed: {:.6} km/s", dist_speed);
         }
 
-        Commands::SiderealLongitude {
-            date,
-            target,
-            observer,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::SiderealLongitude(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let t = require_body(target);
-            let obs = require_observer(observer);
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
+            let t = require_body(args.target);
+            let obs = require_observer(args.observer);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             let query = Query {
                 target: t,
@@ -4295,28 +4128,22 @@ fn main() {
             let ecl_j2000 = icrf_to_ecliptic(&state.position_km);
             let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, tc);
             let tropical_lon = cartesian_to_spherical(&ecl_date).lon_deg;
-            let aya = ayanamsha_deg(system, tc, nutation);
+            let aya = ayanamsha_deg(system, tc, args.nutation);
             let sid = (tropical_lon - aya).rem_euclid(360.0);
             println!("Tropical longitude: {:.6}°", tropical_lon);
             println!("Ayanamsha ({:?}): {:.6}°", system, aya);
             println!("Sidereal longitude: {:.6}°", sid);
         }
 
-        Commands::GrahaLongitudes {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::GrahaLongitudes(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let lons = dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, nutation)
+            let lons = dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, args.nutation)
                 .unwrap_or_else(|e| {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4325,7 +4152,7 @@ fn main() {
             println!(
                 "Graha sidereal longitudes ({:?}{}):\n",
                 system,
-                if nutation { " +nutation" } else { "" }
+                if args.nutation { " +nutation" } else { "" }
             );
             let graha_names = [
                 "Surya", "Chandra", "Mangal", "Budha", "Guru", "Shukra", "Shani", "Rahu", "Ketu",
@@ -4389,16 +4216,10 @@ fn main() {
             );
         }
 
-        Commands::KshetraSphuta {
-            venus,
-            moon,
-            mars,
-            jupiter,
-            lagna,
-        } => {
+        Commands::KshetraSphuta(args) => {
             println!(
                 "{:.4}°",
-                dhruv_vedic_base::kshetra_sphuta(venus, moon, mars, jupiter, lagna)
+                dhruv_vedic_base::kshetra_sphuta(args.venus, args.moon, args.mars, args.jupiter, args.lagna)
             );
         }
 
@@ -4429,15 +4250,10 @@ fn main() {
             println!("{:.4}°", dhruv_vedic_base::panchasphuta(chatussphuta, rahu));
         }
 
-        Commands::SookshmaTrisphuta {
-            lagna,
-            moon,
-            gulika,
-            sun,
-        } => {
+        Commands::SookshmaTrisphuta(args) => {
             println!(
                 "{:.4}°",
-                dhruv_vedic_base::sookshma_trisphuta(lagna, moon, gulika, sun)
+                dhruv_vedic_base::sookshma_trisphuta(args.lagna, args.moon, args.gulika, args.sun)
             );
         }
 
@@ -4618,21 +4434,15 @@ fn main() {
             }
         }
 
-        Commands::SiderealSumAt {
-            date,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::SiderealSumAt(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let config = SankrantiConfig::new(system, nutation);
+            let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::sidereal_sum_at(&engine, jd_tdb, &config) {
                 Ok(val) => println!("{:.4}°", val),
                 Err(e) => {
@@ -4642,18 +4452,13 @@ fn main() {
             }
         }
 
-        Commands::BodyLonLat {
-            date,
-            body,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::BodyLonLat(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(body);
-            let engine = load_engine(&bsp, &lsk);
+            let b = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
             match dhruv_search::body_ecliptic_lon_lat(&engine, b, jd_tdb) {
                 Ok((lon, lat)) => println!("Longitude: {:.4}°  Latitude: {:.4}°", lon, lat),
@@ -4664,25 +4469,17 @@ fn main() {
             }
         }
 
-        Commands::VedicDaySunrises {
-            date,
-            lat,
-            lon,
-            alt,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::VedicDaySunrises(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
             let location = GeoLocation {
-                latitude_deg: lat,
-                longitude_deg: lon,
-                altitude_m: alt,
+                latitude_deg: args.lat,
+                longitude_deg: args.lon,
+                altitude_m: args.alt,
             };
             let rs_config = RiseSetConfig::default();
             match dhruv_search::vedic_day_sunrises(
@@ -4703,19 +4500,14 @@ fn main() {
             }
         }
 
-        Commands::TithiAt {
-            date,
-            elongation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::TithiAt(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            match dhruv_search::tithi_at(&engine, jd_tdb, elongation) {
+            match dhruv_search::tithi_at(&engine, jd_tdb, args.elongation) {
                 Ok(info) => {
                     println!(
                         "{} ({} {}) - Start: {} End: {}",
@@ -4733,19 +4525,14 @@ fn main() {
             }
         }
 
-        Commands::KaranaAt {
-            date,
-            elongation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::KaranaAt(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            match dhruv_search::karana_at(&engine, jd_tdb, elongation) {
+            match dhruv_search::karana_at(&engine, jd_tdb, args.elongation) {
                 Ok(info) => {
                     println!(
                         "{} (index {}) - Start: {} End: {}",
@@ -4762,23 +4549,16 @@ fn main() {
             }
         }
 
-        Commands::YogaAt {
-            date,
-            sum,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::YogaAt(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let config = SankrantiConfig::new(system, nutation);
-            match dhruv_search::yoga_at(&engine, jd_tdb, sum, &config) {
+            let config = SankrantiConfig::new(system, args.nutation);
+            match dhruv_search::yoga_at(&engine, jd_tdb, args.sum, &config) {
                 Ok(info) => {
                     println!(
                         "{} (index {}) - Start: {} End: {}",
@@ -4795,23 +4575,16 @@ fn main() {
             }
         }
 
-        Commands::NakshatraAt {
-            date,
-            moon_sid,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-        } => {
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::NakshatraAt(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let system = require_aya_system(ayanamsha);
-            let engine = load_engine(&bsp, &lsk);
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let config = SankrantiConfig::new(system, nutation);
-            match dhruv_search::nakshatra_at(&engine, jd_tdb, moon_sid, &config) {
+            let config = SankrantiConfig::new(system, args.nutation);
+            match dhruv_search::nakshatra_at(&engine, jd_tdb, args.moon_sid, &config) {
                 Ok(info) => {
                     println!(
                         "{} (index {}) Pada {} - Start: {} End: {}",
@@ -4889,35 +4662,24 @@ fn main() {
                 println!();
             }
         }
-        Commands::Shadbala {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            graha,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Shadbala(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
             let rs_config = RiseSetConfig::default();
-            let aya_config = SankrantiConfig::new(system, nutation);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
 
             let graha_names = [
                 "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn",
             ];
 
-            if let Some(name) = graha {
+            if let Some(name) = args.graha {
                 let g = parse_graha_name(&name);
                 let entry = dhruv_search::shadbala_for_graha(
                     &engine,
@@ -4933,7 +4695,7 @@ fn main() {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
                 });
-                println!("Shadbala for {} on {}\n", g.english_name(), date);
+                println!("Shadbala for {} on {}\n", g.english_name(), args.date);
                 print_shadbala_entry(&entry);
             } else {
                 let result = dhruv_search::shadbala_for_date(
@@ -4950,7 +4712,7 @@ fn main() {
                     std::process::exit(1);
                 });
 
-                println!("Shadbala for {} at {:.4}°N, {:.4}°E\n", date, lat, lon);
+                println!("Shadbala for {} at {:.4}°N, {:.4}°E\n", args.date, args.lat, args.lon);
                 println!(
                     "{:<8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>6}",
                     "Graha",
@@ -4982,35 +4744,23 @@ fn main() {
                 }
             }
         }
-        Commands::Vimsopaka {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            graha,
-            node_policy,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Vimsopaka(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
-            let aya_config = SankrantiConfig::new(system, nutation);
-            let policy = parse_node_policy(&node_policy);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+            let policy = parse_node_policy(&args.node_policy);
 
             let graha_names = [
                 "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
             ];
 
-            if let Some(name) = graha {
+            if let Some(name) = args.graha {
                 let g = parse_graha_name(&name);
                 let entry = dhruv_search::vimsopaka_for_graha(
                     &engine,
@@ -5025,7 +4775,7 @@ fn main() {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
                 });
-                println!("Vimsopaka for {} on {}\n", g.english_name(), date);
+                println!("Vimsopaka for {} on {}\n", g.english_name(), args.date);
                 println!("  Shadvarga:     {:>6.2}/20", entry.shadvarga);
                 println!("  Saptavarga:    {:>6.2}/20", entry.saptavarga);
                 println!("  Dashavarga:    {:>6.2}/20", entry.dashavarga);
@@ -5046,7 +4796,7 @@ fn main() {
 
                 println!(
                     "Vimsopaka Bala for {} at {:.4}°N, {:.4}°E\n",
-                    date, lat, lon
+                    args.date, args.lat, args.lon
                 );
                 println!(
                     "{:<8} {:>10} {:>10} {:>10} {:>12}",
@@ -5087,37 +4837,25 @@ fn main() {
                 );
             }
         }
-        Commands::Avastha {
-            date,
-            lat,
-            lon,
-            alt,
-            ayanamsha,
-            nutation,
-            graha,
-            node_policy,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let system = require_aya_system(ayanamsha);
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+        Commands::Avastha(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
             let rs_config = RiseSetConfig::default();
-            let aya_config = SankrantiConfig::new(system, nutation);
-            let policy = parse_node_policy(&node_policy);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+            let policy = parse_node_policy(&args.node_policy);
 
             let graha_names = [
                 "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
             ];
 
-            if let Some(name) = graha {
+            if let Some(name) = args.graha {
                 let g = parse_graha_name(&name);
                 let entry = dhruv_search::avastha_for_graha(
                     &engine,
@@ -5134,7 +4872,7 @@ fn main() {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
                 });
-                println!("Avasthas for {} on {}\n", g.english_name(), date);
+                println!("Avasthas for {} on {}\n", g.english_name(), args.date);
                 print_graha_avastha(&entry);
             } else {
                 let result = dhruv_search::avastha_for_date(
@@ -5154,7 +4892,7 @@ fn main() {
 
                 println!(
                     "Graha Avasthas for {} at {:.4}°N, {:.4}°E\n",
-                    date, lat, lon
+                    args.date, args.lat, args.lon
                 );
                 println!(
                     "{:<8} {:>10} {:>10} {:>10} {:>10} {:>12}",
@@ -5174,36 +4912,23 @@ fn main() {
                 }
             }
         }
-        Commands::Dasha {
-            system,
-            birth_date,
-            query_date,
-            lat,
-            lon,
-            alt,
-            max_level,
-            ayanamsha,
-            nutation,
-            bsp,
-            lsk,
-            eop,
-        } => {
-            let aya_system = require_aya_system(ayanamsha);
-            let birth_utc = parse_utc(&birth_date).unwrap_or_else(|e| {
+        Commands::Dasha(args) => {
+            let aya_system = require_aya_system(args.ayanamsha);
+            let birth_utc = parse_utc(&args.birth_date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let engine = load_engine(&bsp, &lsk);
-            let eop_kernel = load_eop(&eop);
-            let location = GeoLocation::new(lat, lon, alt);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let bhava_config = BhavaConfig::default();
             let rs_config = RiseSetConfig::default();
-            let aya_config = SankrantiConfig::new(aya_system, nutation);
-            let dasha_system = parse_dasha_system(&system);
+            let aya_config = SankrantiConfig::new(aya_system, args.nutation);
+            let dasha_system = parse_dasha_system(&args.system);
             let variation = dhruv_vedic_base::dasha::DashaVariationConfig::default();
-            let clamped_level = max_level.min(dhruv_vedic_base::dasha::MAX_DASHA_LEVEL);
+            let clamped_level = args.max_level.min(dhruv_vedic_base::dasha::MAX_DASHA_LEVEL);
 
-            if let Some(q_date) = query_date {
+            if let Some(q_date) = args.query_date {
                 let query_utc = parse_utc(&q_date).unwrap_or_else(|e| {
                     eprintln!("{e}");
                     std::process::exit(1);
@@ -5229,7 +4954,7 @@ fn main() {
                     "Dasha Snapshot ({}) at {} for birth {}\n",
                     dasha_system.name(),
                     q_date,
-                    birth_date
+                    args.birth_date
                 );
                 for period in &snapshot.periods {
                     let indent = "  ".repeat(period.level as usize);
@@ -5263,7 +4988,7 @@ fn main() {
                 println!(
                     "Dasha Hierarchy ({}) for birth {} ({} levels)\n",
                     dasha_system.name(),
-                    birth_date,
+                    args.birth_date,
                     hierarchy.levels.len()
                 );
                 for (lvl_idx, level) in hierarchy.levels.iter().enumerate() {
@@ -5340,30 +5065,20 @@ fn main() {
                 );
             }
         }
-        Commands::TaraPosition {
-            star,
-            date,
-            catalog,
-            lsk,
-            ayanamsha,
-            nutation,
-            apparent,
-            parallax,
-            bsp,
-        } => {
-            let id = TaraId::from_str(&star).unwrap_or_else(|| {
-                eprintln!("Unknown star: {star}");
+        Commands::TaraPosition(args) => {
+            let id = TaraId::from_str(&args.star).unwrap_or_else(|| {
+                eprintln!("Unknown star: {}", args.star);
                 std::process::exit(1);
             });
-            let cat = TaraCatalog::load(&catalog).unwrap_or_else(|e| {
+            let cat = TaraCatalog::load(&args.catalog).unwrap_or_else(|e| {
                 eprintln!("Failed to load catalog: {e}");
                 std::process::exit(1);
             });
-            let utc = parse_utc(&date).unwrap_or_else(|e| {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let lsk_kernel = dhruv_time::LeapSecondKernel::load(&lsk).unwrap_or_else(|e| {
+            let lsk_kernel = dhruv_time::LeapSecondKernel::load(&args.lsk).unwrap_or_else(|e| {
                 eprintln!("Failed to load LSK: {e}");
                 std::process::exit(1);
             });
@@ -5379,21 +5094,21 @@ fn main() {
             let jd_tdb = epoch.as_jd_tdb();
 
             let config = TaraConfig {
-                accuracy: if apparent {
+                accuracy: if args.apparent {
                     TaraAccuracy::Apparent
                 } else {
                     TaraAccuracy::Astrometric
                 },
-                apply_parallax: parallax,
+                apply_parallax: args.parallax,
             };
 
             // Get Earth state if needed
-            let earth_state = if apparent || parallax {
-                let bsp_path = bsp.as_ref().unwrap_or_else(|| {
+            let earth_state = if args.apparent || args.parallax {
+                let bsp_path = args.bsp.as_ref().unwrap_or_else(|| {
                     eprintln!("--bsp is required for --apparent or --parallax");
                     std::process::exit(1);
                 });
-                let engine = load_engine(bsp_path, &lsk);
+                let engine = load_engine(bsp_path, &args.lsk);
                 let q = Query {
                     target: Body::Earth,
                     observer: Observer::SolarSystemBarycenter,
@@ -5456,9 +5171,9 @@ fn main() {
             }
 
             // Sidereal longitude
-            let system = require_aya_system(ayanamsha);
+            let system = require_aya_system(args.ayanamsha);
             let t = jd_tdb_to_centuries(jd_tdb);
-            let aya = ayanamsha_deg(system, t, nutation);
+            let aya = ayanamsha_deg(system, t, args.nutation);
             match dhruv_tara::sidereal_longitude_with_config(
                 &cat,
                 id,
@@ -5470,7 +5185,7 @@ fn main() {
                 Ok(lon) => {
                     let rashi_info = rashi_from_longitude(lon);
                     let nak_info = nakshatra_from_longitude(lon);
-                    println!("Sidereal ({:?}, nutation={nutation}):", system);
+                    println!("Sidereal ({:?}, nutation={}):", system, args.nutation);
                     println!("  Longitude: {:.6}°", lon);
                     println!(
                         "  Rashi:     {} ({})",
