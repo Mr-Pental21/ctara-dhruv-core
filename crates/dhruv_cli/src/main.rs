@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
 use dhruv_frames::{
-    cartesian_to_spherical, icrf_to_ecliptic, nutation_iau2000b, precess_ecliptic_j2000_to_date,
+    PrecessionModel, cartesian_to_spherical, icrf_to_ecliptic, nutation_iau2000b,
+    precess_ecliptic_j2000_to_date,
 };
 use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::GrahanConfig;
@@ -473,6 +474,9 @@ struct GrahaPositionsArgs {
     /// Output tropical (ecliptic-of-date) longitudes instead of sidereal
     #[arg(long, conflicts_with_all = ["nakshatra", "lagna", "outer", "bhava"])]
     tropical: bool,
+    /// Precession model: vondrak2011 (default), iau2006, lieske1977
+    #[arg(long, default_value = "vondrak2011")]
+    precession: String,
     /// Path to SPK kernel
     #[arg(long)]
     bsp: PathBuf,
@@ -1954,6 +1958,18 @@ fn require_aya_system(code: i32) -> AyanamshaSystem {
     })
 }
 
+fn parse_precession_model(s: &str) -> PrecessionModel {
+    match s {
+        "vondrak2011" | "vondrak" => PrecessionModel::Vondrak2011,
+        "iau2006" => PrecessionModel::Iau2006,
+        "lieske1977" | "lieske" => PrecessionModel::Lieske1977,
+        _ => {
+            eprintln!("Invalid precession model: {s} (vondrak2011, iau2006, lieske1977)");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn load_eop(path: &Path) -> EopKernel {
     EopKernel::load(path).unwrap_or_else(|e| {
         eprintln!("Failed to load EOP: {e}");
@@ -2903,11 +2919,17 @@ fn main() {
 
             if args.tropical {
                 let jd_tdb = utc.to_jd_tdb(engine.lsk());
-                let result = dhruv_search::graha_tropical_longitudes(&engine, jd_tdb)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error: {e}");
-                        std::process::exit(1);
-                    });
+                let prec = parse_precession_model(&args.precession);
+                let result = dhruv_search::graha_tropical_longitudes_with_model(
+                    &engine,
+                    jd_tdb,
+                    prec,
+                    args.nutation,
+                )
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                });
 
                 println!(
                     "Graha Positions for {} at {:.4}°N, {:.4}°E\n",
@@ -2931,7 +2953,8 @@ fn main() {
                 let eop_kernel = load_eop(&args.eop);
                 let location = GeoLocation::new(args.lat, args.lon, args.alt);
                 let bhava_config = BhavaConfig::default();
-                let aya_config = SankrantiConfig::new(system, args.nutation);
+                let prec = parse_precession_model(&args.precession);
+                let aya_config = SankrantiConfig::new_with_model(system, args.nutation, prec);
                 let gp_config = dhruv_search::GrahaPositionsConfig {
                     include_nakshatra: args.nakshatra,
                     include_lagna: args.lagna,

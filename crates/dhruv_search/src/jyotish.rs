@@ -386,15 +386,27 @@ pub fn graha_tropical_longitudes(
     engine: &Engine,
     jd_tdb: f64,
 ) -> Result<GrahaTropicalLongitudes, SearchError> {
-    graha_tropical_longitudes_with_model(engine, jd_tdb, DEFAULT_PRECESSION_MODEL)
+    graha_tropical_longitudes_with_model(engine, jd_tdb, DEFAULT_PRECESSION_MODEL, false)
 }
 
 /// Model-aware variant of [`graha_tropical_longitudes`].
+///
+/// When `use_nutation` is true, adds the nutation in longitude (Δψ) to the
+/// mean ecliptic longitudes, producing true ecliptic-of-date positions.
 pub fn graha_tropical_longitudes_with_model(
     engine: &Engine,
     jd_tdb: f64,
     precession_model: PrecessionModel,
+    use_nutation: bool,
 ) -> Result<GrahaTropicalLongitudes, SearchError> {
+    let dpsi_deg = if use_nutation {
+        let t = jd_tdb_to_centuries(jd_tdb);
+        let (dpsi_arcsec, _deps_arcsec) = dhruv_frames::nutation_iau2000b(t);
+        dpsi_arcsec / 3600.0
+    } else {
+        0.0
+    };
+
     let rahu_tropical = lunar_node_deg_for_epoch_on_plane(
         engine,
         LunarNode::Rahu,
@@ -409,8 +421,8 @@ pub fn graha_tropical_longitudes_with_model(
     for graha in ALL_GRAHAS {
         let idx = graha.index() as usize;
         match graha {
-            Graha::Rahu => longitudes[idx] = rahu_tropical,
-            Graha::Ketu => longitudes[idx] = ketu_tropical,
+            Graha::Rahu => longitudes[idx] = normalize(rahu_tropical + dpsi_deg),
+            Graha::Ketu => longitudes[idx] = normalize(ketu_tropical + dpsi_deg),
             _ => {
                 let body = graha_to_body(graha).expect("sapta graha has body");
                 let (lon, _lat) = body_lon_lat_on_plane(
@@ -420,7 +432,7 @@ pub fn graha_tropical_longitudes_with_model(
                     precession_model,
                     ReferencePlane::Ecliptic,
                 )?;
-                longitudes[idx] = lon;
+                longitudes[idx] = normalize(lon + dpsi_deg);
             }
         }
     }
