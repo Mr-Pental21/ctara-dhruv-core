@@ -7,4 +7,8 @@
 - Added optional staleness warnings:
   - `--stale-lsk-threshold-days`
   - `--stale-eop-threshold-days`
-- Added opt-in `--smh-future-family stephenson1997` for post-EOP future Delta-T asymptotic fallback under `hybrid-deltat` + `--no-freeze-future`, while preserving the default 100-year continuity blend.
+- Added model-agnostic future Delta-T transition strategies:
+  - `legacy-tt-utc-blend` (default frozen-compatible behavior).
+  - `bridge-modern-endpoint` (100-year bridge to selected asymptotic family).
+- Removed user-facing `--no-freeze-future`; use `--future-delta-t-transition` instead.
+- Added `stephenson1997` support in `--smh-future-family` under bridge strategy.

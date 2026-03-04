@@ -15,10 +15,10 @@ use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::stationary_types::StationaryConfig;
 use dhruv_tara::{EarthState, TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
-    DeltaTModel, EopKernel, LeapSecondKernel, SmhFutureParabolaFamily, TimeConversionOptions,
-    TimeConversionPolicy, TimeWarning, UtcTime, calendar_to_jd, install_smh2016_reconstruction,
-    jd_to_calendar, jd_to_tdb_seconds, parse_smh2016_reconstruction,
-    smh2016_reconstruction_installed, tdb_seconds_to_jd,
+    DeltaTModel, EopKernel, FutureDeltaTTransition, LeapSecondKernel, SmhFutureParabolaFamily,
+    TimeConversionOptions, TimeConversionPolicy, TimeWarning, UtcTime, calendar_to_jd,
+    install_smh2016_reconstruction, jd_to_calendar, jd_to_tdb_seconds,
+    parse_smh2016_reconstruction, smh2016_reconstruction_installed, tdb_seconds_to_jd,
 };
 use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
@@ -39,7 +39,7 @@ struct Cli {
     #[arg(long, global = true, default_value = "smh2016")]
     delta_t_model: String,
     /// SMH future parabola-family selector when post-EOP asymptotic fallback
-    /// is active (hybrid-deltat + --no-freeze-future).
+    /// is active (hybrid-deltat + --future-delta-t-transition bridge-modern-endpoint).
     /// Values: addendum2020, c-20, c-17.52, c-15.32, stephenson1997
     #[arg(long, global = true, default_value = "addendum2020")]
     smh_future_family: String,
@@ -48,16 +48,16 @@ struct Cli {
     /// cubic segments `Ki Ki+1 a0 a1 a2 a3`.
     #[arg(long, global = true)]
     delta_t_smh_table: Option<PathBuf>,
-    /// For hybrid-deltat policy: do not freeze DELTA_AT after LSK coverage;
-    /// use Delta-T model fallback for future dates instead.
-    #[arg(long, global = true, default_value_t = false)]
-    no_freeze_future: bool,
+    /// Future Delta-T transition strategy for UTC beyond LSK coverage.
+    /// Values: legacy-tt-utc-blend, bridge-modern-endpoint.
+    #[arg(long, global = true, default_value = "legacy-tt-utc-blend")]
+    future_delta_t_transition: String,
     /// For hybrid-deltat policy: do not freeze DUT1 after EOP coverage.
     /// By default DUT1 is frozen to last known EOP value.
     #[arg(long, global = true, default_value_t = false)]
     no_freeze_future_dut1: bool,
     /// Transition window in years for blending from leap-table anchor TT-UTC
-    /// to model fallback when `--no-freeze-future` is active.
+    /// to model fallback when `--future-delta-t-transition bridge-modern-endpoint` is active.
     #[arg(long, global = true)]
     future_transition_years: Option<f64>,
     /// Optional staleness warning threshold for LSK coverage end (days).
@@ -2163,7 +2163,7 @@ fn parse_time_policy(
     s: &str,
     delta_t_model: DeltaTModel,
     smh_future_family: SmhFutureParabolaFamily,
-    no_freeze_future: bool,
+    future_delta_t_transition: FutureDeltaTTransition,
     no_freeze_future_dut1: bool,
     future_transition_years: Option<f64>,
 ) -> TimeConversionPolicy {
@@ -2173,7 +2173,7 @@ fn parse_time_policy(
             let mut opts = TimeConversionOptions::default();
             opts.delta_t_model = delta_t_model;
             opts.smh_future_family = smh_future_family;
-            opts.freeze_future_delta_at = !no_freeze_future;
+            opts.future_delta_t_transition = future_delta_t_transition;
             opts.freeze_future_dut1 = !no_freeze_future_dut1;
             if let Some(v) = future_transition_years {
                 opts.future_transition_years = v;
@@ -2182,6 +2182,19 @@ fn parse_time_policy(
         }
         _ => {
             eprintln!("Invalid time policy: {s} (strict-lsk, hybrid-deltat)");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn parse_future_delta_t_transition(s: &str) -> FutureDeltaTTransition {
+    match s.to_lowercase().as_str() {
+        "legacy-tt-utc-blend" | "legacy" => FutureDeltaTTransition::LegacyTtUtcBlend,
+        "bridge-modern-endpoint" | "bridge" => FutureDeltaTTransition::BridgeFromModernEndpoint,
+        _ => {
+            eprintln!(
+                "Invalid future delta-t transition: {s} (legacy-tt-utc-blend, bridge-modern-endpoint)"
+            );
             std::process::exit(1);
         }
     }
@@ -2425,6 +2438,7 @@ fn main() {
     maybe_install_smh2016_table(cli.delta_t_smh_table.as_deref());
     let delta_t_model = parse_delta_t_model(&cli.delta_t_model);
     let smh_future_family = parse_smh_future_family(&cli.smh_future_family);
+    let future_delta_t_transition = parse_future_delta_t_transition(&cli.future_delta_t_transition);
     if delta_t_model == DeltaTModel::Smh2016WithPre720Quadratic
         && !smh2016_reconstruction_installed()
     {
@@ -2437,7 +2451,7 @@ fn main() {
         &cli.time_policy,
         delta_t_model,
         smh_future_family,
-        cli.no_freeze_future,
+        future_delta_t_transition,
         cli.no_freeze_future_dut1,
         cli.future_transition_years,
     );
@@ -6975,7 +6989,7 @@ mod tests {
             "hybrid-deltat",
             DeltaTModel::Smh2016WithPre720Quadratic,
             SmhFutureParabolaFamily::ConstantCMinus17p52,
-            false,
+            FutureDeltaTTransition::BridgeFromModernEndpoint,
             false,
             Some(25.0),
         );
@@ -6986,10 +7000,26 @@ mod tests {
                     opts.smh_future_family,
                     SmhFutureParabolaFamily::ConstantCMinus17p52
                 );
+                assert_eq!(
+                    opts.future_delta_t_transition,
+                    FutureDeltaTTransition::BridgeFromModernEndpoint
+                );
                 assert_eq!(opts.future_transition_years, 25.0);
             }
             TimeConversionPolicy::StrictLsk => panic!("expected hybrid policy"),
         }
+    }
+
+    #[test]
+    fn future_delta_t_transition_parser_accepts_supported_values() {
+        assert_eq!(
+            parse_future_delta_t_transition("legacy-tt-utc-blend"),
+            FutureDeltaTTransition::LegacyTtUtcBlend
+        );
+        assert_eq!(
+            parse_future_delta_t_transition("bridge-modern-endpoint"),
+            FutureDeltaTTransition::BridgeFromModernEndpoint
+        );
     }
 
     #[test]

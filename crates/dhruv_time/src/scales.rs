@@ -17,9 +17,6 @@ use crate::lsk::LskData;
 /// Options for hybrid UTC->TDB conversion.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TimeConversionOptions {
-    /// For UTC epochs after the last leap-second entry, freeze `DELTA_AT`
-    /// at the last known value.
-    pub freeze_future_delta_at: bool,
     /// Emit fallback warnings in diagnostics.
     pub warn_on_fallback: bool,
     /// Delta-T model to use when outside LSK leap coverage.
@@ -28,26 +25,44 @@ pub struct TimeConversionOptions {
     pub freeze_future_dut1: bool,
     /// DUT1 fallback to use before EOP range (seconds).
     pub pre_range_dut1: f64,
-    /// Transition window (years) for blending from the last leap-table
-    /// anchored `TT-UTC` value to model-based fallback when
-    /// `freeze_future_delta_at=false`.
+    /// Future Delta-T transition strategy after leap-table coverage.
+    pub future_delta_t_transition: FutureDeltaTTransition,
+    /// Transition window (years) for bridge strategy.
     pub future_transition_years: f64,
     /// SMH future parabola-family selector used when post-EOP asymptotic
-    /// fallback is active for `Smh2016WithPre720Quadratic`.
+    /// fallback is active for `Smh2016WithPre720Quadratic` under bridge
+    /// transition strategy.
     pub smh_future_family: SmhFutureParabolaFamily,
 }
 
 impl Default for TimeConversionOptions {
     fn default() -> Self {
         Self {
-            freeze_future_delta_at: true,
             warn_on_fallback: true,
             delta_t_model: DeltaTModel::default(),
             freeze_future_dut1: true,
             pre_range_dut1: 0.0,
+            future_delta_t_transition: FutureDeltaTTransition::default(),
             future_transition_years: 100.0,
             smh_future_family: SmhFutureParabolaFamily::default(),
         }
+    }
+}
+
+/// Future Delta-T transition behavior for UTC epochs after leap-table coverage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FutureDeltaTTransition {
+    /// Legacy frozen-compatible behavior:
+    /// `TT-UTC = last DELTA_AT + DELTA_T_A`.
+    LegacyTtUtcBlend,
+    /// Bridge from modern endpoint to selected asymptotic model over the
+    /// configured transition window.
+    BridgeFromModernEndpoint,
+}
+
+impl Default for FutureDeltaTTransition {
+    fn default() -> Self {
+        Self::LegacyTtUtcBlend
     }
 }
 
@@ -222,55 +237,48 @@ pub fn utc_to_tdb_with_policy_and_eop(
                     }
                     (delta_t + dut1, TtUtcSource::DeltaTModel, warnings)
                 } else if utc_s > last_epoch {
-                    if options.freeze_future_delta_at {
-                        if options.warn_on_fallback {
-                            warnings.push(TimeWarning::LskFutureFrozen {
-                                utc_seconds: utc_s,
-                                last_entry_utc_seconds: last_epoch,
-                                used_delta_at_seconds: last_delta_at,
-                            });
-                        }
-                        (
-                            last_delta_at + lsk.delta_t_a,
-                            TtUtcSource::LskDeltaAt,
-                            warnings,
-                        )
-                    } else {
-                        let transition_anchor_utc_s = eop
-                            .and_then(|d| d.prediction_end_mjd())
-                            .map(|mjd| jd_to_tdb_seconds(mjd + 2_400_000.5))
-                            .map(|s| s.max(last_epoch))
-                            .unwrap_or(last_epoch);
-                        let jd_eval = tdb_seconds_to_jd(utc_s);
-                        let (delta_t, segment) = if options.delta_t_model
-                            == DeltaTModel::Smh2016WithPre720Quadratic
-                            && utc_s > transition_anchor_utc_s
-                        {
-                            smh_asymptotic_delta_t_seconds_for_jd_with_family(
-                                jd_eval,
-                                options.smh_future_family,
+                    match options.future_delta_t_transition {
+                        FutureDeltaTTransition::LegacyTtUtcBlend => {
+                            if options.warn_on_fallback {
+                                warnings.push(TimeWarning::LskFutureFrozen {
+                                    utc_seconds: utc_s,
+                                    last_entry_utc_seconds: last_epoch,
+                                    used_delta_at_seconds: last_delta_at,
+                                });
+                            }
+                            (
+                                last_delta_at + lsk.delta_t_a,
+                                TtUtcSource::LskDeltaAt,
+                                warnings,
                             )
-                        } else {
-                            delta_t_seconds_with_model(jd_eval, options.delta_t_model)
-                        };
-                        let (dut1, mut dut1_warnings) = fallback_dut1_seconds(utc_s, eop, options);
-                        warnings.append(&mut dut1_warnings);
-                        let model_tt_minus_utc = delta_t + dut1;
-                        let tt_minus_utc = blend_future_tt_minus_utc(
-                            utc_s,
-                            transition_anchor_utc_s,
-                            last_delta_at + lsk.delta_t_a,
-                            model_tt_minus_utc,
-                            options.future_transition_years,
-                        );
-                        if options.warn_on_fallback {
-                            warnings.push(TimeWarning::DeltaTModelUsed {
-                                model: options.delta_t_model,
-                                segment,
-                                assumed_dut1_seconds: dut1,
-                            });
                         }
-                        (tt_minus_utc, TtUtcSource::DeltaTModel, warnings)
+                        FutureDeltaTTransition::BridgeFromModernEndpoint => {
+                            let transition_anchor_utc_s = eop
+                                .and_then(|d| d.prediction_end_mjd())
+                                .map(|mjd| jd_to_tdb_seconds(mjd + 2_400_000.5))
+                                .map(|s| s.max(last_epoch))
+                                .unwrap_or(last_epoch);
+
+                            let (delta_t, segment) = delta_t_with_bridge_transition(
+                                utc_s,
+                                transition_anchor_utc_s,
+                                options.delta_t_model,
+                                options.smh_future_family,
+                                options.future_transition_years,
+                            );
+                            let (dut1, mut dut1_warnings) =
+                                fallback_dut1_seconds(utc_s, eop, options);
+                            warnings.append(&mut dut1_warnings);
+                            let tt_minus_utc = delta_t + dut1;
+                            if options.warn_on_fallback {
+                                warnings.push(TimeWarning::DeltaTModelUsed {
+                                    model: options.delta_t_model,
+                                    segment,
+                                    assumed_dut1_seconds: dut1,
+                                });
+                            }
+                            (tt_minus_utc, TtUtcSource::DeltaTModel, warnings)
+                        }
                     }
                 } else {
                     let delta_at = lookup_delta_at(utc_s, lsk);
@@ -291,19 +299,38 @@ pub fn utc_to_tdb_with_policy_and_eop(
     }
 }
 
-fn blend_future_tt_minus_utc(
+fn delta_t_with_bridge_transition(
     utc_s: f64,
-    anchor_utc_s: f64,
-    anchor_tt_minus_utc: f64,
-    model_tt_minus_utc: f64,
+    transition_anchor_utc_s: f64,
+    delta_t_model: DeltaTModel,
+    smh_future_family: SmhFutureParabolaFamily,
     transition_years: f64,
-) -> f64 {
-    if transition_years <= 0.0 {
-        return model_tt_minus_utc;
+) -> (f64, crate::delta_t::DeltaTSegment) {
+    let jd_eval = tdb_seconds_to_jd(utc_s);
+
+    if delta_t_model != DeltaTModel::Smh2016WithPre720Quadratic {
+        return delta_t_seconds_with_model(jd_eval, delta_t_model);
     }
+
+    if utc_s <= transition_anchor_utc_s {
+        return delta_t_seconds_with_model(jd_eval, delta_t_model);
+    }
+
+    let (asym_eval, segment) =
+        smh_asymptotic_delta_t_seconds_for_jd_with_family(jd_eval, smh_future_family);
+
+    if transition_years <= 0.0 {
+        return (asym_eval, segment);
+    }
+
+    let jd_anchor = tdb_seconds_to_jd(transition_anchor_utc_s);
+    let (modern_end, _) = delta_t_seconds_with_model(jd_anchor, delta_t_model);
+    let (asym_end, _) =
+        smh_asymptotic_delta_t_seconds_for_jd_with_family(jd_anchor, smh_future_family);
     let window_seconds = transition_years * 365.25 * 86_400.0;
-    let alpha = ((utc_s - anchor_utc_s) / window_seconds).clamp(0.0, 1.0);
-    anchor_tt_minus_utc + alpha * (model_tt_minus_utc - anchor_tt_minus_utc)
+    let alpha = ((utc_s - transition_anchor_utc_s) / window_seconds).clamp(0.0, 1.0);
+    let bridged = asym_eval + (modern_end - asym_end) * (1.0 - alpha);
+    (bridged, segment)
 }
 
 fn fallback_dut1_seconds(
@@ -475,18 +502,18 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
     }
 
     #[test]
-    fn hybrid_no_freeze_future_switches_to_delta_t_model() {
+    fn bridge_future_switches_to_delta_t_model() {
         let lsk = test_lsk();
         let utc = 1.0e9;
         let out = utc_to_tdb_with_policy(
             utc,
             &lsk,
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: false,
                 warn_on_fallback: true,
                 delta_t_model: DeltaTModel::default(),
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
                 future_transition_years: 100.0,
                 smh_future_family: SmhFutureParabolaFamily::default(),
             }),
@@ -495,33 +522,40 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
     }
 
     #[test]
-    fn no_freeze_future_transition_blends_at_anchor() {
+    fn bridge_transition_blends_at_anchor() {
         let lsk = test_lsk();
         let (_, last_epoch) = lsk.leap_seconds[lsk.leap_seconds.len() - 1];
+        let utc_s = last_epoch + 1.0;
         let out = utc_to_tdb_with_policy(
-            last_epoch + 1.0,
+            utc_s,
             &lsk,
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: false,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::default(),
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
                 future_transition_years: 100.0,
                 smh_future_family: SmhFutureParabolaFamily::default(),
             }),
         );
-        let anchor_tt_minus_utc = lsk.leap_seconds[lsk.leap_seconds.len() - 1].0 + lsk.delta_t_a;
+        let (expected, _segment) = delta_t_with_bridge_transition(
+            utc_s,
+            last_epoch,
+            DeltaTModel::default(),
+            SmhFutureParabolaFamily::default(),
+            100.0,
+        );
         assert!(
-            (out.diagnostics.tt_minus_utc_s - anchor_tt_minus_utc).abs() < 1e-6,
-            "expected blended TT-UTC near anchor at window start; got {} vs {}",
+            (out.diagnostics.tt_minus_utc_s - expected).abs() < 1e-6,
+            "expected bridge TT-UTC near anchor; got {} vs {}",
             out.diagnostics.tt_minus_utc_s,
-            anchor_tt_minus_utc
+            expected
         );
     }
 
     #[test]
-    fn no_freeze_future_uses_eop_prediction_end_as_transition_anchor() {
+    fn bridge_uses_eop_prediction_end_as_transition_anchor() {
         let lsk = test_lsk();
         let eop_snippet = {
             let mk = |mjd: f64, flag: char, dut1: f64| {
@@ -536,29 +570,32 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
             vec![mk(61000.0, 'I', 0.10), mk(62000.0, 'P', 0.12)].join("\n")
         };
         let eop = EopData::parse_finals(&eop_snippet).unwrap();
-        // Between LSK end (~2017) and EOP prediction end (MJD 62000), blend
-        // should remain anchored.
+        // Between LSK end (~2017) and EOP prediction end (MJD 62000), bridge
+        // should remain on the modern model branch, anchored at EOP end.
         let utc_s = jd_to_tdb_seconds(2_400_000.5 + 61500.0);
         let out = utc_to_tdb_with_policy_and_eop(
             utc_s,
             &lsk,
             Some(&eop),
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: false,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::default(),
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
                 future_transition_years: 100.0,
                 smh_future_family: SmhFutureParabolaFamily::default(),
             }),
         );
-        let anchor_tt_minus_utc = lsk.leap_seconds[lsk.leap_seconds.len() - 1].0 + lsk.delta_t_a;
+        let jd_utc = tdb_seconds_to_jd(utc_s);
+        let (delta_t, _segment) = delta_t_seconds_with_model(jd_utc, DeltaTModel::default());
+        let dut1 = 0.11; // midpoint between MJD 61000 (0.10) and 62000 (0.12)
+        let expected = delta_t + dut1;
         assert!(
-            (out.diagnostics.tt_minus_utc_s - anchor_tt_minus_utc).abs() < 1e-6,
-            "expected anchored TT-UTC before EOP prediction end; got {} vs {}",
+            (out.diagnostics.tt_minus_utc_s - expected).abs() < 1e-6,
+            "expected model-branch TT-UTC before EOP prediction end; got {} vs {}",
             out.diagnostics.tt_minus_utc_s,
-            anchor_tt_minus_utc
+            expected
         );
     }
 
@@ -584,11 +621,11 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
             &lsk,
             Some(&eop),
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: false,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
                 future_transition_years: 1.0,
                 smh_future_family: SmhFutureParabolaFamily::default(),
             }),
@@ -632,11 +669,11 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
             &lsk,
             Some(&eop),
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: false,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
                 future_transition_years: 1.0,
                 smh_future_family: SmhFutureParabolaFamily::ConstantCMinus20,
             }),
@@ -646,11 +683,11 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
             &lsk,
             Some(&eop),
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: false,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
                 future_transition_years: 1.0,
                 smh_future_family: SmhFutureParabolaFamily::ConstantCMinus17p52,
             }),
@@ -662,7 +699,7 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
     }
 
     #[test]
-    fn future_family_has_no_effect_when_future_is_frozen() {
+    fn legacy_strategy_ignores_future_family() {
         let lsk = test_lsk();
         let eop_snippet = {
             let mk = |mjd: f64, flag: char, dut1: f64| {
@@ -684,11 +721,11 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
             &lsk,
             Some(&eop),
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: true,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::LegacyTtUtcBlend,
                 future_transition_years: 100.0,
                 smh_future_family: SmhFutureParabolaFamily::Addendum2020Piecewise,
             }),
@@ -698,11 +735,11 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
             &lsk,
             Some(&eop),
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: true,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::LegacyTtUtcBlend,
                 future_transition_years: 100.0,
                 smh_future_family: SmhFutureParabolaFamily::Stephenson1997,
             }),
@@ -741,11 +778,11 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
             &lsk,
             Some(&eop),
             TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
-                freeze_future_delta_at: false,
                 warn_on_fallback: false,
                 delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
                 freeze_future_dut1: true,
                 pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
                 future_transition_years: 100.0,
                 smh_future_family: SmhFutureParabolaFamily::Stephenson1997,
             }),

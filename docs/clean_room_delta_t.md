@@ -1,20 +1,28 @@
-# Clean-Room Record: Time Delta-T Future Strategy
+# Clean-Room Record: Time Delta-T Future Transition Strategies
 
 ## Subsystem
 
-- Name: `dhruv_time` future Delta-T asymptotic strategy selector
+- Name: `dhruv_time` model-agnostic future Delta-T transition framework
 - Owner: `ctara-dhruv-core`
 - Date: 2026-03-04
 
 ## Scope
 
 - What is being implemented:
-  - Add an opt-in `Stephenson1997` future strategy to the existing `smh_future_family` selector.
-  - Keep behavior limited to post-EOP future fallback in `hybrid-deltat` with `freeze_future_delta_at=false`.
-  - Preserve the existing 100-year blend continuity behavior.
+  - Replace dual future controls (`freeze_future_delta_at` + model selectors) with a single strategy axis.
+  - Add `FutureDeltaTTransition::{LegacyTtUtcBlend, BridgeFromModernEndpoint}`.
+  - Keep `LegacyTtUtcBlend` as the default frozen-compatible contract:
+    - `TT-UTC = last_delta_at + DELTA_T_A`
+    - diagnostics source `LskDeltaAt`
+    - ignore `smh_future_family` and `future_transition_years`
+  - Implement `BridgeFromModernEndpoint` as model-agnostic Delta-T bridge from
+    `max(EOP prediction end, LSK end)` to asymptotic family over configurable years.
+  - Preserve default continuity window: `future_transition_years = 100.0`.
 - Public API surface impacted:
+  - `dhruv_time::FutureDeltaTTransition`
+  - `dhruv_time::TimeConversionOptions::future_delta_t_transition`
   - `dhruv_time::SmhFutureParabolaFamily`
-  - CLI parsing for `--smh-future-family`
+  - CLI parsing for `--future-delta-t-transition` and `--smh-future-family`
   - runtime docs and release notes
 
 ## Conceptual Sources
@@ -48,15 +56,22 @@
 ## Implementation Notes
 
 - Key algorithm choices:
-  - Reuse existing `SmhFutureParabolaFamily` selector (no duplicate knob).
-  - Add `Stephenson1997` variant and evaluate formula in asymptotic future function.
-  - Keep gating unchanged so it applies only in post-EOP future fallback path.
-  - Keep existing blend function and default `future_transition_years = 100.0`.
+  - Introduce single strategy control in `TimeConversionOptions`:
+    - `LegacyTtUtcBlend` (default compatibility strategy)
+    - `BridgeFromModernEndpoint` (new model-agnostic bridge)
+  - Bridge at Delta-T level:
+    - `T_end = modern Delta-T at anchor`
+    - `F(Y) = asymptotic Delta-T for selected family`
+    - `F_end = F(anchor)`
+    - blend term `F(Y) + (T_end - F_end) * (1 - alpha)` over configured window.
+  - Preserve anchor rule: `anchor = max(EOP prediction end, LSK end)`.
+  - Add `Stephenson1997` family and evaluate formula in asymptotic future function.
 - Numerical assumptions:
   - Year-fraction conversion stays as existing code path (`year_fraction_from_jd`).
   - Blend uses linear interpolation in TT-UTC space.
 - Edge cases handled:
-  - No effect when future freeze is enabled.
+  - Legacy strategy ignores `smh_future_family` and `future_transition_years`.
+  - Bridge strategy reaches pure asymptotic family after window completion.
   - No effect in pre-range or strict-LSK branches.
 
 ## Validation
@@ -65,7 +80,7 @@
   - None required for formula introduction in this patch.
 - Golden test vectors added:
   - Unit test for exact Stephenson1997 formula evaluation.
-  - Policy test proving no effect when future freeze is enabled.
+  - Policy test proving legacy strategy ignores selected future family.
   - Policy test proving full model value is reached after the 100-year blend window.
 - Error tolerance used:
   - `1e-12` for direct formula identity tests.

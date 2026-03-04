@@ -34,7 +34,9 @@ pub use julian::{
     tdb_seconds_to_jd,
 };
 pub use lsk::LskData;
-pub use scales::{TimeConversionOptions, TimeConversionPolicy, UtcToTdbResult};
+pub use scales::{
+    FutureDeltaTTransition, TimeConversionOptions, TimeConversionPolicy, UtcToTdbResult,
+};
 pub use sidereal::{earth_rotation_angle_rad, gmst_rad, local_sidereal_time_rad};
 pub use utc_time::UtcTime;
 
