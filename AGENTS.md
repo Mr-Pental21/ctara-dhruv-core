@@ -43,6 +43,7 @@ Scope: this file governs AI agent behavior in `ctara-dhruv-core`.
 4. For major subsystem changes, add/update a clean-room record.
 5. Keep CI license checks passing (`scripts/ci/license_gate.sh`).
 6. For significant changes plan it first extensivly - create plan file at ~/.codex/plans/.
+7. When implementing a plan dont stop untill complete plan is implemented and tested. Only if a issue is found that cannot be resolved, stop and ask for human approval.
 
 ## Stop Conditions
 
