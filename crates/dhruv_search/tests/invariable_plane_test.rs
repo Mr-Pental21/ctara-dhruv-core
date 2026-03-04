@@ -12,8 +12,7 @@ use std::path::Path;
 
 use dhruv_core::{Body, Engine, EngineConfig};
 use dhruv_frames::{
-    DEFAULT_PRECESSION_MODEL, ReferencePlane, ecliptic_lon_to_invariable_lon,
-    icrf_to_invariable,
+    DEFAULT_PRECESSION_MODEL, ReferencePlane, ecliptic_lon_to_invariable_lon, icrf_to_invariable,
 };
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::{
@@ -21,9 +20,7 @@ use dhruv_search::{
     next_specific_sankranti, search_sankrantis,
 };
 use dhruv_time::UtcTime;
-use dhruv_vedic_base::ayanamsha::{
-    ayanamsha_deg, ayanamsha_deg_on_plane, ayanamsha_mean_deg,
-};
+use dhruv_vedic_base::ayanamsha::{ayanamsha_deg, ayanamsha_deg_on_plane, ayanamsha_mean_deg};
 use dhruv_vedic_base::{AyanamshaSystem, Rashi};
 
 const SPK_PATH: &str = "../../kernels/data/de442s.bsp";
@@ -100,16 +97,28 @@ fn jagganatha_ayanamsha_on_invariable_vs_ecliptic() {
     // On the invariable plane, the ayanamsha should differ from the ecliptic value
     let t = 0.24; // ~2024
     let aya_ecl = ayanamsha_deg_on_plane(
-        AyanamshaSystem::Jagganatha, t, true,
-        DEFAULT_PRECESSION_MODEL, ReferencePlane::Ecliptic,
+        AyanamshaSystem::Jagganatha,
+        t,
+        true,
+        DEFAULT_PRECESSION_MODEL,
+        ReferencePlane::Ecliptic,
     );
     let aya_inv = ayanamsha_deg_on_plane(
-        AyanamshaSystem::Jagganatha, t, false,
-        DEFAULT_PRECESSION_MODEL, ReferencePlane::Invariable,
+        AyanamshaSystem::Jagganatha,
+        t,
+        false,
+        DEFAULT_PRECESSION_MODEL,
+        ReferencePlane::Invariable,
     );
     // Both should be in reasonable range
-    assert!(aya_ecl > 20.0 && aya_ecl < 30.0, "ecliptic aya = {aya_ecl:.4}°");
-    assert!(aya_inv > 20.0 && aya_inv < 30.0, "invariable aya = {aya_inv:.4}°");
+    assert!(
+        aya_ecl > 20.0 && aya_ecl < 30.0,
+        "ecliptic aya = {aya_ecl:.4}°"
+    );
+    assert!(
+        aya_inv > 20.0 && aya_inv < 30.0,
+        "invariable aya = {aya_inv:.4}°"
+    );
     // They should differ (invariable plane has no nutation, different geometry)
     let diff = (aya_ecl - aya_inv).abs();
     assert!(
@@ -123,12 +132,18 @@ fn jagganatha_nutation_ignored_on_invariable() {
     // On the invariable plane, use_nutation should have no effect
     let t = 0.24;
     let aya_no_nut = ayanamsha_deg_on_plane(
-        AyanamshaSystem::Jagganatha, t, false,
-        DEFAULT_PRECESSION_MODEL, ReferencePlane::Invariable,
+        AyanamshaSystem::Jagganatha,
+        t,
+        false,
+        DEFAULT_PRECESSION_MODEL,
+        ReferencePlane::Invariable,
     );
     let aya_with_nut = ayanamsha_deg_on_plane(
-        AyanamshaSystem::Jagganatha, t, true,
-        DEFAULT_PRECESSION_MODEL, ReferencePlane::Invariable,
+        AyanamshaSystem::Jagganatha,
+        t,
+        true,
+        DEFAULT_PRECESSION_MODEL,
+        ReferencePlane::Invariable,
     );
     assert!(
         (aya_no_nut - aya_with_nut).abs() < 1e-10,
@@ -189,11 +204,22 @@ fn body_lon_on_invariable_vs_ecliptic_bounded() {
     let utc = UtcTime::new(2024, 3, 20, 12, 0, 0.0);
     let jd_tdb = utc.to_jd_tdb(engine.lsk());
 
-    for body in [Body::Sun, Body::Moon, Body::Mars, Body::Jupiter, Body::Saturn] {
+    for body in [
+        Body::Sun,
+        Body::Moon,
+        Body::Mars,
+        Body::Jupiter,
+        Body::Saturn,
+    ] {
         let (ecl_lon, _) = body_ecliptic_lon_lat(&engine, body, jd_tdb).unwrap();
         let (inv_lon, _) = body_lon_lat_on_plane(
-            &engine, body, jd_tdb, DEFAULT_PRECESSION_MODEL, ReferencePlane::Invariable,
-        ).unwrap();
+            &engine,
+            body,
+            jd_tdb,
+            DEFAULT_PRECESSION_MODEL,
+            ReferencePlane::Invariable,
+        )
+        .unwrap();
 
         let diff = (ecl_lon - inv_lon + 180.0).rem_euclid(360.0) - 180.0;
         assert!(
@@ -211,9 +237,8 @@ fn graha_sidereal_longitudes_jagganatha_in_range() {
     let utc = UtcTime::new(2024, 3, 20, 12, 0, 0.0);
     let jd_tdb = utc.to_jd_tdb(engine.lsk());
 
-    let lons = graha_sidereal_longitudes(
-        &engine, jd_tdb, AyanamshaSystem::Jagganatha, true,
-    ).unwrap();
+    let lons =
+        graha_sidereal_longitudes(&engine, jd_tdb, AyanamshaSystem::Jagganatha, true).unwrap();
 
     for i in 0..9 {
         let lon = lons.longitudes[i];
@@ -231,12 +256,9 @@ fn graha_sidereal_jagganatha_vs_lahiri_bounded() {
     let utc = UtcTime::new(2024, 6, 15, 12, 0, 0.0);
     let jd_tdb = utc.to_jd_tdb(engine.lsk());
 
-    let jagg = graha_sidereal_longitudes(
-        &engine, jd_tdb, AyanamshaSystem::Jagganatha, true,
-    ).unwrap();
-    let lahiri = graha_sidereal_longitudes(
-        &engine, jd_tdb, AyanamshaSystem::Lahiri, true,
-    ).unwrap();
+    let jagg =
+        graha_sidereal_longitudes(&engine, jd_tdb, AyanamshaSystem::Jagganatha, true).unwrap();
+    let lahiri = graha_sidereal_longitudes(&engine, jd_tdb, AyanamshaSystem::Lahiri, true).unwrap();
 
     // Sapta grahas (0-6): longitudes should be within ~2° (planes ~1.58° apart).
     for i in 0..7 {
@@ -244,7 +266,8 @@ fn graha_sidereal_jagganatha_vs_lahiri_bounded() {
         assert!(
             diff.abs() < 2.0,
             "graha {i}: Jagganatha={:.4}°, Lahiri={:.4}°, diff={diff:.4}°",
-            jagg.longitudes[i], lahiri.longitudes[i]
+            jagg.longitudes[i],
+            lahiri.longitudes[i]
         );
     }
     // Rahu/Ketu (7,8): lunar nodes differ more because the osculating node
@@ -254,7 +277,8 @@ fn graha_sidereal_jagganatha_vs_lahiri_bounded() {
         assert!(
             diff.abs() < 25.0,
             "graha {i}: Jagganatha={:.4}°, Lahiri={:.4}°, diff={diff:.4}°",
-            jagg.longitudes[i], lahiri.longitudes[i]
+            jagg.longitudes[i],
+            lahiri.longitudes[i]
         );
     }
 }
@@ -269,18 +293,25 @@ fn graha_sidereal_jagganatha_self_consistent() {
 
     let t = (jd_tdb - 2_451_545.0) / 36525.0;
     let aya = ayanamsha_deg_on_plane(
-        AyanamshaSystem::Jagganatha, t, false,
-        DEFAULT_PRECESSION_MODEL, ReferencePlane::Invariable,
+        AyanamshaSystem::Jagganatha,
+        t,
+        false,
+        DEFAULT_PRECESSION_MODEL,
+        ReferencePlane::Invariable,
     );
 
-    let lons = graha_sidereal_longitudes(
-        &engine, jd_tdb, AyanamshaSystem::Jagganatha, false,
-    ).unwrap();
+    let lons =
+        graha_sidereal_longitudes(&engine, jd_tdb, AyanamshaSystem::Jagganatha, false).unwrap();
 
     // Check Sun (index 0)
     let (sun_inv_lon, _) = body_lon_lat_on_plane(
-        &engine, Body::Sun, jd_tdb, DEFAULT_PRECESSION_MODEL, ReferencePlane::Invariable,
-    ).unwrap();
+        &engine,
+        Body::Sun,
+        jd_tdb,
+        DEFAULT_PRECESSION_MODEL,
+        ReferencePlane::Invariable,
+    )
+    .unwrap();
     let expected_sid = (sun_inv_lon - aya).rem_euclid(360.0);
     let diff = (lons.longitudes[0] - expected_sid + 180.0).rem_euclid(360.0) - 180.0;
     assert!(
@@ -291,8 +322,13 @@ fn graha_sidereal_jagganatha_self_consistent() {
 
     // Check Moon (index 1)
     let (moon_inv_lon, _) = body_lon_lat_on_plane(
-        &engine, Body::Moon, jd_tdb, DEFAULT_PRECESSION_MODEL, ReferencePlane::Invariable,
-    ).unwrap();
+        &engine,
+        Body::Moon,
+        jd_tdb,
+        DEFAULT_PRECESSION_MODEL,
+        ReferencePlane::Invariable,
+    )
+    .unwrap();
     let expected_sid = (moon_inv_lon - aya).rem_euclid(360.0);
     let diff = (lons.longitudes[1] - expected_sid + 180.0).rem_euclid(360.0) - 180.0;
     assert!(

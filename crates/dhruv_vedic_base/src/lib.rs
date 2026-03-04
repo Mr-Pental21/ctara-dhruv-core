@@ -45,6 +45,7 @@ pub mod samvatsara;
 pub mod shadbala;
 pub mod special_lagna;
 pub mod sphuta;
+pub mod time_policy;
 pub mod tithi;
 pub mod upagraha;
 pub mod util;
@@ -79,9 +80,8 @@ pub use ayanamsha::{
     ayanamsha_deg_with_catalog_on_plane, ayanamsha_deg_with_model, ayanamsha_mean_deg,
     ayanamsha_mean_deg_static, ayanamsha_mean_deg_static_on_plane,
     ayanamsha_mean_deg_static_with_model, ayanamsha_mean_deg_with_catalog,
-    ayanamsha_mean_deg_with_catalog_and_model, ayanamsha_mean_deg_with_model,
-    ayanamsha_true_deg, ayanamsha_true_deg_with_model, jd_tdb_to_centuries,
-    tdb_seconds_to_centuries,
+    ayanamsha_mean_deg_with_catalog_and_model, ayanamsha_mean_deg_with_model, ayanamsha_true_deg,
+    ayanamsha_true_deg_with_model, jd_tdb_to_centuries, tdb_seconds_to_centuries,
 };
 pub use bhava::compute_bhavas;
 pub use bhava_types::{
@@ -157,6 +157,7 @@ pub use sphuta::{
     rahu_tithi_sphuta, sookshma_trisphuta, tithi_sphuta, trisphuta, yoga_sphuta,
     yoga_sphuta_normalized,
 };
+pub use time_policy::{set_time_conversion_policy, time_conversion_policy};
 pub use tithi::{
     ALL_TITHIS, Paksha, TITHI_SEGMENT_DEG, Tithi, TithiPosition, tithi_from_elongation,
 };

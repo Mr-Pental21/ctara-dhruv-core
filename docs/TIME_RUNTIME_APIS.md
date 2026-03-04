@@ -24,6 +24,15 @@ This is the crate-root callable runtime surface of `dhruv_time`.
 | `LeapSecondKernel::utc_to_tdb` | `utc_s` | `f64` | UTC seconds past J2000 to TDB seconds. |
 | `LeapSecondKernel::tdb_to_utc` | `tdb_s` | `f64` | TDB seconds past J2000 to UTC seconds. |
 
+## Policy Types
+
+| Type/API | Purpose |
+|---|---|
+| `TimeConversionPolicy::StrictLsk` | Always use LSK `DELTA_AT` path. |
+| `TimeConversionPolicy::HybridDeltaT(TimeConversionOptions)` | Use model fallback outside LSK/EOP range as configured. |
+| `TimeConversionOptions::future_transition_years` | Blend length (years) from anchored TT-UTC to model TT-UTC when `freeze_future_delta_at=false` (default `100.0`). |
+| `TimeConversionOptions::smh_future_family` | Future asymptotic strategy selector for post-EOP fallback under SMH model. Includes `Addendum2020Piecewise`, fixed `c` members, and `Stephenson1997`. |
+
 ## `Epoch`
 
 | API | Input | Output | Purpose |

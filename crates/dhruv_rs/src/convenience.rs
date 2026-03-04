@@ -1,8 +1,7 @@
 use dhruv_core::{Body, Frame, Observer, Query, StateVector};
 use dhruv_frames::{
-    ReferencePlane, SphericalCoords, SphericalState, cartesian_to_spherical,
-    icrf_to_reference_plane, icrf_to_ecliptic, nutation_iau2000b,
-    precess_ecliptic_j2000_to_date,
+    ReferencePlane, SphericalCoords, SphericalState, cartesian_to_spherical, icrf_to_ecliptic,
+    icrf_to_reference_plane, nutation_iau2000b, precess_ecliptic_j2000_to_date,
 };
 use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::{ChandraGrahan, GrahanConfig, SuryaGrahan};
@@ -13,33 +12,86 @@ use dhruv_search::panchang_types::{
 use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use dhruv_search::stationary_types::{MaxSpeedEvent, StationaryConfig, StationaryEvent};
 use dhruv_search::{LunarPhaseEvent, SearchError};
-use dhruv_time::{EopKernel, Epoch, UtcTime, calendar_to_jd};
+use dhruv_time::{
+    EopKernel, TimeWarning, UtcTime, calendar_to_jd, jd_to_tdb_seconds, tdb_seconds_to_jd,
+};
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult};
 use dhruv_vedic_base::{
     AshtakavargaResult, AyanamshaSystem, BhavaConfig, BhavaResult, BhinnaAshtakavarga,
     DrishtiEntry, GrahaDrishtiMatrix, LunarNode, Nakshatra28Info, NakshatraInfo, NodeMode, Rashi,
-    RashiInfo, SarvaAshtakavarga, ayanamsha_deg, ayanamsha_deg_on_plane, ayanamsha_deg_with_catalog,
-    jd_tdb_to_centuries, lunar_node_deg_for_epoch, nakshatra_from_longitude,
-    nakshatra28_from_longitude, rashi_from_longitude,
+    RashiInfo, SarvaAshtakavarga, ayanamsha_deg, ayanamsha_deg_on_plane,
+    ayanamsha_deg_with_catalog, jd_tdb_to_centuries, lunar_node_deg_for_epoch,
+    nakshatra_from_longitude, nakshatra28_from_longitude, rashi_from_longitude,
 };
 
 use crate::date::UtcDate;
 use crate::error::DhruvError;
-use crate::global::engine;
+use crate::global::{engine, time_conversion_policy};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static RS_WARNED_LSK_PRE: AtomicBool = AtomicBool::new(false);
+static RS_WARNED_LSK_FUTURE: AtomicBool = AtomicBool::new(false);
+static RS_WARNED_EOP_PRE: AtomicBool = AtomicBool::new(false);
+static RS_WARNED_EOP_FUTURE: AtomicBool = AtomicBool::new(false);
+static RS_WARNED_DELTA_T: AtomicBool = AtomicBool::new(false);
 
 /// Convert a UTC date to a TDB Julian Date using the global engine's LSK.
 fn utc_to_jd_tdb(date: UtcDate) -> Result<f64, DhruvError> {
     let eng = engine()?;
-    let epoch = Epoch::from_utc(
-        date.year,
-        date.month,
-        date.day,
-        date.hour,
-        date.min,
-        date.sec,
-        eng.lsk(),
-    );
-    Ok(epoch.as_jd_tdb())
+    Ok(utc_to_jd_tdb_for_engine(eng, date, None))
+}
+
+fn utc_to_jd_tdb_with_eop(date: UtcDate, eop: &EopKernel) -> Result<f64, DhruvError> {
+    let eng = engine()?;
+    Ok(utc_to_jd_tdb_for_engine(eng, date, Some(eop)))
+}
+
+fn utc_to_jd_tdb_for_engine(
+    eng: &dhruv_core::Engine,
+    date: UtcDate,
+    eop: Option<&EopKernel>,
+) -> f64 {
+    let day_frac =
+        date.day as f64 + date.hour as f64 / 24.0 + date.min as f64 / 1440.0 + date.sec / 86_400.0;
+    let jd_utc = calendar_to_jd(date.year, date.month, day_frac);
+    let utc_s = jd_to_tdb_seconds(jd_utc);
+    let out = eng
+        .lsk()
+        .utc_to_tdb_with_policy_and_eop(utc_s, eop, time_conversion_policy());
+    for w in &out.diagnostics.warnings {
+        emit_rs_time_warning_once(w);
+    }
+    tdb_seconds_to_jd(out.tdb_seconds)
+}
+
+fn emit_rs_time_warning_once(warning: &TimeWarning) {
+    match warning {
+        TimeWarning::LskPreRangeFallback { .. } => {
+            if !RS_WARNED_LSK_PRE.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+        TimeWarning::LskFutureFrozen { .. } => {
+            if !RS_WARNED_LSK_FUTURE.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+        TimeWarning::EopPreRangeFallback { .. } => {
+            if !RS_WARNED_EOP_PRE.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+        TimeWarning::EopFutureFrozen { .. } => {
+            if !RS_WARNED_EOP_FUTURE.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+        TimeWarning::DeltaTModelUsed { .. } => {
+            if !RS_WARNED_DELTA_T.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+    }
 }
 
 /// Convert a UTC date to a Julian Date (UTC scale, no TDB conversion).
@@ -161,20 +213,12 @@ pub fn query_batch(
     let queries: Vec<Query> = requests
         .iter()
         .map(|(target, observer, frame, date)| {
-            let epoch = Epoch::from_utc(
-                date.year,
-                date.month,
-                date.day,
-                date.hour,
-                date.min,
-                date.sec,
-                eng.lsk(),
-            );
+            let jd = utc_to_jd_tdb_for_engine(eng, *date, None);
             Query {
                 target: *target,
                 observer: *observer,
                 frame: *frame,
-                epoch_tdb_jd: epoch.as_jd_tdb(),
+                epoch_tdb_jd: jd,
             }
         })
         .collect();
@@ -202,16 +246,7 @@ pub fn sidereal_longitude(
     use_nutation: bool,
 ) -> Result<f64, DhruvError> {
     let eng = engine()?;
-    let epoch = Epoch::from_utc(
-        date.year,
-        date.month,
-        date.day,
-        date.hour,
-        date.min,
-        date.sec,
-        eng.lsk(),
-    );
-    let jd = epoch.as_jd_tdb();
+    let jd = utc_to_jd_tdb_for_engine(eng, date, None);
     let state = eng.query(Query {
         target,
         observer,
@@ -241,16 +276,7 @@ pub fn sidereal_longitude_on_plane(
     plane: ReferencePlane,
 ) -> Result<f64, DhruvError> {
     let eng = engine()?;
-    let epoch = Epoch::from_utc(
-        date.year,
-        date.month,
-        date.day,
-        date.hour,
-        date.min,
-        date.sec,
-        eng.lsk(),
-    );
-    let jd = epoch.as_jd_tdb();
+    let jd = utc_to_jd_tdb_for_engine(eng, date, None);
     let state = eng.query(Query {
         target,
         observer,
@@ -1623,7 +1649,7 @@ pub fn ghatikas_since_sunrise(
     let rs_config = RiseSetConfig::default();
     let (sunrise_jd, next_sunrise_jd) =
         dhruv_search::vedic_day_sunrises(eng, eop, &utc, location, &rs_config)?;
-    let jd_tdb = utc_to_jd_tdb(date)?;
+    let jd_tdb = utc_to_jd_tdb_with_eop(date, eop)?;
     Ok(dhruv_vedic_base::ghatikas_since_sunrise(
         jd_tdb,
         sunrise_jd,

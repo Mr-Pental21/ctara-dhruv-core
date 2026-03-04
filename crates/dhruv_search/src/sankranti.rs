@@ -97,7 +97,7 @@ pub fn next_sankranti(
 ) -> Result<Option<SankrantiEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
 
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let sid_lon = sun_sidereal_longitude(engine, jd, config)?;
     let boundary = next_boundary(sid_lon);
 
@@ -152,7 +152,7 @@ pub fn prev_sankranti(
 ) -> Result<Option<SankrantiEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
 
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let sid_lon = sun_sidereal_longitude(engine, jd, config)?;
     let boundary = prev_boundary(sid_lon);
 
@@ -206,8 +206,8 @@ pub fn search_sankrantis(
 ) -> Result<Vec<SankrantiEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
 
-    let jd_start = start.to_jd_tdb(engine.lsk());
-    let jd_end = end.to_jd_tdb(engine.lsk());
+    let jd_start = crate::search_util::utc_to_jd_tdb(engine, &start);
+    let jd_end = crate::search_util::utc_to_jd_tdb(engine, &end);
 
     if jd_end <= jd_start {
         return Err(SearchError::InvalidConfig("end must be after start"));
@@ -218,7 +218,7 @@ pub fn search_sankrantis(
 
     // Find sankrantis iteratively
     while let Some(event) = next_sankranti(engine, &cursor, config)? {
-        let event_jd = event.utc.to_jd_tdb(engine.lsk());
+        let event_jd = crate::search_util::utc_to_jd_tdb(engine, &event.utc);
         if event_jd > jd_end {
             break;
         }
@@ -239,7 +239,7 @@ pub fn next_specific_sankranti(
 ) -> Result<Option<SankrantiEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
 
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let boundary = rashi.index() as f64 * 30.0;
 
     let max_steps = (MAX_SCAN_DAYS / config.step_size_days).ceil() as usize;
@@ -273,7 +273,7 @@ pub fn prev_specific_sankranti(
 ) -> Result<Option<SankrantiEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
 
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let boundary = rashi.index() as f64 * 30.0;
 
     let max_steps = (MAX_SCAN_DAYS / config.step_size_days).ceil() as usize;

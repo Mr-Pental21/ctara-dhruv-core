@@ -48,6 +48,14 @@ Location-dependent commands additionally require `--lat`, `--lon`, and `--eop`.
 | `--alt` | f64 | Altitude in meters (default 0) |
 | `--ayanamsha` | i32 | Ayanamsha system code (0-19, default 0=Lahiri) |
 | `--nutation` | flag | Apply nutation correction |
+| `--time-policy` | `strict-lsk` or `hybrid-deltat` | UTC->TDB conversion policy (default `hybrid-deltat`) |
+| `--delta-t-model` | `legacy-em2006` or `smh2016` | Delta-T model for hybrid fallback (default `smh2016`) |
+| `--no-freeze-future` | flag | Use model fallback for future UTC beyond LSK instead of freezing `DELTA_AT` |
+| `--no-freeze-future-dut1` | flag | Use configured DUT1 fallback beyond EOP instead of freezing DUT1 |
+| `--future-transition-years` | f64 | Blend window length from anchor TT-UTC to model fallback (`100.0` default) |
+| `--smh-future-family` | selector | Post-EOP asymptotic strategy when `--no-freeze-future` is active (`addendum2020`, `c-20`, `c-17.52`, `c-15.32`, `stephenson1997`) |
+| `--stale-lsk-threshold-days` | f64 | Warn if LSK coverage end is older than threshold |
+| `--stale-eop-threshold-days` | f64 | Warn if EOP coverage end is older than threshold |
 
 ---
 

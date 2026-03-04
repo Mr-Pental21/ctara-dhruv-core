@@ -165,12 +165,14 @@ mod tests {
         assert!(
             (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
             "Spica lon: catalog={:.6}, anchor={:.6}",
-            ecl.lon_deg, spec.lon_j2000_deg
+            ecl.lon_deg,
+            spec.lon_j2000_deg
         );
         assert!(
             (ecl.lat_deg - spec.lat_j2000_deg).abs() < 0.001,
             "Spica lat: catalog={:.6}, anchor={:.6}",
-            ecl.lat_deg, spec.lat_j2000_deg
+            ecl.lat_deg,
+            spec.lat_j2000_deg
         );
 
         let ecl = position_ecliptic(cat, TaraId::Aldebaran, j2000_jd).unwrap();
@@ -178,7 +180,8 @@ mod tests {
         assert!(
             (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
             "Aldebaran lon: catalog={:.6}, anchor={:.6}",
-            ecl.lon_deg, spec.lon_j2000_deg
+            ecl.lon_deg,
+            spec.lon_j2000_deg
         );
 
         let ecl = position_ecliptic(cat, TaraId::DeltaCnc, j2000_jd).unwrap();
@@ -186,7 +189,8 @@ mod tests {
         assert!(
             (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
             "DeltaCnc lon: catalog={:.6}, anchor={:.6}",
-            ecl.lon_deg, spec.lon_j2000_deg
+            ecl.lon_deg,
+            spec.lon_j2000_deg
         );
 
         let ecl = position_ecliptic(cat, TaraId::LambdaSco, j2000_jd).unwrap();
@@ -194,7 +198,8 @@ mod tests {
         assert!(
             (ecl.lon_deg - spec.lon_j2000_deg).abs() < 0.001,
             "LambdaSco lon: catalog={:.6}, anchor={:.6}",
-            ecl.lon_deg, spec.lon_j2000_deg
+            ecl.lon_deg,
+            spec.lon_j2000_deg
         );
     }
 

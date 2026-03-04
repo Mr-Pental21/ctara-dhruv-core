@@ -10,6 +10,12 @@ pub mod precession;
 pub mod rotation;
 pub mod spherical;
 
+pub use invariable::{
+    INVARIABLE_INCLINATION_DEG, INVARIABLE_NODE_DEG, ReferencePlane,
+    ecliptic_lon_to_invariable_lon, ecliptic_to_invariable, icrf_to_invariable,
+    icrf_to_reference_plane, invariable_lon_to_ecliptic_lon, invariable_to_ecliptic,
+    invariable_to_icrf,
+};
 pub use nutation::{
     equation_of_equinoxes_and_true_obliquity, fundamental_arguments, nutation_iau2000b,
 };
@@ -26,12 +32,6 @@ pub use precession::{
     general_precession_rate_deg_per_day_with_model, precess_ecliptic_date_to_j2000,
     precess_ecliptic_date_to_j2000_with_model, precess_ecliptic_j2000_to_date,
     precess_ecliptic_j2000_to_date_with_model,
-};
-pub use invariable::{
-    INVARIABLE_INCLINATION_DEG, INVARIABLE_NODE_DEG, ReferencePlane,
-    ecliptic_lon_to_invariable_lon, ecliptic_to_invariable, icrf_to_invariable,
-    icrf_to_reference_plane, invariable_lon_to_ecliptic_lon, invariable_to_ecliptic,
-    invariable_to_icrf,
 };
 pub use rotation::{ecliptic_to_icrf, icrf_to_ecliptic};
 pub use spherical::{

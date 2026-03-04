@@ -1,4 +1,7 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
 use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
@@ -11,7 +14,12 @@ use dhruv_search::grahan_types::GrahanConfig;
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::stationary_types::StationaryConfig;
 use dhruv_tara::{EarthState, TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
-use dhruv_time::{EopKernel, UtcTime, calendar_to_jd};
+use dhruv_time::{
+    DeltaTModel, EopKernel, LeapSecondKernel, SmhFutureParabolaFamily, TimeConversionOptions,
+    TimeConversionPolicy, TimeWarning, UtcTime, calendar_to_jd, install_smh2016_reconstruction,
+    jd_to_calendar, jd_to_tdb_seconds, parse_smh2016_reconstruction,
+    smh2016_reconstruction_installed, tdb_seconds_to_jd,
+};
 use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
 use dhruv_vedic_base::{
@@ -24,6 +32,50 @@ use dhruv_vedic_base::{
 #[derive(Parser)]
 #[command(name = "dhruv", about = "Dhruv ephemeris CLI")]
 struct Cli {
+    /// UTC->TDB conversion policy: strict-lsk or hybrid-deltat
+    #[arg(long, global = true, default_value = "hybrid-deltat")]
+    time_policy: String,
+    /// Delta-T model for hybrid-deltat policy: legacy-em2006 or smh2016
+    #[arg(long, global = true, default_value = "smh2016")]
+    delta_t_model: String,
+    /// SMH future parabola-family selector when post-EOP asymptotic fallback
+    /// is active (hybrid-deltat + --no-freeze-future).
+    /// Values: addendum2020, c-20, c-17.52, c-15.32, stephenson1997
+    #[arg(long, global = true, default_value = "addendum2020")]
+    smh_future_family: String,
+    /// Optional path to SMH2016 reconstruction table.
+    /// Accepted formats: `year delta_t_seconds` points or
+    /// cubic segments `Ki Ki+1 a0 a1 a2 a3`.
+    #[arg(long, global = true)]
+    delta_t_smh_table: Option<PathBuf>,
+    /// For hybrid-deltat policy: do not freeze DELTA_AT after LSK coverage;
+    /// use Delta-T model fallback for future dates instead.
+    #[arg(long, global = true, default_value_t = false)]
+    no_freeze_future: bool,
+    /// For hybrid-deltat policy: do not freeze DUT1 after EOP coverage.
+    /// By default DUT1 is frozen to last known EOP value.
+    #[arg(long, global = true, default_value_t = false)]
+    no_freeze_future_dut1: bool,
+    /// Transition window in years for blending from leap-table anchor TT-UTC
+    /// to model fallback when `--no-freeze-future` is active.
+    #[arg(long, global = true)]
+    future_transition_years: Option<f64>,
+    /// Optional staleness warning threshold for LSK coverage end (days).
+    /// Example: --stale-lsk-threshold-days 365
+    #[arg(long, global = true)]
+    stale_lsk_threshold_days: Option<f64>,
+    /// Optional staleness warning threshold for EOP coverage end (days).
+    /// Example: --stale-eop-threshold-days 30
+    #[arg(long, global = true)]
+    stale_eop_threshold_days: Option<f64>,
+    /// Optional path to IERS C04 file for historical/final DUT1 backfill
+    /// (typically `eopc04.1962-now`).
+    #[arg(long, global = true)]
+    eop_c04: Option<PathBuf>,
+    /// Optional path to IERS daily finals file for fresher prediction tail
+    /// (typically `finals2000A.daily.extended`).
+    #[arg(long, global = true)]
+    eop_daily: Option<PathBuf>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -474,7 +526,7 @@ struct GrahaPositionsArgs {
     /// Output tropical (ecliptic-of-date) longitudes instead of sidereal
     #[arg(long, conflicts_with_all = ["nakshatra", "lagna", "outer", "bhava"])]
     tropical: bool,
-    /// Precession model: vondrak2011 (default), iau2006, lieske1977
+    /// Precession model: vondrak2011 (default), iau2006, lieske1977, newcomb1895
     #[arg(long, default_value = "vondrak2011")]
     precession: String,
     /// Path to SPK kernel
@@ -1341,7 +1393,6 @@ struct TaraPositionArgs {
     bsp: Option<PathBuf>,
 }
 
-
 #[derive(Subcommand)]
 enum Commands {
     /// Rashi from sidereal longitude
@@ -1940,15 +1991,17 @@ fn parse_utc(s: &str) -> Result<UtcTime, String> {
     let hour: u32 = time_parts[0].parse().map_err(|e| format!("{e}"))?;
     let minute: u32 = time_parts[1].parse().map_err(|e| format!("{e}"))?;
     let second: f64 = time_parts[2].parse().map_err(|e| format!("{e}"))?;
-    Ok(UtcTime::new(year, month, day, hour, minute, second))
+    UtcTime::try_new(year, month, day, hour, minute, second, None).map_err(|e| e.to_string())
 }
 
 fn load_engine(bsp: &Path, lsk: &Path) -> Engine {
     let config = EngineConfig::with_single_spk(bsp.to_path_buf(), lsk.to_path_buf(), 256, true);
-    Engine::new(config).unwrap_or_else(|e| {
+    let engine = Engine::new(config).unwrap_or_else(|e| {
         eprintln!("Failed to load engine: {e}");
         std::process::exit(1);
-    })
+    });
+    maybe_warn_stale_lsk(engine.lsk());
+    engine
 }
 
 fn require_aya_system(code: i32) -> AyanamshaSystem {
@@ -1963,18 +2016,36 @@ fn parse_precession_model(s: &str) -> PrecessionModel {
         "vondrak2011" | "vondrak" => PrecessionModel::Vondrak2011,
         "iau2006" => PrecessionModel::Iau2006,
         "lieske1977" | "lieske" => PrecessionModel::Lieske1977,
+        "newcomb1895" | "newcomb" => PrecessionModel::Newcomb1895,
         _ => {
-            eprintln!("Invalid precession model: {s} (vondrak2011, iau2006, lieske1977)");
+            eprintln!(
+                "Invalid precession model: {s} (vondrak2011, iau2006, lieske1977, newcomb1895)"
+            );
             std::process::exit(1);
         }
     }
 }
 
 fn load_eop(path: &Path) -> EopKernel {
-    EopKernel::load(path).unwrap_or_else(|e| {
+    let c04_path = EOP_C04_PATH
+        .get()
+        .and_then(|p| p.as_ref())
+        .map(|p| p.as_path());
+    let daily_path = EOP_DAILY_PATH
+        .get()
+        .and_then(|p| p.as_ref())
+        .map(|p| p.as_path());
+    let eop = if c04_path.is_some() || daily_path.is_some() {
+        EopKernel::load_merged(path, c04_path, daily_path)
+    } else {
+        EopKernel::load(path)
+    }
+    .unwrap_or_else(|e| {
         eprintln!("Failed to load EOP: {e}");
         std::process::exit(1);
-    })
+    });
+    maybe_warn_stale_eop(&eop);
+    eop
 }
 
 fn parse_graha_name(s: &str) -> Graha {
@@ -2028,6 +2099,223 @@ fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
         + utc.minute as f64 / 1440.0
         + utc.second / 86_400.0;
     calendar_to_jd(utc.year, utc.month, day_frac)
+}
+
+static CLI_WARNED_LSK_PRE: AtomicBool = AtomicBool::new(false);
+static CLI_WARNED_LSK_FUTURE: AtomicBool = AtomicBool::new(false);
+static CLI_WARNED_DELTA_T: AtomicBool = AtomicBool::new(false);
+static CLI_WARNED_STALE_LSK: AtomicBool = AtomicBool::new(false);
+static CLI_WARNED_STALE_EOP: AtomicBool = AtomicBool::new(false);
+static STALE_LSK_THRESHOLD_DAYS: OnceLock<Option<f64>> = OnceLock::new();
+static STALE_EOP_THRESHOLD_DAYS: OnceLock<Option<f64>> = OnceLock::new();
+static EOP_C04_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+static EOP_DAILY_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+fn now_jd_utc() -> f64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64();
+    2_440_587.5 + now / 86_400.0
+}
+
+fn jd_to_ymd_string(jd: f64) -> String {
+    let (y, m, d) = jd_to_calendar(jd);
+    format!("{y:04}-{m:02}-{:02}", d.floor() as u32)
+}
+
+fn maybe_warn_stale_lsk(lsk: &LeapSecondKernel) {
+    let Some(Some(threshold_days)) = STALE_LSK_THRESHOLD_DAYS.get().copied() else {
+        return;
+    };
+    let Some((delta_at, end_tdb_s)) = lsk.data().last_delta_at() else {
+        return;
+    };
+    let end_jd = tdb_seconds_to_jd(end_tdb_s);
+    let age_days = now_jd_utc() - end_jd;
+    if age_days > threshold_days && !CLI_WARNED_STALE_LSK.swap(true, Ordering::Relaxed) {
+        eprintln!(
+            "Warning: LSK appears stale (coverage end {}, ~{:.1} days old, DELTA_AT={}s). Consider updating naif0012.tls.",
+            jd_to_ymd_string(end_jd),
+            age_days,
+            delta_at
+        );
+    }
+}
+
+fn maybe_warn_stale_eop(eop: &EopKernel) {
+    let Some(Some(threshold_days)) = STALE_EOP_THRESHOLD_DAYS.get().copied() else {
+        return;
+    };
+    let (_start_mjd, end_mjd) = eop.data().range();
+    let end_jd = end_mjd + 2_400_000.5;
+    let age_days = now_jd_utc() - end_jd;
+    if age_days > threshold_days && !CLI_WARNED_STALE_EOP.swap(true, Ordering::Relaxed) {
+        eprintln!(
+            "Warning: EOP appears stale (coverage end {}, ~{:.1} days old). Consider updating finals2000A.all/finals2000A.daily.extended.",
+            jd_to_ymd_string(end_jd),
+            age_days
+        );
+    }
+}
+
+fn parse_time_policy(
+    s: &str,
+    delta_t_model: DeltaTModel,
+    smh_future_family: SmhFutureParabolaFamily,
+    no_freeze_future: bool,
+    no_freeze_future_dut1: bool,
+    future_transition_years: Option<f64>,
+) -> TimeConversionPolicy {
+    match s {
+        "strict-lsk" => TimeConversionPolicy::StrictLsk,
+        "hybrid-deltat" => {
+            let mut opts = TimeConversionOptions::default();
+            opts.delta_t_model = delta_t_model;
+            opts.smh_future_family = smh_future_family;
+            opts.freeze_future_delta_at = !no_freeze_future;
+            opts.freeze_future_dut1 = !no_freeze_future_dut1;
+            if let Some(v) = future_transition_years {
+                opts.future_transition_years = v;
+            }
+            TimeConversionPolicy::HybridDeltaT(opts)
+        }
+        _ => {
+            eprintln!("Invalid time policy: {s} (strict-lsk, hybrid-deltat)");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn parse_delta_t_model(s: &str) -> DeltaTModel {
+    match s {
+        "legacy-em2006" | "legacy" => DeltaTModel::LegacyEspenakMeeus2006,
+        "smh2016" => DeltaTModel::Smh2016WithPre720Quadratic,
+        _ => {
+            eprintln!("Invalid delta-T model: {s} (legacy-em2006, smh2016)");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn parse_smh_future_family(s: &str) -> SmhFutureParabolaFamily {
+    match s.to_lowercase().as_str() {
+        "addendum2020" | "smh2020" | "piecewise" => SmhFutureParabolaFamily::Addendum2020Piecewise,
+        "c-20" | "c-20.0" | "cminus20" => SmhFutureParabolaFamily::ConstantCMinus20,
+        "c-17.52" | "cminus17.52" | "cminus17p52" => SmhFutureParabolaFamily::ConstantCMinus17p52,
+        "c-15.32" | "cminus15.32" | "cminus15p32" => SmhFutureParabolaFamily::ConstantCMinus15p32,
+        "stephenson1997" | "st97" | "swiss-stephenson1997" | "swisseph-stephenson1997" => {
+            SmhFutureParabolaFamily::Stephenson1997
+        }
+        _ => {
+            eprintln!(
+                "Invalid smh future family: {s} (addendum2020, c-20, c-17.52, c-15.32, stephenson1997)"
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn find_default_smh2016_table() -> Option<PathBuf> {
+    let candidates = [
+        "kernels/data/time/smh2016_reconstruction.tsv",
+        "kernels/data/time/smh2016_reconstruction.txt",
+        "kernels/data/time/smh2016_reconstruction.csv",
+    ];
+    candidates
+        .iter()
+        .map(PathBuf::from)
+        .find(|p| p.exists() && p.is_file())
+}
+
+fn maybe_warn_smh_manifest_pending() {
+    let manifest = Path::new("kernels/data/time/time_assets_manifest.json");
+    let Ok(content) = std::fs::read_to_string(manifest) else {
+        return;
+    };
+    if content.contains("\"id\": \"smh2016_reconstruction\"")
+        && content.contains("\"status\": \"pending_import\"")
+    {
+        eprintln!(
+            "Warning: SMH2016 manifest status is pending_import; provide --delta-t-smh-table or import the canonical table under kernels/data/time."
+        );
+    }
+}
+
+fn maybe_install_smh2016_table(path: Option<&Path>) {
+    let selected = path
+        .map(|p| p.to_path_buf())
+        .or_else(find_default_smh2016_table);
+    let Some(path) = selected else {
+        maybe_warn_smh_manifest_pending();
+        return;
+    };
+
+    let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        eprintln!(
+            "Failed to read SMH2016 reconstruction table '{}': {e}",
+            path.display()
+        );
+        std::process::exit(1);
+    });
+    let table = parse_smh2016_reconstruction(&content).unwrap_or_else(|e| {
+        eprintln!(
+            "Failed to parse SMH2016 reconstruction table '{}': {e}",
+            path.display()
+        );
+        std::process::exit(1);
+    });
+    if !install_smh2016_reconstruction(table) {
+        eprintln!(
+            "Warning: SMH2016 reconstruction table was already installed; keeping first-loaded table."
+        );
+    } else {
+        eprintln!("Loaded SMH2016 reconstruction table: {}", path.display());
+    }
+}
+
+fn emit_cli_time_warning_once(warning: &TimeWarning) {
+    match warning {
+        TimeWarning::LskPreRangeFallback { .. } => {
+            if !CLI_WARNED_LSK_PRE.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+        TimeWarning::LskFutureFrozen { .. } => {
+            if !CLI_WARNED_LSK_FUTURE.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+        TimeWarning::DeltaTModelUsed { .. } => {
+            if !CLI_WARNED_DELTA_T.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: {warning}");
+            }
+        }
+        _ => {}
+    }
+}
+
+fn utc_to_jd_tdb_with_policy(
+    utc: &UtcTime,
+    lsk: &LeapSecondKernel,
+    policy: TimeConversionPolicy,
+) -> f64 {
+    utc_to_jd_tdb_with_policy_and_eop(utc, lsk, None, policy)
+}
+
+fn utc_to_jd_tdb_with_policy_and_eop(
+    utc: &UtcTime,
+    lsk: &LeapSecondKernel,
+    eop: Option<&EopKernel>,
+    policy: TimeConversionPolicy,
+) -> f64 {
+    let jd_utc = utc_to_jd_utc(utc);
+    let utc_s = jd_to_tdb_seconds(jd_utc);
+    let out = lsk.utc_to_tdb_with_policy_and_eop(utc_s, eop, policy);
+    for w in &out.diagnostics.warnings {
+        emit_cli_time_warning_once(w);
+    }
+    tdb_seconds_to_jd(out.tdb_seconds)
 }
 
 fn rashi_from_index(idx: u8) -> Rashi {
@@ -2112,6 +2400,48 @@ fn parse_longitudes_9(s: &str) -> [f64; 9] {
 
 fn main() {
     let cli = Cli::parse();
+    if let Some(v) = cli.stale_lsk_threshold_days
+        && v < 0.0
+    {
+        eprintln!("Invalid --stale-lsk-threshold-days: must be >= 0");
+        std::process::exit(1);
+    }
+    if let Some(v) = cli.stale_eop_threshold_days
+        && v < 0.0
+    {
+        eprintln!("Invalid --stale-eop-threshold-days: must be >= 0");
+        std::process::exit(1);
+    }
+    if let Some(v) = cli.future_transition_years
+        && v < 0.0
+    {
+        eprintln!("Invalid --future-transition-years: must be >= 0");
+        std::process::exit(1);
+    }
+    let _ = STALE_LSK_THRESHOLD_DAYS.set(cli.stale_lsk_threshold_days);
+    let _ = STALE_EOP_THRESHOLD_DAYS.set(cli.stale_eop_threshold_days);
+    let _ = EOP_C04_PATH.set(cli.eop_c04.clone());
+    let _ = EOP_DAILY_PATH.set(cli.eop_daily.clone());
+    maybe_install_smh2016_table(cli.delta_t_smh_table.as_deref());
+    let delta_t_model = parse_delta_t_model(&cli.delta_t_model);
+    let smh_future_family = parse_smh_future_family(&cli.smh_future_family);
+    if delta_t_model == DeltaTModel::Smh2016WithPre720Quadratic
+        && !smh2016_reconstruction_installed()
+    {
+        eprintln!(
+            "Warning: delta-t model 'smh2016' selected but no reconstruction table is installed; \
+             years -720..1961 currently fall back to legacy piecewise segments."
+        );
+    }
+    let time_policy = parse_time_policy(
+        &cli.time_policy,
+        delta_t_model,
+        smh_future_family,
+        cli.no_freeze_future,
+        cli.no_freeze_future_dut1,
+        cli.future_transition_years,
+    );
+    dhruv_search::set_time_conversion_policy(time_policy);
 
     match cli.command {
         Commands::Rashi { lon } => {
@@ -2532,7 +2862,12 @@ fn main() {
             let location = GeoLocation::new(args.lat, args.lon, args.alt);
 
             // Get graha sidereal longitudes
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy_and_eop(
+                &utc,
+                engine.lsk(),
+                Some(&eop_kernel),
+                time_policy,
+            );
             let graha_lons =
                 dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, args.nutation)
                     .unwrap_or_else(|e| {
@@ -2572,14 +2907,21 @@ fn main() {
             };
 
             let results = dhruv_vedic_base::all_sphutas(&inputs);
-            println!("Sphutas for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Sphutas for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
             println!(
                 "Graha longitudes (sidereal, aya code={} {}):",
                 args.ayanamsha,
                 if args.nutation { "+nutation" } else { "" }
             );
             for graha in dhruv_vedic_base::graha::ALL_GRAHAS {
-                println!("  {:8} {:>10.6}°", graha.name(), graha_lons.longitude(graha));
+                println!(
+                    "  {:8} {:>10.6}°",
+                    graha.name(),
+                    graha_lons.longitude(graha)
+                );
             }
             println!("  {:8} {:>10.6}°\n", "Lagna", lagna_sid);
             println!("Sphutas:");
@@ -2660,7 +3002,10 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Arudha Padas for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Arudha Padas for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
             for r in &results {
                 let rashi_info = dhruv_vedic_base::rashi_from_longitude(r.longitude_deg);
                 println!(
@@ -2696,7 +3041,10 @@ fn main() {
                 args.calendar,
             ) {
                 Ok(info) => {
-                    println!("Panchang for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+                    println!(
+                        "Panchang for {} at {:.6}°N, {:.6}°E\n",
+                        args.date, args.lat, args.lon
+                    );
                     println!(
                         "Tithi:    {} (index {})",
                         info.tithi.tithi.name(),
@@ -2793,7 +3141,10 @@ fn main() {
                 "Mes", "Vrs", "Mit", "Kar", "Sim", "Kan", "Tul", "Vri", "Dha", "Mak", "Kum", "Mee",
             ];
 
-            println!("Ashtakavarga for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Ashtakavarga for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
 
             // BAV tables
             println!("Bhinna Ashtakavarga (BAV):\n");
@@ -2869,7 +3220,10 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Upagrahas for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Upagrahas for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
             println!("Time-based:");
             for (name, lon) in [
                 ("Gulika", result.gulika),
@@ -2916,9 +3270,15 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
 
             if args.tropical {
-                let jd_tdb = utc.to_jd_tdb(engine.lsk());
+                let jd_tdb = utc_to_jd_tdb_with_policy_and_eop(
+                    &utc,
+                    engine.lsk(),
+                    Some(&eop_kernel),
+                    time_policy,
+                );
                 let prec = parse_precession_model(&args.precession);
                 let result = dhruv_search::graha_tropical_longitudes_with_model(
                     &engine,
@@ -2937,8 +3297,7 @@ fn main() {
                 );
 
                 let graha_names = [
-                    "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu",
-                    "Ketu",
+                    "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
                 ];
                 println!("{:<10} {:>10}", "Graha", "Longitude");
                 println!("{}", "-".repeat(22));
@@ -2950,7 +3309,6 @@ fn main() {
                 }
             } else {
                 let system = require_aya_system(args.ayanamsha);
-                let eop_kernel = load_eop(&args.eop);
                 let location = GeoLocation::new(args.lat, args.lon, args.alt);
                 let bhava_config = BhavaConfig::default();
                 let prec = parse_precession_model(&args.precession);
@@ -2983,8 +3341,7 @@ fn main() {
 
                 // Header
                 let graha_names = [
-                    "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu",
-                    "Ketu",
+                    "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
                 ];
                 print!("{:<10} {:>10}  {:<10}", "Graha", "Longitude", "Rashi");
                 if args.nakshatra {
@@ -2994,7 +3351,8 @@ fn main() {
                     print!("  {:>5}", "Bhava");
                 }
                 println!();
-                let width = 32 + if args.nakshatra { 24 } else { 0 } + if args.bhava { 7 } else { 0 };
+                let width =
+                    32 + if args.nakshatra { 24 } else { 0 } + if args.bhava { 7 } else { 0 };
                 println!("{}", "-".repeat(width));
 
                 let print_entry =
@@ -3018,10 +3376,7 @@ fn main() {
                         }
                         if args.bhava {
                             let bh = force_bhava.unwrap_or(entry.bhava_number);
-                            print!(
-                                "  {:>5}",
-                                if bh > 0 { bh.to_string() } else { "-".into() },
-                            );
+                            print!("  {:>5}", if bh > 0 { bh.to_string() } else { "-".into() },);
                         }
                         println!();
                     };
@@ -3074,7 +3429,10 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Core Bindus for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Core Bindus for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
 
             // Header
             print!("{:<16} {:>10}  {:<10}", "Name", "Longitude", "Rashi");
@@ -3184,7 +3542,10 @@ fn main() {
                 "Sun", "Moon", "Mars", "Merc", "Jup", "Ven", "Sat", "Rahu", "Ketu",
             ];
 
-            println!("Graha Drishti for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Graha Drishti for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
 
             // 9x9 graha-to-graha matrix
             println!("Graha-to-Graha (total virupa):");
@@ -3334,7 +3695,10 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Kundali for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Kundali for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
             print_kundali(&mut std::io::stdout(), &result, &resolved).unwrap_or_else(|e| {
                 eprintln!("Error writing output: {e}");
                 std::process::exit(1);
@@ -3558,7 +3922,7 @@ fn main() {
             });
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let t = jd_tdb_to_centuries(jd_tdb);
             let cat = args.catalog.map(|p| {
                 TaraCatalog::load(&p).unwrap_or_else(|e| {
@@ -3571,7 +3935,11 @@ fn main() {
                 "Ayanamsha ({:?}): {:.6}°{}{}",
                 system,
                 aya,
-                if args.nutation { " (with nutation)" } else { "" },
+                if args.nutation {
+                    " (with nutation)"
+                } else {
+                    ""
+                },
                 if cat.is_some() {
                     " (with star catalog)"
                 } else {
@@ -3586,7 +3954,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let t = jd_tdb_to_centuries(jd_tdb);
             let (dpsi, deps) = nutation_iau2000b(t);
             println!("Nutation at {}:", date);
@@ -3659,7 +4027,10 @@ fn main() {
                 std::process::exit(1);
             });
 
-            println!("Bhavas for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+            println!(
+                "Bhavas for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
             println!(
                 "  Lagna: {:.6}°  MC: {:.6}°\n",
                 result.lagna_deg, result.mc_deg
@@ -3725,7 +4096,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let lunar_node = parse_lunar_node(&args.node);
             let node_mode = parse_node_mode(&args.mode);
             let lon =
@@ -3745,7 +4116,7 @@ fn main() {
             let b1 = require_body(args.body1);
             let b2 = require_body(args.body2);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
             match dhruv_search::next_conjunction(&engine, b1, b2, jd_tdb, &config) {
                 Ok(Some(ev)) => print_conjunction_event("Next conjunction", &ev),
@@ -3765,7 +4136,7 @@ fn main() {
             let b1 = require_body(args.body1);
             let b2 = require_body(args.body2);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
             match dhruv_search::prev_conjunction(&engine, b1, b2, jd_tdb, &config) {
                 Ok(Some(ev)) => print_conjunction_event("Previous conjunction", &ev),
@@ -3789,8 +4160,8 @@ fn main() {
             let b1 = require_body(args.body1);
             let b2 = require_body(args.body2);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_start = s.to_jd_tdb(engine.lsk());
-            let jd_end = e.to_jd_tdb(engine.lsk());
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
             match dhruv_search::search_conjunctions(&engine, b1, b2, jd_start, jd_end, &config) {
                 Ok(events) => {
@@ -3812,7 +4183,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
@@ -3833,7 +4204,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
@@ -3858,8 +4229,8 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_start = s.to_jd_tdb(engine.lsk());
-            let jd_end = e.to_jd_tdb(engine.lsk());
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
@@ -3884,7 +4255,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
@@ -3905,7 +4276,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
@@ -3930,8 +4301,8 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_start = s.to_jd_tdb(engine.lsk());
-            let jd_end = e.to_jd_tdb(engine.lsk());
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
@@ -3957,7 +4328,7 @@ fn main() {
             });
             let b = require_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
             match dhruv_search::next_stationary(&engine, b, jd_tdb, &config) {
                 Ok(Some(ev)) => print_stationary_event("Next stationary", &ev),
@@ -3976,7 +4347,7 @@ fn main() {
             });
             let b = require_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
             match dhruv_search::prev_stationary(&engine, b, jd_tdb, &config) {
                 Ok(Some(ev)) => print_stationary_event("Previous stationary", &ev),
@@ -3999,8 +4370,8 @@ fn main() {
             });
             let b = require_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_start = s.to_jd_tdb(engine.lsk());
-            let jd_end = e.to_jd_tdb(engine.lsk());
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
             match dhruv_search::search_stationary(&engine, b, jd_start, jd_end, &config) {
                 Ok(events) => {
@@ -4023,7 +4394,7 @@ fn main() {
             });
             let b = require_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
             match dhruv_search::next_max_speed(&engine, b, jd_tdb, &config) {
                 Ok(Some(ev)) => print_max_speed_event("Next max-speed", &ev),
@@ -4042,7 +4413,7 @@ fn main() {
             });
             let b = require_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
             match dhruv_search::prev_max_speed(&engine, b, jd_tdb, &config) {
                 Ok(Some(ev)) => print_max_speed_event("Previous max-speed", &ev),
@@ -4065,8 +4436,8 @@ fn main() {
             });
             let b = require_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_start = s.to_jd_tdb(engine.lsk());
-            let jd_end = e.to_jd_tdb(engine.lsk());
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
             match dhruv_search::search_max_speed(&engine, b, jd_start, jd_end, &config) {
                 Ok(events) => {
@@ -4090,7 +4461,7 @@ fn main() {
             let t = require_body(args.target);
             let obs = require_observer(args.observer);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
 
             // Helper: ecliptic-of-date spherical coords at a given JD TDB.
             let ecl_sph = |jd: f64| {
@@ -4136,7 +4507,7 @@ fn main() {
             let obs = require_observer(args.observer);
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let query = Query {
                 target: t,
                 observer: obs,
@@ -4165,12 +4536,13 @@ fn main() {
             });
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
-            let lons = dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, args.nutation)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                });
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let lons =
+                dhruv_search::graha_sidereal_longitudes(&engine, jd_tdb, system, args.nutation)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    });
 
             println!(
                 "Graha sidereal longitudes ({:?}{}):\n",
@@ -4242,7 +4614,13 @@ fn main() {
         Commands::KshetraSphuta(args) => {
             println!(
                 "{:.6}°",
-                dhruv_vedic_base::kshetra_sphuta(args.venus, args.moon, args.mars, args.jupiter, args.lagna)
+                dhruv_vedic_base::kshetra_sphuta(
+                    args.venus,
+                    args.moon,
+                    args.mars,
+                    args.jupiter,
+                    args.lagna
+                )
             );
         }
 
@@ -4447,7 +4825,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             match dhruv_search::elongation_at(&engine, jd_tdb) {
                 Ok(val) => println!("{:.6}°", val),
                 Err(e) => {
@@ -4464,7 +4842,7 @@ fn main() {
             });
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::sidereal_sum_at(&engine, jd_tdb, &config) {
                 Ok(val) => println!("{:.6}°", val),
@@ -4482,7 +4860,7 @@ fn main() {
             });
             let b = require_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             match dhruv_search::body_ecliptic_lon_lat(&engine, b, jd_tdb) {
                 Ok((lon, lat)) => println!("Longitude: {:.6}°  Latitude: {:.6}°", lon, lat),
                 Err(e) => {
@@ -4529,7 +4907,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             match dhruv_search::tithi_at(&engine, jd_tdb, args.elongation) {
                 Ok(info) => {
                     println!(
@@ -4554,7 +4932,7 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             match dhruv_search::karana_at(&engine, jd_tdb, args.elongation) {
                 Ok(info) => {
                     println!(
@@ -4579,7 +4957,7 @@ fn main() {
             });
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::yoga_at(&engine, jd_tdb, args.sum, &config) {
                 Ok(info) => {
@@ -4605,7 +4983,7 @@ fn main() {
             });
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let jd_tdb = utc.to_jd_tdb(engine.lsk());
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = SankrantiConfig::new(system, args.nutation);
             match dhruv_search::nakshatra_at(&engine, jd_tdb, args.moon_sid, &config) {
                 Ok(info) => {
@@ -4735,7 +5113,10 @@ fn main() {
                     std::process::exit(1);
                 });
 
-                println!("Shadbala for {} at {:.6}°N, {:.6}°E\n", args.date, args.lat, args.lon);
+                println!(
+                    "Shadbala for {} at {:.6}°N, {:.6}°E\n",
+                    args.date, args.lat, args.lon
+                );
                 println!(
                     "{:<8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>6}",
                     "Graha",
@@ -5105,16 +5486,7 @@ fn main() {
                 eprintln!("Failed to load LSK: {e}");
                 std::process::exit(1);
             });
-            let epoch = dhruv_time::Epoch::from_utc(
-                utc.year,
-                utc.month,
-                utc.day,
-                utc.hour,
-                utc.minute,
-                utc.second as f64,
-                &lsk_kernel,
-            );
-            let jd_tdb = epoch.as_jd_tdb();
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, &lsk_kernel, time_policy);
 
             let config = TaraConfig {
                 accuracy: if args.apparent {
@@ -6554,10 +6926,7 @@ mod tests {
             let mut args: Vec<&str> = base.to_vec();
             args.push(flag);
             let result = Cli::try_parse_from(&args);
-            assert!(
-                result.is_err(),
-                "--tropical should conflict with {flag}"
-            );
+            assert!(result.is_err(), "--tropical should conflict with {flag}");
         }
     }
 
@@ -6582,5 +6951,72 @@ mod tests {
         ];
         let result = Cli::try_parse_from(&args);
         assert!(result.is_ok(), "--tropical alone should parse successfully");
+    }
+
+    #[test]
+    fn delta_t_model_parser_accepts_supported_values() {
+        assert_eq!(
+            parse_delta_t_model("legacy-em2006"),
+            DeltaTModel::LegacyEspenakMeeus2006
+        );
+        assert_eq!(
+            parse_delta_t_model("legacy"),
+            DeltaTModel::LegacyEspenakMeeus2006
+        );
+        assert_eq!(
+            parse_delta_t_model("smh2016"),
+            DeltaTModel::Smh2016WithPre720Quadratic
+        );
+    }
+
+    #[test]
+    fn parse_time_policy_wires_selected_delta_t_model() {
+        let out = parse_time_policy(
+            "hybrid-deltat",
+            DeltaTModel::Smh2016WithPre720Quadratic,
+            SmhFutureParabolaFamily::ConstantCMinus17p52,
+            false,
+            false,
+            Some(25.0),
+        );
+        match out {
+            TimeConversionPolicy::HybridDeltaT(opts) => {
+                assert_eq!(opts.delta_t_model, DeltaTModel::Smh2016WithPre720Quadratic);
+                assert_eq!(
+                    opts.smh_future_family,
+                    SmhFutureParabolaFamily::ConstantCMinus17p52
+                );
+                assert_eq!(opts.future_transition_years, 25.0);
+            }
+            TimeConversionPolicy::StrictLsk => panic!("expected hybrid policy"),
+        }
+    }
+
+    #[test]
+    fn smh_future_family_parser_accepts_supported_values() {
+        assert_eq!(
+            parse_smh_future_family("addendum2020"),
+            SmhFutureParabolaFamily::Addendum2020Piecewise
+        );
+        assert_eq!(
+            parse_smh_future_family("c-20"),
+            SmhFutureParabolaFamily::ConstantCMinus20
+        );
+        assert_eq!(
+            parse_smh_future_family("c-17.52"),
+            SmhFutureParabolaFamily::ConstantCMinus17p52
+        );
+        assert_eq!(
+            parse_smh_future_family("c-15.32"),
+            SmhFutureParabolaFamily::ConstantCMinus15p32
+        );
+        assert_eq!(
+            parse_smh_future_family("stephenson1997"),
+            SmhFutureParabolaFamily::Stephenson1997
+        );
+        assert_eq!(
+            parse_smh_future_family("swiss-stephenson1997"),
+            SmhFutureParabolaFamily::Stephenson1997
+        );
     }
 }

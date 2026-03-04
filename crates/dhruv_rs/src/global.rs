@@ -1,10 +1,14 @@
 use std::sync::OnceLock;
+use std::sync::{LazyLock, RwLock};
 
 use dhruv_core::{Engine, EngineConfig};
+use dhruv_time::TimeConversionPolicy;
 
 use crate::DhruvError;
 
 static ENGINE: OnceLock<Engine> = OnceLock::new();
+static TIME_POLICY: LazyLock<RwLock<TimeConversionPolicy>> =
+    LazyLock::new(|| RwLock::new(TimeConversionPolicy::default()));
 
 /// Initialize the global engine singleton.
 ///
@@ -24,6 +28,29 @@ pub fn is_initialized() -> bool {
 /// [`init`] has not been called.
 pub(crate) fn engine() -> Result<&'static Engine, DhruvError> {
     ENGINE.get().ok_or(DhruvError::NotInitialized)
+}
+
+/// Set UTC->TDB time-conversion policy for `dhruv_rs` convenience APIs.
+///
+/// This also synchronizes the same policy into `dhruv_search` internals so
+/// date-driven search APIs are consistent.
+pub fn set_time_conversion_policy(policy: TimeConversionPolicy) {
+    match TIME_POLICY.write() {
+        Ok(mut guard) => *guard = policy,
+        Err(poisoned) => {
+            let mut guard = poisoned.into_inner();
+            *guard = policy;
+        }
+    }
+    dhruv_search::set_time_conversion_policy(policy);
+}
+
+/// Read the currently configured UTC->TDB time-conversion policy.
+pub fn time_conversion_policy() -> TimeConversionPolicy {
+    match TIME_POLICY.read() {
+        Ok(guard) => *guard,
+        Err(poisoned) => *poisoned.into_inner(),
+    }
 }
 
 #[cfg(test)]

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "generated_utc": null,
+  "assets": [
+    {
+      "id": "smh2016_reconstruction",
+      "status": "in_repo",
+      "source_url": "https://figshare.com/articles/journal_contribution/The_Supplement_from_Measurement_of_the_Earth_s_rotation_720_BC_to_AD_2015/4290869",
+      "license_or_terms": "approved_by_project_owner_pending_explicit_license_capture",
+      "provenance_approved": true,
+      "sha256": "38159847206d3dc6cc44c3feb2242b3b6fd2d27ecfee3b98e376e2bb131a48fc",
+      "notes": "SMH2016 supplementary Table S15 cubic spline coefficients (Ki, Ki+1, a0..a3); extracted via clean-room reproducible flow for -720..1961 reconstruction branch."
+    },
+    {
+      "id": "smh2020_parabola_family_constants",
+      "status": "in_repo",
+      "source_url": "https://doi.org/10.1098/rspa.2020.0776",
+      "license_or_terms": "approved_by_project_owner_pending_explicit_license_capture",
+      "provenance_approved": true,
+      "sha256": null,
+      "notes": "Addendum 2020 Eq. (5) and Table 1 constants for long-term parabola family used in post-EOP future fallback: DeltaT=c+32.5*((year-1825)/100)^2 with c in {-20.0, -17.52, -15.32} over stated year bands."
+    },
+    {
+      "id": "iers_c04_1962_now",
+      "status": "in_repo",
+      "source_url": "https://data.iers.org/products/eop/long-term/c04_operational/eopc04.1962-now",
+      "alternate_source_url": "https://datacenter.iers.org/products/eop/long-term/c04_20u24/eopc04_20u24.1962-now",
+      "license_or_terms": "approved_by_project_owner_pending_explicit_license_capture",
+      "provenance_approved": true,
+      "sha256": "af1f296c0bbe2e28250118d6848dd0ba174c881a8b8818242b9797cfd84130a9",
+      "notes": "Final EOP series for DUT1 historical backfill (1962-now); downloaded into kernels/data/time/eopc04.1962-now; owner-approved source with explicit license text capture still pending"
+    },
+    {
+      "id": "finals2000a_daily_extended",
+      "status": "in_repo",
+      "source_url": "https://maia.usno.navy.mil/ser7/finals2000A.daily.extended",
+      "alternate_source_url": "https://cddis.nasa.gov/archive/products/iers/finals2000A.daily",
+      "license_or_terms": "approved_by_project_owner_pending_explicit_license_capture",
+      "provenance_approved": true,
+      "sha256": "1fab919e0e07a783b9504c30199d703dd68851093a28e2852aaea189cf9caea1",
+      "notes": "Daily-updated file with historical span since 1973 + 1 year predictions; downloaded into kernels/data/time/finals2000A.daily.extended; owner-approved source with explicit license text capture still pending"
+    },
+    {
+      "id": "finals2000a_all",
+      "status": "in_repo",
+      "source_url": "https://maia.usno.navy.mil/ser7/finals2000A.all",
+      "alternate_source_url": "https://data.iers.org/products/eop/rapid/standard/finals2000A.all",
+      "license_or_terms": "approved_by_project_owner_pending_explicit_license_capture",
+      "provenance_approved": true,
+      "sha256": "5138b5c2ce988a6bff8e32b9d9293bb237c29c1502589a39dbde565a31383b99",
+      "notes": "Pinned baseline snapshot used for reproducible builds and fallback"
+    }
+  ]
+}

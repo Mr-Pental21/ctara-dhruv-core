@@ -45,7 +45,7 @@ pub fn next_purnima(
     engine: &Engine,
     utc: &UtcTime,
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(180.0);
     let result = next_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::FullMoon, engine.lsk())))
@@ -56,7 +56,7 @@ pub fn prev_purnima(
     engine: &Engine,
     utc: &UtcTime,
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(180.0);
     let result = prev_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::FullMoon, engine.lsk())))
@@ -67,7 +67,7 @@ pub fn next_amavasya(
     engine: &Engine,
     utc: &UtcTime,
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(0.0);
     let result = next_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::NewMoon, engine.lsk())))
@@ -78,7 +78,7 @@ pub fn prev_amavasya(
     engine: &Engine,
     utc: &UtcTime,
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(0.0);
     let result = prev_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::NewMoon, engine.lsk())))
@@ -90,8 +90,8 @@ pub fn search_purnimas(
     start: &UtcTime,
     end: &UtcTime,
 ) -> Result<Vec<LunarPhaseEvent>, SearchError> {
-    let jd_start = start.to_jd_tdb(engine.lsk());
-    let jd_end = end.to_jd_tdb(engine.lsk());
+    let jd_start = crate::search_util::utc_to_jd_tdb(engine, &start);
+    let jd_end = crate::search_util::utc_to_jd_tdb(engine, &end);
     let config = make_config(180.0);
     let events = search_conjunctions(engine, Body::Sun, Body::Moon, jd_start, jd_end, &config)?;
     Ok(events
@@ -106,8 +106,8 @@ pub fn search_amavasyas(
     start: &UtcTime,
     end: &UtcTime,
 ) -> Result<Vec<LunarPhaseEvent>, SearchError> {
-    let jd_start = start.to_jd_tdb(engine.lsk());
-    let jd_end = end.to_jd_tdb(engine.lsk());
+    let jd_start = crate::search_util::utc_to_jd_tdb(engine, &start);
+    let jd_end = crate::search_util::utc_to_jd_tdb(engine, &end);
     let config = make_config(0.0);
     let events = search_conjunctions(engine, Body::Sun, Body::Moon, jd_start, jd_end, &config)?;
     Ok(events

@@ -9,6 +9,9 @@
 //! parameters π_A (inclination) and Π_A (node longitude).
 //!
 //! Sources:
+//! - Newcomb 1895 legacy general precession constant lineage
+//!   (50.2564"/yr + 0.000222"/yr^2 at epoch 1900, historically used in
+//!   traditional ayanamsha workflows).
 //! - Lieske, Lederle, Fricke & Morando 1977, A&A 58, 1-16 (IAU 1976).
 //! - Lieske 1979, A&A 73, 282-284 (errata/updates).
 //! - Capitaine, Wallace & Chapront 2003, A&A 412, 567-586, Table 1.
@@ -20,6 +23,13 @@ use std::f64::consts::{PI, TAU};
 /// Supported precession models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrecessionModel {
+    /// Legacy Newcomb 1895 general precession polynomial.
+    ///
+    /// This path uses the classic linear-rate Newcomb longitude precession:
+    /// `rate = 50.2564"/yr + 0.000222"/yr^2 * (year - 1900)`.
+    /// In this ecliptic-3D API, π_A and Π_A reuse the Lieske 1977 terms so
+    /// the rotation remains well-defined.
+    Newcomb1895,
     /// Lieske 1977 / IAU 1976 precession.
     Lieske1977,
     /// IAU 2006 (Capitaine et al. 2003 / IERS 2010).
@@ -205,6 +215,22 @@ fn vondrak2011_pi_cap_pi_rad(t: f64) -> (f64, f64) {
 // Explanatory Supplement 1992, Ch. 3.
 
 #[inline]
+fn newcomb1895_general_precession_longitude_arcsec(t: f64) -> f64 {
+    // t is Julian centuries from J2000.
+    //
+    // Newcomb lineage rate is commonly written as:
+    //   rate(yr) = 50.2564 + 0.000222 * (year - 1900)   [arcsec/year]
+    //
+    // With year = 2000 + 100 t, this becomes:
+    //   rate(t) = 50.2786 + 0.0222 t                    [arcsec/year]
+    //
+    // Accumulated from J2000 to t:
+    //   p_A(t) = ∫ rate dt = 5027.86 t + 1.11 t^2       [arcsec]
+    let t2 = t * t;
+    5_027.86 * t + 1.11 * t2
+}
+
+#[inline]
 fn lieske1977_general_precession_longitude_arcsec(t: f64) -> f64 {
     let t2 = t * t;
     let t3 = t2 * t;
@@ -304,6 +330,7 @@ pub fn general_precession_longitude_arcsec(t: f64) -> f64 {
 /// General precession in ecliptic longitude for a specific model, in arcseconds.
 pub fn general_precession_longitude_arcsec_with_model(t: f64, model: PrecessionModel) -> f64 {
     match model {
+        PrecessionModel::Newcomb1895 => newcomb1895_general_precession_longitude_arcsec(t),
         PrecessionModel::Lieske1977 => lieske1977_general_precession_longitude_arcsec(t),
         PrecessionModel::Iau2006 => iau2006_general_precession_longitude_arcsec(t),
         PrecessionModel::Vondrak2011 => vondrak2011_general_precession_longitude_arcsec(t),
@@ -333,6 +360,7 @@ pub fn ecliptic_inclination_arcsec(t: f64) -> f64 {
 /// Inclination of the ecliptic of date to the J2000 ecliptic for a specific model, in arcseconds.
 pub fn ecliptic_inclination_arcsec_with_model(t: f64, model: PrecessionModel) -> f64 {
     match model {
+        PrecessionModel::Newcomb1895 => lieske1977_ecliptic_inclination_arcsec(t),
         PrecessionModel::Lieske1977 => lieske1977_ecliptic_inclination_arcsec(t),
         PrecessionModel::Iau2006 => iau2006_ecliptic_inclination_arcsec(t),
         PrecessionModel::Vondrak2011 => vondrak2011_ecliptic_inclination_arcsec(t),
@@ -352,6 +380,7 @@ pub fn ecliptic_node_longitude_arcsec(t: f64) -> f64 {
 /// ecliptic for a specific model, in arcseconds.
 pub fn ecliptic_node_longitude_arcsec_with_model(t: f64, model: PrecessionModel) -> f64 {
     match model {
+        PrecessionModel::Newcomb1895 => lieske1977_ecliptic_node_longitude_arcsec(t),
         PrecessionModel::Lieske1977 => lieske1977_ecliptic_node_longitude_arcsec(t),
         PrecessionModel::Iau2006 => iau2006_ecliptic_node_longitude_arcsec(t),
         PrecessionModel::Vondrak2011 => vondrak2011_ecliptic_node_longitude_arcsec(t),
@@ -374,6 +403,7 @@ pub fn general_precession_rate_deg_per_day_with_model(t: f64, model: PrecessionM
     let t4 = t3 * t;
     // d(p_A)/dt in arcsec/century
     let rate = match model {
+        PrecessionModel::Newcomb1895 => 5_027.86 + 2.22 * t,
         PrecessionModel::Lieske1977 => 5029.0966 + 2.0 * 1.11113 * t - 3.0 * 0.000006 * t2,
         PrecessionModel::Iau2006 => {
             5_028.796_195 + 2.0 * 1.105_434_8 * t + 3.0 * 0.000_079_64 * t2
@@ -665,6 +695,29 @@ mod tests {
 
         let fwd = precess_ecliptic_j2000_to_date_with_model(&v, t, PrecessionModel::Vondrak2011);
         let back = precess_ecliptic_date_to_j2000_with_model(&fwd, t, PrecessionModel::Vondrak2011);
+        for i in 0..3 {
+            assert!((back[i] - v[i]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn newcomb_path_is_wired() {
+        let t = 25.0;
+        let v = [0.4, 0.5, -0.7];
+        let p_newcomb =
+            general_precession_longitude_arcsec_with_model(t, PrecessionModel::Newcomb1895);
+        let p_lieske =
+            general_precession_longitude_arcsec_with_model(t, PrecessionModel::Lieske1977);
+        assert!((p_newcomb - p_lieske).abs() > 1e-3);
+
+        let out_newcomb =
+            precess_ecliptic_j2000_to_date_with_model(&v, t, PrecessionModel::Newcomb1895);
+        let out_lieske =
+            precess_ecliptic_j2000_to_date_with_model(&v, t, PrecessionModel::Lieske1977);
+        assert!((out_newcomb[0] - out_lieske[0]).abs() > 1e-10);
+
+        let fwd = precess_ecliptic_j2000_to_date_with_model(&v, t, PrecessionModel::Newcomb1895);
+        let back = precess_ecliptic_date_to_j2000_with_model(&fwd, t, PrecessionModel::Newcomb1895);
         for i in 0..3 {
             assert!((back[i] - v[i]).abs() < 1e-12);
         }

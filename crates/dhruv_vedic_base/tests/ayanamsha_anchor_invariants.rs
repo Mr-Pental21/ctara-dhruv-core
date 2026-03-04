@@ -4,7 +4,9 @@
 //! sidereal_lon(anchor) = target for all epochs.
 
 use dhruv_frames::{cartesian_to_spherical, precess_ecliptic_j2000_to_date};
-use dhruv_vedic_base::{AyanamshaSystem, ayanamsha_deg_static, ayanamsha_mean_deg_static, normalize_360};
+use dhruv_vedic_base::{
+    AyanamshaSystem, ayanamsha_deg_static, ayanamsha_mean_deg_static, normalize_360,
+};
 
 #[derive(Clone, Copy)]
 struct AnchorCase {

@@ -368,16 +368,25 @@ mod tests {
             TaraId::DeltaCnc,
             TaraId::LambdaSco,
         ] {
-            let entry = cat.get(id).unwrap_or_else(|| panic!("{id:?} must be in embedded catalog"));
+            let entry = cat
+                .get(id)
+                .unwrap_or_else(|| panic!("{id:?} must be in embedded catalog"));
             assert!(entry.ra_deg > 0.0, "{id:?} RA");
-            assert!(entry.pm_ra_mas_yr.abs() > 0.0 || entry.pm_dec_mas_yr.abs() > 0.0, "{id:?} PM");
+            assert!(
+                entry.pm_ra_mas_yr.abs() > 0.0 || entry.pm_dec_mas_yr.abs() > 0.0,
+                "{id:?} PM"
+            );
         }
     }
 
     #[test]
     fn embedded_catalog_star_count() {
         let cat = TaraCatalog::embedded();
-        assert!(cat.len() >= 100, "embedded catalog has {} stars, expected >= 100", cat.len());
+        assert!(
+            cat.len() >= 100,
+            "embedded catalog has {} stars, expected >= 100",
+            cat.len()
+        );
     }
 
     #[test]

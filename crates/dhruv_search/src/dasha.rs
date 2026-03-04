@@ -83,11 +83,11 @@ fn determine_birth_period(birth_jd: f64, sunrise_jd: f64, sunset_jd: f64) -> Bir
 /// Compute the Moon's sidereal longitude for dasha birth balance.
 fn moon_sidereal_lon(
     engine: &Engine,
-    _eop: &EopKernel,
+    eop: &EopKernel,
     utc: &UtcTime,
     aya_config: &SankrantiConfig,
 ) -> Result<f64, SearchError> {
-    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
     moon_sidereal_longitude_at(engine, jd_tdb, aya_config)
 }
 
@@ -102,7 +102,7 @@ fn assemble_rashi_inputs(
     location: &GeoLocation,
     aya_config: &SankrantiConfig,
 ) -> Result<RashiDashaInputs, SearchError> {
-    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
     let graha_lons = graha_sidereal_longitudes_with_model(
         engine,
         jd_tdb,

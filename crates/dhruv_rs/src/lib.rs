@@ -168,7 +168,7 @@ pub use convenience::{
 };
 pub use date::UtcDate;
 pub use error::DhruvError;
-pub use global::{init, is_initialized};
+pub use global::{init, is_initialized, set_time_conversion_policy, time_conversion_policy};
 
 // Re-export core types so callers don't need to depend on dhruv_core directly.
 pub use dhruv_core::{Body, EngineConfig, Frame, Observer, StateVector};
@@ -177,8 +177,7 @@ pub use dhruv_frames::{ReferencePlane, SphericalCoords, SphericalState};
 // Re-export vedic types used by the convenience functions.
 pub use dhruv_search::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, DrishtiConfig,
-    DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaLongitudes,
-    GrahaTropicalLongitudes,
+    DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaLongitudes, GrahaTropicalLongitudes,
 };
 pub use dhruv_vedic_base::riseset_types::GeoLocation;
 pub use dhruv_vedic_base::riseset_types::{RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb};
@@ -201,6 +200,7 @@ pub use dhruv_vedic_base::{DrishtiEntry, GrahaDrishtiMatrix};
 
 // Re-export EopKernel for sunrise-based panchang functions.
 pub use dhruv_time::EopKernel;
+pub use dhruv_time::{TimeConversionOptions, TimeConversionPolicy};
 
 // Re-export search result types used by convenience functions.
 pub use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};

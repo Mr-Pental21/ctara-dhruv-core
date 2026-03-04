@@ -31,8 +31,8 @@ fn tropical_equals_sidereal_plus_ayanamsha() {
     };
 
     let jd_tdb = 2_451_545.0; // J2000
-    let tropical = graha_tropical_longitudes(&engine, jd_tdb)
-        .expect("tropical longitudes should succeed");
+    let tropical =
+        graha_tropical_longitudes(&engine, jd_tdb).expect("tropical longitudes should succeed");
 
     // Test against all ecliptic-plane systems (skip Jagganatha = invariable plane)
     let systems = AyanamshaSystem::all()
@@ -71,8 +71,8 @@ fn tropical_longitudes_in_valid_range() {
     };
 
     let jd_tdb = 2_451_545.0;
-    let result = graha_tropical_longitudes(&engine, jd_tdb)
-        .expect("tropical longitudes should succeed");
+    let result =
+        graha_tropical_longitudes(&engine, jd_tdb).expect("tropical longitudes should succeed");
 
     for graha in ALL_GRAHAS {
         let lon = result.longitude(graha);

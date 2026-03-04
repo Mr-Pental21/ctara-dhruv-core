@@ -12,7 +12,9 @@
 //! Clean-room implementation: all reference values derived independently from
 //! published system definitions. See `docs/clean_room_ayanamsha.md`.
 
-use crate::ayanamsha_anchor::{anchor_relative_ayanamsha_deg, anchor_relative_ayanamsha_deg_on_plane};
+use crate::ayanamsha_anchor::{
+    anchor_relative_ayanamsha_deg, anchor_relative_ayanamsha_deg_on_plane,
+};
 use crate::ayanamsha_tara::{tara_anchor_ayanamsha_deg, tara_anchor_ayanamsha_deg_on_plane};
 use dhruv_frames::{
     DEFAULT_PRECESSION_MODEL, PrecessionModel, ReferencePlane, nutation_iau2000b,
@@ -260,7 +262,9 @@ pub fn ayanamsha_deg_on_plane(
     plane: ReferencePlane,
 ) -> f64 {
     match plane {
-        ReferencePlane::Ecliptic => ayanamsha_deg_with_model(system, t_centuries, use_nutation, model),
+        ReferencePlane::Ecliptic => {
+            ayanamsha_deg_with_model(system, t_centuries, use_nutation, model)
+        }
         ReferencePlane::Invariable => {
             // Nutation not applicable on invariable plane.
             ayanamsha_mean_deg_on_plane(system, t_centuries, model, plane)
@@ -528,11 +532,7 @@ pub fn ayanamsha_mean_deg_static_with_model(
 }
 
 /// Ayanamsha (with optional nutation) using static anchor coordinates only.
-pub fn ayanamsha_deg_static(
-    system: AyanamshaSystem,
-    t_centuries: f64,
-    use_nutation: bool,
-) -> f64 {
+pub fn ayanamsha_deg_static(system: AyanamshaSystem, t_centuries: f64, use_nutation: bool) -> f64 {
     let mean = ayanamsha_mean_deg_static(system, t_centuries);
     if use_nutation {
         let (dpsi, _) = nutation_iau2000b(t_centuries);
@@ -553,7 +553,9 @@ pub fn ayanamsha_mean_deg_static_on_plane(
     plane: ReferencePlane,
 ) -> f64 {
     match plane {
-        ReferencePlane::Ecliptic => ayanamsha_mean_deg_static_with_model(system, t_centuries, model),
+        ReferencePlane::Ecliptic => {
+            ayanamsha_mean_deg_static_with_model(system, t_centuries, model)
+        }
         ReferencePlane::Invariable => {
             if let Some(aya) =
                 anchor_relative_ayanamsha_deg_on_plane(system, t_centuries, model, plane)

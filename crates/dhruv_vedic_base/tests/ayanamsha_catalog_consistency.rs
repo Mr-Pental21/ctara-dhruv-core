@@ -43,8 +43,7 @@ fn static_and_catalog_bounded_at_j2000() {
     let t = 0.0;
     for &sys in AyanamshaSystem::all() {
         let default_aya = ayanamsha_mean_deg_with_model(sys, t, model);
-        let static_aya =
-            dhruv_vedic_base::ayanamsha_mean_deg_static_with_model(sys, t, model);
+        let static_aya = dhruv_vedic_base::ayanamsha_mean_deg_static_with_model(sys, t, model);
         let diff_arcsec = (default_aya - static_aya).abs() * 3600.0;
         assert!(
             diff_arcsec < 1.0,

@@ -19,6 +19,7 @@ use dhruv_time::{
 
 use crate::error::VedicError;
 use crate::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult};
+use crate::time_policy::time_conversion_policy;
 
 /// Maximum iterations for the rise/set refinement loop.
 const MAX_ITERATIONS: usize = 5;
@@ -113,7 +114,9 @@ pub fn compute_rise_set(
 
     // Convert noon UTC to TDB for initial Sun query
     let noon_utc_s = jd_to_tdb_seconds(jd_utc_noon); // UTC seconds past J2000
-    let noon_tdb_s = lsk.utc_to_tdb(noon_utc_s);
+    let noon_tdb_s = lsk
+        .utc_to_tdb_with_policy_and_eop(noon_utc_s, Some(eop), time_conversion_policy())
+        .tdb_seconds;
     let jd_tdb_noon = tdb_seconds_to_jd(noon_tdb_s);
 
     // Initial Sun RA/Dec/distance at noon
@@ -169,7 +172,9 @@ pub fn compute_rise_set(
     for _ in 0..MAX_ITERATIONS {
         // Convert event UTC to TDB
         let event_utc_s = jd_to_tdb_seconds(jd_utc_event);
-        let event_tdb_s = lsk.utc_to_tdb(event_utc_s);
+        let event_tdb_s = lsk
+            .utc_to_tdb_with_policy_and_eop(event_utc_s, Some(eop), time_conversion_policy())
+            .tdb_seconds;
         let jd_tdb_event = tdb_seconds_to_jd(event_tdb_s);
 
         // Recompute Sun RA/Dec/distance at event time
@@ -225,7 +230,9 @@ pub fn compute_rise_set(
 
     // Convert final UTC event time to TDB
     let final_utc_s = jd_to_tdb_seconds(jd_utc_event);
-    let final_tdb_s = lsk.utc_to_tdb(final_utc_s);
+    let final_tdb_s = lsk
+        .utc_to_tdb_with_policy_and_eop(final_utc_s, Some(eop), time_conversion_policy())
+        .tdb_seconds;
     let jd_tdb_final = tdb_seconds_to_jd(final_tdb_s);
 
     Ok(RiseSetResult::Event {

@@ -21,6 +21,7 @@ use dhruv_time::{
 
 use crate::error::VedicError;
 use crate::riseset_types::GeoLocation;
+use crate::time_policy::time_conversion_policy;
 
 /// Compute apparent (GAST-based) local sidereal time and true obliquity.
 ///
@@ -42,7 +43,9 @@ pub(crate) fn apparent_lst_and_true_eps(
 
     // TDB epoch for nutation and obliquity
     let utc_s = jd_to_tdb_seconds(jd_utc);
-    let tdb_s = lsk.utc_to_tdb(utc_s);
+    let tdb_s = lsk
+        .utc_to_tdb_with_policy_and_eop(utc_s, Some(eop), time_conversion_policy())
+        .tdb_seconds;
     let jd_tdb = tdb_seconds_to_jd(tdb_s);
     let t = (jd_tdb - 2_451_545.0) / 36525.0;
 

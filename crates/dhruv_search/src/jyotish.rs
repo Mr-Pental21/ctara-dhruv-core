@@ -23,20 +23,17 @@ use dhruv_vedic_base::{
     LunarNode, NodeDignityPolicy, NodeMode, SAPTA_GRAHAS, SayanadiInputs, ShadbalaInputs, Upagraha,
     all_avasthas, all_combustion_status, all_dashavarga_vimsopaka, all_saptavarga_vimsopaka,
     all_shadbalas_from_inputs, all_shadvarga_vimsopaka, all_shodasavarga_vimsopaka,
-    amsha_longitude, bhrigu_bindu, calculate_ashtakavarga,
-    compute_bhavas, dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise,
-    graha_drishti, graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord,
-    jd_tdb_to_centuries, lagna_longitude_rad, lost_planetary_war,
-    lunar_node_deg_for_epoch_on_plane, masa_lord as graha_masa_lord, nakshatra_from_longitude,
-    navamsa_number, node_dignity_in_rashi, normalize_360, nth_rashi_from, pranapada_lagna,
-    rashi_from_longitude, rashi_lord_by_index, samvatsara_lord as graha_samvatsara_lord,
-    sree_lagna, sun_based_upagrahas, time_upagraha_jd, vaar_lord as graha_vaar_lord,
+    amsha_longitude, bhrigu_bindu, calculate_ashtakavarga, compute_bhavas,
+    dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise, graha_drishti,
+    graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord, jd_tdb_to_centuries,
+    lagna_longitude_rad, lost_planetary_war, lunar_node_deg_for_epoch_on_plane,
+    masa_lord as graha_masa_lord, nakshatra_from_longitude, navamsa_number, node_dignity_in_rashi,
+    normalize_360, nth_rashi_from, pranapada_lagna, rashi_from_longitude, rashi_lord_by_index,
+    samvatsara_lord as graha_samvatsara_lord, sree_lagna, sun_based_upagrahas, time_upagraha_jd,
+    vaar_lord as graha_vaar_lord,
 };
 
-use crate::conjunction::{
-    body_ecliptic_lon_lat, body_ecliptic_state,
-    body_lon_lat_on_plane,
-};
+use crate::conjunction::{body_ecliptic_lon_lat, body_ecliptic_state, body_lon_lat_on_plane};
 use crate::dasha::{
     DashaInputs, dasha_hierarchy_with_inputs, dasha_snapshot_with_inputs, is_rashi_system,
     needs_moon_lon, needs_sunrise_sunset,
@@ -110,8 +107,13 @@ struct JyotishContext {
 }
 
 impl JyotishContext {
-    fn new(engine: &Engine, utc: &UtcTime, aya_config: &SankrantiConfig) -> Self {
-        let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    fn new(
+        engine: &Engine,
+        eop: Option<&EopKernel>,
+        utc: &UtcTime,
+        aya_config: &SankrantiConfig,
+    ) -> Self {
+        let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, eop, utc);
         let jd_utc = utc_to_jd_utc(utc);
         let t = jd_tdb_to_centuries(jd_tdb);
         let ayanamsha = aya_config.ayanamsha_deg_at_centuries(t);
@@ -337,13 +339,8 @@ pub fn graha_sidereal_longitudes_with_model(
     plane: ReferencePlane,
 ) -> Result<GrahaLongitudes, SearchError> {
     let t = jd_tdb_to_centuries(jd_tdb);
-    let aya = dhruv_vedic_base::ayanamsha_deg_on_plane(
-        system,
-        t,
-        use_nutation,
-        precession_model,
-        plane,
-    );
+    let aya =
+        dhruv_vedic_base::ayanamsha_deg_on_plane(system, t, use_nutation, precession_model, plane);
     let rahu_on_plane = lunar_node_deg_for_epoch_on_plane(
         engine,
         LunarNode::Rahu,
@@ -451,7 +448,7 @@ pub fn special_lagnas_for_date(
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
 ) -> Result<AllSpecialLagnas, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     special_lagnas_for_date_with_ctx(
         engine,
         eop,
@@ -509,7 +506,7 @@ pub fn arudha_padas_for_date(
     bhava_config: &BhavaConfig,
     aya_config: &SankrantiConfig,
 ) -> Result<[ArudhaResult; 12], SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     arudha_padas_for_date_with_ctx(engine, eop, location, bhava_config, aya_config, &mut ctx)
 }
 
@@ -554,7 +551,7 @@ pub fn all_upagrahas_for_date(
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
 ) -> Result<AllUpagrahas, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     all_upagrahas_for_date_with_ctx(
         engine,
         eop,
@@ -633,7 +630,7 @@ pub fn graha_positions(
     aya_config: &SankrantiConfig,
     config: &GrahaPositionsConfig,
 ) -> Result<GrahaPositions, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     graha_positions_with_ctx(
         engine,
         eop,
@@ -695,13 +692,8 @@ fn graha_positions_with_ctx(
         let outer_bodies = [Body::Uranus, Body::Neptune, Body::Pluto];
         let mut entries = [GrahaEntry::sentinel(); 3];
         for (i, &body) in outer_bodies.iter().enumerate() {
-            let (lon, _lat) = body_lon_lat_on_plane(
-                engine,
-                body,
-                jd_tdb,
-                aya_config.precession_model,
-                plane,
-            )?;
+            let (lon, _lat) =
+                body_lon_lat_on_plane(engine, body, jd_tdb, aya_config.precession_model, plane)?;
             let sid_lon = normalize(lon - aya);
             entries[i] = make_graha_entry(sid_lon, config, bhava_result, aya, plane);
         }
@@ -782,7 +774,7 @@ pub fn ashtakavarga_for_date(
     location: &GeoLocation,
     aya_config: &SankrantiConfig,
 ) -> Result<AshtakavargaResult, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     ashtakavarga_with_ctx(engine, eop, location, aya_config, &mut ctx)
 }
 
@@ -853,7 +845,7 @@ pub fn core_bindus(
     aya_config: &SankrantiConfig,
     config: &BindusConfig,
 ) -> Result<BindusResult, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     core_bindus_with_ctx(
         engine,
         eop,
@@ -951,7 +943,13 @@ fn core_bindus_with_ctx(
     let arudha_raw = all_arudha_padas(&cusp_sid, &lord_lons);
     let mut arudha_padas = [GrahaEntry::sentinel(); 12];
     for i in 0..12 {
-        arudha_padas[i] = make_graha_entry(arudha_raw[i].longitude_deg, &gp_config, bhava_opt, aya, plane);
+        arudha_padas[i] = make_graha_entry(
+            arudha_raw[i].longitude_deg,
+            &gp_config,
+            bhava_opt,
+            aya,
+            plane,
+        );
     }
 
     Ok(BindusResult {
@@ -983,7 +981,7 @@ pub fn drishti_for_date(
     aya_config: &SankrantiConfig,
     config: &DrishtiConfig,
 ) -> Result<DrishtiResult, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     drishti_for_date_with_ctx(
         engine,
         eop,
@@ -1109,7 +1107,7 @@ pub fn full_kundali_for_date(
     aya_config: &SankrantiConfig,
     config: &FullKundaliConfig,
 ) -> Result<FullKundaliResult, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
 
     // Ayanamsha — always computed, used for bhava cusp display.
     let ayanamsha = ctx.ayanamsha;
@@ -1506,7 +1504,7 @@ pub fn shadbala_for_date(
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
 ) -> Result<ShadbalaResult, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     shadbala_for_date_with_ctx(
         engine,
         eop,
@@ -1586,7 +1584,7 @@ pub fn vimsopaka_for_date(
     aya_config: &SankrantiConfig,
     node_policy: NodeDignityPolicy,
 ) -> Result<VimsopakaResult, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     vimsopaka_for_date_with_ctx(engine, eop, location, aya_config, node_policy, &mut ctx)
 }
 
@@ -1814,7 +1812,7 @@ pub fn avastha_for_date(
     aya_config: &SankrantiConfig,
     node_policy: NodeDignityPolicy,
 ) -> Result<AllGrahaAvasthas, SearchError> {
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     avastha_for_date_with_ctx(
         engine,
         eop,
@@ -2184,7 +2182,7 @@ pub fn amsha_charts_for_date(
     scope: &AmshaChartScope,
 ) -> Result<AmshaResult, SearchError> {
     validate_amsha_requests(requests)?;
-    let mut ctx = JyotishContext::new(engine, utc, aya_config);
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
 
     // Get D1 graha longitudes
     let graha_lons = *ctx.graha_lons(engine, aya_config)?;

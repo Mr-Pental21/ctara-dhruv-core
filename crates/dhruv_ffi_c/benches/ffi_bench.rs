@@ -16,15 +16,14 @@ use dhruv_ffi_c::{
     dhruv_engine_query, dhruv_engine_query_internal, dhruv_ghatika_from_elapsed,
     dhruv_ghatikas_since_sunrise, dhruv_graha_drishti, dhruv_graha_drishti_matrix,
     dhruv_graha_sidereal_longitudes, dhruv_graha_tropical_longitudes, dhruv_hora_at,
-    dhruv_jd_tdb_to_utc,
-    dhruv_karana_from_elongation, dhruv_lunar_node_deg, dhruv_masa_from_rashi_index,
-    dhruv_nakshatra_at, dhruv_nakshatra_from_longitude, dhruv_nakshatra_from_tropical,
-    dhruv_nakshatra28_from_longitude, dhruv_nth_rashi_from, dhruv_nutation_iau2000b,
-    dhruv_query_once, dhruv_query_once_internal, dhruv_query_utc, dhruv_query_utc_spherical,
-    dhruv_query_utc_spherical_internal, dhruv_rashi_from_longitude, dhruv_rashi_from_tropical,
-    dhruv_rashi_lord, dhruv_samvatsara_from_year, dhruv_sankranti_config_default,
-    dhruv_time_upagraha_jd, dhruv_tithi_from_elongation, dhruv_trikona_sodhana,
-    dhruv_utc_to_tdb_jd, dhruv_vaar_from_jd, dhruv_yoga_from_sum,
+    dhruv_jd_tdb_to_utc, dhruv_karana_from_elongation, dhruv_lunar_node_deg,
+    dhruv_masa_from_rashi_index, dhruv_nakshatra_at, dhruv_nakshatra_from_longitude,
+    dhruv_nakshatra_from_tropical, dhruv_nakshatra28_from_longitude, dhruv_nth_rashi_from,
+    dhruv_nutation_iau2000b, dhruv_query_once, dhruv_query_once_internal, dhruv_query_utc,
+    dhruv_query_utc_spherical, dhruv_query_utc_spherical_internal, dhruv_rashi_from_longitude,
+    dhruv_rashi_from_tropical, dhruv_rashi_lord, dhruv_samvatsara_from_year,
+    dhruv_sankranti_config_default, dhruv_time_upagraha_jd, dhruv_tithi_from_elongation,
+    dhruv_trikona_sodhana, dhruv_utc_to_tdb_jd, dhruv_vaar_from_jd, dhruv_yoga_from_sum,
 };
 use dhruv_frames::{
     cartesian_to_spherical as rust_cartesian_to_spherical,
@@ -32,8 +31,7 @@ use dhruv_frames::{
 };
 use dhruv_search::{
     SankrantiConfig, graha_sidereal_longitudes as rust_graha_sidereal_longitudes,
-    graha_tropical_longitudes as rust_graha_tropical_longitudes,
-    nakshatra_at as rust_nakshatra_at,
+    graha_tropical_longitudes as rust_graha_tropical_longitudes, nakshatra_at as rust_nakshatra_at,
 };
 use dhruv_time::{Epoch, UtcTime};
 use dhruv_vedic_base::{
@@ -1100,12 +1098,9 @@ fn ffi_search_sidereal_bench(c: &mut Criterion) {
         &mut group,
         "graha_tropical_longitudes",
         || {
-            rust_graha_tropical_longitudes(
-                black_box(&ctx.engine),
-                black_box(jd),
-            )
-            .expect("graha tropical longitudes should succeed")
-            .longitudes[1]
+            rust_graha_tropical_longitudes(black_box(&ctx.engine), black_box(jd))
+                .expect("graha tropical longitudes should succeed")
+                .longitudes[1]
         },
         || unsafe {
             let _ = dhruv_graha_tropical_longitudes(

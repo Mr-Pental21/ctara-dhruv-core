@@ -7,7 +7,9 @@
 //! Implementation is original, written from the public specification.
 
 use crate::error::TimeError;
-use crate::julian::{calendar_to_jd, jd_to_tdb_seconds, month_from_abbrev};
+use crate::julian::{
+    calendar_to_jd, jd_to_calendar, jd_to_tdb_seconds, month_from_abbrev, tdb_seconds_to_jd,
+};
 
 /// Parsed contents of an LSK file.
 #[derive(Debug, Clone)]
@@ -24,6 +26,46 @@ pub struct LskData {
     pub m1: f64,
     /// Leap second table: (delta_AT, epoch_tdb_seconds_past_j2000), sorted by epoch.
     pub leap_seconds: Vec<(f64, f64)>,
+}
+
+impl LskData {
+    /// UTC-second coverage range of DELTA_AT table, if present.
+    pub fn delta_at_range(&self) -> Option<(f64, f64)> {
+        let first = self.leap_seconds.first()?;
+        let last = self.leap_seconds.last()?;
+        Some((first.1, last.1))
+    }
+
+    /// Last known DELTA_AT value and epoch, if present.
+    pub fn last_delta_at(&self) -> Option<(f64, f64)> {
+        self.leap_seconds.last().copied()
+    }
+
+    /// Returns `true` if the UTC date can contain `23:59:60`.
+    ///
+    /// This is inferred from a +1 `DELTA_AT` step at the next UTC midnight.
+    pub fn is_leap_second_day(&self, year: i32, month: u32, day: u32) -> bool {
+        if self.leap_seconds.len() < 2 {
+            return false;
+        }
+        for w in self.leap_seconds.windows(2) {
+            let (prev_delta, _prev_epoch) = w[0];
+            let (next_delta, next_epoch) = w[1];
+            if next_delta <= prev_delta {
+                continue;
+            }
+            let jd_next_midnight = tdb_seconds_to_jd(next_epoch);
+            let (ny, nm, ndf) = jd_to_calendar(jd_next_midnight);
+            let nd = ndf.floor() as i32;
+            let jd_prev_day = calendar_to_jd(ny, nm, nd as f64) - 1.0;
+            let (py, pm, pdf) = jd_to_calendar(jd_prev_day);
+            let pd = pdf.floor() as u32;
+            if py == year && pm == month && pd == day {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 /// Parse an LSK file from its text content.
@@ -281,5 +323,13 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
         // 2017-Jan-01 00:00 = JD 2457754.5
         let expected = (2_457_754.5 - 2_451_545.0) * 86_400.0;
         assert!((s - expected).abs() < 1.0, "got {s}, expected {expected}");
+    }
+
+    #[test]
+    fn detects_leap_second_day() {
+        let data = parse_lsk(SAMPLE_LSK).expect("should parse");
+        assert!(data.is_leap_second_day(1972, 6, 30));
+        assert!(data.is_leap_second_day(2016, 12, 31));
+        assert!(!data.is_leap_second_day(2017, 1, 1));
     }
 }

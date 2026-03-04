@@ -6,6 +6,8 @@
 //! - UTC → TAI → TT → TDB conversion chain (and inverse)
 //! - An `Epoch` type for type-safe TDB epoch handling
 
+pub mod delta_t;
+pub mod diagnostics;
 pub mod eop;
 pub mod error;
 pub mod julian;
@@ -16,12 +18,23 @@ pub mod utc_time;
 
 use std::path::Path;
 
-pub use eop::{EopData, EopKernel};
+pub use delta_t::{
+    DeltaTModel, DeltaTSegment, Smh2016Reconstruction, SmhFutureParabolaFamily, delta_t_seconds,
+    delta_t_seconds_with_model, install_smh2016_reconstruction, parse_smh2016_reconstruction,
+    smh_asymptotic_delta_t_seconds, smh_asymptotic_delta_t_seconds_for_jd,
+    smh_asymptotic_delta_t_seconds_for_jd_with_family, smh_asymptotic_delta_t_seconds_with_family,
+    smh_future_parabola_c_for_year, smh2016_reconstruction_installed,
+};
+pub use diagnostics::{TimeDiagnostics, TimeWarning, TtUtcSource};
+pub use eop::{Dut1LookupResult, EopData, EopKernel, EopLookupOptions, EopSource};
 pub use error::TimeError;
 pub use julian::{
-    J2000_JD, SECONDS_PER_DAY, calendar_to_jd, jd_to_calendar, jd_to_tdb_seconds, tdb_seconds_to_jd,
+    CalendarPolicy, J2000_JD, SECONDS_PER_DAY, TwoPartJd, calendar_to_jd,
+    calendar_to_jd_with_policy, jd_to_calendar, jd_to_calendar_with_policy, jd_to_tdb_seconds,
+    tdb_seconds_to_jd,
 };
 pub use lsk::LskData;
+pub use scales::{TimeConversionOptions, TimeConversionPolicy, UtcToTdbResult};
 pub use sidereal::{earth_rotation_angle_rad, gmst_rad, local_sidereal_time_rad};
 pub use utc_time::UtcTime;
 
@@ -52,6 +65,27 @@ impl LeapSecondKernel {
     /// Convert UTC seconds past J2000 to TDB seconds past J2000.
     pub fn utc_to_tdb(&self, utc_s: f64) -> f64 {
         scales::utc_to_tdb(utc_s, &self.data)
+    }
+
+    /// Convert UTC seconds past J2000 to TDB seconds past J2000 using a
+    /// configurable policy and return diagnostics.
+    pub fn utc_to_tdb_with_policy(
+        &self,
+        utc_s: f64,
+        policy: TimeConversionPolicy,
+    ) -> UtcToTdbResult {
+        scales::utc_to_tdb_with_policy(utc_s, &self.data, policy)
+    }
+
+    /// Convert UTC seconds past J2000 to TDB seconds past J2000 using a
+    /// configurable policy and optional EOP DUT1 support.
+    pub fn utc_to_tdb_with_policy_and_eop(
+        &self,
+        utc_s: f64,
+        eop: Option<&EopKernel>,
+        policy: TimeConversionPolicy,
+    ) -> UtcToTdbResult {
+        scales::utc_to_tdb_with_policy_and_eop(utc_s, &self.data, eop.map(|k| k.data()), policy)
     }
 
     /// Convert TDB seconds past J2000 to UTC seconds past J2000.

@@ -10,17 +10,17 @@ use dhruv_search::{
     StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanType, amsha_charts_for_date,
     avastha_for_date, ayana_for_date, body_ecliptic_lon_lat, dasha_hierarchy_for_birth,
     dasha_snapshot_at, elongation_at, full_kundali_for_date, ghatika_for_date,
-    ghatika_from_sunrises, graha_sidereal_longitudes, graha_tropical_longitudes,
-    hora_for_date, hora_from_sunrises, karana_at,
-    karana_for_date, masa_for_date, nakshatra_at, nakshatra_for_date, next_amavasya,
-    next_chandra_grahan, next_conjunction, next_max_speed, next_purnima, next_sankranti,
-    next_specific_sankranti, next_stationary, next_surya_grahan, panchang_for_date, prev_amavasya,
-    prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima, prev_sankranti,
-    prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
-    search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
-    search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date, sidereal_sum_at,
-    special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises,
-    varsha_for_date, vedic_day_sunrises, vimsopaka_for_date, yoga_at, yoga_for_date,
+    ghatika_from_sunrises, graha_sidereal_longitudes, graha_tropical_longitudes, hora_for_date,
+    hora_from_sunrises, karana_at, karana_for_date, masa_for_date, nakshatra_at,
+    nakshatra_for_date, next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed,
+    next_purnima, next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan,
+    panchang_for_date, prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed,
+    prev_purnima, prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan,
+    search_amavasyas, search_chandra_grahan, search_conjunctions, search_max_speed,
+    search_purnimas, search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date,
+    sidereal_sum_at, special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date,
+    vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, vimsopaka_for_date, yoga_at,
+    yoga_for_date,
 };
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraError, TaraId};
 use dhruv_time::UtcTime;
@@ -13663,17 +13663,14 @@ mod tests {
     #[test]
     fn ffi_graha_tropical_longitudes_rejects_null_engine() {
         let mut out = std::mem::MaybeUninit::<DhruvGrahaLongitudes>::uninit();
-        let s = unsafe {
-            dhruv_graha_tropical_longitudes(ptr::null(), 2451545.0, out.as_mut_ptr())
-        };
+        let s =
+            unsafe { dhruv_graha_tropical_longitudes(ptr::null(), 2451545.0, out.as_mut_ptr()) };
         assert_eq!(s, DhruvStatus::NullPointer);
     }
 
     #[test]
     fn ffi_graha_tropical_longitudes_rejects_null_out() {
-        let s = unsafe {
-            dhruv_graha_tropical_longitudes(ptr::null(), 2451545.0, ptr::null_mut())
-        };
+        let s = unsafe { dhruv_graha_tropical_longitudes(ptr::null(), 2451545.0, ptr::null_mut()) };
         assert_eq!(s, DhruvStatus::NullPointer);
     }
 

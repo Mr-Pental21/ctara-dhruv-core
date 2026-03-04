@@ -22,6 +22,7 @@ use crate::bhava_types::{
 use crate::error::VedicError;
 use crate::lagna::{apparent_lst_and_true_eps, lagna_mc_ramc_from_lst};
 use crate::riseset_types::GeoLocation;
+use crate::time_policy::time_conversion_policy;
 
 use dhruv_time::EopKernel;
 
@@ -58,7 +59,7 @@ pub fn compute_bhavas(
 
     // Resolve starting point
     let start_deg =
-        resolve_starting_point_deg(engine, &config.starting_point, asc_deg, jd_utc, lsk)?;
+        resolve_starting_point_deg(engine, &config.starting_point, asc_deg, jd_utc, lsk, eop)?;
 
     // Compute raw cusps (12 ecliptic longitudes in degrees)
     let cusps = match config.system {
@@ -123,12 +124,13 @@ fn resolve_starting_point_deg(
     asc_deg: f64,
     jd_utc: f64,
     lsk: &LeapSecondKernel,
+    eop: &EopKernel,
 ) -> Result<f64, VedicError> {
     match starting_point {
         BhavaStartingPoint::Lagna => Ok(asc_deg),
         BhavaStartingPoint::CustomDeg(deg) => Ok(normalize_deg(*deg)),
         BhavaStartingPoint::BodyLongitude(body) => {
-            body_ecliptic_longitude_deg(engine, *body, jd_utc, lsk)
+            body_ecliptic_longitude_deg(engine, *body, jd_utc, lsk, eop)
         }
     }
 }
@@ -139,10 +141,13 @@ fn body_ecliptic_longitude_deg(
     body: Body,
     jd_utc: f64,
     lsk: &LeapSecondKernel,
+    eop: &EopKernel,
 ) -> Result<f64, VedicError> {
     // Convert UTC to TDB
     let utc_s = jd_to_tdb_seconds(jd_utc);
-    let tdb_s = lsk.utc_to_tdb(utc_s);
+    let tdb_s = lsk
+        .utc_to_tdb_with_policy_and_eop(utc_s, Some(eop), time_conversion_policy())
+        .tdb_seconds;
     let jd_tdb = tdb_seconds_to_jd(tdb_s);
 
     let query = Query {

@@ -375,15 +375,7 @@ mod tests {
             "x should be near 1.0, got {}",
             inv[0]
         );
-        assert!(
-            inv[1].abs() < 0.001,
-            "y should be near 0.0, got {}",
-            inv[1]
-        );
-        assert!(
-            inv[2].abs() < 0.03,
-            "z should be small, got {}",
-            inv[2]
-        );
+        assert!(inv[1].abs() < 0.001, "y should be near 0.0, got {}", inv[1]);
+        assert!(inv[2].abs() < 0.03, "z should be small, got {}", inv[2]);
     }
 }

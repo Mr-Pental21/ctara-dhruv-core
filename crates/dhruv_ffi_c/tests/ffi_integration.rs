@@ -3208,16 +3208,11 @@ fn ffi_tropical_equals_sidereal_plus_ayanamsha() {
     let mut sidereal_out = DhruvGrahaLongitudes {
         longitudes: [0.0; 9],
     };
-    let s =
-        unsafe { dhruv_graha_sidereal_longitudes(engine_raw, jd, 0, 0, &mut sidereal_out) };
+    let s = unsafe { dhruv_graha_sidereal_longitudes(engine_raw, jd, 0, 0, &mut sidereal_out) };
     assert_eq!(s, DhruvStatus::Ok);
 
     let t = dhruv_vedic_base::jd_tdb_to_centuries(jd);
-    let aya = dhruv_vedic_base::ayanamsha_deg(
-        dhruv_vedic_base::AyanamshaSystem::Lahiri,
-        t,
-        false,
-    );
+    let aya = dhruv_vedic_base::ayanamsha_deg(dhruv_vedic_base::AyanamshaSystem::Lahiri, t, false);
 
     for i in 0..9 {
         let reconstructed = (sidereal_out.longitudes[i] + aya).rem_euclid(360.0);

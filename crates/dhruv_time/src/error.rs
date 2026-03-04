@@ -17,6 +17,8 @@ pub enum TimeError {
     Io(String),
     /// UTC epoch is before 1972-Jan-01 (pre-modern leap seconds).
     Pre1972Utc,
+    /// UTC calendar instant is invalid.
+    InvalidUtc(String),
 }
 
 impl Display for TimeError {
@@ -27,6 +29,7 @@ impl Display for TimeError {
             Self::EopOutOfRange => write!(f, "epoch outside EOP table range"),
             Self::Io(msg) => write!(f, "I/O error: {msg}"),
             Self::Pre1972Utc => write!(f, "UTC before 1972-Jan-01 is not supported"),
+            Self::InvalidUtc(msg) => write!(f, "invalid UTC instant: {msg}"),
         }
     }
 }

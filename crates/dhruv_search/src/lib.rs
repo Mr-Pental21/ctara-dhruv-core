@@ -79,6 +79,7 @@ pub use sankranti::{
     search_sankrantis,
 };
 pub use sankranti_types::{SankrantiConfig, SankrantiEvent};
+pub use search_util::{set_time_conversion_policy, time_conversion_policy};
 pub use stationary::{
     next_max_speed, next_stationary, prev_max_speed, prev_stationary, search_max_speed,
     search_stationary,

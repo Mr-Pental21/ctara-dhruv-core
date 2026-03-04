@@ -27,6 +27,10 @@ use crate::sankranti::{next_specific_sankranti, prev_specific_sankranti};
 use crate::sankranti_types::SankrantiConfig;
 use crate::search_util::{find_zero_crossing, normalize_to_pm180};
 
+fn utc_to_jd_tdb_maybe_eop(engine: &Engine, eop: Option<&EopKernel>, utc: &UtcTime) -> f64 {
+    crate::search_util::utc_to_jd_tdb_with_eop(engine, eop, utc)
+}
+
 /// Get Sun's sidereal rashi index at a given JD TDB.
 fn sun_sidereal_rashi_index(
     engine: &Engine,
@@ -74,6 +78,15 @@ pub fn masa_for_date(
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<MasaInfo, SearchError> {
+    masa_for_date_with_eop(engine, None, utc, config)
+}
+
+pub(crate) fn masa_for_date_with_eop(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    utc: &UtcTime,
+    config: &SankrantiConfig,
+) -> Result<MasaInfo, SearchError> {
     // Find bracketing new moons
     let prev_nm = prev_amavasya(engine, utc)?.ok_or(SearchError::NoConvergence(
         "could not find previous new moon",
@@ -81,8 +94,8 @@ pub fn masa_for_date(
     let next_nm = next_amavasya(engine, utc)?
         .ok_or(SearchError::NoConvergence("could not find next new moon"))?;
 
-    let prev_nm_jd = prev_nm.utc.to_jd_tdb(engine.lsk());
-    let next_nm_jd = next_nm.utc.to_jd_tdb(engine.lsk());
+    let prev_nm_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &prev_nm.utc);
+    let next_nm_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &next_nm.utc);
 
     // Sun's sidereal rashi at each new moon
     let rashi_at_prev = sun_sidereal_rashi_index(engine, prev_nm_jd, config)?;
@@ -114,7 +127,16 @@ pub fn ayana_for_date(
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<AyanaInfo, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    ayana_for_date_with_eop(engine, None, utc, config)
+}
+
+pub(crate) fn ayana_for_date_with_eop(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    utc: &UtcTime,
+    config: &SankrantiConfig,
+) -> Result<AyanaInfo, SearchError> {
+    let jd = utc_to_jd_tdb_maybe_eop(engine, eop, utc);
     let sid_lon = sun_sidereal_longitude(engine, jd, config)?;
     let current_ayana = ayana_from_sidereal_longitude(sid_lon);
 
@@ -150,27 +172,37 @@ pub fn varsha_for_date(
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<VarshaInfo, SearchError> {
+    varsha_for_date_with_eop(engine, None, utc, config)
+}
+
+pub(crate) fn varsha_for_date_with_eop(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    utc: &UtcTime,
+    config: &SankrantiConfig,
+) -> Result<VarshaInfo, SearchError> {
     // Strategy: find Mesha Sankranti for this year, then next new moon after it = year start.
     // If that year start is after our date, go back one year.
 
-    let year_start = find_chaitra_pratipada_for(engine, utc, config)?;
-    let year_start_jd = year_start.to_jd_tdb(engine.lsk());
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let year_start = find_chaitra_pratipada_for(engine, eop, utc, config)?;
+    let year_start_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &year_start);
+    let jd = utc_to_jd_tdb_maybe_eop(engine, eop, utc);
 
     let (actual_start, actual_end) = if year_start_jd > jd {
         // Our date is before this year's Chaitra Pratipada — go back one year
         let prev_year_utc = UtcTime::new(utc.year - 1, 1, 15, 0, 0, 0.0);
-        let prev_start = find_chaitra_pratipada_for(engine, &prev_year_utc, config)?;
+        let prev_start = find_chaitra_pratipada_for(engine, eop, &prev_year_utc, config)?;
         (prev_start, year_start)
     } else {
         // Find next year's Chaitra Pratipada
         let next_year_utc = UtcTime::new(utc.year + 1, 1, 15, 0, 0, 0.0);
-        let next_start = find_chaitra_pratipada_for(engine, &next_year_utc, config)?;
-        let next_start_jd = next_start.to_jd_tdb(engine.lsk());
+        let next_start = find_chaitra_pratipada_for(engine, eop, &next_year_utc, config)?;
+        let next_start_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &next_start);
         if next_start_jd <= jd {
             // Edge case: we're after next year's start too
             let following_year_utc = UtcTime::new(utc.year + 2, 1, 15, 0, 0, 0.0);
-            let following_start = find_chaitra_pratipada_for(engine, &following_year_utc, config)?;
+            let following_start =
+                find_chaitra_pratipada_for(engine, eop, &following_year_utc, config)?;
             (next_start, following_start)
         } else {
             (year_start, next_start)
@@ -193,6 +225,7 @@ pub fn varsha_for_date(
 /// Chaitra Pratipada = first new moon after Mesha Sankranti in the same calendar year.
 fn find_chaitra_pratipada_for(
     engine: &Engine,
+    _eop: Option<&EopKernel>,
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<UtcTime, SearchError> {
@@ -283,7 +316,7 @@ pub fn nakshatra_for_date(
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<PanchangNakshatraInfo, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let moon_sid = moon_sidereal_longitude_at(engine, jd, config)?;
     nakshatra_at(engine, jd, moon_sid, config)
 }
@@ -354,7 +387,7 @@ fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
 /// Tithi = which of 30 segments of Moon-Sun elongation (12 deg each) the
 /// current moment falls in. Returns tithi with start/end UTC times.
 pub fn tithi_for_date(engine: &Engine, utc: &UtcTime) -> Result<TithiInfo, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let elong = elongation_at(engine, jd)?;
     tithi_at(engine, jd, elong)
 }
@@ -397,7 +430,7 @@ pub fn tithi_at(
 /// Karana = which of 60 segments of Moon-Sun elongation (6 deg each) the
 /// current moment falls in. Uses traditional fixed/movable mapping.
 pub fn karana_for_date(engine: &Engine, utc: &UtcTime) -> Result<KaranaInfo, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let elong = elongation_at(engine, jd)?;
     karana_at(engine, jd, elong)
 }
@@ -441,7 +474,7 @@ pub fn yoga_for_date(
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<YogaInfo, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let sum = sidereal_sum_at(engine, jd, config)?;
     yoga_at(engine, jd, sum, config)
 }
@@ -493,7 +526,7 @@ pub fn vedic_day_sunrises(
     riseset_config: &RiseSetConfig,
 ) -> Result<(f64, f64), SearchError> {
     let jd_utc = utc_to_jd_utc(utc);
-    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
 
     // Approximate local noon for today
     let jd_midnight = jd_utc.floor() + 0.5; // 0h UT
@@ -609,7 +642,7 @@ pub fn hora_for_date(
 ) -> Result<HoraInfo, SearchError> {
     let (sunrise_jd, next_sunrise_jd) =
         vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
-    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
     Ok(hora_from_sunrises(
         jd_tdb,
         sunrise_jd,
@@ -664,7 +697,7 @@ pub fn ghatika_for_date(
 ) -> Result<GhatikaInfo, SearchError> {
     let (sunrise_jd, next_sunrise_jd) =
         vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
-    let jd_tdb = utc.to_jd_tdb(engine.lsk());
+    let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
     Ok(ghatika_from_sunrises(
         jd_tdb,
         sunrise_jd,
@@ -720,7 +753,7 @@ pub fn panchang_for_date(
     config: &SankrantiConfig,
     include_calendar: bool,
 ) -> Result<PanchangInfo, SearchError> {
-    let jd = utc.to_jd_tdb(engine.lsk());
+    let jd = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
 
     // Category A intermediates: compute body longitudes once
     let elong = elongation_at(engine, jd)?;
@@ -742,9 +775,9 @@ pub fn panchang_for_date(
 
     // Calendar elements (expensive — only when requested)
     let (masa, ayana, varsha) = if include_calendar {
-        let m = masa_for_date(engine, utc, config)?;
-        let a = ayana_for_date(engine, utc, config)?;
-        let v = varsha_for_date(engine, utc, config)?;
+        let m = masa_for_date_with_eop(engine, Some(eop), utc, config)?;
+        let a = ayana_for_date_with_eop(engine, Some(eop), utc, config)?;
+        let v = varsha_for_date_with_eop(engine, Some(eop), utc, config)?;
         (Some(m), Some(a), Some(v))
     } else {
         (None, None, None)
