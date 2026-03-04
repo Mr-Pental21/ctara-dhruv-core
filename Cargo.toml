@@ -5,6 +5,7 @@ members = [
   "crates/dhruv_frames",
   "crates/dhruv_core",
   "crates/dhruv_vedic_base",
+  "crates/dhruv_config",
   "crates/dhruv_ffi_c",
   "crates/dhruv_cli",
   "crates/dhruv_rs",

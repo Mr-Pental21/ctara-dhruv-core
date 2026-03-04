@@ -1,0 +1,20 @@
+[package]
+name = "dhruv_config"
+description = "Layered configuration resolver for dhruv CLI, Rust facade, and C ABI"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dhruv_core = { path = "../dhruv_core" }
+dhruv_frames = { path = "../dhruv_frames" }
+dhruv_search = { path = "../dhruv_search" }
+dhruv_tara = { path = "../dhruv_tara" }
+dhruv_vedic_base = { path = "../dhruv_vedic_base" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+[lints]
+workspace = true
