@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
+use dhruv_config::{ConfigResolver, DefaultsMode, EngineConfigPatch, load_with_discovery};
 use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query};
 use dhruv_frames::{
     PrecessionModel, cartesian_to_spherical, icrf_to_ecliptic, nutation_iau2000b,
@@ -44,6 +45,15 @@ use dhruv_vedic_base::{
 #[derive(Parser)]
 #[command(name = "dhruv", about = "Dhruv ephemeris CLI")]
 struct Cli {
+    /// Optional explicit config file path (TOML or JSON)
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
+    /// Disable config file discovery and loading
+    #[arg(long, global = true, default_value_t = false)]
+    no_config: bool,
+    /// Config defaults mode: recommended or none
+    #[arg(long, global = true, default_value = "recommended")]
+    defaults_mode: String,
     /// UTC->TDB conversion policy: strict-lsk or hybrid-deltat
     #[arg(long, global = true, default_value = "hybrid-deltat")]
     time_policy: String,
@@ -139,10 +149,10 @@ struct NextSankrantiArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -158,10 +168,10 @@ struct MasaArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -177,10 +187,10 @@ struct AyanaArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -196,10 +206,10 @@ struct VarshaArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -215,10 +225,10 @@ struct YogaArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -234,10 +244,10 @@ struct MoonNakshatraArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -256,10 +266,10 @@ struct VaarArgs {
     alt: f64,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -281,10 +291,10 @@ struct HoraArgs {
     alt: f64,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -306,10 +316,10 @@ struct GhatikaArgs {
     alt: f64,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -337,10 +347,10 @@ struct SphutasArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -368,10 +378,10 @@ struct SpecialLagnasArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -399,10 +409,10 @@ struct ArudhaPadasArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -437,10 +447,10 @@ struct PanchangArgs {
     include: Option<String>,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -468,10 +478,10 @@ struct AshtakavargaArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -499,10 +509,10 @@ struct UpagrahasArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -548,10 +558,10 @@ struct GrahaPositionsArgs {
     precession: String,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -585,10 +595,10 @@ struct CoreBindusArgs {
     bhava: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -625,10 +635,10 @@ struct DrishtiArgs {
     bindus: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -656,10 +666,10 @@ struct KundaliArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -725,9 +735,9 @@ struct PrevSankrantiArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -737,9 +747,9 @@ struct SearchPurnimasArgs {
     #[arg(long)]
     end: String,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -749,9 +759,9 @@ struct SearchAmavasyasArgs {
     #[arg(long)]
     end: String,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -765,9 +775,9 @@ struct SearchSankrantisArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -782,9 +792,9 @@ struct NextSpecificSankrantiArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -799,9 +809,9 @@ struct PrevSpecificSankrantiArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -819,9 +829,9 @@ struct AyanamshaComputeArgs {
     #[arg(long, default_value_t = 0.0)]
     delta_psi_arcsec: f64,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Optional star catalog for proper-motion-corrected anchors
     #[arg(long)]
     catalog: Option<PathBuf>,
@@ -838,9 +848,9 @@ struct SunriseArgs {
     #[arg(long, default_value = "0")]
     alt: f64,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     #[arg(long)]
     eop: PathBuf,
 }
@@ -856,9 +866,9 @@ struct BhavasArgs {
     #[arg(long, default_value = "0")]
     alt: f64,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     #[arg(long)]
     eop: PathBuf,
 }
@@ -874,9 +884,9 @@ struct LagnaComputeArgs {
     #[arg(long, default_value = "0")]
     alt: f64,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     #[arg(long)]
     eop: PathBuf,
 }
@@ -895,9 +905,9 @@ struct LunarNodeArgs {
     #[arg(long, value_parser = ["engine", "analytic"], default_value = "engine")]
     backend: String,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -921,9 +931,9 @@ struct ConjunctionOpArgs {
     #[arg(long)]
     body2: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -937,9 +947,9 @@ struct NextConjunctionArgs {
     #[arg(long)]
     body2: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -951,9 +961,9 @@ struct PrevConjunctionArgs {
     #[arg(long)]
     body2: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -967,9 +977,9 @@ struct SearchConjunctionsArgs {
     #[arg(long)]
     body2: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -996,9 +1006,9 @@ struct GrahanOpArgs {
     #[arg(long, default_value_t = false)]
     no_peak_details: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1019,9 +1029,9 @@ struct LunarPhaseOpArgs {
     #[arg(long)]
     end: Option<String>,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1048,9 +1058,9 @@ struct SankrantiOpArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1060,9 +1070,9 @@ struct SearchChandraGrahanArgs {
     #[arg(long)]
     end: String,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1072,9 +1082,9 @@ struct SearchSuryaGrahanArgs {
     #[arg(long)]
     end: String,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1085,9 +1095,9 @@ struct NextStationaryArgs {
     #[arg(long)]
     body: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1097,9 +1107,9 @@ struct PrevStationaryArgs {
     #[arg(long)]
     body: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1111,9 +1121,9 @@ struct SearchStationaryArgs {
     #[arg(long)]
     body: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1123,9 +1133,9 @@ struct NextMaxSpeedArgs {
     #[arg(long)]
     body: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1135,9 +1145,9 @@ struct PrevMaxSpeedArgs {
     #[arg(long)]
     body: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1149,9 +1159,9 @@ struct SearchMaxSpeedArgs {
     #[arg(long)]
     body: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1175,9 +1185,9 @@ struct MotionOpArgs {
     #[arg(long)]
     end: Option<String>,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1193,10 +1203,10 @@ struct PositionArgs {
     observer: i32,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1218,10 +1228,10 @@ struct SiderealLongitudeArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1237,10 +1247,10 @@ struct GrahaLongitudesArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1278,9 +1288,9 @@ struct SiderealSumAtArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1291,9 +1301,9 @@ struct BodyLonLatArgs {
     #[arg(long)]
     body: i32,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1307,9 +1317,9 @@ struct VedicDaySunrisesArgs {
     #[arg(long, default_value = "0")]
     alt: f64,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     #[arg(long)]
     eop: PathBuf,
 }
@@ -1322,9 +1332,9 @@ struct TithiAtArgs {
     #[arg(long)]
     elongation: f64,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1334,9 +1344,9 @@ struct KaranaAtArgs {
     #[arg(long)]
     elongation: f64,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1351,9 +1361,9 @@ struct YogaAtArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1368,9 +1378,9 @@ struct NakshatraAtArgs {
     #[arg(long)]
     nutation: bool,
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -1398,10 +1408,10 @@ struct ShadbalaArgs {
     graha: Option<String>,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -1435,10 +1445,10 @@ struct VimsopakaArgs {
     node_policy: String,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -1472,10 +1482,10 @@ struct AvasthaArgs {
     node_policy: String,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -1512,10 +1522,10 @@ struct DashaArgs {
     nutation: bool,
     /// Path to SPK kernel
     #[arg(long)]
-    bsp: PathBuf,
+    bsp: Option<PathBuf>,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Path to IERS EOP file (finals2000A.all)
     #[arg(long)]
     eop: PathBuf,
@@ -1534,7 +1544,7 @@ struct TaraPositionArgs {
     catalog: PathBuf,
     /// Path to leap second kernel
     #[arg(long)]
-    lsk: PathBuf,
+    lsk: Option<PathBuf>,
     /// Ayanamsha system code (0-19, for sidereal output)
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
@@ -1554,6 +1564,8 @@ struct TaraPositionArgs {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Show effective resolved configuration (debug utility)
+    ConfigShowEffective,
     /// Rashi from sidereal longitude
     Rashi {
         /// Sidereal ecliptic longitude in degrees
@@ -1583,10 +1595,10 @@ enum Commands {
         date: String,
         /// Path to SPK kernel (de442s.bsp)
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         /// Path to leap second kernel (naif0012.tls)
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Find next Amavasya (new moon)
     NextAmavasya {
@@ -1595,10 +1607,10 @@ enum Commands {
         date: String,
         /// Path to SPK kernel
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         /// Path to leap second kernel
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Find next Sankranti (Sun entering a rashi)
     NextSankranti(NextSankrantiArgs),
@@ -1615,10 +1627,10 @@ enum Commands {
         date: String,
         /// Path to SPK kernel
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         /// Path to leap second kernel
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Determine the Karana (half-tithi) for a date
     Karana {
@@ -1627,10 +1639,10 @@ enum Commands {
         date: String,
         /// Path to SPK kernel
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         /// Path to leap second kernel
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Determine the Yoga (luni-solar yoga) for a date
     Yoga(YogaArgs),
@@ -1667,18 +1679,18 @@ enum Commands {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Find previous Amavasya (new moon)
     PrevAmavasya {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Find previous Sankranti
     PrevSankranti(PrevSankrantiArgs),
@@ -1699,9 +1711,9 @@ enum Commands {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Compute sunrise/sunset and twilight events
     Sunrise(SunriseArgs),
@@ -1730,18 +1742,18 @@ enum Commands {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Find previous lunar eclipse
     PrevChandraGrahan {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Search lunar eclipses in a date range
     SearchChandraGrahan(SearchChandraGrahanArgs),
@@ -1750,18 +1762,18 @@ enum Commands {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Find previous solar eclipse
     PrevSuryaGrahan {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Search solar eclipses in a date range
     SearchSuryaGrahan(SearchSuryaGrahanArgs),
@@ -2057,9 +2069,9 @@ enum Commands {
         #[arg(long)]
         date: String,
         #[arg(long)]
-        bsp: PathBuf,
+        bsp: Option<PathBuf>,
         #[arg(long)]
-        lsk: PathBuf,
+        lsk: Option<PathBuf>,
     },
     /// Compute sidereal sum (Moon + Sun) at a date
     SiderealSumAt(SiderealSumAtArgs),
@@ -2163,8 +2175,57 @@ fn parse_utc(s: &str) -> Result<UtcTime, String> {
     UtcTime::try_new(year, month, day, hour, minute, second, None).map_err(|e| e.to_string())
 }
 
-fn load_engine(bsp: &Path, lsk: &Path) -> Engine {
-    let config = EngineConfig::with_single_spk(bsp.to_path_buf(), lsk.to_path_buf(), 256, true);
+fn parse_defaults_mode(s: &str) -> DefaultsMode {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "recommended" => DefaultsMode::Recommended,
+        "none" => DefaultsMode::None,
+        other => {
+            eprintln!("Invalid --defaults-mode: {other} (recommended|none)");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn cli_resolver() -> Option<&'static ConfigResolver> {
+    CLI_CONFIG_RESOLVER.get().and_then(|v| v.as_ref())
+}
+
+fn resolve_engine_config_for_cli(
+    bsp: &Option<PathBuf>,
+    lsk: &Option<PathBuf>,
+) -> Result<EngineConfig, String> {
+    if let Some(resolver) = cli_resolver() {
+        let patch = EngineConfigPatch {
+            spk_paths: bsp.as_ref().map(|p| vec![p.to_string_lossy().to_string()]),
+            lsk_path: lsk.as_ref().map(|p| p.to_string_lossy().to_string()),
+            cache_capacity: Some(256),
+            strict_validation: Some(true),
+        };
+        return resolver
+            .resolve_engine(Some(patch))
+            .map(|v| v.value)
+            .map_err(|e| e.to_string());
+    }
+
+    let bsp_path = bsp
+        .as_ref()
+        .ok_or_else(|| "missing --bsp and no config file engine.spk_paths".to_string())?;
+    let lsk_path = lsk
+        .as_ref()
+        .ok_or_else(|| "missing --lsk and no config file engine.lsk_path".to_string())?;
+    Ok(EngineConfig::with_single_spk(
+        bsp_path.clone(),
+        lsk_path.clone(),
+        256,
+        true,
+    ))
+}
+
+fn load_engine(bsp: &Option<PathBuf>, lsk: &Option<PathBuf>) -> Engine {
+    let config = resolve_engine_config_for_cli(bsp, lsk).unwrap_or_else(|e| {
+        eprintln!("Failed to resolve engine config: {e}");
+        std::process::exit(1);
+    });
     let engine = Engine::new(config).unwrap_or_else(|e| {
         eprintln!("Failed to load engine: {e}");
         std::process::exit(1);
@@ -2309,6 +2370,7 @@ static STALE_LSK_THRESHOLD_DAYS: OnceLock<Option<f64>> = OnceLock::new();
 static STALE_EOP_THRESHOLD_DAYS: OnceLock<Option<f64>> = OnceLock::new();
 static EOP_C04_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
 static EOP_DAILY_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+static CLI_CONFIG_RESOLVER: OnceLock<Option<ConfigResolver>> = OnceLock::new();
 
 fn now_jd_utc() -> f64 {
     let now = SystemTime::now()
@@ -2639,6 +2701,19 @@ fn main() {
     let _ = STALE_EOP_THRESHOLD_DAYS.set(cli.stale_eop_threshold_days);
     let _ = EOP_C04_PATH.set(cli.eop_c04.clone());
     let _ = EOP_DAILY_PATH.set(cli.eop_daily.clone());
+
+    let defaults_mode = parse_defaults_mode(&cli.defaults_mode);
+    let loaded_config =
+        load_with_discovery(cli.config.as_deref(), cli.no_config).unwrap_or_else(|e| {
+            eprintln!("Failed to load config: {e}");
+            std::process::exit(1);
+        });
+    if let Some(loaded) = &loaded_config {
+        eprintln!("Loaded config: {}", loaded.path.display());
+    }
+    let resolver = loaded_config.map(|loaded| ConfigResolver::new(loaded.file, defaults_mode));
+    let _ = CLI_CONFIG_RESOLVER.set(resolver);
+
     maybe_install_smh2016_table(cli.delta_t_smh_table.as_deref());
     let delta_t_model = parse_delta_t_model(&cli.delta_t_model);
     let smh_future_family = parse_smh_future_family(&cli.smh_future_family);
@@ -2662,6 +2737,40 @@ fn main() {
     dhruv_search::set_time_conversion_policy(time_policy);
 
     match cli.command {
+        Commands::ConfigShowEffective => {
+            let Some(resolver) = cli_resolver() else {
+                println!(
+                    "No config file loaded; effective config comes from explicit flags and built-in defaults."
+                );
+                return;
+            };
+
+            let engine = resolver.resolve_engine(None);
+            let conjunction = resolver.resolve_conjunction(None);
+            let grahan = resolver.resolve_grahan(None);
+            let stationary = resolver.resolve_stationary(None);
+            let sankranti = resolver.resolve_sankranti(None);
+            let riseset = resolver.resolve_riseset(None);
+            let bhava = resolver.resolve_bhava(None);
+            let tara = resolver.resolve_tara(None);
+            let graha_positions = resolver.resolve_graha_positions(None);
+            let bindus = resolver.resolve_bindus(None);
+            let drishti = resolver.resolve_drishti(None);
+            let full_kundali = resolver.resolve_full_kundali(None);
+
+            println!("engine={engine:#?}");
+            println!("conjunction={conjunction:#?}");
+            println!("grahan={grahan:#?}");
+            println!("stationary={stationary:#?}");
+            println!("sankranti={sankranti:#?}");
+            println!("riseset={riseset:#?}");
+            println!("bhava={bhava:#?}");
+            println!("tara={tara:#?}");
+            println!("graha_positions={graha_positions:#?}");
+            println!("bindus={bindus:#?}");
+            println!("drishti={drishti:#?}");
+            println!("full_kundali={full_kundali:#?}");
+        }
         Commands::Rashi { lon } => {
             let info = rashi_from_longitude(lon);
             let dms = info.dms;
@@ -6597,10 +6706,16 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let lsk_kernel = dhruv_time::LeapSecondKernel::load(&args.lsk).unwrap_or_else(|e| {
-                eprintln!("Failed to load LSK: {e}");
-                std::process::exit(1);
-            });
+            let resolved_engine_cfg = resolve_engine_config_for_cli(&args.bsp, &args.lsk)
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to resolve engine for tara position: {e}");
+                    std::process::exit(1);
+                });
+            let lsk_kernel = dhruv_time::LeapSecondKernel::load(&resolved_engine_cfg.lsk_path)
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to load LSK: {e}");
+                    std::process::exit(1);
+                });
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, &lsk_kernel, time_policy);
 
             let config = TaraConfig {
@@ -6614,11 +6729,7 @@ fn main() {
 
             // Get Earth state if needed
             let earth_state = if args.apparent || args.parallax {
-                let bsp_path = args.bsp.as_ref().unwrap_or_else(|| {
-                    eprintln!("--bsp is required for --apparent or --parallax");
-                    std::process::exit(1);
-                });
-                let engine = load_engine(bsp_path, &args.lsk);
+                let engine = load_engine(&args.bsp, &args.lsk);
                 let q = Query {
                     target: Body::Earth,
                     observer: Observer::SolarSystemBarycenter,
