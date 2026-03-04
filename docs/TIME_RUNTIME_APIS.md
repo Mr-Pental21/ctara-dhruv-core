@@ -33,7 +33,7 @@ This is the crate-root callable runtime surface of `dhruv_time`.
 | `FutureDeltaTTransition` | Future strategy selector: `LegacyTtUtcBlend` (default frozen-compatible contract) or `BridgeFromModernEndpoint`. |
 | `TimeConversionOptions::future_delta_t_transition` | Single axis controlling future Delta-T behavior beyond LSK range. |
 | `TimeConversionOptions::future_transition_years` | Blend length (years) for bridge strategy from modern endpoint to selected asymptotic family (default `100.0`). |
-| `TimeConversionOptions::smh_future_family` | Future asymptotic family selector used by SMH model under bridge strategy. Includes `Addendum2020Piecewise`, fixed `c` members, and `Stephenson1997`. |
+| `TimeConversionOptions::smh_future_family` | Future asymptotic family selector used by SMH model under bridge strategy. Includes `Addendum2020Piecewise`, fixed `c` members, `Stephenson1997`, and `Stephenson2016`. |
 
 ## `Epoch`
 

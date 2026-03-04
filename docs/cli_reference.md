@@ -53,7 +53,7 @@ Location-dependent commands additionally require `--lat`, `--lon`, and `--eop`.
 | `--future-delta-t-transition` | selector | Future strategy beyond LSK coverage: `legacy-tt-utc-blend` (default) or `bridge-modern-endpoint` |
 | `--no-freeze-future-dut1` | flag | Use configured DUT1 fallback beyond EOP instead of freezing DUT1 |
 | `--future-transition-years` | f64 | Blend window length from anchor TT-UTC to model fallback (`100.0` default) |
-| `--smh-future-family` | selector | Post-EOP asymptotic family when `--future-delta-t-transition bridge-modern-endpoint` is active (`addendum2020`, `c-20`, `c-17.52`, `c-15.32`, `stephenson1997`) |
+| `--smh-future-family` | selector | Post-EOP asymptotic family when `--future-delta-t-transition bridge-modern-endpoint` is active (`addendum2020`, `c-20`, `c-17.52`, `c-15.32`, `stephenson1997`, `stephenson2016`) |
 | `--stale-lsk-threshold-days` | f64 | Warn if LSK coverage end is older than threshold |
 | `--stale-eop-threshold-days` | f64 | Warn if EOP coverage end is older than threshold |
 

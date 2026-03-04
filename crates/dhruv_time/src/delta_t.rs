@@ -241,6 +241,7 @@ pub enum DeltaTModel {
 /// Clean sources:
 /// - Morrison et al. (2021) Addendum 2020, Eq. (5) + Table 1.
 /// - NASA GSFC Delta-T help page `deltaT2.html` (Stephenson 1997 summary).
+/// - Stephenson, Morrison, Hohenkerk (2016), Eq. (4.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SmhFutureParabolaFamily {
     /// Piecewise family from Addendum 2020 Table 1:
@@ -259,6 +260,11 @@ pub enum SmhFutureParabolaFamily {
     ///
     /// This is intended only for post-EOP future fallback strategy selection.
     Stephenson1997,
+    /// Stephenson-Morrison-Hohenkerk (2016) Eq. (4.1) global parabola:
+    /// `ΔT = -320.0 + 32.5 * ((year - 1825) / 100)^2`
+    ///
+    /// This is intended only for post-EOP future fallback strategy selection.
+    Stephenson2016,
 }
 
 impl Default for SmhFutureParabolaFamily {
@@ -309,6 +315,10 @@ pub fn smh_asymptotic_delta_t_seconds_with_family(
             let t = (year - 1820.0) / 100.0;
             -20.0 + 31.0 * t * t
         }
+        SmhFutureParabolaFamily::Stephenson2016 => {
+            let t = (year - 1825.0) / 100.0;
+            -320.0 + 32.5 * t * t
+        }
         _ => {
             let c = smh_future_parabola_c_for_year(year, family);
             let t = (year - 1825.0) / 100.0;
@@ -335,6 +345,7 @@ pub fn smh_future_parabola_c_for_year(year: f64, family: SmhFutureParabolaFamily
         // Kept for API compatibility: this helper returns the additive constant
         // for c+32.5*t^2 families. Stephenson1997 uses a different polynomial.
         SmhFutureParabolaFamily::Stephenson1997 => -20.0,
+        SmhFutureParabolaFamily::Stephenson2016 => -320.0,
     }
 }
 
@@ -688,5 +699,36 @@ mod tests {
             (dt_stephenson - dt_addendum).abs() > 1e-6,
             "expected distinct future strategy outputs"
         );
+    }
+
+    #[test]
+    fn stephenson2016_formula_matches_reference() {
+        let year = 2500.0;
+        let dt = smh_asymptotic_delta_t_seconds_with_family(
+            year,
+            SmhFutureParabolaFamily::Stephenson2016,
+        );
+        let t = (year - 1825.0) / 100.0;
+        let expected = -320.0 + 32.5 * t * t;
+        assert!((dt - expected).abs() < 1e-12);
+    }
+
+    #[test]
+    fn stephenson2016_future_differs_from_other_families() {
+        let year = 2500.0;
+        let dt_2016 = smh_asymptotic_delta_t_seconds_with_family(
+            year,
+            SmhFutureParabolaFamily::Stephenson2016,
+        );
+        let dt_addendum = smh_asymptotic_delta_t_seconds_with_family(
+            year,
+            SmhFutureParabolaFamily::Addendum2020Piecewise,
+        );
+        let dt_1997 = smh_asymptotic_delta_t_seconds_with_family(
+            year,
+            SmhFutureParabolaFamily::Stephenson1997,
+        );
+        assert!((dt_2016 - dt_addendum).abs() > 1e-6);
+        assert!((dt_2016 - dt_1997).abs() > 1e-6);
     }
 }

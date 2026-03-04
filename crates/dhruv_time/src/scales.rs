@@ -802,4 +802,108 @@ DELTET/DELTA_AT        = ( 10,   @1972-JAN-1
         );
         assert_eq!(out.diagnostics.source, TtUtcSource::DeltaTModel);
     }
+
+    #[test]
+    fn future_blend_reaches_stephenson2016_after_100_years() {
+        let lsk = test_lsk();
+        let eop_snippet = {
+            let mk = |mjd: f64, flag: char, dut1: f64| {
+                let mut line = vec![b' '; 70];
+                let mjd_s = format!("{mjd:8.2}");
+                line[7..15].copy_from_slice(mjd_s.as_bytes());
+                line[57] = flag as u8;
+                let dut1_s = format!("{dut1:10.7}");
+                line[58..68].copy_from_slice(dut1_s.as_bytes());
+                String::from_utf8(line).unwrap()
+            };
+            vec![mk(61000.0, 'I', 0.10), mk(62000.0, 'P', 0.12)].join("\n")
+        };
+        let eop = EopData::parse_finals(&eop_snippet).unwrap();
+        let anchor_utc_s = jd_to_tdb_seconds(2_400_000.5 + 62000.0);
+        let utc_s = anchor_utc_s + 100.0 * 365.25 * 86_400.0 + 10.0;
+
+        let out = utc_to_tdb_with_policy_and_eop(
+            utc_s,
+            &lsk,
+            Some(&eop),
+            TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
+                warn_on_fallback: false,
+                delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
+                freeze_future_dut1: true,
+                pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::BridgeFromModernEndpoint,
+                future_transition_years: 100.0,
+                smh_future_family: SmhFutureParabolaFamily::Stephenson2016,
+            }),
+        );
+
+        let jd_utc = tdb_seconds_to_jd(utc_s);
+        let (asym_dt, _) = crate::delta_t::smh_asymptotic_delta_t_seconds_for_jd_with_family(
+            jd_utc,
+            SmhFutureParabolaFamily::Stephenson2016,
+        );
+        let expected = asym_dt + 0.12;
+        assert!(
+            (out.diagnostics.tt_minus_utc_s - expected).abs() < 1e-6,
+            "expected full Stephenson2016 TT-UTC after 100y blend window: {} vs {}",
+            out.diagnostics.tt_minus_utc_s,
+            expected
+        );
+        assert_eq!(out.diagnostics.source, TtUtcSource::DeltaTModel);
+    }
+
+    #[test]
+    fn legacy_strategy_ignores_stephenson2016() {
+        let lsk = test_lsk();
+        let eop_snippet = {
+            let mk = |mjd: f64, flag: char, dut1: f64| {
+                let mut line = vec![b' '; 70];
+                let mjd_s = format!("{mjd:8.2}");
+                line[7..15].copy_from_slice(mjd_s.as_bytes());
+                line[57] = flag as u8;
+                let dut1_s = format!("{dut1:10.7}");
+                line[58..68].copy_from_slice(dut1_s.as_bytes());
+                String::from_utf8(line).unwrap()
+            };
+            vec![mk(61000.0, 'I', 0.10), mk(62000.0, 'P', 0.12)].join("\n")
+        };
+        let eop = EopData::parse_finals(&eop_snippet).unwrap();
+        let utc_s = jd_to_tdb_seconds(2_400_000.5 + 65000.0);
+
+        let out_addendum = utc_to_tdb_with_policy_and_eop(
+            utc_s,
+            &lsk,
+            Some(&eop),
+            TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
+                warn_on_fallback: false,
+                delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
+                freeze_future_dut1: true,
+                pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::LegacyTtUtcBlend,
+                future_transition_years: 100.0,
+                smh_future_family: SmhFutureParabolaFamily::Addendum2020Piecewise,
+            }),
+        );
+        let out_steph2016 = utc_to_tdb_with_policy_and_eop(
+            utc_s,
+            &lsk,
+            Some(&eop),
+            TimeConversionPolicy::HybridDeltaT(TimeConversionOptions {
+                warn_on_fallback: false,
+                delta_t_model: DeltaTModel::Smh2016WithPre720Quadratic,
+                freeze_future_dut1: true,
+                pre_range_dut1: 0.0,
+                future_delta_t_transition: FutureDeltaTTransition::LegacyTtUtcBlend,
+                future_transition_years: 100.0,
+                smh_future_family: SmhFutureParabolaFamily::Stephenson2016,
+            }),
+        );
+        assert!(
+            (out_addendum.diagnostics.tt_minus_utc_s - out_steph2016.diagnostics.tt_minus_utc_s)
+                .abs()
+                < 1e-12
+        );
+        assert_eq!(out_addendum.diagnostics.source, TtUtcSource::LskDeltaAt);
+        assert_eq!(out_steph2016.diagnostics.source, TtUtcSource::LskDeltaAt);
+    }
 }

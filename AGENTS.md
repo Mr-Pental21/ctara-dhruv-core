@@ -42,6 +42,7 @@ Scope: this file governs AI agent behavior in `ctara-dhruv-core`.
 3. Update `THIRD_PARTY_NOTICES.md` when dependency set changes.
 4. For major subsystem changes, add/update a clean-room record.
 5. Keep CI license checks passing (`scripts/ci/license_gate.sh`).
+6. For significant changes plan it first extensivly - create plan file at ~/.codex/plans/.
 
 ## Stop Conditions
 

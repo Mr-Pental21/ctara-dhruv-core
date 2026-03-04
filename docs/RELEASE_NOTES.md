@@ -12,3 +12,5 @@
   - `bridge-modern-endpoint` (100-year bridge to selected asymptotic family).
 - Removed user-facing `--no-freeze-future`; use `--future-delta-t-transition` instead.
 - Added `stephenson1997` support in `--smh-future-family` under bridge strategy.
+- Added `stephenson2016` support in `--smh-future-family` under bridge strategy, using:
+  - `ΔT = -320.0 + 32.5 * ((year - 1825.0) / 100.0)^2`

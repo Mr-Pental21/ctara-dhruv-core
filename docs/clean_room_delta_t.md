@@ -28,11 +28,14 @@
 ## Conceptual Sources
 
 - Paper/spec/public-domain source URL:
+  - https://pmc.ncbi.nlm.nih.gov/articles/PMC5247521/
   - https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html
   - https://eclipse.gsfc.nasa.gov/SEhelp/deltaT2.html
 - License/status:
   - NASA/GSFC public information pages (U.S. Government work).
 - What concept or formula was used:
+  - Stephenson-Morrison-Hohenkerk (2016), Eq. (4.1):
+    - `ΔT = -320.0 + 32.5 * ((year - 1825) / 100)^2`
   - Stephenson-1997 long-term expression documented there:
     - `ΔT = -20 + 31*t^2`, `t = (year - 1820)/100`
   - Transition guidance toward long-term model without discontinuity.
@@ -45,8 +48,9 @@
 ## Data Provenance
 
 - Tables/constants/datasets used:
-  - Formula constants only: `-20`, `31`, `1820`.
+  - Formula constants only: `-320.0`, `32.5`, `1825`, `-20`, `31`, `1820`.
 - Source URL:
+  - https://pmc.ncbi.nlm.nih.gov/articles/PMC5247521/
   - https://eclipse.gsfc.nasa.gov/SEhelp/deltaT2.html
 - License/status:
   - NASA/GSFC public information page (U.S. Government work).
@@ -66,6 +70,7 @@
     - blend term `F(Y) + (T_end - F_end) * (1 - alpha)` over configured window.
   - Preserve anchor rule: `anchor = max(EOP prediction end, LSK end)`.
   - Add `Stephenson1997` family and evaluate formula in asymptotic future function.
+  - Add `Stephenson2016` family using Eq. (4.1) nominal parabola.
 - Numerical assumptions:
   - Year-fraction conversion stays as existing code path (`year_fraction_from_jd`).
   - Blend uses linear interpolation in TT-UTC space.
@@ -80,6 +85,7 @@
   - None required for formula introduction in this patch.
 - Golden test vectors added:
   - Unit test for exact Stephenson1997 formula evaluation.
+  - Unit test for exact Stephenson2016 Eq. (4.1) evaluation.
   - Policy test proving legacy strategy ignores selected future family.
   - Policy test proving full model value is reached after the 100-year blend window.
 - Error tolerance used:

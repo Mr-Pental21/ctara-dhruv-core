@@ -40,7 +40,8 @@ struct Cli {
     delta_t_model: String,
     /// SMH future parabola-family selector when post-EOP asymptotic fallback
     /// is active (hybrid-deltat + --future-delta-t-transition bridge-modern-endpoint).
-    /// Values: addendum2020, c-20, c-17.52, c-15.32, stephenson1997
+    /// Values: addendum2020, c-20, c-17.52, c-15.32, stephenson1997,
+    /// stephenson2016
     #[arg(long, global = true, default_value = "addendum2020")]
     smh_future_family: String,
     /// Optional path to SMH2016 reconstruction table.
@@ -2220,9 +2221,14 @@ fn parse_smh_future_family(s: &str) -> SmhFutureParabolaFamily {
         "stephenson1997" | "st97" | "swiss-stephenson1997" | "swisseph-stephenson1997" => {
             SmhFutureParabolaFamily::Stephenson1997
         }
+        "stephenson2016"
+        | "st2016"
+        | "stephenson2016-cubic"
+        | "st2016-cubic"
+        | "stephenson2016cubic" => SmhFutureParabolaFamily::Stephenson2016,
         _ => {
             eprintln!(
-                "Invalid smh future family: {s} (addendum2020, c-20, c-17.52, c-15.32, stephenson1997)"
+                "Invalid smh future family: {s} (addendum2020, c-20, c-17.52, c-15.32, stephenson1997, stephenson2016)"
             );
             std::process::exit(1);
         }
@@ -7047,6 +7053,14 @@ mod tests {
         assert_eq!(
             parse_smh_future_family("swiss-stephenson1997"),
             SmhFutureParabolaFamily::Stephenson1997
+        );
+        assert_eq!(
+            parse_smh_future_family("stephenson2016"),
+            SmhFutureParabolaFamily::Stephenson2016
+        );
+        assert_eq!(
+            parse_smh_future_family("st2016"),
+            SmhFutureParabolaFamily::Stephenson2016
         );
     }
 }
