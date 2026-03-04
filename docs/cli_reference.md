@@ -177,15 +177,17 @@ dhruv sunrise --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 --bsp de442s.bsp
 
 ## Panchang (combined)
 
-### `panchang` — All panchang elements for a date
+### `panchang` — Masked panchang elements for a date
 
 ```
 dhruv panchang --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all --calendar
+dhruv panchang --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all --include tithi,yoga,nakshatra
 ```
 
 | Flag | Description |
 |---|---|
 | `--calendar` | Include masa, ayana, varsha |
+| `--include` | Comma-separated include mask: `tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,core,calendar,all` |
 
 ---
 

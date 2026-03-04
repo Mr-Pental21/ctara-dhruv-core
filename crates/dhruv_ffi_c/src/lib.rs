@@ -1085,6 +1085,38 @@ pub extern "C" fn dhruv_approximate_local_noon_jd(jd_ut_midnight: f64, longitude
 // Unified ayanamsha + standalone nutation
 // ---------------------------------------------------------------------------
 
+/// Ayanamsha mode selector: mean model.
+pub const DHRUV_AYANAMSHA_MODE_MEAN: i32 = 0;
+/// Ayanamsha mode selector: true model from explicit delta-psi.
+pub const DHRUV_AYANAMSHA_MODE_TRUE: i32 = 1;
+/// Ayanamsha mode selector: unified model with `use_nutation`.
+pub const DHRUV_AYANAMSHA_MODE_UNIFIED: i32 = 2;
+
+/// Ayanamsha time input selector: JD TDB in `jd_tdb`.
+pub const DHRUV_AYANAMSHA_TIME_JD_TDB: i32 = 0;
+/// Ayanamsha time input selector: UTC in `utc` (requires LSK handle).
+pub const DHRUV_AYANAMSHA_TIME_UTC: i32 = 1;
+
+/// C-compatible request for unified ayanamsha compute API.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvAyanamshaComputeRequest {
+    /// Ayanamsha system code (0..19).
+    pub system_code: i32,
+    /// Mode selector (`DHRUV_AYANAMSHA_MODE_*`).
+    pub mode: i32,
+    /// Time input selector (`DHRUV_AYANAMSHA_TIME_*`).
+    pub time_kind: i32,
+    /// JD TDB input when `time_kind=JD_TDB`.
+    pub jd_tdb: f64,
+    /// UTC input when `time_kind=UTC`.
+    pub utc: DhruvUtcTime,
+    /// Used by `mode=UNIFIED` (`0=false, nonzero=true`).
+    pub use_nutation: u8,
+    /// Used by `mode=TRUE` (arcseconds).
+    pub delta_psi_arcsec: f64,
+}
+
 /// Unified ayanamsha computation.
 ///
 /// When `use_nutation` is non-zero, nutation in longitude (Δψ) is added
@@ -1193,6 +1225,72 @@ pub unsafe extern "C" fn dhruv_ayanamsha_deg_with_catalog(
         let deg = ayanamsha_deg_with_catalog(system, t, use_nutation != 0, cat_opt);
 
         // SAFETY: Pointer is checked for null; write one value.
+        unsafe { *out_deg = deg };
+        DhruvStatus::Ok
+    })
+}
+
+/// Unified ayanamsha compute API covering mode + time-base variants.
+///
+/// - `mode=MEAN` computes mean ayanamsha.
+/// - `mode=TRUE` computes true ayanamsha using `delta_psi_arcsec`.
+/// - `mode=UNIFIED` computes unified ayanamsha using `use_nutation`.
+///
+/// - `time_kind=JD_TDB` uses `jd_tdb`.
+/// - `time_kind=UTC` uses `utc` and requires `lsk`.
+///
+/// `catalog` is optional and only used for star-catalog-aware mean/unified
+/// computations (`mode=MEAN` / `mode=UNIFIED`).
+///
+/// # Safety
+/// `request` and `out_deg` must be valid non-null pointers.
+/// `catalog` may be null. `lsk` may be null only for `time_kind=JD_TDB`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_ayanamsha_compute_ex(
+    lsk: *const DhruvLskHandle,
+    request: *const DhruvAyanamshaComputeRequest,
+    catalog: *const DhruvTaraCatalogHandle,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if request.is_null() || out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let req = unsafe { &*request };
+        let system = match ayanamsha_system_from_code(req.system_code) {
+            Some(s) => s,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let jd_tdb = match req.time_kind {
+            DHRUV_AYANAMSHA_TIME_JD_TDB => req.jd_tdb,
+            DHRUV_AYANAMSHA_TIME_UTC => {
+                if lsk.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let lsk_ref = unsafe { &*lsk };
+                ffi_to_utc_time(&req.utc).to_jd_tdb(lsk_ref)
+            }
+            _ => return DhruvStatus::InvalidQuery,
+        };
+
+        let t = jd_tdb_to_centuries(jd_tdb);
+        let cat_opt = if catalog.is_null() {
+            None
+        } else {
+            Some(unsafe { &*catalog })
+        };
+
+        let deg = match req.mode {
+            DHRUV_AYANAMSHA_MODE_MEAN => ayanamsha_mean_deg_with_catalog(system, t, cat_opt),
+            DHRUV_AYANAMSHA_MODE_TRUE => ayanamsha_true_deg(system, t, req.delta_psi_arcsec),
+            DHRUV_AYANAMSHA_MODE_UNIFIED => {
+                ayanamsha_deg_with_catalog(system, t, req.use_nutation != 0, cat_opt)
+            }
+            _ => return DhruvStatus::InvalidQuery,
+        };
+
         unsafe { *out_deg = deg };
         DhruvStatus::Ok
     })
@@ -1647,6 +1745,34 @@ pub const DHRUV_NODE_MODE_MEAN: i32 = 0;
 /// from Moon state vectors.
 pub const DHRUV_NODE_MODE_TRUE: i32 = 1;
 
+/// Node backend selector: analytic model backend.
+pub const DHRUV_NODE_BACKEND_ANALYTIC: i32 = 0;
+/// Node backend selector: engine-backed backend.
+pub const DHRUV_NODE_BACKEND_ENGINE: i32 = 1;
+
+/// Node time selector: JD TDB input in `jd_tdb`.
+pub const DHRUV_NODE_TIME_JD_TDB: i32 = 0;
+/// Node time selector: UTC input in `utc` (requires LSK).
+pub const DHRUV_NODE_TIME_UTC: i32 = 1;
+
+/// C-compatible request for unified lunar-node compute API.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvLunarNodeRequest {
+    /// Node code (`DHRUV_NODE_RAHU` or `DHRUV_NODE_KETU`).
+    pub node_code: i32,
+    /// Mode code (`DHRUV_NODE_MODE_*`).
+    pub mode_code: i32,
+    /// Backend selector (`DHRUV_NODE_BACKEND_*`).
+    pub backend: i32,
+    /// Time selector (`DHRUV_NODE_TIME_*`).
+    pub time_kind: i32,
+    /// JD TDB input when `time_kind=JD_TDB`.
+    pub jd_tdb: f64,
+    /// UTC input when `time_kind=UTC`.
+    pub utc: DhruvUtcTime,
+}
+
 /// Map integer code to LunarNode enum.
 fn lunar_node_from_code(code: i32) -> Option<LunarNode> {
     let nodes = LunarNode::all();
@@ -1755,6 +1881,74 @@ pub unsafe extern "C" fn dhruv_lunar_node_deg_with_engine(
     })
 }
 
+/// Unified lunar-node compute API covering backend + time-base variants.
+///
+/// - `backend=ANALYTIC` uses pure math (`lunar_node_deg`).
+/// - `backend=ENGINE` uses state-vector backend (`lunar_node_deg_for_epoch`).
+/// - `time_kind=JD_TDB` uses `jd_tdb`.
+/// - `time_kind=UTC` uses `utc` and requires `lsk`.
+///
+/// # Safety
+/// `request` and `out_deg` must be valid, non-null pointers.
+/// `engine` is required only when `backend=ENGINE`.
+/// `lsk` is required only when `time_kind=UTC`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_lunar_node_compute_ex(
+    engine: *const DhruvEngineHandle,
+    lsk: *const DhruvLskHandle,
+    request: *const DhruvLunarNodeRequest,
+    out_deg: *mut f64,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if request.is_null() || out_deg.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let req = unsafe { &*request };
+        let node = match lunar_node_from_code(req.node_code) {
+            Some(n) => n,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let mode = match node_mode_from_code(req.mode_code) {
+            Some(m) => m,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let jd_tdb = match req.time_kind {
+            DHRUV_NODE_TIME_JD_TDB => req.jd_tdb,
+            DHRUV_NODE_TIME_UTC => {
+                if lsk.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let lsk_ref = unsafe { &*lsk };
+                ffi_to_utc_time(&req.utc).to_jd_tdb(lsk_ref)
+            }
+            _ => return DhruvStatus::InvalidQuery,
+        };
+
+        let lon = match req.backend {
+            DHRUV_NODE_BACKEND_ANALYTIC => {
+                let t = jd_tdb_to_centuries(jd_tdb);
+                lunar_node_deg(node, t, mode)
+            }
+            DHRUV_NODE_BACKEND_ENGINE => {
+                if engine.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let engine_ref = unsafe { &*engine };
+                match lunar_node_deg_for_epoch(engine_ref, node, jd_tdb, mode) {
+                    Ok(deg) => deg,
+                    Err(e) => return DhruvStatus::from(&e),
+                }
+            }
+            _ => return DhruvStatus::InvalidQuery,
+        };
+
+        unsafe { *out_deg = lon };
+        DhruvStatus::Ok
+    })
+}
+
 /// Number of supported lunar node variants (Rahu, Ketu).
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_lunar_node_count() -> u32 {
@@ -1778,6 +1972,33 @@ pub struct DhruvConjunctionConfig {
     pub max_iterations: u32,
     /// Convergence threshold in days.
     pub convergence_days: f64,
+}
+
+/// Conjunction query mode: next event after `at_jd_tdb`.
+pub const DHRUV_CONJUNCTION_QUERY_MODE_NEXT: i32 = 0;
+/// Conjunction query mode: previous event before `at_jd_tdb`.
+pub const DHRUV_CONJUNCTION_QUERY_MODE_PREV: i32 = 1;
+/// Conjunction query mode: all events in [`start_jd_tdb`, `end_jd_tdb`].
+pub const DHRUV_CONJUNCTION_QUERY_MODE_RANGE: i32 = 2;
+
+/// C-compatible request for unified conjunction search.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvConjunctionSearchRequest {
+    /// Body 1 NAIF code.
+    pub body1_code: i32,
+    /// Body 2 NAIF code.
+    pub body2_code: i32,
+    /// Query mode (see `DHRUV_CONJUNCTION_QUERY_MODE_*` constants).
+    pub query_mode: i32,
+    /// Anchor time for next/prev modes (JD TDB).
+    pub at_jd_tdb: f64,
+    /// Start of range window for range mode (JD TDB).
+    pub start_jd_tdb: f64,
+    /// End of range window for range mode (JD TDB).
+    pub end_jd_tdb: f64,
+    /// Conjunction search configuration.
+    pub config: DhruvConjunctionConfig,
 }
 
 /// C-compatible conjunction event result.
@@ -1996,6 +2217,116 @@ pub unsafe extern "C" fn dhruv_search_conjunctions(
     })
 }
 
+/// Unified conjunction search entrypoint.
+///
+/// Mode behavior:
+/// - `DHRUV_CONJUNCTION_QUERY_MODE_NEXT` / `DHRUV_CONJUNCTION_QUERY_MODE_PREV`:
+///   writes single-event result to `out_event` and found flag to `out_found`.
+/// - `DHRUV_CONJUNCTION_QUERY_MODE_RANGE`:
+///   writes events to `out_events[..max_count]` and actual count to `out_count`.
+///
+/// # Safety
+/// `engine` and `request` must be valid and non-null.
+/// For NEXT/PREV, `out_event` and `out_found` must be valid non-null pointers.
+/// For RANGE, `out_events` and `out_count` must be valid non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_conjunction_search_ex(
+    engine: *const DhruvEngineHandle,
+    request: *const DhruvConjunctionSearchRequest,
+    out_event: *mut DhruvConjunctionEvent,
+    out_found: *mut u8,
+    out_events: *mut DhruvConjunctionEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || request.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let req = unsafe { &*request };
+
+        let body1 = match Body::from_code(req.body1_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let body2 = match Body::from_code(req.body2_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let rust_config = conjunction_config_from_ffi(&req.config);
+
+        match req.query_mode {
+            DHRUV_CONJUNCTION_QUERY_MODE_NEXT => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match next_conjunction(engine_ref, body1, body2, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = DhruvConjunctionEvent::from(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            DHRUV_CONJUNCTION_QUERY_MODE_PREV => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match prev_conjunction(engine_ref, body1, body2, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = DhruvConjunctionEvent::from(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            DHRUV_CONJUNCTION_QUERY_MODE_RANGE => {
+                if out_events.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match search_conjunctions(
+                    engine_ref,
+                    body1,
+                    body2,
+                    req.start_jd_tdb,
+                    req.end_jd_tdb,
+                    &rust_config,
+                ) {
+                    Ok(events) => {
+                        let count = events.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_events, max_count as usize)
+                        };
+                        for (i, e) in events.iter().take(count).enumerate() {
+                            out_slice[i] = DhruvConjunctionEvent::from(e);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            _ => DhruvStatus::InvalidQuery,
+        }
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Grahan search
 // ---------------------------------------------------------------------------
@@ -2027,6 +2358,36 @@ pub struct DhruvGrahanConfig {
     pub include_penumbral: u8,
     /// Include ecliptic latitude and angular separation at peak: 1 = yes, 0 = no.
     pub include_peak_details: u8,
+}
+
+/// Grahan kind selector: lunar eclipse.
+pub const DHRUV_GRAHAN_KIND_CHANDRA: i32 = 0;
+/// Grahan kind selector: solar eclipse.
+pub const DHRUV_GRAHAN_KIND_SURYA: i32 = 1;
+
+/// Grahan query mode: next event after `at_jd_tdb`.
+pub const DHRUV_GRAHAN_QUERY_MODE_NEXT: i32 = 0;
+/// Grahan query mode: previous event before `at_jd_tdb`.
+pub const DHRUV_GRAHAN_QUERY_MODE_PREV: i32 = 1;
+/// Grahan query mode: all events in [`start_jd_tdb`, `end_jd_tdb`].
+pub const DHRUV_GRAHAN_QUERY_MODE_RANGE: i32 = 2;
+
+/// C-compatible request for unified grahan search.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvGrahanSearchRequest {
+    /// Grahan kind selector (`DHRUV_GRAHAN_KIND_*`).
+    pub grahan_kind: i32,
+    /// Query mode selector (`DHRUV_GRAHAN_QUERY_MODE_*`).
+    pub query_mode: i32,
+    /// Anchor time for next/prev modes (JD TDB).
+    pub at_jd_tdb: f64,
+    /// Start of range window for range mode (JD TDB).
+    pub start_jd_tdb: f64,
+    /// End of range window for range mode (JD TDB).
+    pub end_jd_tdb: f64,
+    /// Grahan search configuration.
+    pub config: DhruvGrahanConfig,
 }
 
 /// Returns default grahan configuration.
@@ -2396,6 +2757,172 @@ pub unsafe extern "C" fn dhruv_search_surya_grahan(
     })
 }
 
+/// Unified grahan search entrypoint.
+///
+/// Mode behavior:
+/// - `DHRUV_GRAHAN_QUERY_MODE_NEXT` / `DHRUV_GRAHAN_QUERY_MODE_PREV`:
+///   writes single-event result and found flag.
+/// - `DHRUV_GRAHAN_QUERY_MODE_RANGE`:
+///   writes array results and count.
+///
+/// Kind behavior:
+/// - `DHRUV_GRAHAN_KIND_CHANDRA` uses chandra output pointers.
+/// - `DHRUV_GRAHAN_KIND_SURYA` uses surya output pointers.
+///
+/// # Safety
+/// `engine` and `request` must be valid and non-null.
+/// Output pointers required depend on `grahan_kind` and `query_mode`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_grahan_search_ex(
+    engine: *const DhruvEngineHandle,
+    request: *const DhruvGrahanSearchRequest,
+    out_chandra_single: *mut DhruvChandraGrahanResult,
+    out_surya_single: *mut DhruvSuryaGrahanResult,
+    out_found: *mut u8,
+    out_chandra_many: *mut DhruvChandraGrahanResult,
+    out_surya_many: *mut DhruvSuryaGrahanResult,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || request.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let req = unsafe { &*request };
+        let rust_config = grahan_config_from_ffi(&req.config);
+
+        match (req.grahan_kind, req.query_mode) {
+            (DHRUV_GRAHAN_KIND_CHANDRA, DHRUV_GRAHAN_QUERY_MODE_NEXT) => {
+                if out_chandra_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match next_chandra_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(grahan)) => {
+                        unsafe {
+                            *out_chandra_single = DhruvChandraGrahanResult::from(&grahan);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_GRAHAN_KIND_CHANDRA, DHRUV_GRAHAN_QUERY_MODE_PREV) => {
+                if out_chandra_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match prev_chandra_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(grahan)) => {
+                        unsafe {
+                            *out_chandra_single = DhruvChandraGrahanResult::from(&grahan);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_GRAHAN_KIND_CHANDRA, DHRUV_GRAHAN_QUERY_MODE_RANGE) => {
+                if out_chandra_many.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match search_chandra_grahan(
+                    engine_ref,
+                    req.start_jd_tdb,
+                    req.end_jd_tdb,
+                    &rust_config,
+                ) {
+                    Ok(results) => {
+                        let count = results.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_chandra_many, max_count as usize)
+                        };
+                        for (i, e) in results.iter().take(count).enumerate() {
+                            out_slice[i] = DhruvChandraGrahanResult::from(e);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_GRAHAN_KIND_SURYA, DHRUV_GRAHAN_QUERY_MODE_NEXT) => {
+                if out_surya_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match next_surya_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(grahan)) => {
+                        unsafe {
+                            *out_surya_single = DhruvSuryaGrahanResult::from(&grahan);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_GRAHAN_KIND_SURYA, DHRUV_GRAHAN_QUERY_MODE_PREV) => {
+                if out_surya_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match prev_surya_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(grahan)) => {
+                        unsafe {
+                            *out_surya_single = DhruvSuryaGrahanResult::from(&grahan);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_GRAHAN_KIND_SURYA, DHRUV_GRAHAN_QUERY_MODE_RANGE) => {
+                if out_surya_many.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match search_surya_grahan(
+                    engine_ref,
+                    req.start_jd_tdb,
+                    req.end_jd_tdb,
+                    &rust_config,
+                ) {
+                    Ok(results) => {
+                        let count = results.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_surya_many, max_count as usize)
+                        };
+                        for (i, e) in results.iter().take(count).enumerate() {
+                            out_slice[i] = DhruvSuryaGrahanResult::from(e);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            _ => DhruvStatus::InvalidQuery,
+        }
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Stationary point & max-speed search
 // ---------------------------------------------------------------------------
@@ -2422,6 +2949,38 @@ pub struct DhruvStationaryConfig {
     pub convergence_days: f64,
     /// Numerical central difference step in days (used by max-speed only).
     pub numerical_step_days: f64,
+}
+
+/// Motion kind selector: stationary event search.
+pub const DHRUV_MOTION_KIND_STATIONARY: i32 = 0;
+/// Motion kind selector: max-speed event search.
+pub const DHRUV_MOTION_KIND_MAX_SPEED: i32 = 1;
+
+/// Motion query mode: next event after `at_jd_tdb`.
+pub const DHRUV_MOTION_QUERY_MODE_NEXT: i32 = 0;
+/// Motion query mode: previous event before `at_jd_tdb`.
+pub const DHRUV_MOTION_QUERY_MODE_PREV: i32 = 1;
+/// Motion query mode: all events in [`start_jd_tdb`, `end_jd_tdb`].
+pub const DHRUV_MOTION_QUERY_MODE_RANGE: i32 = 2;
+
+/// C-compatible request for unified motion search.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvMotionSearchRequest {
+    /// NAIF body code.
+    pub body_code: i32,
+    /// Motion kind selector (`DHRUV_MOTION_KIND_*`).
+    pub motion_kind: i32,
+    /// Query mode selector (`DHRUV_MOTION_QUERY_MODE_*`).
+    pub query_mode: i32,
+    /// Anchor time for next/prev modes (JD TDB).
+    pub at_jd_tdb: f64,
+    /// Start of range window for range mode (JD TDB).
+    pub start_jd_tdb: f64,
+    /// End of range window for range mode (JD TDB).
+    pub end_jd_tdb: f64,
+    /// Search configuration.
+    pub config: DhruvStationaryConfig,
 }
 
 /// C-compatible stationary point event result.
@@ -2781,6 +3340,178 @@ pub unsafe extern "C" fn dhruv_search_max_speed(
                 DhruvStatus::Ok
             }
             Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Unified motion search entrypoint.
+///
+/// Mode behavior:
+/// - `DHRUV_MOTION_QUERY_MODE_NEXT` / `DHRUV_MOTION_QUERY_MODE_PREV`:
+///   writes single-event result and found flag.
+/// - `DHRUV_MOTION_QUERY_MODE_RANGE`:
+///   writes array results and count.
+///
+/// Kind behavior:
+/// - `DHRUV_MOTION_KIND_STATIONARY` uses stationary output pointers.
+/// - `DHRUV_MOTION_KIND_MAX_SPEED` uses max-speed output pointers.
+///
+/// # Safety
+/// `engine` and `request` must be valid and non-null.
+/// Output pointers required depend on `motion_kind` and `query_mode`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_motion_search_ex(
+    engine: *const DhruvEngineHandle,
+    request: *const DhruvMotionSearchRequest,
+    out_stationary_single: *mut DhruvStationaryEvent,
+    out_max_speed_single: *mut DhruvMaxSpeedEvent,
+    out_found: *mut u8,
+    out_stationary_many: *mut DhruvStationaryEvent,
+    out_max_speed_many: *mut DhruvMaxSpeedEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || request.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let req = unsafe { &*request };
+        let body = match Body::from_code(req.body_code) {
+            Some(b) => b,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let rust_config = stationary_config_from_ffi(&req.config);
+
+        match (req.motion_kind, req.query_mode) {
+            (DHRUV_MOTION_KIND_STATIONARY, DHRUV_MOTION_QUERY_MODE_NEXT) => {
+                if out_stationary_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match next_stationary(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_stationary_single = DhruvStationaryEvent::from(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_MOTION_KIND_STATIONARY, DHRUV_MOTION_QUERY_MODE_PREV) => {
+                if out_stationary_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match prev_stationary(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_stationary_single = DhruvStationaryEvent::from(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_MOTION_KIND_STATIONARY, DHRUV_MOTION_QUERY_MODE_RANGE) => {
+                if out_stationary_many.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match search_stationary(
+                    engine_ref,
+                    body,
+                    req.start_jd_tdb,
+                    req.end_jd_tdb,
+                    &rust_config,
+                ) {
+                    Ok(events) => {
+                        let count = events.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_stationary_many, max_count as usize)
+                        };
+                        for (i, e) in events.iter().take(count).enumerate() {
+                            out_slice[i] = DhruvStationaryEvent::from(e);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_MOTION_KIND_MAX_SPEED, DHRUV_MOTION_QUERY_MODE_NEXT) => {
+                if out_max_speed_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match next_max_speed(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_max_speed_single = DhruvMaxSpeedEvent::from(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_MOTION_KIND_MAX_SPEED, DHRUV_MOTION_QUERY_MODE_PREV) => {
+                if out_max_speed_single.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match prev_max_speed(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_max_speed_single = DhruvMaxSpeedEvent::from(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_MOTION_KIND_MAX_SPEED, DHRUV_MOTION_QUERY_MODE_RANGE) => {
+                if out_max_speed_many.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match search_max_speed(
+                    engine_ref,
+                    body,
+                    req.start_jd_tdb,
+                    req.end_jd_tdb,
+                    &rust_config,
+                ) {
+                    Ok(events) => {
+                        let count = events.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_max_speed_many, max_count as usize)
+                        };
+                        for (i, e) in events.iter().take(count).enumerate() {
+                            out_slice[i] = DhruvMaxSpeedEvent::from(e);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            _ => DhruvStatus::InvalidQuery,
         }
     })
 }
@@ -3171,9 +3902,86 @@ pub extern "C" fn dhruv_nakshatra28_name(index: u32) -> *const std::ffi::c_char 
 pub const DHRUV_LUNAR_PHASE_NEW_MOON: i32 = 0;
 pub const DHRUV_LUNAR_PHASE_FULL_MOON: i32 = 1;
 
+/// Lunar-phase selector: Amavasya/new moon.
+pub const DHRUV_LUNAR_PHASE_KIND_AMAVASYA: i32 = 0;
+/// Lunar-phase selector: Purnima/full moon.
+pub const DHRUV_LUNAR_PHASE_KIND_PURNIMA: i32 = 1;
+/// Lunar-phase query mode: next event after `at_jd_tdb`.
+pub const DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT: i32 = 0;
+/// Lunar-phase query mode: previous event before `at_jd_tdb`.
+pub const DHRUV_LUNAR_PHASE_QUERY_MODE_PREV: i32 = 1;
+/// Lunar-phase query mode: all events in [`start_jd_tdb`, `end_jd_tdb`].
+pub const DHRUV_LUNAR_PHASE_QUERY_MODE_RANGE: i32 = 2;
+
 /// Ayana constants.
 pub const DHRUV_AYANA_UTTARAYANA: i32 = 0;
 pub const DHRUV_AYANA_DAKSHINAYANA: i32 = 1;
+
+/// Sankranti target selector: any rashi entry.
+pub const DHRUV_SANKRANTI_TARGET_ANY: i32 = 0;
+/// Sankranti target selector: specific rashi entry.
+pub const DHRUV_SANKRANTI_TARGET_SPECIFIC: i32 = 1;
+/// Sankranti query mode: next event after `at_jd_tdb`.
+pub const DHRUV_SANKRANTI_QUERY_MODE_NEXT: i32 = 0;
+/// Sankranti query mode: previous event before `at_jd_tdb`.
+pub const DHRUV_SANKRANTI_QUERY_MODE_PREV: i32 = 1;
+/// Sankranti query mode: all events in [`start_jd_tdb`, `end_jd_tdb`].
+pub const DHRUV_SANKRANTI_QUERY_MODE_RANGE: i32 = 2;
+/// Panchang time input selector: JD TDB.
+pub const DHRUV_PANCHANG_TIME_JD_TDB: i32 = 0;
+/// Panchang time input selector: UTC calendar fields.
+pub const DHRUV_PANCHANG_TIME_UTC: i32 = 1;
+
+/// Panchang include bit for tithi.
+pub const DHRUV_PANCHANG_INCLUDE_TITHI: u32 = 1 << 0;
+/// Panchang include bit for karana.
+pub const DHRUV_PANCHANG_INCLUDE_KARANA: u32 = 1 << 1;
+/// Panchang include bit for yoga.
+pub const DHRUV_PANCHANG_INCLUDE_YOGA: u32 = 1 << 2;
+/// Panchang include bit for vaar.
+pub const DHRUV_PANCHANG_INCLUDE_VAAR: u32 = 1 << 3;
+/// Panchang include bit for hora.
+pub const DHRUV_PANCHANG_INCLUDE_HORA: u32 = 1 << 4;
+/// Panchang include bit for ghatika.
+pub const DHRUV_PANCHANG_INCLUDE_GHATIKA: u32 = 1 << 5;
+/// Panchang include bit for nakshatra.
+pub const DHRUV_PANCHANG_INCLUDE_NAKSHATRA: u32 = 1 << 6;
+/// Panchang include bit for masa.
+pub const DHRUV_PANCHANG_INCLUDE_MASA: u32 = 1 << 7;
+/// Panchang include bit for ayana.
+pub const DHRUV_PANCHANG_INCLUDE_AYANA: u32 = 1 << 8;
+/// Panchang include bit for varsha.
+pub const DHRUV_PANCHANG_INCLUDE_VARSHA: u32 = 1 << 9;
+/// Panchang include mask for all core daily fields.
+pub const DHRUV_PANCHANG_INCLUDE_ALL_CORE: u32 = DHRUV_PANCHANG_INCLUDE_TITHI
+    | DHRUV_PANCHANG_INCLUDE_KARANA
+    | DHRUV_PANCHANG_INCLUDE_YOGA
+    | DHRUV_PANCHANG_INCLUDE_VAAR
+    | DHRUV_PANCHANG_INCLUDE_HORA
+    | DHRUV_PANCHANG_INCLUDE_GHATIKA
+    | DHRUV_PANCHANG_INCLUDE_NAKSHATRA;
+/// Panchang include mask for all calendar fields.
+pub const DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR: u32 =
+    DHRUV_PANCHANG_INCLUDE_MASA | DHRUV_PANCHANG_INCLUDE_AYANA | DHRUV_PANCHANG_INCLUDE_VARSHA;
+/// Panchang include mask for all fields.
+pub const DHRUV_PANCHANG_INCLUDE_ALL: u32 =
+    DHRUV_PANCHANG_INCLUDE_ALL_CORE | DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR;
+
+/// C-compatible request for unified lunar-phase search.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvLunarPhaseSearchRequest {
+    /// Phase kind selector (`DHRUV_LUNAR_PHASE_KIND_*`).
+    pub phase_kind: i32,
+    /// Query mode selector (`DHRUV_LUNAR_PHASE_QUERY_MODE_*`).
+    pub query_mode: i32,
+    /// Anchor time for next/prev modes (JD TDB).
+    pub at_jd_tdb: f64,
+    /// Start of range window for range mode (JD TDB).
+    pub start_jd_tdb: f64,
+    /// End of range window for range mode (JD TDB).
+    pub end_jd_tdb: f64,
+}
 
 /// C-compatible lunar phase event.
 #[repr(C)]
@@ -3212,6 +4020,26 @@ pub struct DhruvSankrantiEvent {
     pub sun_tropical_longitude_deg: f64,
 }
 
+/// C-compatible request for unified sankranti search.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSankrantiSearchRequest {
+    /// Target selector (`DHRUV_SANKRANTI_TARGET_*`).
+    pub target_kind: i32,
+    /// Query mode selector (`DHRUV_SANKRANTI_QUERY_MODE_*`).
+    pub query_mode: i32,
+    /// Rashi index for specific target (`0..11`), ignored for `TARGET_ANY`.
+    pub rashi_index: i32,
+    /// Anchor time for next/prev modes (JD TDB).
+    pub at_jd_tdb: f64,
+    /// Start of range window for range mode (JD TDB).
+    pub start_jd_tdb: f64,
+    /// End of range window for range mode (JD TDB).
+    pub end_jd_tdb: f64,
+    /// Sankranti search configuration.
+    pub config: DhruvSankrantiConfig,
+}
+
 /// C-compatible Masa info.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -3246,6 +4074,52 @@ pub struct DhruvVarshaInfo {
     pub end: DhruvUtcTime,
 }
 
+/// C-compatible request for unified panchang computation.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvPanchangComputeRequest {
+    /// Time selector (`DHRUV_PANCHANG_TIME_*`).
+    pub time_kind: i32,
+    /// Time when `time_kind == DHRUV_PANCHANG_TIME_JD_TDB`.
+    pub jd_tdb: f64,
+    /// Time when `time_kind == DHRUV_PANCHANG_TIME_UTC`.
+    pub utc: DhruvUtcTime,
+    /// Include mask with `DHRUV_PANCHANG_INCLUDE_*` bits.
+    pub include_mask: u32,
+    /// Observer location.
+    pub location: DhruvGeoLocation,
+    /// Rise/set model configuration.
+    pub riseset_config: DhruvRiseSetConfig,
+    /// Ayanamsha config for sidereal-dependent elements.
+    pub sankranti_config: DhruvSankrantiConfig,
+}
+
+/// C-compatible panchang response with per-field validity flags.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvPanchangOperationResult {
+    pub tithi_valid: u8,
+    pub tithi: DhruvTithiInfo,
+    pub karana_valid: u8,
+    pub karana: DhruvKaranaInfo,
+    pub yoga_valid: u8,
+    pub yoga: DhruvYogaInfo,
+    pub vaar_valid: u8,
+    pub vaar: DhruvVaarInfo,
+    pub hora_valid: u8,
+    pub hora: DhruvHoraInfo,
+    pub ghatika_valid: u8,
+    pub ghatika: DhruvGhatikaInfo,
+    pub nakshatra_valid: u8,
+    pub nakshatra: DhruvPanchangNakshatraInfo,
+    pub masa_valid: u8,
+    pub masa: DhruvMasaInfo,
+    pub ayana_valid: u8,
+    pub ayana: DhruvAyanaInfo,
+    pub varsha_valid: u8,
+    pub varsha: DhruvVarshaInfo,
+}
+
 fn utc_time_to_ffi(t: &UtcTime) -> DhruvUtcTime {
     DhruvUtcTime {
         year: t.year,
@@ -3268,6 +4142,24 @@ fn lunar_phase_to_code(p: LunarPhase) -> i32 {
     }
 }
 
+fn lunar_phase_event_to_ffi(event: &dhruv_search::LunarPhaseEvent) -> DhruvLunarPhaseEvent {
+    DhruvLunarPhaseEvent {
+        utc: utc_time_to_ffi(&event.utc),
+        phase: lunar_phase_to_code(event.phase),
+        moon_longitude_deg: event.moon_longitude_deg,
+        sun_longitude_deg: event.sun_longitude_deg,
+    }
+}
+
+fn sankranti_event_to_ffi(event: &dhruv_search::SankrantiEvent) -> DhruvSankrantiEvent {
+    DhruvSankrantiEvent {
+        utc: utc_time_to_ffi(&event.utc),
+        rashi_index: event.rashi_index as i32,
+        sun_sidereal_longitude_deg: event.sun_sidereal_longitude_deg,
+        sun_tropical_longitude_deg: event.sun_tropical_longitude_deg,
+    }
+}
+
 fn reference_plane_from_code(code: i32, system: AyanamshaSystem) -> dhruv_frames::ReferencePlane {
     match code {
         0 => dhruv_frames::ReferencePlane::Ecliptic,
@@ -3287,6 +4179,44 @@ fn sankranti_config_from_ffi(cfg: &DhruvSankrantiConfig) -> Option<SankrantiConf
         max_iterations: cfg.max_iterations,
         convergence_days: cfg.convergence_days,
     })
+}
+
+fn panchang_include_mask_from_ffi(mask: u32) -> Option<u32> {
+    if mask == 0 || (mask & !DHRUV_PANCHANG_INCLUDE_ALL) != 0 {
+        return None;
+    }
+    let mut out = 0_u32;
+    if (mask & DHRUV_PANCHANG_INCLUDE_TITHI) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_TITHI;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_KARANA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_KARANA;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_YOGA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_YOGA;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_VAAR) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_VAAR;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_HORA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_HORA;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_GHATIKA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_GHATIKA;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_NAKSHATRA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_NAKSHATRA;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_MASA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_MASA;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_AYANA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_AYANA;
+    }
+    if (mask & DHRUV_PANCHANG_INCLUDE_VARSHA) != 0 {
+        out |= dhruv_search::PANCHANG_INCLUDE_VARSHA;
+    }
+    Some(out)
 }
 
 /// Returns default Sankranti search configuration (Lahiri, no nutation).
@@ -3553,6 +4483,167 @@ pub unsafe extern "C" fn dhruv_search_amavasyas(
     })
 }
 
+/// Unified lunar-phase search entrypoint.
+///
+/// Mode behavior:
+/// - `DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT` / `DHRUV_LUNAR_PHASE_QUERY_MODE_PREV`:
+///   writes single-event result to `out_event` and found flag to `out_found`.
+/// - `DHRUV_LUNAR_PHASE_QUERY_MODE_RANGE`:
+///   writes events to `out_events[..max_count]` and actual count to `out_count`.
+///
+/// Kind behavior:
+/// - `DHRUV_LUNAR_PHASE_KIND_AMAVASYA` selects new-moon events.
+/// - `DHRUV_LUNAR_PHASE_KIND_PURNIMA` selects full-moon events.
+///
+/// # Safety
+/// `engine` and `request` must be valid and non-null.
+/// Output pointers required depend on `query_mode`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
+    engine: *const DhruvEngineHandle,
+    request: *const DhruvLunarPhaseSearchRequest,
+    out_event: *mut DhruvLunarPhaseEvent,
+    out_found: *mut u8,
+    out_events: *mut DhruvLunarPhaseEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || request.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let req = unsafe { &*request };
+
+        match (req.phase_kind, req.query_mode) {
+            (DHRUV_LUNAR_PHASE_KIND_AMAVASYA, DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT) => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                match next_amavasya(engine_ref, &at) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = lunar_phase_event_to_ffi(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_LUNAR_PHASE_KIND_AMAVASYA, DHRUV_LUNAR_PHASE_QUERY_MODE_PREV) => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                match prev_amavasya(engine_ref, &at) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = lunar_phase_event_to_ffi(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_LUNAR_PHASE_KIND_AMAVASYA, DHRUV_LUNAR_PHASE_QUERY_MODE_RANGE) => {
+                if out_events.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let start = UtcTime::from_jd_tdb(req.start_jd_tdb, engine_ref.lsk());
+                let end = UtcTime::from_jd_tdb(req.end_jd_tdb, engine_ref.lsk());
+                match search_amavasyas(engine_ref, &start, &end) {
+                    Ok(events) => {
+                        let count = events.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_events, max_count as usize)
+                        };
+                        for (i, event) in events.iter().take(count).enumerate() {
+                            out_slice[i] = lunar_phase_event_to_ffi(event);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_LUNAR_PHASE_KIND_PURNIMA, DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT) => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                match next_purnima(engine_ref, &at) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = lunar_phase_event_to_ffi(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_LUNAR_PHASE_KIND_PURNIMA, DHRUV_LUNAR_PHASE_QUERY_MODE_PREV) => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                match prev_purnima(engine_ref, &at) {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = lunar_phase_event_to_ffi(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            (DHRUV_LUNAR_PHASE_KIND_PURNIMA, DHRUV_LUNAR_PHASE_QUERY_MODE_RANGE) => {
+                if out_events.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let start = UtcTime::from_jd_tdb(req.start_jd_tdb, engine_ref.lsk());
+                let end = UtcTime::from_jd_tdb(req.end_jd_tdb, engine_ref.lsk());
+                match search_purnimas(engine_ref, &start, &end) {
+                    Ok(events) => {
+                        let count = events.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_events, max_count as usize)
+                        };
+                        for (i, event) in events.iter().take(count).enumerate() {
+                            out_slice[i] = lunar_phase_event_to_ffi(event);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            _ => DhruvStatus::InvalidQuery,
+        }
+    })
+}
+
 /// Find the next Sankranti (Sun entering any rashi).
 ///
 /// # Safety
@@ -3699,6 +4790,135 @@ pub unsafe extern "C" fn dhruv_search_sankrantis(
                 DhruvStatus::Ok
             }
             Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+/// Unified sankranti search entrypoint.
+///
+/// Mode behavior:
+/// - `DHRUV_SANKRANTI_QUERY_MODE_NEXT` / `DHRUV_SANKRANTI_QUERY_MODE_PREV`:
+///   writes single-event result to `out_event` and found flag to `out_found`.
+/// - `DHRUV_SANKRANTI_QUERY_MODE_RANGE`:
+///   writes events to `out_events[..max_count]` and actual count to `out_count`.
+///
+/// Target behavior:
+/// - `DHRUV_SANKRANTI_TARGET_ANY` searches all rashi entries.
+/// - `DHRUV_SANKRANTI_TARGET_SPECIFIC` limits results to `rashi_index`.
+///
+/// # Safety
+/// `engine` and `request` must be valid and non-null.
+/// Output pointers required depend on `query_mode`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_sankranti_search_ex(
+    engine: *const DhruvEngineHandle,
+    request: *const DhruvSankrantiSearchRequest,
+    out_event: *mut DhruvSankrantiEvent,
+    out_found: *mut u8,
+    out_events: *mut DhruvSankrantiEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || request.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let req = unsafe { &*request };
+        let config = match sankranti_config_from_ffi(&req.config) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let specific_rashi = match req.target_kind {
+            DHRUV_SANKRANTI_TARGET_ANY => None,
+            DHRUV_SANKRANTI_TARGET_SPECIFIC => {
+                let idx = usize::try_from(req.rashi_index).ok().filter(|i| *i < 12);
+                match idx {
+                    Some(i) => Some(dhruv_vedic_base::ALL_RASHIS[i]),
+                    None => return DhruvStatus::InvalidQuery,
+                }
+            }
+            _ => return DhruvStatus::InvalidQuery,
+        };
+
+        match req.query_mode {
+            DHRUV_SANKRANTI_QUERY_MODE_NEXT => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let result = match specific_rashi {
+                    Some(rashi) => next_specific_sankranti(engine_ref, &at, rashi, &config),
+                    None => next_sankranti(engine_ref, &at, &config),
+                };
+                match result {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = sankranti_event_to_ffi(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            DHRUV_SANKRANTI_QUERY_MODE_PREV => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let result = match specific_rashi {
+                    Some(rashi) => prev_specific_sankranti(engine_ref, &at, rashi, &config),
+                    None => prev_sankranti(engine_ref, &at, &config),
+                };
+                match result {
+                    Ok(Some(event)) => {
+                        unsafe {
+                            *out_event = sankranti_event_to_ffi(&event);
+                            *out_found = 1;
+                        }
+                        DhruvStatus::Ok
+                    }
+                    Ok(None) => {
+                        unsafe { *out_found = 0 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            DHRUV_SANKRANTI_QUERY_MODE_RANGE => {
+                if out_events.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let start = UtcTime::from_jd_tdb(req.start_jd_tdb, engine_ref.lsk());
+                let end = UtcTime::from_jd_tdb(req.end_jd_tdb, engine_ref.lsk());
+                match search_sankrantis(engine_ref, &start, &end, &config) {
+                    Ok(events) => {
+                        let filtered: Vec<_> = match specific_rashi {
+                            Some(rashi) => {
+                                events.into_iter().filter(|ev| ev.rashi == rashi).collect()
+                            }
+                            None => events,
+                        };
+                        let count = filtered.len().min(max_count as usize);
+                        let out_slice = unsafe {
+                            std::slice::from_raw_parts_mut(out_events, max_count as usize)
+                        };
+                        for (i, event) in filtered.iter().take(count).enumerate() {
+                            out_slice[i] = sankranti_event_to_ffi(event);
+                        }
+                        unsafe { *out_count = count as u32 };
+                        DhruvStatus::Ok
+                    }
+                    Err(e) => DhruvStatus::from(&e),
+                }
+            }
+            _ => DhruvStatus::InvalidQuery,
         }
     })
 }
@@ -6412,95 +7632,372 @@ pub unsafe extern "C" fn dhruv_panchang_for_date(
     })
 }
 
-/// Convert a Rust `PanchangInfo` to a C-compatible `DhruvPanchangInfo`.
-fn panchang_info_to_ffi(info: &dhruv_search::PanchangInfo) -> DhruvPanchangInfo {
-    let zeroed_utc = utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0));
-    let zeroed_masa = DhruvMasaInfo {
+/// Unified panchang compute entrypoint with include-mask control.
+///
+/// `time_kind` controls whether input comes from `jd_tdb` or `utc`.
+/// `include_mask` selects which fields are populated in `out`.
+///
+/// # Safety
+/// `engine`, `eop`, `request`, and `out` must be valid non-null pointers.
+/// `lsk` is required when `request->time_kind == DHRUV_PANCHANG_TIME_JD_TDB`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_compute_ex(
+    engine: *const DhruvEngineHandle,
+    eop: *const DhruvEopHandle,
+    lsk: *const DhruvLskHandle,
+    request: *const DhruvPanchangComputeRequest,
+    out: *mut DhruvPanchangOperationResult,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || eop.is_null() || request.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let req = unsafe { &*request };
+
+        let include_mask = match panchang_include_mask_from_ffi(req.include_mask) {
+            Some(v) => v,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let cfg = match sankranti_config_from_ffi(&req.sankranti_config) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+
+        let sun_limb = match sun_limb_from_code(req.riseset_config.sun_limb) {
+            Some(v) => v,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let riseset_config = RiseSetConfig {
+            use_refraction: req.riseset_config.use_refraction != 0,
+            sun_limb,
+            altitude_correction: req.riseset_config.altitude_correction != 0,
+        };
+
+        let at_utc = match req.time_kind {
+            DHRUV_PANCHANG_TIME_JD_TDB => {
+                if lsk.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let lsk_ref = unsafe { &*lsk };
+                UtcTime::from_jd_tdb(req.jd_tdb, lsk_ref)
+            }
+            DHRUV_PANCHANG_TIME_UTC => ffi_to_utc_time(&req.utc),
+            _ => return DhruvStatus::InvalidQuery,
+        };
+
+        let location = GeoLocation::new(
+            req.location.latitude_deg,
+            req.location.longitude_deg,
+            req.location.altitude_m,
+        );
+
+        let op = dhruv_search::PanchangOperation {
+            at_utc,
+            location,
+            riseset_config,
+            sankranti_config: cfg,
+            include_mask,
+        };
+
+        let engine_ref = unsafe { &*engine };
+        let eop_ref = unsafe { &*eop };
+        match dhruv_search::panchang(engine_ref, eop_ref, &op) {
+            Ok(info) => {
+                unsafe { *out = panchang_result_to_ffi(&info) };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
+}
+
+fn zeroed_utc() -> DhruvUtcTime {
+    utc_time_to_ffi(&UtcTime::new(0, 0, 0, 0, 0, 0.0))
+}
+
+fn zeroed_tithi_info() -> DhruvTithiInfo {
+    let z = zeroed_utc();
+    DhruvTithiInfo {
+        tithi_index: 0,
+        paksha: 0,
+        tithi_in_paksha: 0,
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_karana_info() -> DhruvKaranaInfo {
+    let z = zeroed_utc();
+    DhruvKaranaInfo {
+        karana_index: 0,
+        karana_name_index: 0,
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_yoga_info() -> DhruvYogaInfo {
+    let z = zeroed_utc();
+    DhruvYogaInfo {
+        yoga_index: 0,
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_vaar_info() -> DhruvVaarInfo {
+    let z = zeroed_utc();
+    DhruvVaarInfo {
+        vaar_index: 0,
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_hora_info() -> DhruvHoraInfo {
+    let z = zeroed_utc();
+    DhruvHoraInfo {
+        hora_index: 0,
+        hora_position: 0,
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_ghatika_info() -> DhruvGhatikaInfo {
+    let z = zeroed_utc();
+    DhruvGhatikaInfo {
+        value: 0,
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_panchang_nakshatra_info() -> DhruvPanchangNakshatraInfo {
+    let z = zeroed_utc();
+    DhruvPanchangNakshatraInfo {
+        nakshatra_index: 0,
+        pada: 0,
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_masa_info() -> DhruvMasaInfo {
+    let z = zeroed_utc();
+    DhruvMasaInfo {
         masa_index: 0,
         adhika: 0,
-        start: zeroed_utc,
-        end: zeroed_utc,
-    };
-    let zeroed_ayana = DhruvAyanaInfo {
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_ayana_info() -> DhruvAyanaInfo {
+    let z = zeroed_utc();
+    DhruvAyanaInfo {
         ayana: 0,
-        start: zeroed_utc,
-        end: zeroed_utc,
-    };
-    let zeroed_varsha = DhruvVarshaInfo {
+        start: z,
+        end: z,
+    }
+}
+
+fn zeroed_varsha_info() -> DhruvVarshaInfo {
+    let z = zeroed_utc();
+    DhruvVarshaInfo {
         samvatsara_index: 0,
         order: 0,
-        start: zeroed_utc,
-        end: zeroed_utc,
-    };
+        start: z,
+        end: z,
+    }
+}
+
+fn tithi_info_to_ffi(info: &dhruv_search::TithiInfo) -> DhruvTithiInfo {
+    DhruvTithiInfo {
+        tithi_index: info.tithi_index as i32,
+        paksha: info.paksha as i32,
+        tithi_in_paksha: info.tithi_in_paksha as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn karana_info_to_ffi(info: &dhruv_search::KaranaInfo) -> DhruvKaranaInfo {
+    DhruvKaranaInfo {
+        karana_index: info.karana_index as i32,
+        karana_name_index: info.karana.index() as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn yoga_info_to_ffi(info: &dhruv_search::YogaInfo) -> DhruvYogaInfo {
+    DhruvYogaInfo {
+        yoga_index: info.yoga_index as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn vaar_info_to_ffi(info: &dhruv_search::VaarInfo) -> DhruvVaarInfo {
+    DhruvVaarInfo {
+        vaar_index: info.vaar.index() as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn hora_info_to_ffi(info: &dhruv_search::HoraInfo) -> DhruvHoraInfo {
+    DhruvHoraInfo {
+        hora_index: info.hora.index() as i32,
+        hora_position: info.hora_index as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn ghatika_info_to_ffi(info: &dhruv_search::GhatikaInfo) -> DhruvGhatikaInfo {
+    DhruvGhatikaInfo {
+        value: info.value as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn panchang_nakshatra_info_to_ffi(
+    info: &dhruv_search::PanchangNakshatraInfo,
+) -> DhruvPanchangNakshatraInfo {
+    DhruvPanchangNakshatraInfo {
+        nakshatra_index: info.nakshatra_index as i32,
+        pada: info.pada as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn masa_info_to_ffi(info: &dhruv_search::MasaInfo) -> DhruvMasaInfo {
+    DhruvMasaInfo {
+        masa_index: info.masa.index() as i32,
+        adhika: u8::from(info.adhika),
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn ayana_info_to_ffi(info: &dhruv_search::AyanaInfo) -> DhruvAyanaInfo {
+    DhruvAyanaInfo {
+        ayana: info.ayana.index() as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn varsha_info_to_ffi(info: &dhruv_search::VarshaInfo) -> DhruvVarshaInfo {
+    DhruvVarshaInfo {
+        samvatsara_index: info.samvatsara.index() as i32,
+        order: info.order as i32,
+        start: utc_time_to_ffi(&info.start),
+        end: utc_time_to_ffi(&info.end),
+    }
+}
+
+/// Convert a Rust `PanchangInfo` to a C-compatible `DhruvPanchangInfo`.
+fn panchang_info_to_ffi(info: &dhruv_search::PanchangInfo) -> DhruvPanchangInfo {
     let (calendar_valid, masa_ffi, ayana_ffi, varsha_ffi) =
         match (info.masa, info.ayana, info.varsha) {
             (Some(m), Some(a), Some(v)) => (
                 1u8,
-                DhruvMasaInfo {
-                    masa_index: m.masa.index() as i32,
-                    adhika: u8::from(m.adhika),
-                    start: utc_time_to_ffi(&m.start),
-                    end: utc_time_to_ffi(&m.end),
-                },
-                DhruvAyanaInfo {
-                    ayana: a.ayana.index() as i32,
-                    start: utc_time_to_ffi(&a.start),
-                    end: utc_time_to_ffi(&a.end),
-                },
-                DhruvVarshaInfo {
-                    samvatsara_index: v.samvatsara.index() as i32,
-                    order: v.order as i32,
-                    start: utc_time_to_ffi(&v.start),
-                    end: utc_time_to_ffi(&v.end),
-                },
+                masa_info_to_ffi(&m),
+                ayana_info_to_ffi(&a),
+                varsha_info_to_ffi(&v),
             ),
-            _ => (0u8, zeroed_masa, zeroed_ayana, zeroed_varsha),
+            _ => (
+                0u8,
+                zeroed_masa_info(),
+                zeroed_ayana_info(),
+                zeroed_varsha_info(),
+            ),
         };
     DhruvPanchangInfo {
-        tithi: DhruvTithiInfo {
-            tithi_index: info.tithi.tithi_index as i32,
-            paksha: info.tithi.paksha as i32,
-            tithi_in_paksha: info.tithi.tithi_in_paksha as i32,
-            start: utc_time_to_ffi(&info.tithi.start),
-            end: utc_time_to_ffi(&info.tithi.end),
-        },
-        karana: DhruvKaranaInfo {
-            karana_index: info.karana.karana_index as i32,
-            karana_name_index: info.karana.karana.index() as i32,
-            start: utc_time_to_ffi(&info.karana.start),
-            end: utc_time_to_ffi(&info.karana.end),
-        },
-        yoga: DhruvYogaInfo {
-            yoga_index: info.yoga.yoga_index as i32,
-            start: utc_time_to_ffi(&info.yoga.start),
-            end: utc_time_to_ffi(&info.yoga.end),
-        },
-        vaar: DhruvVaarInfo {
-            vaar_index: info.vaar.vaar.index() as i32,
-            start: utc_time_to_ffi(&info.vaar.start),
-            end: utc_time_to_ffi(&info.vaar.end),
-        },
-        hora: DhruvHoraInfo {
-            hora_index: info.hora.hora.index() as i32,
-            hora_position: info.hora.hora_index as i32,
-            start: utc_time_to_ffi(&info.hora.start),
-            end: utc_time_to_ffi(&info.hora.end),
-        },
-        ghatika: DhruvGhatikaInfo {
-            value: info.ghatika.value as i32,
-            start: utc_time_to_ffi(&info.ghatika.start),
-            end: utc_time_to_ffi(&info.ghatika.end),
-        },
-        nakshatra: DhruvPanchangNakshatraInfo {
-            nakshatra_index: info.nakshatra.nakshatra_index as i32,
-            pada: info.nakshatra.pada as i32,
-            start: utc_time_to_ffi(&info.nakshatra.start),
-            end: utc_time_to_ffi(&info.nakshatra.end),
-        },
+        tithi: tithi_info_to_ffi(&info.tithi),
+        karana: karana_info_to_ffi(&info.karana),
+        yoga: yoga_info_to_ffi(&info.yoga),
+        vaar: vaar_info_to_ffi(&info.vaar),
+        hora: hora_info_to_ffi(&info.hora),
+        ghatika: ghatika_info_to_ffi(&info.ghatika),
+        nakshatra: panchang_nakshatra_info_to_ffi(&info.nakshatra),
         calendar_valid,
         masa: masa_ffi,
         ayana: ayana_ffi,
         varsha: varsha_ffi,
+    }
+}
+
+fn panchang_result_to_ffi(info: &dhruv_search::PanchangResult) -> DhruvPanchangOperationResult {
+    let (tithi_valid, tithi) = match info.tithi {
+        Some(v) => (1, tithi_info_to_ffi(&v)),
+        None => (0, zeroed_tithi_info()),
+    };
+    let (karana_valid, karana) = match info.karana {
+        Some(v) => (1, karana_info_to_ffi(&v)),
+        None => (0, zeroed_karana_info()),
+    };
+    let (yoga_valid, yoga) = match info.yoga {
+        Some(v) => (1, yoga_info_to_ffi(&v)),
+        None => (0, zeroed_yoga_info()),
+    };
+    let (vaar_valid, vaar) = match info.vaar {
+        Some(v) => (1, vaar_info_to_ffi(&v)),
+        None => (0, zeroed_vaar_info()),
+    };
+    let (hora_valid, hora) = match info.hora {
+        Some(v) => (1, hora_info_to_ffi(&v)),
+        None => (0, zeroed_hora_info()),
+    };
+    let (ghatika_valid, ghatika) = match info.ghatika {
+        Some(v) => (1, ghatika_info_to_ffi(&v)),
+        None => (0, zeroed_ghatika_info()),
+    };
+    let (nakshatra_valid, nakshatra) = match info.nakshatra {
+        Some(v) => (1, panchang_nakshatra_info_to_ffi(&v)),
+        None => (0, zeroed_panchang_nakshatra_info()),
+    };
+    let (masa_valid, masa) = match info.masa {
+        Some(v) => (1, masa_info_to_ffi(&v)),
+        None => (0, zeroed_masa_info()),
+    };
+    let (ayana_valid, ayana) = match info.ayana {
+        Some(v) => (1, ayana_info_to_ffi(&v)),
+        None => (0, zeroed_ayana_info()),
+    };
+    let (varsha_valid, varsha) = match info.varsha {
+        Some(v) => (1, varsha_info_to_ffi(&v)),
+        None => (0, zeroed_varsha_info()),
+    };
+
+    DhruvPanchangOperationResult {
+        tithi_valid,
+        tithi,
+        karana_valid,
+        karana,
+        yoga_valid,
+        yoga,
+        vaar_valid,
+        vaar,
+        hora_valid,
+        hora,
+        ghatika_valid,
+        ghatika,
+        nakshatra_valid,
+        nakshatra,
+        masa_valid,
+        masa,
+        ayana_valid,
+        ayana,
+        varsha_valid,
+        varsha,
     }
 }
 
@@ -10589,6 +12086,47 @@ pub struct DhruvTaraConfig {
     pub apply_parallax: u8,
 }
 
+/// Tara output selector: equatorial position.
+pub const DHRUV_TARA_OUTPUT_EQUATORIAL: i32 = 0;
+/// Tara output selector: ecliptic position.
+pub const DHRUV_TARA_OUTPUT_ECLIPTIC: i32 = 1;
+/// Tara output selector: sidereal longitude.
+pub const DHRUV_TARA_OUTPUT_SIDEREAL: i32 = 2;
+
+/// C-compatible request for unified tara computation.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvTaraComputeRequest {
+    /// Star identifier (TaraId code).
+    pub tara_id: i32,
+    /// Output selector (`DHRUV_TARA_OUTPUT_*`).
+    pub output_kind: i32,
+    /// Epoch as JD TDB.
+    pub jd_tdb: f64,
+    /// Ayanamsha in degrees (used only for sidereal output).
+    pub ayanamsha_deg: f64,
+    /// Tara config for apparent/parallax options.
+    pub config: DhruvTaraConfig,
+    /// Whether `earth_state` is populated (0/1).
+    pub earth_state_valid: u8,
+    /// Optional Earth state for apparent/parallax modes.
+    pub earth_state: DhruvEarthState,
+}
+
+/// C-compatible unified tara output.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvTaraComputeResult {
+    /// Echoed output selector (`DHRUV_TARA_OUTPUT_*`).
+    pub output_kind: i32,
+    /// Set when output_kind is EQUATORIAL.
+    pub equatorial: DhruvEquatorialPosition,
+    /// Set when output_kind is ECLIPTIC.
+    pub ecliptic: DhruvSphericalCoords,
+    /// Set when output_kind is SIDEREAL.
+    pub sidereal_longitude_deg: f64,
+}
+
 /// Load a star catalog from a JSON file.
 ///
 /// # Safety
@@ -10656,6 +12194,118 @@ fn earth_state_from_c(es: *const DhruvEarthState) -> Option<dhruv_tara::EarthSta
             velocity_au_day: es_ref.velocity_au_day,
         })
     }
+}
+
+fn earth_state_from_value(valid: u8, es: &DhruvEarthState) -> Option<dhruv_tara::EarthState> {
+    if valid == 0 {
+        None
+    } else {
+        Some(dhruv_tara::EarthState {
+            position_au: es.position_au,
+            velocity_au_day: es.velocity_au_day,
+        })
+    }
+}
+
+/// Unified tara compute entrypoint.
+///
+/// Selects equatorial/ecliptic/sidereal output via `request->output_kind`.
+///
+/// # Safety
+/// `handle`, `request`, and `out` must be valid and non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_compute_ex(
+    handle: *const DhruvTaraCatalogHandle,
+    request: *const DhruvTaraComputeRequest,
+    out: *mut DhruvTaraComputeResult,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() || request.is_null() || out.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let req = unsafe { &*request };
+        let star = match TaraId::from_code(req.tara_id) {
+            Some(v) => v,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let output = match req.output_kind {
+            DHRUV_TARA_OUTPUT_EQUATORIAL => dhruv_search::TaraOutputKind::Equatorial,
+            DHRUV_TARA_OUTPUT_ECLIPTIC => dhruv_search::TaraOutputKind::Ecliptic,
+            DHRUV_TARA_OUTPUT_SIDEREAL => dhruv_search::TaraOutputKind::Sidereal,
+            _ => return DhruvStatus::InvalidQuery,
+        };
+        let op = dhruv_search::TaraOperation {
+            star,
+            output,
+            at_jd_tdb: req.jd_tdb,
+            ayanamsha_deg: req.ayanamsha_deg,
+            config: tara_config_from_c(&req.config),
+            earth_state: earth_state_from_value(req.earth_state_valid, &req.earth_state),
+        };
+
+        let catalog = unsafe { &*handle };
+        match dhruv_search::tara(catalog, &op) {
+            Ok(dhruv_search::TaraResult::Equatorial(pos)) => {
+                unsafe {
+                    *out = DhruvTaraComputeResult {
+                        output_kind: DHRUV_TARA_OUTPUT_EQUATORIAL,
+                        equatorial: DhruvEquatorialPosition {
+                            ra_deg: pos.ra_deg,
+                            dec_deg: pos.dec_deg,
+                            distance_au: pos.distance_au,
+                        },
+                        ecliptic: DhruvSphericalCoords {
+                            lon_deg: 0.0,
+                            lat_deg: 0.0,
+                            distance_km: 0.0,
+                        },
+                        sidereal_longitude_deg: 0.0,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Ok(dhruv_search::TaraResult::Ecliptic(sc)) => {
+                unsafe {
+                    *out = DhruvTaraComputeResult {
+                        output_kind: DHRUV_TARA_OUTPUT_ECLIPTIC,
+                        equatorial: DhruvEquatorialPosition {
+                            ra_deg: 0.0,
+                            dec_deg: 0.0,
+                            distance_au: 0.0,
+                        },
+                        ecliptic: DhruvSphericalCoords {
+                            lon_deg: sc.lon_deg,
+                            lat_deg: sc.lat_deg,
+                            distance_km: sc.distance_km,
+                        },
+                        sidereal_longitude_deg: 0.0,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Ok(dhruv_search::TaraResult::Sidereal(lon)) => {
+                unsafe {
+                    *out = DhruvTaraComputeResult {
+                        output_kind: DHRUV_TARA_OUTPUT_SIDEREAL,
+                        equatorial: DhruvEquatorialPosition {
+                            ra_deg: 0.0,
+                            dec_deg: 0.0,
+                            distance_au: 0.0,
+                        },
+                        ecliptic: DhruvSphericalCoords {
+                            lon_deg: 0.0,
+                            lat_deg: 0.0,
+                            distance_km: 0.0,
+                        },
+                        sidereal_longitude_deg: lon,
+                    };
+                }
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
+        }
+    })
 }
 
 /// Compute equatorial position (Astrometric, no parallax).
@@ -11152,6 +12802,93 @@ mod tests {
     }
 
     #[test]
+    fn ffi_ayanamsha_compute_ex_rejects_null_request() {
+        let mut out: f64 = 0.0;
+        // SAFETY: Null request pointer is intentional for validation.
+        let status =
+            unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), ptr::null(), ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_ayanamsha_compute_ex_rejects_invalid_selector() {
+        let request = DhruvAyanamshaComputeRequest {
+            system_code: 0,
+            mode: 99,
+            time_kind: 99,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            use_nutation: 0,
+            delta_psi_arcsec: 0.0,
+        };
+        let mut out: f64 = 0.0;
+        // SAFETY: Valid pointers with intentionally invalid selector fields.
+        let status =
+            unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &request, ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_ayanamsha_compute_ex_matches_unified_jd() {
+        let request = DhruvAyanamshaComputeRequest {
+            system_code: 0,
+            mode: DHRUV_AYANAMSHA_MODE_UNIFIED,
+            time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+            jd_tdb: 2_460_310.5,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+                second: 0.0,
+            },
+            use_nutation: 1,
+            delta_psi_arcsec: 0.0,
+        };
+        let mut ex: f64 = 0.0;
+        let mut old: f64 = 0.0;
+        // SAFETY: Valid pointers.
+        let s1 = unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &request, ptr::null(), &mut ex) };
+        let s2 = unsafe { dhruv_ayanamsha_deg(0, 2_460_310.5, 1, &mut old) };
+        assert_eq!(s1, DhruvStatus::Ok);
+        assert_eq!(s2, DhruvStatus::Ok);
+        assert!((ex - old).abs() < 1e-15);
+    }
+
+    #[test]
+    fn ffi_ayanamsha_compute_ex_utc_requires_lsk() {
+        let request = DhruvAyanamshaComputeRequest {
+            system_code: 0,
+            mode: DHRUV_AYANAMSHA_MODE_MEAN,
+            time_kind: DHRUV_AYANAMSHA_TIME_UTC,
+            jd_tdb: 0.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            use_nutation: 0,
+            delta_psi_arcsec: 0.0,
+        };
+        let mut out: f64 = 0.0;
+        // SAFETY: Null LSK with UTC input is intentional for validation.
+        let status =
+            unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &request, ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
     fn ffi_nutation_iau2000b_at_j2000() {
         let mut dpsi: f64 = 0.0;
         let mut deps: f64 = 0.0;
@@ -11457,6 +13194,276 @@ mod tests {
     }
 
     #[test]
+    fn ffi_lunar_node_compute_ex_rejects_null_request() {
+        let mut out: f64 = 0.0;
+        // SAFETY: Null request pointer is intentional for validation.
+        let status =
+            unsafe { dhruv_lunar_node_compute_ex(ptr::null(), ptr::null(), ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_lunar_node_compute_ex_rejects_invalid_selector() {
+        let request = DhruvLunarNodeRequest {
+            node_code: 99,
+            mode_code: 99,
+            backend: 99,
+            time_kind: 99,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+        };
+        let mut out: f64 = 0.0;
+        // SAFETY: Valid pointers with intentionally invalid selector fields.
+        let status =
+            unsafe { dhruv_lunar_node_compute_ex(ptr::null(), ptr::null(), &request, &mut out) };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_lunar_node_compute_ex_matches_analytic_jd() {
+        let request = DhruvLunarNodeRequest {
+            node_code: DHRUV_NODE_RAHU,
+            mode_code: DHRUV_NODE_MODE_MEAN,
+            backend: DHRUV_NODE_BACKEND_ANALYTIC,
+            time_kind: DHRUV_NODE_TIME_JD_TDB,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+                second: 0.0,
+            },
+        };
+        let mut ex: f64 = 0.0;
+        let mut old: f64 = 0.0;
+        // SAFETY: Valid pointers.
+        let s1 =
+            unsafe { dhruv_lunar_node_compute_ex(ptr::null(), ptr::null(), &request, &mut ex) };
+        let s2 = unsafe {
+            dhruv_lunar_node_deg(DHRUV_NODE_RAHU, DHRUV_NODE_MODE_MEAN, 2_451_545.0, &mut old)
+        };
+        assert_eq!(s1, DhruvStatus::Ok);
+        assert_eq!(s2, DhruvStatus::Ok);
+        assert!((ex - old).abs() < 1e-15);
+    }
+
+    #[test]
+    fn ffi_panchang_compute_ex_rejects_null_request() {
+        let mut out = DhruvPanchangOperationResult {
+            tithi_valid: 0,
+            tithi: zeroed_tithi_info(),
+            karana_valid: 0,
+            karana: zeroed_karana_info(),
+            yoga_valid: 0,
+            yoga: zeroed_yoga_info(),
+            vaar_valid: 0,
+            vaar: zeroed_vaar_info(),
+            hora_valid: 0,
+            hora: zeroed_hora_info(),
+            ghatika_valid: 0,
+            ghatika: zeroed_ghatika_info(),
+            nakshatra_valid: 0,
+            nakshatra: zeroed_panchang_nakshatra_info(),
+            masa_valid: 0,
+            masa: zeroed_masa_info(),
+            ayana_valid: 0,
+            ayana: zeroed_ayana_info(),
+            varsha_valid: 0,
+            varsha: zeroed_varsha_info(),
+        };
+        // SAFETY: Null request pointer is intentional for validation.
+        let status = unsafe {
+            dhruv_panchang_compute_ex(ptr::null(), ptr::null(), ptr::null(), ptr::null(), &mut out)
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_panchang_compute_ex_rejects_invalid_selector() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let fake_eop = std::ptr::NonNull::<DhruvEopHandle>::dangling().as_ptr();
+        let request = DhruvPanchangComputeRequest {
+            time_kind: 99,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            include_mask: DHRUV_PANCHANG_INCLUDE_TITHI,
+            location: DhruvGeoLocation {
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+            },
+            riseset_config: dhruv_riseset_config_default(),
+            sankranti_config: dhruv_sankranti_config_default(),
+        };
+        let mut out = DhruvPanchangOperationResult {
+            tithi_valid: 0,
+            tithi: zeroed_tithi_info(),
+            karana_valid: 0,
+            karana: zeroed_karana_info(),
+            yoga_valid: 0,
+            yoga: zeroed_yoga_info(),
+            vaar_valid: 0,
+            vaar: zeroed_vaar_info(),
+            hora_valid: 0,
+            hora: zeroed_hora_info(),
+            ghatika_valid: 0,
+            ghatika: zeroed_ghatika_info(),
+            nakshatra_valid: 0,
+            nakshatra: zeroed_panchang_nakshatra_info(),
+            masa_valid: 0,
+            masa: zeroed_masa_info(),
+            ayana_valid: 0,
+            ayana: zeroed_ayana_info(),
+            varsha_valid: 0,
+            varsha: zeroed_varsha_info(),
+        };
+        // SAFETY: Valid request pointer with intentionally invalid time selector.
+        let status = unsafe {
+            dhruv_panchang_compute_ex(
+                fake_engine as *const _,
+                fake_eop as *const _,
+                ptr::null(),
+                &request,
+                &mut out,
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_panchang_compute_ex_jd_requires_lsk() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let fake_eop = std::ptr::NonNull::<DhruvEopHandle>::dangling().as_ptr();
+        let request = DhruvPanchangComputeRequest {
+            time_kind: DHRUV_PANCHANG_TIME_JD_TDB,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            include_mask: DHRUV_PANCHANG_INCLUDE_TITHI,
+            location: DhruvGeoLocation {
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+            },
+            riseset_config: dhruv_riseset_config_default(),
+            sankranti_config: dhruv_sankranti_config_default(),
+        };
+        let mut out = DhruvPanchangOperationResult {
+            tithi_valid: 0,
+            tithi: zeroed_tithi_info(),
+            karana_valid: 0,
+            karana: zeroed_karana_info(),
+            yoga_valid: 0,
+            yoga: zeroed_yoga_info(),
+            vaar_valid: 0,
+            vaar: zeroed_vaar_info(),
+            hora_valid: 0,
+            hora: zeroed_hora_info(),
+            ghatika_valid: 0,
+            ghatika: zeroed_ghatika_info(),
+            nakshatra_valid: 0,
+            nakshatra: zeroed_panchang_nakshatra_info(),
+            masa_valid: 0,
+            masa: zeroed_masa_info(),
+            ayana_valid: 0,
+            ayana: zeroed_ayana_info(),
+            varsha_valid: 0,
+            varsha: zeroed_varsha_info(),
+        };
+        // SAFETY: JD input without LSK is intentional for validation.
+        let status = unsafe {
+            dhruv_panchang_compute_ex(
+                fake_engine as *const _,
+                fake_eop as *const _,
+                ptr::null(),
+                &request,
+                &mut out,
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_tara_compute_ex_rejects_null_request() {
+        let mut out = DhruvTaraComputeResult {
+            output_kind: 0,
+            equatorial: DhruvEquatorialPosition {
+                ra_deg: 0.0,
+                dec_deg: 0.0,
+                distance_au: 0.0,
+            },
+            ecliptic: DhruvSphericalCoords {
+                lon_deg: 0.0,
+                lat_deg: 0.0,
+                distance_km: 0.0,
+            },
+            sidereal_longitude_deg: 0.0,
+        };
+        // SAFETY: Null request pointer is intentional for validation.
+        let status = unsafe { dhruv_tara_compute_ex(ptr::null(), ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_tara_compute_ex_rejects_invalid_selector() {
+        let fake_catalog = std::ptr::NonNull::<DhruvTaraCatalogHandle>::dangling().as_ptr();
+        let request = DhruvTaraComputeRequest {
+            tara_id: 0,
+            output_kind: 99,
+            jd_tdb: 2_451_545.0,
+            ayanamsha_deg: 24.0,
+            config: DhruvTaraConfig {
+                accuracy: 0,
+                apply_parallax: 0,
+            },
+            earth_state_valid: 0,
+            earth_state: DhruvEarthState {
+                position_au: [0.0; 3],
+                velocity_au_day: [0.0; 3],
+            },
+        };
+        let mut out = DhruvTaraComputeResult {
+            output_kind: 0,
+            equatorial: DhruvEquatorialPosition {
+                ra_deg: 0.0,
+                dec_deg: 0.0,
+                distance_au: 0.0,
+            },
+            ecliptic: DhruvSphericalCoords {
+                lon_deg: 0.0,
+                lat_deg: 0.0,
+                distance_km: 0.0,
+            },
+            sidereal_longitude_deg: 0.0,
+        };
+        // SAFETY: Invalid selector is validated before catalog dereference.
+        let status = unsafe { dhruv_tara_compute_ex(fake_catalog as *const _, &request, &mut out) };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
     fn ffi_api_version_is_40() {
         assert_eq!(dhruv_api_version(), 40);
     }
@@ -11592,6 +13599,52 @@ mod tests {
         assert_eq!(status, DhruvStatus::InvalidQuery);
     }
 
+    #[test]
+    fn ffi_conjunction_search_ex_rejects_null_request() {
+        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_conjunction_search_ex(
+                ptr::null(),
+                ptr::null(),
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_conjunction_search_ex_rejects_invalid_mode() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvConjunctionSearchRequest {
+            body1_code: 10,
+            body2_code: 301,
+            query_mode: 99,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_conjunction_config_default(),
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_conjunction_search_ex(
+                fake_engine as *const _,
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
     // --- Grahan FFI tests ---
 
     #[test]
@@ -11703,6 +13756,55 @@ mod tests {
             )
         };
         assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_grahan_search_ex_rejects_null_request() {
+        let mut chandra = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_grahan_search_ex(
+                ptr::null(),
+                ptr::null(),
+                chandra.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_grahan_search_ex_rejects_invalid_selector() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvGrahanSearchRequest {
+            grahan_kind: 99,
+            query_mode: 99,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_grahan_config_default(),
+        };
+        let mut found: u8 = 0;
+        let mut chandra = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
+        let status = unsafe {
+            dhruv_grahan_search_ex(
+                fake_engine as *const _,
+                &request,
+                chandra.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
     }
 
     #[test]
@@ -11923,6 +14025,56 @@ mod tests {
             )
         };
         assert_eq!(status, DhruvStatus::InvalidSearchConfig);
+    }
+
+    #[test]
+    fn ffi_motion_search_ex_rejects_null_request() {
+        let mut found: u8 = 0;
+        let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
+        let status = unsafe {
+            dhruv_motion_search_ex(
+                ptr::null(),
+                ptr::null(),
+                stationary.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_motion_search_ex_rejects_invalid_selector() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvMotionSearchRequest {
+            body_code: 199,
+            motion_kind: 99,
+            query_mode: 99,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_stationary_config_default(),
+        };
+        let mut found: u8 = 0;
+        let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
+        let status = unsafe {
+            dhruv_motion_search_ex(
+                fake_engine as *const _,
+                &request,
+                stationary.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
     }
 
     // --- Rashi/Nakshatra FFI tests ---
@@ -12186,6 +14338,96 @@ mod tests {
             )
         };
         assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_lunar_phase_search_ex_rejects_null_request() {
+        let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_lunar_phase_search_ex(
+                ptr::null(),
+                ptr::null(),
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_lunar_phase_search_ex_rejects_invalid_selector() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvLunarPhaseSearchRequest {
+            phase_kind: 99,
+            query_mode: 99,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_lunar_phase_search_ex(
+                fake_engine as *const _,
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_sankranti_search_ex_rejects_null_request() {
+        let mut event = std::mem::MaybeUninit::<DhruvSankrantiEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_sankranti_search_ex(
+                ptr::null(),
+                ptr::null(),
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_sankranti_search_ex_rejects_invalid_selector() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvSankrantiSearchRequest {
+            target_kind: 99,
+            query_mode: 99,
+            rashi_index: 0,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_sankranti_config_default(),
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvSankrantiEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_sankranti_search_ex(
+                fake_engine as *const _,
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
     }
 
     #[test]

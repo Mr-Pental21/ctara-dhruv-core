@@ -13,6 +13,17 @@ use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use dhruv_search::grahan_types::GrahanConfig;
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::stationary_types::StationaryConfig;
+use dhruv_search::{
+    ConjunctionOperation, ConjunctionQuery, ConjunctionResult, GrahanKind, GrahanOperation,
+    GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation, LunarPhaseQuery,
+    LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult, NodeBackend,
+    NodeOperation, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_ALL_CORE,
+    PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_GHATIKA, PANCHANG_INCLUDE_HORA,
+    PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_NAKSHATRA,
+    PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
+    PanchangOperation, SankrantiOperation, SankrantiQuery, SankrantiResult, SankrantiTarget,
+    TaraOperation, TaraOutputKind, TaraResult,
+};
 use dhruv_tara::{EarthState, TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
     DeltaTModel, EopKernel, FutureDeltaTTransition, LeapSecondKernel, SmhFutureParabolaFamily,
@@ -24,9 +35,10 @@ use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
 use dhruv_vedic_base::{
     ALL_GRAHAS, AyanamshaSystem, Graha, LunarNode, NodeDignityPolicy, NodeMode, Rashi,
-    ayanamsha_deg, ayanamsha_deg_with_catalog, deg_to_dms, jd_tdb_to_centuries,
-    nakshatra_from_longitude, nakshatra_from_tropical, nakshatra28_from_longitude,
-    nakshatra28_from_tropical, rashi_from_longitude, rashi_from_tropical,
+    ayanamsha_deg, ayanamsha_deg_with_catalog, ayanamsha_mean_deg_with_catalog, ayanamsha_true_deg,
+    deg_to_dms, jd_tdb_to_centuries, nakshatra_from_longitude, nakshatra_from_tropical,
+    nakshatra28_from_longitude, nakshatra28_from_tropical, rashi_from_longitude,
+    rashi_from_tropical,
 };
 
 #[derive(Parser)]
@@ -419,6 +431,10 @@ struct PanchangArgs {
     /// Include calendar elements (masa, ayana, varsha)
     #[arg(long)]
     calendar: bool,
+    /// Include mask tokens (comma-separated):
+    /// tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,core,calendar,all
+    #[arg(long)]
+    include: Option<String>,
     /// Path to SPK kernel
     #[arg(long)]
     bsp: PathBuf,
@@ -794,8 +810,14 @@ struct AyanamshaComputeArgs {
     date: String,
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
+    /// Mode: unified (default), mean, or true
+    #[arg(long, value_parser = ["unified", "mean", "true"], default_value = "unified")]
+    mode: String,
     #[arg(long)]
     nutation: bool,
+    /// Delta-psi (arcsec) used by `--mode true`
+    #[arg(long, default_value_t = 0.0)]
+    delta_psi_arcsec: f64,
     #[arg(long)]
     bsp: PathBuf,
     #[arg(long)]
@@ -869,6 +891,35 @@ struct LunarNodeArgs {
     /// Mode: mean or true
     #[arg(long, default_value = "true")]
     mode: String,
+    /// Backend: engine (default) or analytic
+    #[arg(long, value_parser = ["engine", "analytic"], default_value = "engine")]
+    backend: String,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct ConjunctionOpArgs {
+    /// Mode: next, prev, or range
+    #[arg(long, value_parser = ["next", "prev", "range"])]
+    mode: String,
+    /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: Option<String>,
+    /// UTC start datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: Option<String>,
+    /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: Option<String>,
+    /// NAIF body code for first body (e.g. 10=Sun, 301=Moon)
+    #[arg(long)]
+    body1: i32,
+    /// NAIF body code for second body
+    #[arg(long)]
+    body2: i32,
     #[arg(long)]
     bsp: PathBuf,
     #[arg(long)]
@@ -915,6 +966,87 @@ struct SearchConjunctionsArgs {
     body1: i32,
     #[arg(long)]
     body2: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct GrahanOpArgs {
+    /// Grahan kind: chandra or surya
+    #[arg(long, value_parser = ["chandra", "surya"])]
+    kind: String,
+    /// Mode: next, prev, or range
+    #[arg(long, value_parser = ["next", "prev", "range"])]
+    mode: String,
+    /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: Option<String>,
+    /// UTC start datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: Option<String>,
+    /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: Option<String>,
+    /// Exclude penumbral-only chandra grahan from results
+    #[arg(long, default_value_t = false)]
+    no_penumbral: bool,
+    /// Exclude peak-detail fields in results
+    #[arg(long, default_value_t = false)]
+    no_peak_details: bool,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct LunarPhaseOpArgs {
+    /// Lunar phase kind: amavasya or purnima
+    #[arg(long, value_parser = ["amavasya", "purnima"])]
+    kind: String,
+    /// Mode: next, prev, or range
+    #[arg(long, value_parser = ["next", "prev", "range"])]
+    mode: String,
+    /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: Option<String>,
+    /// UTC start datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: Option<String>,
+    /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: Option<String>,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct SankrantiOpArgs {
+    /// Mode: next, prev, or range
+    #[arg(long, value_parser = ["next", "prev", "range"])]
+    mode: String,
+    /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: Option<String>,
+    /// UTC start datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: Option<String>,
+    /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: Option<String>,
+    /// Optional specific rashi index (0=Mesha .. 11=Meena)
+    #[arg(long)]
+    rashi: Option<i32>,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
     #[arg(long)]
     bsp: PathBuf,
     #[arg(long)]
@@ -1016,6 +1148,32 @@ struct SearchMaxSpeedArgs {
     end: String,
     #[arg(long)]
     body: i32,
+    #[arg(long)]
+    bsp: PathBuf,
+    #[arg(long)]
+    lsk: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct MotionOpArgs {
+    /// Motion kind: stationary or max-speed
+    #[arg(long, value_parser = ["stationary", "max-speed"])]
+    kind: String,
+    /// Mode: next, prev, or range
+    #[arg(long, value_parser = ["next", "prev", "range"])]
+    mode: String,
+    /// NAIF body code (e.g. 499=Mars, 599=Jupiter)
+    #[arg(long)]
+    body: i32,
+    /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: Option<String>,
+    /// UTC start datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: Option<String>,
+    /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: Option<String>,
     #[arg(long)]
     bsp: PathBuf,
     #[arg(long)]
@@ -1553,12 +1711,20 @@ enum Commands {
     LagnaCompute(LagnaComputeArgs),
     /// Compute Rahu/Ketu (lunar node) longitude
     LunarNode(LunarNodeArgs),
+    /// Unified conjunction operation (`--mode next|prev|range`)
+    Conjunction(ConjunctionOpArgs),
     /// Find next conjunction between two bodies
     NextConjunction(NextConjunctionArgs),
     /// Find previous conjunction between two bodies
     PrevConjunction(PrevConjunctionArgs),
     /// Search conjunctions between two bodies in a date range
     SearchConjunctions(SearchConjunctionsArgs),
+    /// Unified grahan operation (`--kind chandra|surya --mode next|prev|range`)
+    Grahan(GrahanOpArgs),
+    /// Unified lunar-phase operation (`--kind amavasya|purnima --mode next|prev|range`)
+    LunarPhase(LunarPhaseOpArgs),
+    /// Unified sankranti operation (`--mode next|prev|range [--rashi 0..11]`)
+    Sankranti(SankrantiOpArgs),
     /// Find next lunar eclipse
     NextChandraGrahan {
         #[arg(long)]
@@ -1599,6 +1765,8 @@ enum Commands {
     },
     /// Search solar eclipses in a date range
     SearchSuryaGrahan(SearchSuryaGrahanArgs),
+    /// Unified motion operation (`--kind stationary|max-speed --mode next|prev|range`)
+    Motion(MotionOpArgs),
     /// Find next stationary point of a planet
     NextStationary(NextStationaryArgs),
     /// Find previous stationary point of a planet
@@ -2092,6 +2260,36 @@ fn require_observer(code: i32) -> Observer {
         eprintln!("Invalid observer code: {code}");
         std::process::exit(1);
     })
+}
+
+fn parse_panchang_include_mask(raw: &str) -> Result<u32, String> {
+    let mut mask = 0_u32;
+    for token in raw.split(',').map(str::trim).filter(|t| !t.is_empty()) {
+        match token.to_ascii_lowercase().as_str() {
+            "all" => mask |= PANCHANG_INCLUDE_ALL,
+            "core" => mask |= PANCHANG_INCLUDE_ALL_CORE,
+            "calendar" => mask |= PANCHANG_INCLUDE_ALL_CALENDAR,
+            "tithi" => mask |= PANCHANG_INCLUDE_TITHI,
+            "karana" => mask |= PANCHANG_INCLUDE_KARANA,
+            "yoga" => mask |= PANCHANG_INCLUDE_YOGA,
+            "vaar" => mask |= PANCHANG_INCLUDE_VAAR,
+            "hora" => mask |= PANCHANG_INCLUDE_HORA,
+            "ghatika" => mask |= PANCHANG_INCLUDE_GHATIKA,
+            "nakshatra" => mask |= PANCHANG_INCLUDE_NAKSHATRA,
+            "masa" => mask |= PANCHANG_INCLUDE_MASA,
+            "ayana" => mask |= PANCHANG_INCLUDE_AYANA,
+            "varsha" => mask |= PANCHANG_INCLUDE_VARSHA,
+            other => {
+                return Err(format!(
+                    "invalid include token '{other}' (use: tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,core,calendar,all)"
+                ));
+            }
+        }
+    }
+    if mask == 0 {
+        return Err("include mask is empty".to_string());
+    }
+    Ok(mask)
 }
 
 fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
@@ -3051,66 +3249,81 @@ fn main() {
             let location = GeoLocation::new(args.lat, args.lon, args.alt);
             let rs_config = RiseSetConfig::default();
             let config = SankrantiConfig::new(system, args.nutation);
-            match dhruv_search::panchang_for_date(
-                &engine,
-                &eop_kernel,
-                &utc,
-                &location,
-                &rs_config,
-                &config,
-                args.calendar,
-            ) {
+            let include_mask = if let Some(raw) = args.include.as_deref() {
+                parse_panchang_include_mask(raw).unwrap_or_else(|e| {
+                    eprintln!("Invalid --include value: {e}");
+                    std::process::exit(1);
+                })
+            } else {
+                let mut mask = PANCHANG_INCLUDE_ALL_CORE;
+                if args.calendar {
+                    mask |= PANCHANG_INCLUDE_ALL_CALENDAR;
+                }
+                mask
+            };
+            let op = PanchangOperation {
+                at_utc: utc,
+                location,
+                riseset_config: rs_config,
+                sankranti_config: config,
+                include_mask,
+            };
+            match dhruv_search::panchang(&engine, &eop_kernel, &op) {
                 Ok(info) => {
                     println!(
-                        "Panchang for {} at {:.6}°N, {:.6}°E\n",
-                        args.date, args.lat, args.lon
+                        "Panchang for {} at {:.6}°N, {:.6}°E (mask=0x{:x})\n",
+                        args.date, args.lat, args.lon, include_mask
                     );
-                    println!(
-                        "Tithi:    {} (index {})",
-                        info.tithi.tithi.name(),
-                        info.tithi.tithi_index
-                    );
-                    println!(
-                        "  Paksha: {}  Tithi in paksha: {}",
-                        info.tithi.paksha.name(),
-                        info.tithi.tithi_in_paksha
-                    );
-                    println!("  Start:  {}  End: {}", info.tithi.start, info.tithi.end);
-                    println!(
-                        "Karana:   {} (sequence {})",
-                        info.karana.karana.name(),
-                        info.karana.karana_index
-                    );
-                    println!("  Start:  {}  End: {}", info.karana.start, info.karana.end);
-                    println!(
-                        "Yoga:     {} (index {})",
-                        info.yoga.yoga.name(),
-                        info.yoga.yoga_index
-                    );
-                    println!("  Start:  {}  End: {}", info.yoga.start, info.yoga.end);
-                    println!("Vaar:     {}", info.vaar.vaar.name());
-                    println!("  Start:  {}  End: {}", info.vaar.start, info.vaar.end);
-                    println!(
-                        "Hora:     {} (position {} of 24)",
-                        info.hora.hora.name(),
-                        info.hora.hora_index
-                    );
-                    println!("  Start:  {}  End: {}", info.hora.start, info.hora.end);
-                    println!("Ghatika:  {}/60", info.ghatika.value);
-                    println!(
-                        "  Start:  {}  End: {}",
-                        info.ghatika.start, info.ghatika.end
-                    );
-                    println!(
-                        "Nakshatra: {} (index {}, pada {})",
-                        info.nakshatra.nakshatra.name(),
-                        info.nakshatra.nakshatra_index,
-                        info.nakshatra.pada
-                    );
-                    println!(
-                        "  Start:  {}  End: {}",
-                        info.nakshatra.start, info.nakshatra.end
-                    );
+                    if let Some(tithi) = info.tithi {
+                        println!(
+                            "Tithi:    {} (index {})",
+                            tithi.tithi.name(),
+                            tithi.tithi_index
+                        );
+                        println!(
+                            "  Paksha: {}  Tithi in paksha: {}",
+                            tithi.paksha.name(),
+                            tithi.tithi_in_paksha
+                        );
+                        println!("  Start:  {}  End: {}", tithi.start, tithi.end);
+                    }
+                    if let Some(karana) = info.karana {
+                        println!(
+                            "Karana:   {} (sequence {})",
+                            karana.karana.name(),
+                            karana.karana_index
+                        );
+                        println!("  Start:  {}  End: {}", karana.start, karana.end);
+                    }
+                    if let Some(yoga) = info.yoga {
+                        println!("Yoga:     {} (index {})", yoga.yoga.name(), yoga.yoga_index);
+                        println!("  Start:  {}  End: {}", yoga.start, yoga.end);
+                    }
+                    if let Some(vaar) = info.vaar {
+                        println!("Vaar:     {}", vaar.vaar.name());
+                        println!("  Start:  {}  End: {}", vaar.start, vaar.end);
+                    }
+                    if let Some(hora) = info.hora {
+                        println!(
+                            "Hora:     {} (position {} of 24)",
+                            hora.hora.name(),
+                            hora.hora_index
+                        );
+                        println!("  Start:  {}  End: {}", hora.start, hora.end);
+                    }
+                    if let Some(ghatika) = info.ghatika {
+                        println!("Ghatika:  {}/60", ghatika.value);
+                        println!("  Start:  {}  End: {}", ghatika.start, ghatika.end);
+                    }
+                    if let Some(nakshatra) = info.nakshatra {
+                        println!(
+                            "Nakshatra: {} (index {}, pada {})",
+                            nakshatra.nakshatra.name(),
+                            nakshatra.nakshatra_index,
+                            nakshatra.pada
+                        );
+                        println!("  Start:  {}  End: {}", nakshatra.start, nakshatra.end);
+                    }
                     if let Some(m) = info.masa {
                         let adhika_str = if m.adhika { " (Adhika)" } else { "" };
                         println!("Masa:     {}{}", m.masa.name(), adhika_str);
@@ -3950,18 +4163,32 @@ fn main() {
                     std::process::exit(1);
                 })
             });
-            let aya = ayanamsha_deg_with_catalog(system, t, args.nutation, cat.as_ref());
+            let aya = match args.mode.as_str() {
+                "mean" => ayanamsha_mean_deg_with_catalog(system, t, cat.as_ref()),
+                "true" => ayanamsha_true_deg(system, t, args.delta_psi_arcsec),
+                "unified" => ayanamsha_deg_with_catalog(system, t, args.nutation, cat.as_ref()),
+                _ => {
+                    eprintln!("Invalid mode: {} (unified|mean|true)", args.mode);
+                    std::process::exit(1);
+                }
+            };
             println!(
-                "Ayanamsha ({:?}): {:.6}°{}{}",
+                "Ayanamsha ({:?}, {}): {:.6}°{}{}{}",
                 system,
+                args.mode,
                 aya,
-                if args.nutation {
+                if args.mode == "unified" && args.nutation {
                     " (with nutation)"
                 } else {
                     ""
                 },
                 if cat.is_some() {
                     " (with star catalog)"
+                } else {
+                    ""
+                },
+                if args.mode == "true" {
+                    " (delta-psi provided)"
                 } else {
                     ""
                 }
@@ -4119,13 +4346,118 @@ fn main() {
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let lunar_node = parse_lunar_node(&args.node);
             let node_mode = parse_node_mode(&args.mode);
-            let lon =
-                dhruv_vedic_base::lunar_node_deg_for_epoch(&engine, lunar_node, jd_tdb, node_mode)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error: {e}");
+            let backend = match args.backend.as_str() {
+                "engine" => NodeBackend::Engine,
+                "analytic" => NodeBackend::Analytic,
+                _ => {
+                    eprintln!("Invalid backend: {} (engine|analytic)", args.backend);
+                    std::process::exit(1);
+                }
+            };
+            let op = NodeOperation {
+                node: lunar_node,
+                mode: node_mode,
+                backend,
+                at_jd_tdb: jd_tdb,
+            };
+            let lon = dhruv_search::lunar_node(&engine, &op).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            println!(
+                "{:?} ({:?}, {:?}): {:.6}°",
+                lunar_node, node_mode, backend, lon
+            );
+        }
+
+        Commands::Conjunction(args) => {
+            let b1 = require_body(args.body1);
+            let b2 = require_body(args.body2);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = ConjunctionConfig::conjunction(1.0);
+            let query = match args.mode.as_str() {
+                "next" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode next");
                         std::process::exit(1);
                     });
-            println!("{:?} ({:?}): {:.6}°", lunar_node, node_mode, lon);
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    ConjunctionQuery::Next { at_jd_tdb: jd_tdb }
+                }
+                "prev" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode prev");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    ConjunctionQuery::Prev { at_jd_tdb: jd_tdb }
+                }
+                "range" => {
+                    let start = args.start.as_deref().unwrap_or_else(|| {
+                        eprintln!("--start is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let end = args.end.as_deref().unwrap_or_else(|| {
+                        eprintln!("--end is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let utc_start = parse_utc(start).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let utc_end = parse_utc(end).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_start = utc_to_jd_tdb_with_policy(&utc_start, engine.lsk(), time_policy);
+                    let jd_end = utc_to_jd_tdb_with_policy(&utc_end, engine.lsk(), time_policy);
+                    ConjunctionQuery::Range {
+                        start_jd_tdb: jd_start,
+                        end_jd_tdb: jd_end,
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid mode: {}", args.mode);
+                    std::process::exit(1);
+                }
+            };
+            let op = ConjunctionOperation {
+                body1: b1,
+                body2: b2,
+                config,
+                query,
+            };
+            match dhruv_search::conjunction(&engine, &op) {
+                Ok(ConjunctionResult::Single(Some(ev))) => {
+                    let label = match args.mode.as_str() {
+                        "next" => "Next conjunction",
+                        "prev" => "Previous conjunction",
+                        _ => "Conjunction",
+                    };
+                    print_conjunction_event(label, &ev);
+                }
+                Ok(ConjunctionResult::Single(None)) => {
+                    println!("No conjunction found");
+                }
+                Ok(ConjunctionResult::Many(events)) => {
+                    println!("Found {} conjunctions:", events.len());
+                    for ev in &events {
+                        print_conjunction_event("  Conjunction", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
 
         Commands::NextConjunction(args) => {
@@ -4188,6 +4520,356 @@ fn main() {
                     println!("Found {} conjunctions:", events.len());
                     for ev in &events {
                         print_conjunction_event("  Conjunction", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Grahan(args) => {
+            let kind = match args.kind.as_str() {
+                "chandra" => GrahanKind::Chandra,
+                "surya" => GrahanKind::Surya,
+                _ => {
+                    eprintln!("Invalid kind: {}", args.kind);
+                    std::process::exit(1);
+                }
+            };
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = GrahanConfig {
+                include_penumbral: !args.no_penumbral,
+                include_peak_details: !args.no_peak_details,
+            };
+            let query = match args.mode.as_str() {
+                "next" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode next");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    GrahanQuery::Next { at_jd_tdb: jd_tdb }
+                }
+                "prev" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode prev");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    GrahanQuery::Prev { at_jd_tdb: jd_tdb }
+                }
+                "range" => {
+                    let start = args.start.as_deref().unwrap_or_else(|| {
+                        eprintln!("--start is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let end = args.end.as_deref().unwrap_or_else(|| {
+                        eprintln!("--end is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let utc_start = parse_utc(start).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let utc_end = parse_utc(end).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_start = utc_to_jd_tdb_with_policy(&utc_start, engine.lsk(), time_policy);
+                    let jd_end = utc_to_jd_tdb_with_policy(&utc_end, engine.lsk(), time_policy);
+                    GrahanQuery::Range {
+                        start_jd_tdb: jd_start,
+                        end_jd_tdb: jd_end,
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid mode: {}", args.mode);
+                    std::process::exit(1);
+                }
+            };
+            let op = GrahanOperation {
+                kind,
+                config,
+                query,
+            };
+            match dhruv_search::grahan(&engine, &op) {
+                Ok(GrahanResult::ChandraSingle(Some(ev))) => {
+                    let label = match args.mode.as_str() {
+                        "next" => "Next Chandra Grahan",
+                        "prev" => "Previous Chandra Grahan",
+                        _ => "Chandra Grahan",
+                    };
+                    print_chandra_grahan(label, &ev);
+                }
+                Ok(GrahanResult::ChandraSingle(None)) => {
+                    println!("No lunar eclipse found");
+                }
+                Ok(GrahanResult::ChandraMany(events)) => {
+                    println!("Found {} lunar eclipses:", events.len());
+                    for ev in &events {
+                        print_chandra_grahan("  Chandra Grahan", ev);
+                    }
+                }
+                Ok(GrahanResult::SuryaSingle(Some(ev))) => {
+                    let label = match args.mode.as_str() {
+                        "next" => "Next Surya Grahan",
+                        "prev" => "Previous Surya Grahan",
+                        _ => "Surya Grahan",
+                    };
+                    print_surya_grahan(label, &ev);
+                }
+                Ok(GrahanResult::SuryaSingle(None)) => {
+                    println!("No solar eclipse found");
+                }
+                Ok(GrahanResult::SuryaMany(events)) => {
+                    println!("Found {} solar eclipses:", events.len());
+                    for ev in &events {
+                        print_surya_grahan("  Surya Grahan", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::LunarPhase(args) => {
+            let kind = match args.kind.as_str() {
+                "amavasya" => LunarPhaseKind::Amavasya,
+                "purnima" => LunarPhaseKind::Purnima,
+                _ => {
+                    eprintln!("Invalid kind: {}", args.kind);
+                    std::process::exit(1);
+                }
+            };
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let query = match args.mode.as_str() {
+                "next" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode next");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    LunarPhaseQuery::Next { at_jd_tdb: jd_tdb }
+                }
+                "prev" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode prev");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    LunarPhaseQuery::Prev { at_jd_tdb: jd_tdb }
+                }
+                "range" => {
+                    let start = args.start.as_deref().unwrap_or_else(|| {
+                        eprintln!("--start is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let end = args.end.as_deref().unwrap_or_else(|| {
+                        eprintln!("--end is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let utc_start = parse_utc(start).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let utc_end = parse_utc(end).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_start = utc_to_jd_tdb_with_policy(&utc_start, engine.lsk(), time_policy);
+                    let jd_end = utc_to_jd_tdb_with_policy(&utc_end, engine.lsk(), time_policy);
+                    LunarPhaseQuery::Range {
+                        start_jd_tdb: jd_start,
+                        end_jd_tdb: jd_end,
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid mode: {}", args.mode);
+                    std::process::exit(1);
+                }
+            };
+            let op = LunarPhaseOperation { kind, query };
+            match dhruv_search::lunar_phase(&engine, &op) {
+                Ok(LunarPhaseResult::Single(Some(ev))) => {
+                    let label = match (args.mode.as_str(), kind) {
+                        ("next", LunarPhaseKind::Amavasya) => "Next Amavasya",
+                        ("next", LunarPhaseKind::Purnima) => "Next Purnima",
+                        ("prev", LunarPhaseKind::Amavasya) => "Previous Amavasya",
+                        ("prev", LunarPhaseKind::Purnima) => "Previous Purnima",
+                        _ => "Lunar phase",
+                    };
+                    println!("{label}: {}", ev.utc);
+                    println!(
+                        "  Moon lon: {:.6} deg  Sun lon: {:.6} deg",
+                        ev.moon_longitude_deg, ev.sun_longitude_deg
+                    );
+                }
+                Ok(LunarPhaseResult::Single(None)) => {
+                    let label = match kind {
+                        LunarPhaseKind::Amavasya => "Amavasya",
+                        LunarPhaseKind::Purnima => "Purnima",
+                    };
+                    println!("No {label} found");
+                }
+                Ok(LunarPhaseResult::Many(events)) => {
+                    let label = match kind {
+                        LunarPhaseKind::Amavasya => "Amavasyas",
+                        LunarPhaseKind::Purnima => "Purnimas",
+                    };
+                    println!("Found {} {label}:", events.len());
+                    for ev in &events {
+                        println!(
+                            "  {}  Moon: {:.6}°  Sun: {:.6}°",
+                            ev.utc, ev.moon_longitude_deg, ev.sun_longitude_deg
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Sankranti(args) => {
+            let target = match args.rashi {
+                Some(idx) => {
+                    let idx_u8 = u8::try_from(idx)
+                        .ok()
+                        .filter(|v| *v < 12)
+                        .unwrap_or_else(|| {
+                            eprintln!("Invalid --rashi: {idx} (0-11)");
+                            std::process::exit(1);
+                        });
+                    SankrantiTarget::SpecificRashi(rashi_from_index(idx_u8))
+                }
+                None => SankrantiTarget::Any,
+            };
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = SankrantiConfig::new(system, args.nutation);
+            let query = match args.mode.as_str() {
+                "next" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode next");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    SankrantiQuery::Next { at_jd_tdb: jd_tdb }
+                }
+                "prev" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode prev");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    SankrantiQuery::Prev { at_jd_tdb: jd_tdb }
+                }
+                "range" => {
+                    let start = args.start.as_deref().unwrap_or_else(|| {
+                        eprintln!("--start is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let end = args.end.as_deref().unwrap_or_else(|| {
+                        eprintln!("--end is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let utc_start = parse_utc(start).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let utc_end = parse_utc(end).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_start = utc_to_jd_tdb_with_policy(&utc_start, engine.lsk(), time_policy);
+                    let jd_end = utc_to_jd_tdb_with_policy(&utc_end, engine.lsk(), time_policy);
+                    SankrantiQuery::Range {
+                        start_jd_tdb: jd_start,
+                        end_jd_tdb: jd_end,
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid mode: {}", args.mode);
+                    std::process::exit(1);
+                }
+            };
+            let op = SankrantiOperation {
+                target,
+                config,
+                query,
+            };
+            match dhruv_search::sankranti(&engine, &op) {
+                Ok(SankrantiResult::Single(Some(ev))) => {
+                    let label = match (args.mode.as_str(), target) {
+                        ("next", SankrantiTarget::Any) => "Next Sankranti".to_string(),
+                        ("prev", SankrantiTarget::Any) => "Previous Sankranti".to_string(),
+                        ("next", SankrantiTarget::SpecificRashi(r)) => {
+                            format!("Next {} Sankranti", r.name())
+                        }
+                        ("prev", SankrantiTarget::SpecificRashi(r)) => {
+                            format!("Previous {} Sankranti", r.name())
+                        }
+                        (_, SankrantiTarget::SpecificRashi(r)) => format!("{} Sankranti", r.name()),
+                        _ => "Sankranti".to_string(),
+                    };
+                    println!("{label}: {} ({})", ev.rashi.name(), ev.rashi.western_name());
+                    println!("  Time: {}", ev.utc);
+                    println!(
+                        "  Sidereal lon: {:.6} deg  Tropical lon: {:.6} deg",
+                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                    );
+                }
+                Ok(SankrantiResult::Single(None)) => match target {
+                    SankrantiTarget::Any => println!("No Sankranti found"),
+                    SankrantiTarget::SpecificRashi(r) => {
+                        println!("No {} Sankranti found", r.name())
+                    }
+                },
+                Ok(SankrantiResult::Many(events)) => {
+                    match target {
+                        SankrantiTarget::Any => println!("Found {} Sankrantis:", events.len()),
+                        SankrantiTarget::SpecificRashi(r) => {
+                            println!("Found {} {} Sankrantis:", events.len(), r.name())
+                        }
+                    }
+                    for ev in &events {
+                        println!(
+                            "  {} ({}) at {}  sid: {:.6}°  trop: {:.6}°",
+                            ev.rashi.name(),
+                            ev.rashi.western_name(),
+                            ev.utc,
+                            ev.sun_sidereal_longitude_deg,
+                            ev.sun_tropical_longitude_deg
+                        );
                     }
                 }
                 Err(e) => {
@@ -4332,6 +5014,120 @@ fn main() {
                     println!("Found {} solar eclipses:", events.len());
                     for ev in &events {
                         print_surya_grahan("  Surya Grahan", ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Motion(args) => {
+            let kind = match args.kind.as_str() {
+                "stationary" => MotionKind::Stationary,
+                "max-speed" => MotionKind::MaxSpeed,
+                _ => {
+                    eprintln!("Invalid kind: {}", args.kind);
+                    std::process::exit(1);
+                }
+            };
+            let body = require_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let config = StationaryConfig::inner_planet();
+            let query = match args.mode.as_str() {
+                "next" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode next");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    MotionQuery::Next { at_jd_tdb: jd_tdb }
+                }
+                "prev" => {
+                    let date = args.date.as_deref().unwrap_or_else(|| {
+                        eprintln!("--date is required when --mode prev");
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+                    MotionQuery::Prev { at_jd_tdb: jd_tdb }
+                }
+                "range" => {
+                    let start = args.start.as_deref().unwrap_or_else(|| {
+                        eprintln!("--start is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let end = args.end.as_deref().unwrap_or_else(|| {
+                        eprintln!("--end is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let utc_start = parse_utc(start).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let utc_end = parse_utc(end).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let jd_start = utc_to_jd_tdb_with_policy(&utc_start, engine.lsk(), time_policy);
+                    let jd_end = utc_to_jd_tdb_with_policy(&utc_end, engine.lsk(), time_policy);
+                    MotionQuery::Range {
+                        start_jd_tdb: jd_start,
+                        end_jd_tdb: jd_end,
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid mode: {}", args.mode);
+                    std::process::exit(1);
+                }
+            };
+            let op = MotionOperation {
+                body,
+                kind,
+                config,
+                query,
+            };
+            match dhruv_search::motion(&engine, &op) {
+                Ok(MotionResult::StationarySingle(Some(ev))) => {
+                    let label = match args.mode.as_str() {
+                        "next" => "Next stationary",
+                        "prev" => "Previous stationary",
+                        _ => "Stationary",
+                    };
+                    print_stationary_event(label, &ev);
+                }
+                Ok(MotionResult::StationarySingle(None)) => {
+                    println!("No stationary point found");
+                }
+                Ok(MotionResult::StationaryMany(events)) => {
+                    println!("Found {} stationary points:", events.len());
+                    for ev in &events {
+                        print_stationary_event("  Station", ev);
+                    }
+                }
+                Ok(MotionResult::MaxSpeedSingle(Some(ev))) => {
+                    let label = match args.mode.as_str() {
+                        "next" => "Next max-speed",
+                        "prev" => "Previous max-speed",
+                        _ => "Max-speed",
+                    };
+                    print_max_speed_event(label, &ev);
+                }
+                Ok(MotionResult::MaxSpeedSingle(None)) => {
+                    println!("No max-speed event found");
+                }
+                Ok(MotionResult::MaxSpeedMany(events)) => {
+                    println!("Found {} max-speed events:", events.len());
+                    for ev in &events {
+                        print_max_speed_event("  Max-speed", ev);
                     }
                 }
                 Err(e) => {
@@ -5552,36 +6348,40 @@ fn main() {
                 None
             };
 
-            // Equatorial position
-            match dhruv_tara::position_equatorial_with_config(
-                &cat,
-                id,
-                jd_tdb,
-                &config,
-                earth_state.as_ref(),
-            ) {
-                Ok(pos) => {
+            let op_equatorial = TaraOperation {
+                star: id,
+                output: TaraOutputKind::Equatorial,
+                at_jd_tdb: jd_tdb,
+                ayanamsha_deg: 0.0,
+                config,
+                earth_state,
+            };
+            match dhruv_search::tara(&cat, &op_equatorial) {
+                Ok(TaraResult::Equatorial(pos)) => {
                     println!("Equatorial (ICRS):");
                     println!("  RA:       {:.6}°", pos.ra_deg);
                     println!("  Dec:      {:.6}°", pos.dec_deg);
                     println!("  Distance: {:.2} AU", pos.distance_au);
                 }
+                Ok(_) => {}
                 Err(e) => eprintln!("Equatorial error: {e}"),
             }
 
-            // Ecliptic position
-            match dhruv_tara::position_ecliptic_with_config(
-                &cat,
-                id,
-                jd_tdb,
-                &config,
-                earth_state.as_ref(),
-            ) {
-                Ok(sc) => {
+            let op_ecliptic = TaraOperation {
+                star: id,
+                output: TaraOutputKind::Ecliptic,
+                at_jd_tdb: jd_tdb,
+                ayanamsha_deg: 0.0,
+                config,
+                earth_state,
+            };
+            match dhruv_search::tara(&cat, &op_ecliptic) {
+                Ok(TaraResult::Ecliptic(sc)) => {
                     println!("Ecliptic (of date):");
                     println!("  Longitude: {:.6}°", sc.lon_deg);
                     println!("  Latitude:  {:.6}°", sc.lat_deg);
                 }
+                Ok(_) => {}
                 Err(e) => eprintln!("Ecliptic error: {e}"),
             }
 
@@ -5589,15 +6389,16 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let t = jd_tdb_to_centuries(jd_tdb);
             let aya = ayanamsha_deg(system, t, args.nutation);
-            match dhruv_tara::sidereal_longitude_with_config(
-                &cat,
-                id,
-                jd_tdb,
-                aya,
-                &config,
-                earth_state.as_ref(),
-            ) {
-                Ok(lon) => {
+            let op_sidereal = TaraOperation {
+                star: id,
+                output: TaraOutputKind::Sidereal,
+                at_jd_tdb: jd_tdb,
+                ayanamsha_deg: aya,
+                config,
+                earth_state,
+            };
+            match dhruv_search::tara(&cat, &op_sidereal) {
+                Ok(TaraResult::Sidereal(lon)) => {
                     let rashi_info = rashi_from_longitude(lon);
                     let nak_info = nakshatra_from_longitude(lon);
                     println!("Sidereal ({:?}, nutation={}):", system, args.nutation);
@@ -5614,6 +6415,7 @@ fn main() {
                     );
                     println!("  Ayanamsha: {:.6}°", aya);
                 }
+                Ok(_) => {}
                 Err(e) => eprintln!("Sidereal error: {e}"),
             }
         }

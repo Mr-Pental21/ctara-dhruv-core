@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 39`
+**ABI version:** `DHRUV_API_VERSION = 40`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -32,6 +32,7 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
    - [Stationary Point Search](#stationary-point-search)
    - [Max Speed Search](#max-speed-search)
    - [RAMC](#ramc)
+   - [Unified Panchang Compute](#unified-panchang-compute)
    - [Pure-Math Panchang Classifiers](#pure-math-panchang-classifiers)
    - [Graha Sidereal Longitudes](#graha-sidereal-longitudes)
    - [Graha Tropical Longitudes](#graha-tropical-longitudes)
@@ -500,6 +501,84 @@ typedef struct {
 } DhruvSankrantiEvent;
 ```
 
+### DhruvLunarPhaseEvent
+
+```c
+typedef struct {
+    DhruvUtcTime utc;               // Event time (UTC)
+    int32_t      phase;             // DHRUV_LUNAR_PHASE_NEW_MOON or _FULL_MOON
+    double       moon_longitude_deg;
+    double       sun_longitude_deg;
+} DhruvLunarPhaseEvent;
+```
+
+### DhruvLunarPhaseSearchRequest
+
+```c
+typedef struct {
+    int32_t phase_kind;     // DHRUV_LUNAR_PHASE_KIND_*
+    int32_t query_mode;     // DHRUV_LUNAR_PHASE_QUERY_MODE_*
+    double  at_jd_tdb;      // NEXT/PREV
+    double  start_jd_tdb;   // RANGE
+    double  end_jd_tdb;     // RANGE
+} DhruvLunarPhaseSearchRequest;
+```
+
+### DhruvSankrantiSearchRequest
+
+```c
+typedef struct {
+    int32_t              target_kind;   // DHRUV_SANKRANTI_TARGET_*
+    int32_t              query_mode;    // DHRUV_SANKRANTI_QUERY_MODE_*
+    int32_t              rashi_index;   // 0..11 for TARGET_SPECIFIC
+    double               at_jd_tdb;     // NEXT/PREV
+    double               start_jd_tdb;  // RANGE
+    double               end_jd_tdb;    // RANGE
+    DhruvSankrantiConfig config;
+} DhruvSankrantiSearchRequest;
+```
+
+### DhruvPanchangComputeRequest
+
+```c
+typedef struct {
+    int32_t              time_kind;      // DHRUV_PANCHANG_TIME_*
+    double               jd_tdb;         // used for TIME_JD_TDB
+    DhruvUtcTime         utc;            // used for TIME_UTC
+    uint32_t             include_mask;   // DHRUV_PANCHANG_INCLUDE_* bitset
+    DhruvGeoLocation     location;
+    DhruvRiseSetConfig   riseset_config;
+    DhruvSankrantiConfig sankranti_config;
+} DhruvPanchangComputeRequest;
+```
+
+### DhruvPanchangOperationResult
+
+```c
+typedef struct {
+    uint8_t                     tithi_valid;
+    DhruvTithiInfo              tithi;
+    uint8_t                     karana_valid;
+    DhruvKaranaInfo             karana;
+    uint8_t                     yoga_valid;
+    DhruvYogaInfo               yoga;
+    uint8_t                     vaar_valid;
+    DhruvVaarInfo               vaar;
+    uint8_t                     hora_valid;
+    DhruvHoraInfo               hora;
+    uint8_t                     ghatika_valid;
+    DhruvGhatikaInfo            ghatika;
+    uint8_t                     nakshatra_valid;
+    DhruvPanchangNakshatraInfo  nakshatra;
+    uint8_t                     masa_valid;
+    DhruvMasaInfo               masa;
+    uint8_t                     ayana_valid;
+    DhruvAyanaInfo              ayana;
+    uint8_t                     varsha_valid;
+    DhruvVarshaInfo             varsha;
+} DhruvPanchangOperationResult;
+```
+
 ---
 
 ## Functions
@@ -743,6 +822,41 @@ DhruvStatus dhruv_ayanamsha_deg_with_catalog_utc(
 );
 ```
 
+#### Unified request-based ayanamsha API
+
+```c
+#define DHRUV_AYANAMSHA_MODE_MEAN      0
+#define DHRUV_AYANAMSHA_MODE_TRUE      1
+#define DHRUV_AYANAMSHA_MODE_UNIFIED   2
+
+#define DHRUV_AYANAMSHA_TIME_JD_TDB    0
+#define DHRUV_AYANAMSHA_TIME_UTC       1
+
+typedef struct {
+    int32_t      system_code;       // 0..19
+    int32_t      mode;              // DHRUV_AYANAMSHA_MODE_*
+    int32_t      time_kind;         // DHRUV_AYANAMSHA_TIME_*
+    double       jd_tdb;            // when time_kind=JD_TDB
+    DhruvUtcTime utc;               // when time_kind=UTC
+    uint8_t      use_nutation;      // for mode=UNIFIED
+    double       delta_psi_arcsec;  // for mode=TRUE
+} DhruvAyanamshaComputeRequest;
+
+DhruvStatus dhruv_ayanamsha_compute_ex(
+    const DhruvLskHandle*                 lsk,      // required for time_kind=UTC
+    const DhruvAyanamshaComputeRequest*   request,
+    const DhruvTaraCatalogHandle*         catalog,  // optional
+    double*                               out_deg
+);
+```
+
+Single request API for mode + time-base variants:
+- `mode=MEAN`: mean ayanamsha (catalog-aware for star-anchored systems).
+- `mode=TRUE`: true ayanamsha from `delta_psi_arcsec`.
+- `mode=UNIFIED`: unified ayanamsha using `use_nutation`.
+- `time_kind=JD_TDB`: uses `jd_tdb`.
+- `time_kind=UTC`: uses `utc` and requires `lsk`.
+
 ---
 
 ### Reference Plane
@@ -828,6 +942,35 @@ DhruvStatus dhruv_lunar_node_deg_utc_with_engine(
 ```
 
 UTC convenience variant of the engine-aware lunar node API.
+
+```c
+#define DHRUV_NODE_BACKEND_ANALYTIC 0
+#define DHRUV_NODE_BACKEND_ENGINE   1
+#define DHRUV_NODE_TIME_JD_TDB      0
+#define DHRUV_NODE_TIME_UTC         1
+
+typedef struct {
+    int32_t      node_code;   // DHRUV_NODE_RAHU or DHRUV_NODE_KETU
+    int32_t      mode_code;   // DHRUV_NODE_MODE_*
+    int32_t      backend;     // DHRUV_NODE_BACKEND_*
+    int32_t      time_kind;   // DHRUV_NODE_TIME_*
+    double       jd_tdb;      // when time_kind=JD_TDB
+    DhruvUtcTime utc;         // when time_kind=UTC
+} DhruvLunarNodeRequest;
+
+DhruvStatus dhruv_lunar_node_compute_ex(
+    const DhruvEngineHandle*     engine,   // required for backend=ENGINE
+    const DhruvLskHandle*        lsk,      // required for time_kind=UTC
+    const DhruvLunarNodeRequest* request,
+    double*                      out_deg
+);
+```
+
+Unified node entrypoint:
+- `backend=ANALYTIC` uses the pure-math model backend.
+- `backend=ENGINE` uses the engine-backed osculating-node backend.
+- `time_kind=JD_TDB` uses `jd_tdb`.
+- `time_kind=UTC` uses `utc` and requires `lsk`.
 
 ```c
 uint32_t dhruv_lunar_node_count(void);
@@ -1024,6 +1167,36 @@ DhruvStatus dhruv_search_conjunctions(
 
 Search for all conjunction/aspect events in a time range.
 
+```c
+#define DHRUV_CONJUNCTION_QUERY_MODE_NEXT  0
+#define DHRUV_CONJUNCTION_QUERY_MODE_PREV  1
+#define DHRUV_CONJUNCTION_QUERY_MODE_RANGE 2
+
+typedef struct {
+    int32_t                body1_code;
+    int32_t                body2_code;
+    int32_t                query_mode;
+    double                 at_jd_tdb;
+    double                 start_jd_tdb;
+    double                 end_jd_tdb;
+    DhruvConjunctionConfig config;
+} DhruvConjunctionSearchRequest;
+
+DhruvStatus dhruv_conjunction_search_ex(
+    const DhruvEngineHandle*                 engine,
+    const DhruvConjunctionSearchRequest*     request,
+    DhruvConjunctionEvent*                   out_event,   // NEXT/PREV
+    uint8_t*                                 out_found,   // NEXT/PREV
+    DhruvConjunctionEvent*                   out_events,  // RANGE
+    uint32_t                                 max_count,   // RANGE
+    uint32_t*                                out_count    // RANGE
+);
+```
+
+Unified conjunction entrypoint:
+- `query_mode=NEXT/PREV` uses `at_jd_tdb` and writes to `out_event/out_found`.
+- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and writes to `out_events/out_count`.
+
 ---
 
 ### Chandra Grahan
@@ -1033,6 +1206,40 @@ DhruvGrahanConfig dhruv_grahan_config_default(void);
 ```
 
 Returns default: `include_penumbral=1`, `include_peak_details=1`.
+
+```c
+#define DHRUV_GRAHAN_KIND_CHANDRA      0
+#define DHRUV_GRAHAN_KIND_SURYA        1
+#define DHRUV_GRAHAN_QUERY_MODE_NEXT   0
+#define DHRUV_GRAHAN_QUERY_MODE_PREV   1
+#define DHRUV_GRAHAN_QUERY_MODE_RANGE  2
+
+typedef struct {
+    int32_t           grahan_kind;    // DHRUV_GRAHAN_KIND_*
+    int32_t           query_mode;     // DHRUV_GRAHAN_QUERY_MODE_*
+    double            at_jd_tdb;
+    double            start_jd_tdb;
+    double            end_jd_tdb;
+    DhruvGrahanConfig config;
+} DhruvGrahanSearchRequest;
+
+DhruvStatus dhruv_grahan_search_ex(
+    const DhruvEngineHandle*               engine,
+    const DhruvGrahanSearchRequest*        request,
+    DhruvChandraGrahanResult*              out_chandra_single, // CHANDRA + NEXT/PREV
+    DhruvSuryaGrahanResult*                out_surya_single,   // SURYA + NEXT/PREV
+    uint8_t*                               out_found,          // NEXT/PREV
+    DhruvChandraGrahanResult*              out_chandra_many,   // CHANDRA + RANGE
+    DhruvSuryaGrahanResult*                out_surya_many,     // SURYA + RANGE
+    uint32_t                               max_count,          // RANGE
+    uint32_t*                              out_count           // RANGE
+);
+```
+
+Unified grahan entrypoint:
+- `grahan_kind` selects chandra vs surya result family.
+- `query_mode=NEXT/PREV` uses `at_jd_tdb`, `out_found`, and single-result pointer.
+- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and array output pointer + `out_count`.
 
 ```c
 DhruvStatus dhruv_next_chandra_grahan(
@@ -1127,6 +1334,41 @@ DhruvStationaryConfig dhruv_stationary_config_default(void);
 Returns default: `step_size_days=1.0`, `max_iterations=50`, `convergence_days=1e-8`, `numerical_step_days=0.01`.
 
 ```c
+#define DHRUV_MOTION_KIND_STATIONARY       0
+#define DHRUV_MOTION_KIND_MAX_SPEED        1
+#define DHRUV_MOTION_QUERY_MODE_NEXT       0
+#define DHRUV_MOTION_QUERY_MODE_PREV       1
+#define DHRUV_MOTION_QUERY_MODE_RANGE      2
+
+typedef struct {
+    int32_t               body_code;     // NAIF code
+    int32_t               motion_kind;   // DHRUV_MOTION_KIND_*
+    int32_t               query_mode;    // DHRUV_MOTION_QUERY_MODE_*
+    double                at_jd_tdb;
+    double                start_jd_tdb;
+    double                end_jd_tdb;
+    DhruvStationaryConfig config;
+} DhruvMotionSearchRequest;
+
+DhruvStatus dhruv_motion_search_ex(
+    const DhruvEngineHandle*              engine,
+    const DhruvMotionSearchRequest*       request,
+    DhruvStationaryEvent*                 out_stationary_single, // STATIONARY + NEXT/PREV
+    DhruvMaxSpeedEvent*                   out_max_speed_single,  // MAX_SPEED + NEXT/PREV
+    uint8_t*                              out_found,             // NEXT/PREV
+    DhruvStationaryEvent*                 out_stationary_many,   // STATIONARY + RANGE
+    DhruvMaxSpeedEvent*                   out_max_speed_many,    // MAX_SPEED + RANGE
+    uint32_t                              max_count,             // RANGE
+    uint32_t*                             out_count              // RANGE
+);
+```
+
+Unified motion entrypoint:
+- `motion_kind` selects stationary vs max-speed family.
+- `query_mode=NEXT/PREV` uses `at_jd_tdb`, `out_found`, and single-result pointer.
+- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and array output pointer + `out_count`.
+
+```c
 DhruvStatus dhruv_next_stationary(
     const DhruvEngineHandle*     engine,
     int32_t                      body_code,   // NAIF code (not Sun/Moon/Earth)
@@ -1211,6 +1453,99 @@ DhruvStatus dhruv_search_max_speed(
 ```
 
 Search for all max-speed events in a time range.
+
+---
+
+### Lunar Phase Search
+
+```c
+#define DHRUV_LUNAR_PHASE_KIND_AMAVASYA      0
+#define DHRUV_LUNAR_PHASE_KIND_PURNIMA       1
+#define DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT    0
+#define DHRUV_LUNAR_PHASE_QUERY_MODE_PREV    1
+#define DHRUV_LUNAR_PHASE_QUERY_MODE_RANGE   2
+
+DhruvStatus dhruv_lunar_phase_search_ex(
+    const DhruvEngineHandle*                engine,
+    const DhruvLunarPhaseSearchRequest*     request,
+    DhruvLunarPhaseEvent*                   out_event,   // NEXT/PREV
+    uint8_t*                                out_found,   // NEXT/PREV
+    DhruvLunarPhaseEvent*                   out_events,  // RANGE
+    uint32_t                                max_count,   // RANGE
+    uint32_t*                               out_count    // RANGE
+);
+```
+
+Unified lunar-phase entrypoint:
+- `phase_kind` selects amavasya vs purnima family.
+- `query_mode=NEXT/PREV` uses `at_jd_tdb` and writes `out_event/out_found`.
+- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and writes `out_events/out_count`.
+
+---
+
+### Sankranti Search
+
+```c
+#define DHRUV_SANKRANTI_TARGET_ANY           0
+#define DHRUV_SANKRANTI_TARGET_SPECIFIC      1
+#define DHRUV_SANKRANTI_QUERY_MODE_NEXT      0
+#define DHRUV_SANKRANTI_QUERY_MODE_PREV      1
+#define DHRUV_SANKRANTI_QUERY_MODE_RANGE     2
+
+DhruvStatus dhruv_sankranti_search_ex(
+    const DhruvEngineHandle*               engine,
+    const DhruvSankrantiSearchRequest*     request,
+    DhruvSankrantiEvent*                   out_event,   // NEXT/PREV
+    uint8_t*                               out_found,   // NEXT/PREV
+    DhruvSankrantiEvent*                   out_events,  // RANGE
+    uint32_t                               max_count,   // RANGE
+    uint32_t*                              out_count    // RANGE
+);
+```
+
+Unified sankranti entrypoint:
+- `target_kind=ANY` covers all rashis.
+- `target_kind=SPECIFIC` filters to `rashi_index`.
+- `query_mode=NEXT/PREV` uses `at_jd_tdb` and writes `out_event/out_found`.
+- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and writes `out_events/out_count`.
+
+---
+
+### Unified Panchang Compute
+
+```c
+#define DHRUV_PANCHANG_TIME_JD_TDB      0
+#define DHRUV_PANCHANG_TIME_UTC         1
+
+#define DHRUV_PANCHANG_INCLUDE_TITHI       (1u << 0)
+#define DHRUV_PANCHANG_INCLUDE_KARANA      (1u << 1)
+#define DHRUV_PANCHANG_INCLUDE_YOGA        (1u << 2)
+#define DHRUV_PANCHANG_INCLUDE_VAAR        (1u << 3)
+#define DHRUV_PANCHANG_INCLUDE_HORA        (1u << 4)
+#define DHRUV_PANCHANG_INCLUDE_GHATIKA     (1u << 5)
+#define DHRUV_PANCHANG_INCLUDE_NAKSHATRA   (1u << 6)
+#define DHRUV_PANCHANG_INCLUDE_MASA        (1u << 7)
+#define DHRUV_PANCHANG_INCLUDE_AYANA       (1u << 8)
+#define DHRUV_PANCHANG_INCLUDE_VARSHA      (1u << 9)
+#define DHRUV_PANCHANG_INCLUDE_ALL_CORE     0x7fu
+#define DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR 0x380u
+#define DHRUV_PANCHANG_INCLUDE_ALL          0x3ffu
+
+DhruvStatus dhruv_panchang_compute_ex(
+    const DhruvEngineHandle*         engine,
+    const DhruvEopHandle*            eop,
+    const DhruvLskHandle*            lsk,      // required for TIME_JD_TDB
+    const DhruvPanchangComputeRequest* request,
+    DhruvPanchangOperationResult*    out
+);
+```
+
+Unified panchang entrypoint:
+- `time_kind=TIME_UTC` reads `request.utc`.
+- `time_kind=TIME_JD_TDB` reads `request.jd_tdb` and requires non-null `lsk`.
+- `include_mask` selects returned fields; each output slot has a `<field>_valid` flag.
+- `sankranti_config` is used for sidereal/calendar-dependent elements.
+- `riseset_config` and `location` are used for `vaar`, `hora`, `ghatika`.
 
 ---
 
@@ -1697,6 +2032,31 @@ struct DhruvTaraConfig {
 Opaque handle to a loaded star catalog. Created by `dhruv_tara_catalog_load`,
 freed by `dhruv_tara_catalog_free`.
 
+##### `DhruvTaraComputeRequest`
+
+```c
+struct DhruvTaraComputeRequest {
+    int32_t          tara_id;           // TaraId code
+    int32_t          output_kind;       // DHRUV_TARA_OUTPUT_*
+    double           jd_tdb;            // epoch
+    double           ayanamsha_deg;     // used for SIDEREAL output
+    DhruvTaraConfig  config;
+    uint8_t          earth_state_valid; // 0/1
+    DhruvEarthState  earth_state;       // read only when earth_state_valid == 1
+};
+```
+
+##### `DhruvTaraComputeResult`
+
+```c
+struct DhruvTaraComputeResult {
+    int32_t                 output_kind;            // echoed DHRUV_TARA_OUTPUT_*
+    DhruvEquatorialPosition equatorial;             // valid for EQUATORIAL
+    DhruvSphericalCoords    ecliptic;               // valid for ECLIPTIC
+    double                  sidereal_longitude_deg; // valid for SIDEREAL
+};
+```
+
 ##### `TaraId` codes
 
 Stars are identified by `int32_t` codes. Ranges:
@@ -1725,6 +2085,24 @@ void dhruv_tara_catalog_free(
 ```
 
 Free a catalog handle. Safe to call with null.
+
+```c
+#define DHRUV_TARA_OUTPUT_EQUATORIAL 0
+#define DHRUV_TARA_OUTPUT_ECLIPTIC   1
+#define DHRUV_TARA_OUTPUT_SIDEREAL   2
+
+DhruvStatus dhruv_tara_compute_ex(
+    const DhruvTaraCatalogHandle*   handle,
+    const DhruvTaraComputeRequest*  request,
+    DhruvTaraComputeResult*         out
+);
+```
+
+Unified tara entrypoint:
+- `output_kind=EQUATORIAL` populates `out->equatorial`.
+- `output_kind=ECLIPTIC` populates `out->ecliptic`.
+- `output_kind=SIDEREAL` populates `out->sidereal_longitude_deg`.
+- `earth_state_valid=1` passes `earth_state` for apparent/parallax modes.
 
 ```c
 DhruvStatus dhruv_tara_position_equatorial(
@@ -1836,6 +2214,8 @@ no proper motion). Equivalent to calling `dhruv_tara_position_ecliptic` with
 ---
 
 ## Changelog
+
+**v40**: Added unified operation APIs for panchang and tara. Panchang: new constants `DHRUV_PANCHANG_TIME_*`, `DHRUV_PANCHANG_INCLUDE_*`; new types `DhruvPanchangComputeRequest`, `DhruvPanchangOperationResult`; new function `dhruv_panchang_compute_ex`. Tara: new constants `DHRUV_TARA_OUTPUT_*`; new types `DhruvTaraComputeRequest`, `DhruvTaraComputeResult`; new function `dhruv_tara_compute_ex`.
 
 **v37**: Added fixed star (tara) support. New types: `DhruvEquatorialPosition`, `DhruvEarthState`, `DhruvTaraConfig`. New functions: `dhruv_tara_catalog_load`, `dhruv_tara_catalog_free`, `dhruv_tara_position_equatorial`, `dhruv_tara_position_equatorial_ex`, `dhruv_tara_position_ecliptic`, `dhruv_tara_position_ecliptic_ex`, `dhruv_tara_sidereal_longitude`, `dhruv_tara_sidereal_longitude_ex`, `dhruv_tara_galactic_center_ecliptic`. Catalog loaded from JSON file (opaque handle). Two accuracy tiers: Astrometric (default) and Apparent (aberration + light deflection + nutation, requires `DhruvEarthState`). Optional parallax correction.
 

@@ -18,6 +18,7 @@ pub mod jyotish;
 pub mod jyotish_types;
 pub mod lunar_phase;
 pub mod lunar_phase_types;
+pub mod operations;
 pub mod panchang;
 pub mod panchang_types;
 pub mod sankranti;
@@ -64,6 +65,19 @@ pub use lunar_phase::{
     next_amavasya, next_purnima, prev_amavasya, prev_purnima, search_amavasyas, search_purnimas,
 };
 pub use lunar_phase_types::{LunarPhase, LunarPhaseEvent};
+pub use operations::{
+    AyanamshaMode, AyanamshaOperation, ConjunctionOperation, ConjunctionQuery, ConjunctionResult,
+    GrahanKind, GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
+    LunarPhaseQuery, LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult,
+    NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR,
+    PANCHANG_INCLUDE_ALL_CORE, PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_GHATIKA,
+    PANCHANG_INCLUDE_HORA, PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_MASA,
+    PANCHANG_INCLUDE_NAKSHATRA, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR,
+    PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA, PanchangOperation, PanchangResult, QueryMode,
+    SankrantiOperation, SankrantiQuery, SankrantiResult, SankrantiTarget, TaraOperation,
+    TaraOutputKind, TaraResult, ayanamsha, conjunction, grahan, lunar_node, lunar_phase, motion,
+    panchang, sankranti, tara,
+};
 pub use panchang::{
     ayana_for_date, elongation_at, ghatika_for_date, ghatika_from_sunrises, hora_for_date,
     hora_from_sunrises, karana_at, karana_for_date, masa_for_date, moon_sidereal_longitude_at,
