@@ -2769,15 +2769,24 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            match dhruv_search::next_purnima(&engine, &utc) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = LunarPhaseOperation {
+                kind: LunarPhaseKind::Purnima,
+                query: LunarPhaseQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::lunar_phase(&engine, &op) {
+                Ok(LunarPhaseResult::Single(Some(ev))) => {
                     println!("Next Purnima: {}", ev.utc);
                     println!(
                         "  Moon lon: {:.6} deg  Sun lon: {:.6} deg",
                         ev.moon_longitude_deg, ev.sun_longitude_deg
                     );
                 }
-                Ok(None) => println!("No Purnima found in search range"),
+                Ok(LunarPhaseResult::Single(None)) => println!("No Purnima found in search range"),
+                Ok(LunarPhaseResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -2791,15 +2800,24 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            match dhruv_search::next_amavasya(&engine, &utc) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = LunarPhaseOperation {
+                kind: LunarPhaseKind::Amavasya,
+                query: LunarPhaseQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::lunar_phase(&engine, &op) {
+                Ok(LunarPhaseResult::Single(Some(ev))) => {
                     println!("Next Amavasya: {}", ev.utc);
                     println!(
                         "  Moon lon: {:.6} deg  Sun lon: {:.6} deg",
                         ev.moon_longitude_deg, ev.sun_longitude_deg
                     );
                 }
-                Ok(None) => println!("No Amavasya found in search range"),
+                Ok(LunarPhaseResult::Single(None)) => println!("No Amavasya found in search range"),
+                Ok(LunarPhaseResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -2815,8 +2833,14 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
-            match dhruv_search::next_sankranti(&engine, &utc, &config) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = SankrantiOperation {
+                target: SankrantiTarget::Any,
+                config,
+                query: SankrantiQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::sankranti(&engine, &op) {
+                Ok(SankrantiResult::Single(Some(ev))) => {
                     println!(
                         "Next Sankranti: {} ({})",
                         ev.rashi.name(),
@@ -2828,7 +2852,11 @@ fn main() {
                         ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
                     );
                 }
-                Ok(None) => println!("No Sankranti found in search range"),
+                Ok(SankrantiResult::Single(None)) => println!("No Sankranti found in search range"),
+                Ok(SankrantiResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -3944,15 +3972,24 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            match dhruv_search::prev_purnima(&engine, &utc) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = LunarPhaseOperation {
+                kind: LunarPhaseKind::Purnima,
+                query: LunarPhaseQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::lunar_phase(&engine, &op) {
+                Ok(LunarPhaseResult::Single(Some(ev))) => {
                     println!("Previous Purnima: {}", ev.utc);
                     println!(
                         "  Moon lon: {:.6} deg  Sun lon: {:.6} deg",
                         ev.moon_longitude_deg, ev.sun_longitude_deg
                     );
                 }
-                Ok(None) => println!("No Purnima found in search range"),
+                Ok(LunarPhaseResult::Single(None)) => println!("No Purnima found in search range"),
+                Ok(LunarPhaseResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -3966,15 +4003,24 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&bsp, &lsk);
-            match dhruv_search::prev_amavasya(&engine, &utc) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = LunarPhaseOperation {
+                kind: LunarPhaseKind::Amavasya,
+                query: LunarPhaseQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::lunar_phase(&engine, &op) {
+                Ok(LunarPhaseResult::Single(Some(ev))) => {
                     println!("Previous Amavasya: {}", ev.utc);
                     println!(
                         "  Moon lon: {:.6} deg  Sun lon: {:.6} deg",
                         ev.moon_longitude_deg, ev.sun_longitude_deg
                     );
                 }
-                Ok(None) => println!("No Amavasya found in search range"),
+                Ok(LunarPhaseResult::Single(None)) => println!("No Amavasya found in search range"),
+                Ok(LunarPhaseResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -3990,8 +4036,14 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
-            match dhruv_search::prev_sankranti(&engine, &utc, &config) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = SankrantiOperation {
+                target: SankrantiTarget::Any,
+                config,
+                query: SankrantiQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::sankranti(&engine, &op) {
+                Ok(SankrantiResult::Single(Some(ev))) => {
                     println!(
                         "Previous Sankranti: {} ({})",
                         ev.rashi.name(),
@@ -4003,7 +4055,11 @@ fn main() {
                         ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
                     );
                 }
-                Ok(None) => println!("No Sankranti found in search range"),
+                Ok(SankrantiResult::Single(None)) => println!("No Sankranti found in search range"),
+                Ok(SankrantiResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4021,8 +4077,17 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
-            match dhruv_search::search_purnimas(&engine, &s, &e) {
-                Ok(events) => {
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
+            let op = LunarPhaseOperation {
+                kind: LunarPhaseKind::Purnima,
+                query: LunarPhaseQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::lunar_phase(&engine, &op) {
+                Ok(LunarPhaseResult::Many(events)) => {
                     println!("Found {} Purnimas:", events.len());
                     for ev in &events {
                         println!(
@@ -4030,6 +4095,10 @@ fn main() {
                             ev.utc, ev.moon_longitude_deg, ev.sun_longitude_deg
                         );
                     }
+                }
+                Ok(LunarPhaseResult::Single(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -4048,8 +4117,17 @@ fn main() {
                 std::process::exit(1);
             });
             let engine = load_engine(&args.bsp, &args.lsk);
-            match dhruv_search::search_amavasyas(&engine, &s, &e) {
-                Ok(events) => {
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
+            let op = LunarPhaseOperation {
+                kind: LunarPhaseKind::Amavasya,
+                query: LunarPhaseQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::lunar_phase(&engine, &op) {
+                Ok(LunarPhaseResult::Many(events)) => {
                     println!("Found {} Amavasyas:", events.len());
                     for ev in &events {
                         println!(
@@ -4057,6 +4135,10 @@ fn main() {
                             ev.utc, ev.moon_longitude_deg, ev.sun_longitude_deg
                         );
                     }
+                }
+                Ok(LunarPhaseResult::Single(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -4077,8 +4159,18 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
-            match dhruv_search::search_sankrantis(&engine, &s, &e, &config) {
-                Ok(events) => {
+            let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
+            let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
+            let op = SankrantiOperation {
+                target: SankrantiTarget::Any,
+                config,
+                query: SankrantiQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::sankranti(&engine, &op) {
+                Ok(SankrantiResult::Many(events)) => {
                     println!("Found {} Sankrantis:", events.len());
                     for ev in &events {
                         println!(
@@ -4090,6 +4182,10 @@ fn main() {
                             ev.sun_tropical_longitude_deg
                         );
                     }
+                }
+                Ok(SankrantiResult::Single(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -4107,15 +4203,27 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
-            match dhruv_search::next_specific_sankranti(&engine, &utc, target, &config) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = SankrantiOperation {
+                target: SankrantiTarget::SpecificRashi(target),
+                config,
+                query: SankrantiQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::sankranti(&engine, &op) {
+                Ok(SankrantiResult::Single(Some(ev))) => {
                     println!("Next {} Sankranti: {}", ev.rashi.name(), ev.utc);
                     println!(
                         "  Sidereal lon: {:.6}°  Tropical lon: {:.6}°",
                         ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
                     );
                 }
-                Ok(None) => println!("No {} Sankranti found", target.name()),
+                Ok(SankrantiResult::Single(None)) => {
+                    println!("No {} Sankranti found", target.name())
+                }
+                Ok(SankrantiResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4132,15 +4240,27 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
-            match dhruv_search::prev_specific_sankranti(&engine, &utc, target, &config) {
-                Ok(Some(ev)) => {
+            let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
+            let op = SankrantiOperation {
+                target: SankrantiTarget::SpecificRashi(target),
+                config,
+                query: SankrantiQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::sankranti(&engine, &op) {
+                Ok(SankrantiResult::Single(Some(ev))) => {
                     println!("Previous {} Sankranti: {}", ev.rashi.name(), ev.utc);
                     println!(
                         "  Sidereal lon: {:.6}°  Tropical lon: {:.6}°",
                         ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
                     );
                 }
-                Ok(None) => println!("No {} Sankranti found", target.name()),
+                Ok(SankrantiResult::Single(None)) => {
+                    println!("No {} Sankranti found", target.name())
+                }
+                Ok(SankrantiResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4470,9 +4590,21 @@ fn main() {
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
-            match dhruv_search::next_conjunction(&engine, b1, b2, jd_tdb, &config) {
-                Ok(Some(ev)) => print_conjunction_event("Next conjunction", &ev),
-                Ok(None) => println!("No conjunction found"),
+            let op = ConjunctionOperation {
+                body1: b1,
+                body2: b2,
+                config,
+                query: ConjunctionQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::conjunction(&engine, &op) {
+                Ok(ConjunctionResult::Single(Some(ev))) => {
+                    print_conjunction_event("Next conjunction", &ev)
+                }
+                Ok(ConjunctionResult::Single(None)) => println!("No conjunction found"),
+                Ok(ConjunctionResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4490,9 +4622,21 @@ fn main() {
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
-            match dhruv_search::prev_conjunction(&engine, b1, b2, jd_tdb, &config) {
-                Ok(Some(ev)) => print_conjunction_event("Previous conjunction", &ev),
-                Ok(None) => println!("No conjunction found"),
+            let op = ConjunctionOperation {
+                body1: b1,
+                body2: b2,
+                config,
+                query: ConjunctionQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::conjunction(&engine, &op) {
+                Ok(ConjunctionResult::Single(Some(ev))) => {
+                    print_conjunction_event("Previous conjunction", &ev)
+                }
+                Ok(ConjunctionResult::Single(None)) => println!("No conjunction found"),
+                Ok(ConjunctionResult::Many(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4515,12 +4659,25 @@ fn main() {
             let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
-            match dhruv_search::search_conjunctions(&engine, b1, b2, jd_start, jd_end, &config) {
-                Ok(events) => {
+            let op = ConjunctionOperation {
+                body1: b1,
+                body2: b2,
+                config,
+                query: ConjunctionQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::conjunction(&engine, &op) {
+                Ok(ConjunctionResult::Many(events)) => {
                     println!("Found {} conjunctions:", events.len());
                     for ev in &events {
                         print_conjunction_event("  Conjunction", ev);
                     }
+                }
+                Ok(ConjunctionResult::Single(_)) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -4890,9 +5047,20 @@ fn main() {
                 include_penumbral: true,
                 include_peak_details: true,
             };
-            match dhruv_search::next_chandra_grahan(&engine, jd_tdb, &config) {
-                Ok(Some(ev)) => print_chandra_grahan("Next Chandra Grahan", &ev),
-                Ok(None) => println!("No lunar eclipse found"),
+            let op = GrahanOperation {
+                kind: GrahanKind::Chandra,
+                config,
+                query: GrahanQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::grahan(&engine, &op) {
+                Ok(GrahanResult::ChandraSingle(Some(ev))) => {
+                    print_chandra_grahan("Next Chandra Grahan", &ev)
+                }
+                Ok(GrahanResult::ChandraSingle(None)) => println!("No lunar eclipse found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4911,9 +5079,20 @@ fn main() {
                 include_penumbral: true,
                 include_peak_details: true,
             };
-            match dhruv_search::prev_chandra_grahan(&engine, jd_tdb, &config) {
-                Ok(Some(ev)) => print_chandra_grahan("Previous Chandra Grahan", &ev),
-                Ok(None) => println!("No lunar eclipse found"),
+            let op = GrahanOperation {
+                kind: GrahanKind::Chandra,
+                config,
+                query: GrahanQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::grahan(&engine, &op) {
+                Ok(GrahanResult::ChandraSingle(Some(ev))) => {
+                    print_chandra_grahan("Previous Chandra Grahan", &ev)
+                }
+                Ok(GrahanResult::ChandraSingle(None)) => println!("No lunar eclipse found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4937,12 +5116,24 @@ fn main() {
                 include_penumbral: true,
                 include_peak_details: true,
             };
-            match dhruv_search::search_chandra_grahan(&engine, jd_start, jd_end, &config) {
-                Ok(events) => {
+            let op = GrahanOperation {
+                kind: GrahanKind::Chandra,
+                config,
+                query: GrahanQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::grahan(&engine, &op) {
+                Ok(GrahanResult::ChandraMany(events)) => {
                     println!("Found {} lunar eclipses:", events.len());
                     for ev in &events {
                         print_chandra_grahan("  Chandra Grahan", ev);
                     }
+                }
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -4962,9 +5153,20 @@ fn main() {
                 include_penumbral: true,
                 include_peak_details: true,
             };
-            match dhruv_search::next_surya_grahan(&engine, jd_tdb, &config) {
-                Ok(Some(ev)) => print_surya_grahan("Next Surya Grahan", &ev),
-                Ok(None) => println!("No solar eclipse found"),
+            let op = GrahanOperation {
+                kind: GrahanKind::Surya,
+                config,
+                query: GrahanQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::grahan(&engine, &op) {
+                Ok(GrahanResult::SuryaSingle(Some(ev))) => {
+                    print_surya_grahan("Next Surya Grahan", &ev)
+                }
+                Ok(GrahanResult::SuryaSingle(None)) => println!("No solar eclipse found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -4983,9 +5185,20 @@ fn main() {
                 include_penumbral: true,
                 include_peak_details: true,
             };
-            match dhruv_search::prev_surya_grahan(&engine, jd_tdb, &config) {
-                Ok(Some(ev)) => print_surya_grahan("Previous Surya Grahan", &ev),
-                Ok(None) => println!("No solar eclipse found"),
+            let op = GrahanOperation {
+                kind: GrahanKind::Surya,
+                config,
+                query: GrahanQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::grahan(&engine, &op) {
+                Ok(GrahanResult::SuryaSingle(Some(ev))) => {
+                    print_surya_grahan("Previous Surya Grahan", &ev)
+                }
+                Ok(GrahanResult::SuryaSingle(None)) => println!("No solar eclipse found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -5009,12 +5222,24 @@ fn main() {
                 include_penumbral: true,
                 include_peak_details: true,
             };
-            match dhruv_search::search_surya_grahan(&engine, jd_start, jd_end, &config) {
-                Ok(events) => {
+            let op = GrahanOperation {
+                kind: GrahanKind::Surya,
+                config,
+                query: GrahanQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::grahan(&engine, &op) {
+                Ok(GrahanResult::SuryaMany(events)) => {
                     println!("Found {} solar eclipses:", events.len());
                     for ev in &events {
                         print_surya_grahan("  Surya Grahan", ev);
                     }
+                }
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -5146,9 +5371,21 @@ fn main() {
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
-            match dhruv_search::next_stationary(&engine, b, jd_tdb, &config) {
-                Ok(Some(ev)) => print_stationary_event("Next stationary", &ev),
-                Ok(None) => println!("No stationary point found"),
+            let op = MotionOperation {
+                body: b,
+                kind: MotionKind::Stationary,
+                config,
+                query: MotionQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::motion(&engine, &op) {
+                Ok(MotionResult::StationarySingle(Some(ev))) => {
+                    print_stationary_event("Next stationary", &ev)
+                }
+                Ok(MotionResult::StationarySingle(None)) => println!("No stationary point found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -5165,9 +5402,21 @@ fn main() {
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
-            match dhruv_search::prev_stationary(&engine, b, jd_tdb, &config) {
-                Ok(Some(ev)) => print_stationary_event("Previous stationary", &ev),
-                Ok(None) => println!("No stationary point found"),
+            let op = MotionOperation {
+                body: b,
+                kind: MotionKind::Stationary,
+                config,
+                query: MotionQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::motion(&engine, &op) {
+                Ok(MotionResult::StationarySingle(Some(ev))) => {
+                    print_stationary_event("Previous stationary", &ev)
+                }
+                Ok(MotionResult::StationarySingle(None)) => println!("No stationary point found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -5189,12 +5438,25 @@ fn main() {
             let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
-            match dhruv_search::search_stationary(&engine, b, jd_start, jd_end, &config) {
-                Ok(events) => {
+            let op = MotionOperation {
+                body: b,
+                kind: MotionKind::Stationary,
+                config,
+                query: MotionQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::motion(&engine, &op) {
+                Ok(MotionResult::StationaryMany(events)) => {
                     println!("Found {} stationary points:", events.len());
                     for ev in &events {
                         print_stationary_event("  Station", ev);
                     }
+                }
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -5212,9 +5474,21 @@ fn main() {
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
-            match dhruv_search::next_max_speed(&engine, b, jd_tdb, &config) {
-                Ok(Some(ev)) => print_max_speed_event("Next max-speed", &ev),
-                Ok(None) => println!("No max-speed event found"),
+            let op = MotionOperation {
+                body: b,
+                kind: MotionKind::MaxSpeed,
+                config,
+                query: MotionQuery::Next { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::motion(&engine, &op) {
+                Ok(MotionResult::MaxSpeedSingle(Some(ev))) => {
+                    print_max_speed_event("Next max-speed", &ev)
+                }
+                Ok(MotionResult::MaxSpeedSingle(None)) => println!("No max-speed event found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -5231,9 +5505,21 @@ fn main() {
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
-            match dhruv_search::prev_max_speed(&engine, b, jd_tdb, &config) {
-                Ok(Some(ev)) => print_max_speed_event("Previous max-speed", &ev),
-                Ok(None) => println!("No max-speed event found"),
+            let op = MotionOperation {
+                body: b,
+                kind: MotionKind::MaxSpeed,
+                config,
+                query: MotionQuery::Prev { at_jd_tdb: jd_tdb },
+            };
+            match dhruv_search::motion(&engine, &op) {
+                Ok(MotionResult::MaxSpeedSingle(Some(ev))) => {
+                    print_max_speed_event("Previous max-speed", &ev)
+                }
+                Ok(MotionResult::MaxSpeedSingle(None)) => println!("No max-speed event found"),
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
+                }
                 Err(e) => {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
@@ -5255,12 +5541,25 @@ fn main() {
             let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
-            match dhruv_search::search_max_speed(&engine, b, jd_start, jd_end, &config) {
-                Ok(events) => {
+            let op = MotionOperation {
+                body: b,
+                kind: MotionKind::MaxSpeed,
+                config,
+                query: MotionQuery::Range {
+                    start_jd_tdb: jd_start,
+                    end_jd_tdb: jd_end,
+                },
+            };
+            match dhruv_search::motion(&engine, &op) {
+                Ok(MotionResult::MaxSpeedMany(events)) => {
                     println!("Found {} max-speed events:", events.len());
                     for ev in &events {
                         print_max_speed_event("  Max-speed", ev);
                     }
+                }
+                Ok(_) => {
+                    eprintln!("Error: unexpected search result shape");
+                    std::process::exit(1);
                 }
                 Err(e) => {
                     eprintln!("Error: {e}");

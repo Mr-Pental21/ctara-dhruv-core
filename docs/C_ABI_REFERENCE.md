@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 40`
+**ABI version:** `DHRUV_API_VERSION = 41`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -742,85 +742,14 @@ Destroy an EOP handle. Null-safe.
 
 ### Ayanamsha
 
-All ayanamsha functions are pure math (no engine or kernel handles needed).
-
-```c
-DhruvStatus dhruv_ayanamsha_mean_deg(
-    int32_t system_code,   // 0-19
-    double  jd_tdb,
-    double* out_deg
-);
-```
-
-Mean ayanamsha at the given epoch.
-
-```c
-DhruvStatus dhruv_ayanamsha_true_deg(
-    int32_t system_code,
-    double  jd_tdb,
-    double  delta_psi_arcsec,  // Nutation in longitude (arcsec)
-    double* out_deg
-);
-```
-
-`true`-mode helper ayanamsha.
-`delta_psi_arcsec` is applied to all systems.
-
-```c
-DhruvStatus dhruv_ayanamsha_deg(
-    int32_t system_code,
-    double  jd_tdb,
-    uint8_t use_nutation,  // 0 = mean, nonzero = auto-compute nutation
-    double* out_deg
-);
-```
-
-Unified function.
-When `use_nutation` is non-zero, nutation in longitude (Δψ) is added for all systems.
+Use `dhruv_ayanamsha_compute_ex` as the single entrypoint for all ayanamsha
+queries (mean/true/unified, JD-TDB/UTC, optional catalog).
 
 ```c
 uint32_t dhruv_ayanamsha_system_count(void);
 ```
 
 Returns number of supported systems (currently 20).
-
-#### Star-catalog-aware variants
-
-These functions accept an optional `DhruvTaraCatalogHandle*` parameter.
-When non-null, star-anchored systems (TrueLahiri, PushyaPaksha, RohiniPaksha,
-Aldebaran15Tau, GalacticCenter0Sag, ChandraHari) use proper-motion-corrected
-star positions from the catalog. When null, behavior is identical to the
-non-catalog versions.
-
-```c
-DhruvStatus dhruv_ayanamsha_mean_deg_with_catalog(
-    int32_t system_code,
-    double  jd_tdb,
-    const DhruvTaraCatalogHandle* catalog,  // may be NULL
-    double* out_deg
-);
-```
-
-```c
-DhruvStatus dhruv_ayanamsha_deg_with_catalog(
-    int32_t system_code,
-    double  jd_tdb,
-    uint8_t use_nutation,
-    const DhruvTaraCatalogHandle* catalog,  // may be NULL
-    double* out_deg
-);
-```
-
-```c
-DhruvStatus dhruv_ayanamsha_deg_with_catalog_utc(
-    const DhruvLskHandle* lsk,
-    int32_t system_code,
-    const DhruvUtcTime*   utc,
-    uint8_t use_nutation,
-    const DhruvTaraCatalogHandle* catalog,  // may be NULL
-    double* out_deg
-);
-```
 
 #### Unified request-based ayanamsha API
 
@@ -1840,14 +1769,13 @@ Determine the hora lord for a given weekday and hora position. Returns the lord'
 | 12 | `dhruv_jd_tdb_to_utc` | | yes | | |
 | 13 | `dhruv_riseset_result_to_utc` | | yes | | |
 | 14 | `dhruv_cartesian_to_spherical` | | | | yes |
-| 15 | `dhruv_ayanamsha_mean_deg` | | | | yes |
-| 16 | `dhruv_ayanamsha_true_deg` | | | | yes |
-| 17 | `dhruv_ayanamsha_deg` | | | | yes |
-| 18 | `dhruv_ayanamsha_system_count` | | | | yes |
-| 19 | `dhruv_nutation_iau2000b` | | | | yes |
-| 20 | `dhruv_lunar_node_deg` | | | | yes |
-| 21 | `dhruv_lunar_node_count` | | | | yes |
-| 22 | `dhruv_riseset_config_default` | | | | yes |
+| 15 | `dhruv_ayanamsha_compute_ex` | | conditional | | yes* |
+| 16 | `dhruv_ayanamsha_system_count` | | | | yes |
+| 17 | `dhruv_reference_plane_default` | | | | yes |
+| 18 | `dhruv_nutation_iau2000b` | | | | yes |
+| 19 | `dhruv_lunar_node_deg` | | | | yes |
+| 20 | `dhruv_lunar_node_count` | | | | yes |
+| 21 | `dhruv_riseset_config_default` | | | | yes |
 | 23 | `dhruv_compute_rise_set` | yes | yes | yes | |
 | 24 | `dhruv_compute_all_events` | yes | yes | yes | |
 | 25 | `dhruv_approximate_local_noon_jd` | | | | yes |
@@ -1910,16 +1838,9 @@ Determine the hora lord for a given weekday and hora position. Returns the lord'
 | 82 | `dhruv_full_kundali_config_default` | | | | yes |
 | 83 | `dhruv_tara_catalog_load` | | | | yes |
 | 84 | `dhruv_tara_catalog_free` | | | | yes |
-| 85 | `dhruv_tara_position_equatorial` | | | | yes |
-| 86 | `dhruv_tara_position_equatorial_ex` | | | | yes |
-| 87 | `dhruv_tara_position_ecliptic` | | | | yes |
-| 88 | `dhruv_tara_position_ecliptic_ex` | | | | yes |
-| 89 | `dhruv_tara_sidereal_longitude` | | | | yes |
-| 90 | `dhruv_tara_sidereal_longitude_ex` | | | | yes |
-| 91 | `dhruv_tara_galactic_center_ecliptic` | | | | yes |
-| 92 | `dhruv_ayanamsha_mean_deg_with_catalog` | | | | yes |
-| 93 | `dhruv_ayanamsha_deg_with_catalog` | | | | yes |
-| 94 | `dhruv_ayanamsha_deg_with_catalog_utc` | | yes | | |
+| 85 | `dhruv_tara_compute_ex` | | | | yes |
+| 86 | `dhruv_tara_galactic_center_ecliptic` | | | | yes |
+| 87 | `dhruv_panchang_compute_ex` | yes | conditional | yes | |
 
 **Total exported symbols: 82 functions**
 
@@ -2104,84 +2025,8 @@ Unified tara entrypoint:
 - `output_kind=SIDEREAL` populates `out->sidereal_longitude_deg`.
 - `earth_state_valid=1` passes `earth_state` for apparent/parallax modes.
 
-```c
-DhruvStatus dhruv_tara_position_equatorial(
-    const DhruvTaraCatalogHandle* handle,
-    int32_t                       tara_id,
-    double                        jd_tdb,
-    DhruvEquatorialPosition*      out
-);
-```
-
-Compute equatorial position (Astrometric, no parallax). Returns RA/Dec/distance
-at the given TDB epoch.
-
-```c
-DhruvStatus dhruv_tara_position_equatorial_ex(
-    const DhruvTaraCatalogHandle* handle,
-    int32_t                       tara_id,
-    double                        jd_tdb,
-    const DhruvTaraConfig*        config,
-    const DhruvEarthState*        earth_state,  // may be null for Astrometric without parallax
-    DhruvEquatorialPosition*      out
-);
-```
-
-Compute equatorial position with config. Pass `earth_state` for Apparent tier
-or when `config.apply_parallax == 1`.
-
-```c
-DhruvStatus dhruv_tara_position_ecliptic(
-    const DhruvTaraCatalogHandle* handle,
-    int32_t                       tara_id,
-    double                        jd_tdb,
-    DhruvSphericalCoords*         out
-);
-```
-
-Compute ecliptic position of date (Astrometric, no parallax). Output in
-`DhruvSphericalCoords` (lon_deg, lat_deg, distance_km).
-
-```c
-DhruvStatus dhruv_tara_position_ecliptic_ex(
-    const DhruvTaraCatalogHandle* handle,
-    int32_t                       tara_id,
-    double                        jd_tdb,
-    const DhruvTaraConfig*        config,
-    const DhruvEarthState*        earth_state,  // may be null for Astrometric without parallax
-    DhruvSphericalCoords*         out
-);
-```
-
-Compute ecliptic position with config.
-
-```c
-DhruvStatus dhruv_tara_sidereal_longitude(
-    const DhruvTaraCatalogHandle* handle,
-    int32_t                       tara_id,
-    double                        jd_tdb,
-    double                        ayanamsha_deg,
-    double*                       out
-);
-```
-
-Compute sidereal longitude (Astrometric, no parallax). Result is
-`tropical_ecliptic_longitude - ayanamsha_deg`, normalized to [0, 360).
-Caller computes `ayanamsha_deg` separately (e.g., via `dhruv_ayanamsha_deg`).
-
-```c
-DhruvStatus dhruv_tara_sidereal_longitude_ex(
-    const DhruvTaraCatalogHandle* handle,
-    int32_t                       tara_id,
-    double                        jd_tdb,
-    double                        ayanamsha_deg,
-    const DhruvTaraConfig*        config,
-    const DhruvEarthState*        earth_state,  // may be null for Astrometric without parallax
-    double*                       out
-);
-```
-
-Compute sidereal longitude with config.
+Legacy per-output tara entrypoints were removed in ABI v41. Use
+`dhruv_tara_compute_ex` for equatorial/ecliptic/sidereal outputs.
 
 ```c
 DhruvStatus dhruv_tara_galactic_center_ecliptic(
@@ -2192,7 +2037,7 @@ DhruvStatus dhruv_tara_galactic_center_ecliptic(
 ```
 
 Compute ecliptic position of the Galactic Center (IAU 2000 ICRS direction,
-no proper motion). Equivalent to calling `dhruv_tara_position_ecliptic` with
+no proper motion). Equivalent to requesting ecliptic output for
 `TaraId::GalacticCenter` (code 300).
 
 #### Ownership & Lifetime (Tara)
@@ -2214,6 +2059,8 @@ no proper motion). Equivalent to calling `dhruv_tara_position_ecliptic` with
 ---
 
 ## Changelog
+
+**v41**: Removed legacy split Ayanamsha/Tara/Panchang entrypoints in favor of unified request-based APIs. Removed: `dhruv_ayanamsha_mean_deg`, `dhruv_ayanamsha_true_deg`, `dhruv_ayanamsha_deg`, `dhruv_ayanamsha_mean_deg_with_catalog`, `dhruv_ayanamsha_deg_with_catalog`, `dhruv_ayanamsha_mean_deg_utc`, `dhruv_ayanamsha_true_deg_utc`, `dhruv_ayanamsha_deg_utc`, `dhruv_ayanamsha_deg_with_catalog_utc`, `dhruv_tara_position_equatorial`, `dhruv_tara_position_equatorial_ex`, `dhruv_tara_position_ecliptic`, `dhruv_tara_position_ecliptic_ex`, `dhruv_tara_sidereal_longitude`, `dhruv_tara_sidereal_longitude_ex`, `dhruv_panchang_for_date`. Use `dhruv_ayanamsha_compute_ex`, `dhruv_tara_compute_ex`, and `dhruv_panchang_compute_ex`.
 
 **v40**: Added unified operation APIs for panchang and tara. Panchang: new constants `DHRUV_PANCHANG_TIME_*`, `DHRUV_PANCHANG_INCLUDE_*`; new types `DhruvPanchangComputeRequest`, `DhruvPanchangOperationResult`; new function `dhruv_panchang_compute_ex`. Tara: new constants `DHRUV_TARA_OUTPUT_*`; new types `DhruvTaraComputeRequest`, `DhruvTaraComputeResult`; new function `dhruv_tara_compute_ex`.
 

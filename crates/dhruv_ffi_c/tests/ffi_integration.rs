@@ -365,8 +365,24 @@ fn ffi_query_utc_spherical_speeds_finite() {
 #[test]
 fn ffi_ayanamsha_mean_lahiri_j2000() {
     let mut out: f64 = 0.0;
+    let req = DhruvAyanamshaComputeRequest {
+        system_code: 0,
+        mode: DHRUV_AYANAMSHA_MODE_MEAN,
+        time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+        jd_tdb: 2_451_545.0,
+        utc: DhruvUtcTime {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 12,
+            minute: 0,
+            second: 0.0,
+        },
+        use_nutation: 0,
+        delta_psi_arcsec: 0.0,
+    };
     // SAFETY: Valid output pointer.
-    let status = unsafe { dhruv_ayanamsha_mean_deg(0, 2_451_545.0, &mut out) };
+    let status = unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &req, ptr::null(), &mut out) };
     assert_eq!(status, DhruvStatus::Ok);
     assert!(
         (out - 23.857_052_898_247_307).abs() < 1e-12,
@@ -379,8 +395,25 @@ fn ffi_ayanamsha_all_systems_valid() {
     let count = dhruv_ayanamsha_system_count();
     for code in 0..count as i32 {
         let mut out: f64 = 0.0;
+        let req = DhruvAyanamshaComputeRequest {
+            system_code: code,
+            mode: DHRUV_AYANAMSHA_MODE_MEAN,
+            time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            use_nutation: 0,
+            delta_psi_arcsec: 0.0,
+        };
         // SAFETY: Valid output pointer.
-        let status = unsafe { dhruv_ayanamsha_mean_deg(code, 2_451_545.0, &mut out) };
+        let status =
+            unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &req, ptr::null(), &mut out) };
         assert_eq!(status, DhruvStatus::Ok, "system code {code} failed");
         assert!(
             (19.0..=28.0).contains(&out),
@@ -719,9 +752,30 @@ fn ffi_ayanamsha_deg_unified_matches_mean() {
     let mut unified: f64 = 0.0;
     let mut mean: f64 = 0.0;
     let jd = 2_460_310.5;
+    let req_unified = DhruvAyanamshaComputeRequest {
+        system_code: 0,
+        mode: DHRUV_AYANAMSHA_MODE_UNIFIED,
+        time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+        jd_tdb: jd,
+        utc: DhruvUtcTime {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 12,
+            minute: 0,
+            second: 0.0,
+        },
+        use_nutation: 0,
+        delta_psi_arcsec: 0.0,
+    };
+    let req_mean = DhruvAyanamshaComputeRequest {
+        mode: DHRUV_AYANAMSHA_MODE_MEAN,
+        ..req_unified
+    };
     // SAFETY: Valid pointers.
-    let s1 = unsafe { dhruv_ayanamsha_deg(0, jd, 0, &mut unified) };
-    let s2 = unsafe { dhruv_ayanamsha_mean_deg(0, jd, &mut mean) };
+    let s1 =
+        unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &req_unified, ptr::null(), &mut unified) };
+    let s2 = unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &req_mean, ptr::null(), &mut mean) };
     assert_eq!(s1, DhruvStatus::Ok);
     assert_eq!(s2, DhruvStatus::Ok);
     assert!(
@@ -1845,7 +1899,24 @@ fn ffi_utc_ayanamsha_roundtrip() {
     // JD version: Lahiri ayanamsha at 2024-01-01 TDB
     let jd = 2_460_310.5;
     let mut deg_jd: f64 = 0.0;
-    let status = unsafe { dhruv_ayanamsha_deg(0, jd, 0, &mut deg_jd) };
+    let req_jd = DhruvAyanamshaComputeRequest {
+        system_code: 0,
+        mode: DHRUV_AYANAMSHA_MODE_UNIFIED,
+        time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+        jd_tdb: jd,
+        utc: DhruvUtcTime {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 12,
+            minute: 0,
+            second: 0.0,
+        },
+        use_nutation: 0,
+        delta_psi_arcsec: 0.0,
+    };
+    let status =
+        unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &req_jd, ptr::null(), &mut deg_jd) };
     assert_eq!(status, DhruvStatus::Ok);
 
     // UTC version: approximate 2024-01-01 00:00 UTC
@@ -1858,7 +1929,17 @@ fn ffi_utc_ayanamsha_roundtrip() {
         second: 0.0,
     };
     let mut deg_utc: f64 = 0.0;
-    let status = unsafe { dhruv_ayanamsha_deg_utc(lsk_ptr, 0, &utc, 0, &mut deg_utc) };
+    let req_utc = DhruvAyanamshaComputeRequest {
+        system_code: 0,
+        mode: DHRUV_AYANAMSHA_MODE_UNIFIED,
+        time_kind: DHRUV_AYANAMSHA_TIME_UTC,
+        jd_tdb: 0.0,
+        utc,
+        use_nutation: 0,
+        delta_psi_arcsec: 0.0,
+    };
+    let status =
+        unsafe { dhruv_ayanamsha_compute_ex(lsk_ptr, &req_utc, ptr::null(), &mut deg_utc) };
     assert_eq!(status, DhruvStatus::Ok);
 
     // Should be very close (TDB-UTC offset is ~69 seconds, tiny ayanamsha difference)

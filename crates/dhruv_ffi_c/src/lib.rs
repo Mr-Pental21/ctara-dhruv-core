@@ -14,13 +14,12 @@ use dhruv_search::{
     hora_from_sunrises, karana_at, karana_for_date, masa_for_date, nakshatra_at,
     nakshatra_for_date, next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed,
     next_purnima, next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan,
-    panchang_for_date, prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed,
-    prev_purnima, prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan,
-    search_amavasyas, search_chandra_grahan, search_conjunctions, search_max_speed,
-    search_purnimas, search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date,
-    sidereal_sum_at, special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date,
-    vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, vimsopaka_for_date, yoga_at,
-    yoga_for_date,
+    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
+    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
+    search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
+    search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date, sidereal_sum_at,
+    special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises,
+    varsha_for_date, vedic_day_sunrises, vimsopaka_for_date, yoga_at, yoga_for_date,
 };
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraError, TaraId};
 use dhruv_time::UtcTime;
@@ -28,18 +27,17 @@ use dhruv_vedic_base::{
     Amsha, AmshaRequest, AmshaVariation, AyanamshaSystem, BhavaConfig, BhavaReferenceMode,
     BhavaStartingPoint, BhavaSystem, GeoLocation, LunarNode, NodeMode, RiseSetConfig, RiseSetEvent,
     RiseSetResult, SunLimb, VedicError, amsha_longitude, amsha_rashi_info,
-    approximate_local_noon_jd, ayana_from_sidereal_longitude, ayanamsha_deg,
-    ayanamsha_deg_with_catalog, ayanamsha_mean_deg, ayanamsha_mean_deg_with_catalog,
-    ayanamsha_true_deg, compute_all_events, compute_bhavas, compute_rise_set, deg_to_dms,
-    jd_tdb_to_centuries, karana_from_elongation, lunar_node_deg, lunar_node_deg_for_epoch,
-    masa_from_rashi_index, nakshatra_from_longitude, nakshatra_from_tropical,
-    nakshatra28_from_longitude, nakshatra28_from_tropical, nth_rashi_from, rashi_from_longitude,
-    rashi_from_tropical, samvatsara_from_year, time_upagraha_jd, tithi_from_elongation,
-    vaar_from_jd, yoga_from_sum,
+    approximate_local_noon_jd, ayana_from_sidereal_longitude, ayanamsha_deg_with_catalog,
+    ayanamsha_mean_deg_with_catalog, ayanamsha_true_deg, compute_all_events, compute_bhavas,
+    compute_rise_set, deg_to_dms, jd_tdb_to_centuries, karana_from_elongation, lunar_node_deg,
+    lunar_node_deg_for_epoch, masa_from_rashi_index, nakshatra_from_longitude,
+    nakshatra_from_tropical, nakshatra28_from_longitude, nakshatra28_from_tropical, nth_rashi_from,
+    rashi_from_longitude, rashi_from_tropical, samvatsara_from_year, time_upagraha_jd,
+    tithi_from_elongation, vaar_from_jd, yoga_from_sum,
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 40;
+pub const DHRUV_API_VERSION: u32 = 41;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -718,67 +716,6 @@ fn ayanamsha_system_from_code(code: i32) -> Option<AyanamshaSystem> {
     systems.get(idx).copied()
 }
 
-/// Mean ayanamsha at a JD TDB. Pure math, no engine needed.
-///
-/// # Safety
-/// `out_deg` must be a valid, non-null pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_mean_deg(
-    system_code: i32,
-    jd_tdb: f64,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let t = jd_tdb_to_centuries(jd_tdb);
-        let deg = ayanamsha_mean_deg(system, t);
-
-        // SAFETY: Pointer is checked for null; write one value.
-        unsafe { *out_deg = deg };
-        DhruvStatus::Ok
-    })
-}
-
-/// "True" ayanamsha helper at a JD TDB.
-///
-/// `delta_psi_arcsec` is applied to all systems.
-///
-/// # Safety
-/// `out_deg` must be a valid, non-null pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_true_deg(
-    system_code: i32,
-    jd_tdb: f64,
-    delta_psi_arcsec: f64,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let t = jd_tdb_to_centuries(jd_tdb);
-        let deg = ayanamsha_true_deg(system, t, delta_psi_arcsec);
-
-        // SAFETY: Pointer is checked for null; write one value.
-        unsafe { *out_deg = deg };
-        DhruvStatus::Ok
-    })
-}
-
 /// Number of supported ayanamsha systems.
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_ayanamsha_system_count() -> u32 {
@@ -1115,119 +1052,6 @@ pub struct DhruvAyanamshaComputeRequest {
     pub use_nutation: u8,
     /// Used by `mode=TRUE` (arcseconds).
     pub delta_psi_arcsec: f64,
-}
-
-/// Unified ayanamsha computation.
-///
-/// When `use_nutation` is non-zero, nutation in longitude (Δψ) is added
-/// for all systems.
-///
-/// # Safety
-/// `out_deg` must be a valid, non-null pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_deg(
-    system_code: i32,
-    jd_tdb: f64,
-    use_nutation: u8,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let t = jd_tdb_to_centuries(jd_tdb);
-        let deg = ayanamsha_deg(system, t, use_nutation != 0);
-
-        // SAFETY: Pointer is checked for null; write one value.
-        unsafe { *out_deg = deg };
-        DhruvStatus::Ok
-    })
-}
-
-/// Mean ayanamsha with star catalog for proper-motion-corrected anchors.
-///
-/// When `catalog` is non-null, star-anchored systems (TrueLahiri, PushyaPaksha,
-/// RohiniPaksha, Aldebaran15Tau, GalacticCenter0Sag, ChandraHari) use
-/// dynamically propagated star positions. When `catalog` is null, behavior is
-/// identical to `dhruv_ayanamsha_mean_deg`.
-///
-/// # Safety
-/// `out_deg` must be a valid, non-null pointer. `catalog` may be null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_mean_deg_with_catalog(
-    system_code: i32,
-    jd_tdb: f64,
-    catalog: *const DhruvTaraCatalogHandle,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let t = jd_tdb_to_centuries(jd_tdb);
-        let cat_opt = if catalog.is_null() {
-            None
-        } else {
-            Some(unsafe { &*catalog })
-        };
-        let deg = ayanamsha_mean_deg_with_catalog(system, t, cat_opt);
-
-        // SAFETY: Pointer is checked for null; write one value.
-        unsafe { *out_deg = deg };
-        DhruvStatus::Ok
-    })
-}
-
-/// Unified ayanamsha with star catalog for proper-motion-corrected anchors.
-///
-/// When `catalog` is non-null, star-anchored systems use dynamically propagated
-/// star positions. When `catalog` is null, behavior is identical to
-/// `dhruv_ayanamsha_deg`.
-///
-/// # Safety
-/// `out_deg` must be a valid, non-null pointer. `catalog` may be null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_deg_with_catalog(
-    system_code: i32,
-    jd_tdb: f64,
-    use_nutation: u8,
-    catalog: *const DhruvTaraCatalogHandle,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let t = jd_tdb_to_centuries(jd_tdb);
-        let cat_opt = if catalog.is_null() {
-            None
-        } else {
-            Some(unsafe { &*catalog })
-        };
-        let deg = ayanamsha_deg_with_catalog(system, t, use_nutation != 0, cat_opt);
-
-        // SAFETY: Pointer is checked for null; write one value.
-        unsafe { *out_deg = deg };
-        DhruvStatus::Ok
-    })
 }
 
 /// Unified ayanamsha compute API covering mode + time-base variants.
@@ -6729,127 +6553,6 @@ pub unsafe extern "C" fn dhruv_ramc_deg_utc(
 // Group C: Pure math _utc functions (8 functions)
 // ---------------------------------------------------------------------------
 
-/// Mean ayanamsha with UTC input. Requires LSK for UTC→TDB.
-///
-/// # Safety
-/// `lsk` and `out_deg` must be valid, non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_mean_deg_utc(
-    lsk: *const DhruvLskHandle,
-    system_code: i32,
-    utc: *const DhruvUtcTime,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if lsk.is_null() || utc.is_null() || out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let lsk_ref = unsafe { &*lsk };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(lsk_ref);
-        let t = jd_tdb_to_centuries(jd_tdb);
-        unsafe { *out_deg = ayanamsha_mean_deg(system, t) };
-        DhruvStatus::Ok
-    })
-}
-
-/// True ayanamsha with UTC input. Requires LSK for UTC→TDB.
-///
-/// # Safety
-/// `lsk` and `out_deg` must be valid, non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_true_deg_utc(
-    lsk: *const DhruvLskHandle,
-    system_code: i32,
-    utc: *const DhruvUtcTime,
-    delta_psi_arcsec: f64,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if lsk.is_null() || utc.is_null() || out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let lsk_ref = unsafe { &*lsk };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(lsk_ref);
-        let t = jd_tdb_to_centuries(jd_tdb);
-        unsafe { *out_deg = ayanamsha_true_deg(system, t, delta_psi_arcsec) };
-        DhruvStatus::Ok
-    })
-}
-
-/// Unified ayanamsha with UTC input. Requires LSK for UTC→TDB.
-///
-/// # Safety
-/// `lsk` and `out_deg` must be valid, non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_deg_utc(
-    lsk: *const DhruvLskHandle,
-    system_code: i32,
-    utc: *const DhruvUtcTime,
-    use_nutation: u8,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if lsk.is_null() || utc.is_null() || out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let lsk_ref = unsafe { &*lsk };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(lsk_ref);
-        let t = jd_tdb_to_centuries(jd_tdb);
-        unsafe { *out_deg = ayanamsha_deg(system, t, use_nutation != 0) };
-        DhruvStatus::Ok
-    })
-}
-
-/// Unified ayanamsha with star catalog and UTC input.
-///
-/// When `catalog` is non-null, star-anchored systems use dynamically propagated
-/// star positions. When `catalog` is null, behavior is identical to
-/// `dhruv_ayanamsha_deg_utc`.
-///
-/// # Safety
-/// `lsk` and `out_deg` must be valid, non-null pointers. `catalog` may be null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_ayanamsha_deg_with_catalog_utc(
-    lsk: *const DhruvLskHandle,
-    system_code: i32,
-    utc: *const DhruvUtcTime,
-    use_nutation: u8,
-    catalog: *const DhruvTaraCatalogHandle,
-    out_deg: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if lsk.is_null() || utc.is_null() || out_deg.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let system = match ayanamsha_system_from_code(system_code) {
-            Some(s) => s,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let lsk_ref = unsafe { &*lsk };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(lsk_ref);
-        let t = jd_tdb_to_centuries(jd_tdb);
-        let cat_opt = if catalog.is_null() {
-            None
-        } else {
-            Some(unsafe { &*catalog })
-        };
-        unsafe { *out_deg = ayanamsha_deg_with_catalog(system, t, use_nutation != 0, cat_opt) };
-        DhruvStatus::Ok
-    })
-}
-
 /// IAU 2000B nutation with UTC input. Requires LSK for UTC→TDB.
 ///
 /// # Safety
@@ -7561,75 +7264,6 @@ pub struct DhruvPanchangInfo {
     pub masa: DhruvMasaInfo,
     pub ayana: DhruvAyanaInfo,
     pub varsha: DhruvVarshaInfo,
-}
-
-/// Compute combined panchang for a given UTC date and location.
-///
-/// When `include_calendar` is non-zero, also computes masa, ayana, and varsha.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_panchang_for_date(
-    engine: *const DhruvEngineHandle,
-    eop: *const DhruvEopHandle,
-    utc: *const DhruvUtcTime,
-    location: *const DhruvGeoLocation,
-    riseset_config: *const DhruvRiseSetConfig,
-    sankranti_config: *const DhruvSankrantiConfig,
-    include_calendar: u8,
-    out: *mut DhruvPanchangInfo,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || eop.is_null()
-            || utc.is_null()
-            || location.is_null()
-            || riseset_config.is_null()
-            || sankranti_config.is_null()
-            || out.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let eop_ref = unsafe { &*eop };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        let loc_ref = unsafe { &*location };
-        let rs_ref = unsafe { &*riseset_config };
-        let geo = GeoLocation::new(
-            loc_ref.latitude_deg,
-            loc_ref.longitude_deg,
-            loc_ref.altitude_m,
-        );
-        let sun_limb = match sun_limb_from_code(rs_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: rs_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: rs_ref.altitude_correction != 0,
-        };
-        let cfg = match sankranti_config_from_ffi(unsafe { &*sankranti_config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        match panchang_for_date(
-            engine_ref,
-            eop_ref,
-            &t,
-            &geo,
-            &rs_config,
-            &cfg,
-            include_calendar != 0,
-        ) {
-            Ok(info) => {
-                unsafe { *out = panchang_info_to_ffi(&info) };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
 }
 
 /// Unified panchang compute entrypoint with include-mask control.
@@ -12184,18 +11818,6 @@ fn tara_config_from_c(config: &DhruvTaraConfig) -> TaraConfig {
     }
 }
 
-fn earth_state_from_c(es: *const DhruvEarthState) -> Option<dhruv_tara::EarthState> {
-    if es.is_null() {
-        None
-    } else {
-        let es_ref = unsafe { &*es };
-        Some(dhruv_tara::EarthState {
-            position_au: es_ref.position_au,
-            velocity_au_day: es_ref.velocity_au_day,
-        })
-    }
-}
-
 fn earth_state_from_value(valid: u8, es: &DhruvEarthState) -> Option<dhruv_tara::EarthState> {
     if valid == 0 {
         None
@@ -12301,232 +11923,6 @@ pub unsafe extern "C" fn dhruv_tara_compute_ex(
                         sidereal_longitude_deg: lon,
                     };
                 }
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Compute equatorial position (Astrometric, no parallax).
-///
-/// # Safety
-/// `handle` and `out` must be valid non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_tara_position_equatorial(
-    handle: *const DhruvTaraCatalogHandle,
-    tara_id: i32,
-    jd_tdb: f64,
-    out: *mut DhruvEquatorialPosition,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if handle.is_null() || out.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let catalog = unsafe { &*handle };
-        let id = match TaraId::from_code(tara_id) {
-            Some(id) => id,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        match dhruv_tara::position_equatorial(catalog, id, jd_tdb) {
-            Ok(pos) => {
-                unsafe {
-                    *out = DhruvEquatorialPosition {
-                        ra_deg: pos.ra_deg,
-                        dec_deg: pos.dec_deg,
-                        distance_au: pos.distance_au,
-                    };
-                }
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Compute equatorial position with config and optional earth state.
-///
-/// # Safety
-/// `handle`, `config`, and `out` must be valid non-null pointers.
-/// `earth_state` may be null for Astrometric without parallax.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_tara_position_equatorial_ex(
-    handle: *const DhruvTaraCatalogHandle,
-    tara_id: i32,
-    jd_tdb: f64,
-    config: *const DhruvTaraConfig,
-    earth_state: *const DhruvEarthState,
-    out: *mut DhruvEquatorialPosition,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if handle.is_null() || config.is_null() || out.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let catalog = unsafe { &*handle };
-        let cfg = tara_config_from_c(unsafe { &*config });
-        let es = earth_state_from_c(earth_state);
-        let id = match TaraId::from_code(tara_id) {
-            Some(id) => id,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        match dhruv_tara::position_equatorial_with_config(catalog, id, jd_tdb, &cfg, es.as_ref()) {
-            Ok(pos) => {
-                unsafe {
-                    *out = DhruvEquatorialPosition {
-                        ra_deg: pos.ra_deg,
-                        dec_deg: pos.dec_deg,
-                        distance_au: pos.distance_au,
-                    };
-                }
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Compute ecliptic position (Astrometric, no parallax).
-///
-/// # Safety
-/// `handle` and `out` must be valid non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_tara_position_ecliptic(
-    handle: *const DhruvTaraCatalogHandle,
-    tara_id: i32,
-    jd_tdb: f64,
-    out: *mut DhruvSphericalCoords,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if handle.is_null() || out.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let catalog = unsafe { &*handle };
-        let id = match TaraId::from_code(tara_id) {
-            Some(id) => id,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        match dhruv_tara::position_ecliptic(catalog, id, jd_tdb) {
-            Ok(sc) => {
-                unsafe {
-                    *out = DhruvSphericalCoords {
-                        lon_deg: sc.lon_deg,
-                        lat_deg: sc.lat_deg,
-                        distance_km: sc.distance_km,
-                    };
-                }
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Compute ecliptic position with config and optional earth state.
-///
-/// # Safety
-/// `handle`, `config`, and `out` must be valid non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_tara_position_ecliptic_ex(
-    handle: *const DhruvTaraCatalogHandle,
-    tara_id: i32,
-    jd_tdb: f64,
-    config: *const DhruvTaraConfig,
-    earth_state: *const DhruvEarthState,
-    out: *mut DhruvSphericalCoords,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if handle.is_null() || config.is_null() || out.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let catalog = unsafe { &*handle };
-        let cfg = tara_config_from_c(unsafe { &*config });
-        let es = earth_state_from_c(earth_state);
-        let id = match TaraId::from_code(tara_id) {
-            Some(id) => id,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        match dhruv_tara::position_ecliptic_with_config(catalog, id, jd_tdb, &cfg, es.as_ref()) {
-            Ok(sc) => {
-                unsafe {
-                    *out = DhruvSphericalCoords {
-                        lon_deg: sc.lon_deg,
-                        lat_deg: sc.lat_deg,
-                        distance_km: sc.distance_km,
-                    };
-                }
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Compute sidereal longitude (Astrometric, no parallax).
-///
-/// # Safety
-/// `handle` and `out` must be valid non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_tara_sidereal_longitude(
-    handle: *const DhruvTaraCatalogHandle,
-    tara_id: i32,
-    jd_tdb: f64,
-    ayanamsha_deg: f64,
-    out: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if handle.is_null() || out.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let catalog = unsafe { &*handle };
-        let id = match TaraId::from_code(tara_id) {
-            Some(id) => id,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        match dhruv_tara::sidereal_longitude(catalog, id, jd_tdb, ayanamsha_deg) {
-            Ok(lon) => {
-                unsafe { *out = lon };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Compute sidereal longitude with config and optional earth state.
-///
-/// # Safety
-/// `handle`, `config`, and `out` must be valid non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dhruv_tara_sidereal_longitude_ex(
-    handle: *const DhruvTaraCatalogHandle,
-    tara_id: i32,
-    jd_tdb: f64,
-    ayanamsha_deg: f64,
-    config: *const DhruvTaraConfig,
-    earth_state: *const DhruvEarthState,
-    out: *mut f64,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if handle.is_null() || config.is_null() || out.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let catalog = unsafe { &*handle };
-        let cfg = tara_config_from_c(unsafe { &*config });
-        let es = earth_state_from_c(earth_state);
-        let id = match TaraId::from_code(tara_id) {
-            Some(id) => id,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        match dhruv_tara::sidereal_longitude_with_config(
-            catalog,
-            id,
-            jd_tdb,
-            ayanamsha_deg,
-            &cfg,
-            es.as_ref(),
-        ) {
-            Ok(lon) => {
-                unsafe { *out = lon };
                 DhruvStatus::Ok
             }
             Err(e) => DhruvStatus::from(&e),
@@ -12644,33 +12040,6 @@ mod tests {
     // --- Ayanamsha tests ---
 
     #[test]
-    fn ffi_ayanamsha_rejects_invalid_code() {
-        let mut out: f64 = 0.0;
-        // SAFETY: Valid output pointer, invalid system code.
-        let status = unsafe { dhruv_ayanamsha_mean_deg(99, 2_451_545.0, &mut out) };
-        assert_eq!(status, DhruvStatus::InvalidQuery);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_rejects_null_output() {
-        // SAFETY: Null output pointer is intentional for validation.
-        let status = unsafe { dhruv_ayanamsha_mean_deg(0, 2_451_545.0, ptr::null_mut()) };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_lahiri_at_j2000() {
-        let mut out: f64 = 0.0;
-        // SAFETY: Valid pointers.
-        let status = unsafe { dhruv_ayanamsha_mean_deg(0, 2_451_545.0, &mut out) };
-        assert_eq!(status, DhruvStatus::Ok);
-        assert!(
-            (out - 23.857_052_898_247_307).abs() < 1e-12,
-            "Lahiri at J2000 = {out}, expected mean anchor reference"
-        );
-    }
-
-    #[test]
     fn ffi_ayanamsha_system_count_is_20() {
         assert_eq!(dhruv_ayanamsha_system_count(), 20);
     }
@@ -12686,127 +12055,36 @@ mod tests {
     }
 
     #[test]
-    fn ffi_ayanamsha_deg_mean_matches_old() {
-        let mut unified: f64 = 0.0;
-        let mut old: f64 = 0.0;
-        // Lahiri at J2000, use_nutation=0 → should match mean
-        // SAFETY: Valid pointers.
-        let s1 = unsafe { dhruv_ayanamsha_deg(0, 2_451_545.0, 0, &mut unified) };
-        let s2 = unsafe { dhruv_ayanamsha_mean_deg(0, 2_451_545.0, &mut old) };
-        assert_eq!(s1, DhruvStatus::Ok);
-        assert_eq!(s2, DhruvStatus::Ok);
-        assert!((unified - old).abs() < 1e-15);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_deg_nutation_flag_works() {
-        let mut with_nut: f64 = 0.0;
-        let mut without: f64 = 0.0;
-        let jd = 2_460_310.5; // ~2024-01-01
-        // TrueLahiri = system code 1
-        // SAFETY: Valid pointers.
-        let s1 = unsafe { dhruv_ayanamsha_deg(1, jd, 1, &mut with_nut) };
-        let s2 = unsafe { dhruv_ayanamsha_deg(1, jd, 0, &mut without) };
-        assert_eq!(s1, DhruvStatus::Ok);
-        assert_eq!(s2, DhruvStatus::Ok);
-        // Nutation flag should now produce a measurable difference
-        let t = dhruv_vedic_base::jd_tdb_to_centuries(jd);
-        let (dpsi, _) = dhruv_frames::nutation_iau2000b(t);
-        let expected_diff = dpsi / 3600.0;
-        assert!(
-            (with_nut - without - expected_diff).abs() < 1e-10,
-            "diff={}, expected={}",
-            with_nut - without,
-            expected_diff
-        );
-    }
-
-    // --- Ayanamsha catalog-variant tests ---
-
-    #[test]
-    fn ffi_ayanamsha_mean_catalog_null_matches_default() {
-        // Both legacy and catalog(null) use embedded catalog → identical
-        let jd = 2_451_545.0;
-        for code in 0..20_i32 {
-            let mut legacy: f64 = 0.0;
-            let mut catalog: f64 = 0.0;
-            // SAFETY: Valid pointers.
-            let s1 = unsafe { dhruv_ayanamsha_mean_deg(code, jd, &mut legacy) };
-            let s2 = unsafe {
-                dhruv_ayanamsha_mean_deg_with_catalog(code, jd, ptr::null(), &mut catalog)
-            };
-            assert_eq!(s1, DhruvStatus::Ok);
-            assert_eq!(s2, DhruvStatus::Ok);
-            assert!(
-                (legacy - catalog).abs() < 1e-15,
-                "code={code}: legacy={legacy}, catalog(null)={catalog}"
-            );
-        }
-    }
-
-    #[test]
-    fn ffi_ayanamsha_deg_catalog_null_matches_default() {
-        // Both legacy and catalog(null) use embedded catalog → identical
-        let jd = 2_460_310.5; // ~2024
-        for code in 0..20_i32 {
-            let mut legacy: f64 = 0.0;
-            let mut catalog: f64 = 0.0;
-            // SAFETY: Valid pointers.
-            let s1 = unsafe { dhruv_ayanamsha_deg(code, jd, 0, &mut legacy) };
-            let s2 =
-                unsafe { dhruv_ayanamsha_deg_with_catalog(code, jd, 0, ptr::null(), &mut catalog) };
-            assert_eq!(s1, DhruvStatus::Ok);
-            assert_eq!(s2, DhruvStatus::Ok);
-            assert!(
-                (legacy - catalog).abs() < 1e-15,
-                "code={code}: legacy={legacy}, catalog(null)={catalog}"
-            );
-        }
-    }
-
-    #[test]
-    fn ffi_ayanamsha_mean_catalog_rejects_null_output() {
-        // SAFETY: Null output pointer is intentional for validation.
-        let status = unsafe {
-            dhruv_ayanamsha_mean_deg_with_catalog(0, 2_451_545.0, ptr::null(), ptr::null_mut())
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_deg_catalog_rejects_null_output() {
-        // SAFETY: Null output pointer is intentional for validation.
-        let status = unsafe {
-            dhruv_ayanamsha_deg_with_catalog(0, 2_451_545.0, 0, ptr::null(), ptr::null_mut())
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_mean_catalog_rejects_invalid_code() {
-        let mut out: f64 = 0.0;
-        // SAFETY: Valid output pointer, invalid system code.
-        let status = unsafe {
-            dhruv_ayanamsha_mean_deg_with_catalog(99, 2_451_545.0, ptr::null(), &mut out)
-        };
-        assert_eq!(status, DhruvStatus::InvalidQuery);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_deg_catalog_rejects_invalid_code() {
-        let mut out: f64 = 0.0;
-        // SAFETY: Valid output pointer, invalid system code.
-        let status =
-            unsafe { dhruv_ayanamsha_deg_with_catalog(99, 2_451_545.0, 0, ptr::null(), &mut out) };
-        assert_eq!(status, DhruvStatus::InvalidQuery);
-    }
-
-    #[test]
     fn ffi_ayanamsha_compute_ex_rejects_null_request() {
         let mut out: f64 = 0.0;
         // SAFETY: Null request pointer is intentional for validation.
         let status =
             unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), ptr::null(), ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_ayanamsha_compute_ex_rejects_null_output() {
+        let request = DhruvAyanamshaComputeRequest {
+            system_code: 0,
+            mode: DHRUV_AYANAMSHA_MODE_MEAN,
+            time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            use_nutation: 0,
+            delta_psi_arcsec: 0.0,
+        };
+        // SAFETY: Null output pointer is intentional for validation.
+        let status = unsafe {
+            dhruv_ayanamsha_compute_ex(ptr::null(), &request, ptr::null(), ptr::null_mut())
+        };
         assert_eq!(status, DhruvStatus::NullPointer);
     }
 
@@ -12836,9 +12114,63 @@ mod tests {
     }
 
     #[test]
-    fn ffi_ayanamsha_compute_ex_matches_unified_jd() {
+    fn ffi_ayanamsha_compute_ex_rejects_invalid_code() {
+        let request = DhruvAyanamshaComputeRequest {
+            system_code: 99,
+            mode: DHRUV_AYANAMSHA_MODE_MEAN,
+            time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            use_nutation: 0,
+            delta_psi_arcsec: 0.0,
+        };
+        let mut out: f64 = 0.0;
+        // SAFETY: Invalid system code is intentional for validation.
+        let status =
+            unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &request, ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_ayanamsha_compute_ex_mean_lahiri_at_j2000() {
         let request = DhruvAyanamshaComputeRequest {
             system_code: 0,
+            mode: DHRUV_AYANAMSHA_MODE_MEAN,
+            time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+            jd_tdb: 2_451_545.0,
+            utc: DhruvUtcTime {
+                year: 2000,
+                month: 1,
+                day: 1,
+                hour: 12,
+                minute: 0,
+                second: 0.0,
+            },
+            use_nutation: 0,
+            delta_psi_arcsec: 0.0,
+        };
+        let mut out: f64 = 0.0;
+        // SAFETY: Valid pointers.
+        let status =
+            unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &request, ptr::null(), &mut out) };
+        assert_eq!(status, DhruvStatus::Ok);
+        assert!(
+            (out - 23.857_052_898_247_307).abs() < 1e-12,
+            "Lahiri at J2000 = {out}, expected mean anchor reference"
+        );
+    }
+
+    #[test]
+    fn ffi_ayanamsha_compute_ex_nutation_flag_works() {
+        let base = DhruvAyanamshaComputeRequest {
+            system_code: 1,
             mode: DHRUV_AYANAMSHA_MODE_UNIFIED,
             time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
             jd_tdb: 2_460_310.5,
@@ -12850,17 +12182,28 @@ mod tests {
                 minute: 0,
                 second: 0.0,
             },
-            use_nutation: 1,
+            use_nutation: 0,
             delta_psi_arcsec: 0.0,
         };
-        let mut ex: f64 = 0.0;
-        let mut old: f64 = 0.0;
+        let with_nut = DhruvAyanamshaComputeRequest {
+            use_nutation: 1,
+            ..base
+        };
+        let mut with_nut_out: f64 = 0.0;
+        let mut without_nut_out: f64 = 0.0;
         // SAFETY: Valid pointers.
-        let s1 = unsafe { dhruv_ayanamsha_compute_ex(ptr::null(), &request, ptr::null(), &mut ex) };
-        let s2 = unsafe { dhruv_ayanamsha_deg(0, 2_460_310.5, 1, &mut old) };
+        let s1 = unsafe {
+            dhruv_ayanamsha_compute_ex(ptr::null(), &with_nut, ptr::null(), &mut with_nut_out)
+        };
+        let s2 = unsafe {
+            dhruv_ayanamsha_compute_ex(ptr::null(), &base, ptr::null(), &mut without_nut_out)
+        };
         assert_eq!(s1, DhruvStatus::Ok);
         assert_eq!(s2, DhruvStatus::Ok);
-        assert!((ex - old).abs() < 1e-15);
+        let t = dhruv_vedic_base::jd_tdb_to_centuries(base.jd_tdb);
+        let (dpsi, _) = dhruv_frames::nutation_iau2000b(t);
+        let expected_diff = dpsi / 3600.0;
+        assert!((with_nut_out - without_nut_out - expected_diff).abs() < 1e-10);
     }
 
     #[test]
@@ -13464,8 +12807,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_40() {
-        assert_eq!(dhruv_api_version(), 40);
+    fn ffi_api_version_is_41() {
+        assert_eq!(dhruv_api_version(), 41);
     }
 
     #[test]
@@ -15000,28 +14343,6 @@ mod tests {
     }
 
     // Group C null rejection
-
-    #[test]
-    fn ffi_ayanamsha_mean_deg_utc_rejects_null() {
-        let mut out: f64 = 0.0;
-        let status = unsafe { dhruv_ayanamsha_mean_deg_utc(ptr::null(), 0, ptr::null(), &mut out) };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_true_deg_utc_rejects_null() {
-        let mut out: f64 = 0.0;
-        let status =
-            unsafe { dhruv_ayanamsha_true_deg_utc(ptr::null(), 0, ptr::null(), 0.0, &mut out) };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_ayanamsha_deg_utc_rejects_null() {
-        let mut out: f64 = 0.0;
-        let status = unsafe { dhruv_ayanamsha_deg_utc(ptr::null(), 0, ptr::null(), 0, &mut out) };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
 
     #[test]
     fn ffi_nutation_iau2000b_utc_rejects_null() {
