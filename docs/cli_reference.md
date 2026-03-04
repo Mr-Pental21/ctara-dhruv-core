@@ -6,7 +6,7 @@ Debug and operations CLI for the ctara-dhruv ephemeris engine.
 dhruv <COMMAND> [OPTIONS]
 ```
 
-All engine-dependent commands require `--bsp` and `--lsk` kernel paths.
+Engine kernels can be provided by explicit flags (`--bsp`, `--lsk`) or layered config.
 Location-dependent commands additionally require `--lat`, `--lon`, and `--eop`.
 
 ---
@@ -14,24 +14,25 @@ Location-dependent commands additionally require `--lat`, `--lon`, and `--eop`.
 ## Table of Contents
 
 1. [Common Flags](#common-flags)
-2. [Ephemeris Queries](#ephemeris-queries)
-3. [Rashi / Nakshatra](#rashi--nakshatra)
-4. [Ayanamsha / Nutation / Lunar Nodes](#ayanamsha--nutation--lunar-nodes)
-5. [Lagna / Bhava / Sunrise](#lagna--bhava--sunrise)
-6. [Panchang (combined)](#panchang-combined)
-7. [Panchang Elements](#panchang-elements)
-8. [Jyotish Composite](#jyotish-composite)
-9. [Search: Lunar Phases](#search-lunar-phases)
-10. [Search: Sankranti](#search-sankranti)
-11. [Search: Conjunctions](#search-conjunctions)
-12. [Search: Eclipses](#search-eclipses)
-13. [Search: Stationary / Max Speed](#search-stationary--max-speed)
-14. [Individual Sphuta Formulas](#individual-sphuta-formulas)
-15. [Individual Special Lagna Formulas](#individual-special-lagna-formulas)
-16. [Utility Primitives](#utility-primitives)
-17. [Panchang Intermediates](#panchang-intermediates)
-18. [Low-Level Ashtakavarga / Drishti](#low-level-ashtakavarga--drishti)
-19. [C-Only Patterns Not in CLI](#c-only-patterns-not-in-cli)
+2. [Layered Config](#layered-config)
+3. [Ephemeris Queries](#ephemeris-queries)
+4. [Rashi / Nakshatra](#rashi--nakshatra)
+5. [Ayanamsha / Nutation / Lunar Nodes](#ayanamsha--nutation--lunar-nodes)
+6. [Lagna / Bhava / Sunrise](#lagna--bhava--sunrise)
+7. [Panchang (combined)](#panchang-combined)
+8. [Panchang Elements](#panchang-elements)
+9. [Jyotish Composite](#jyotish-composite)
+10. [Search: Lunar Phases](#search-lunar-phases)
+11. [Search: Sankranti](#search-sankranti)
+12. [Search: Conjunctions](#search-conjunctions)
+13. [Search: Eclipses](#search-eclipses)
+14. [Search: Stationary / Max Speed](#search-stationary--max-speed)
+15. [Individual Sphuta Formulas](#individual-sphuta-formulas)
+16. [Individual Special Lagna Formulas](#individual-special-lagna-formulas)
+17. [Utility Primitives](#utility-primitives)
+18. [Panchang Intermediates](#panchang-intermediates)
+19. [Low-Level Ashtakavarga / Drishti](#low-level-ashtakavarga--drishti)
+20. [C-Only Patterns Not in CLI](#c-only-patterns-not-in-cli)
 
 ---
 
@@ -50,12 +51,28 @@ Location-dependent commands additionally require `--lat`, `--lon`, and `--eop`.
 | `--nutation` | flag | Apply nutation correction |
 | `--time-policy` | `strict-lsk` or `hybrid-deltat` | UTC->TDB conversion policy (default `hybrid-deltat`) |
 | `--delta-t-model` | `legacy-em2006` or `smh2016` | Delta-T model for hybrid fallback (default `smh2016`) |
+| `--config` | path | Explicit layered config file (`.toml` or `.json`) |
+| `--no-config` | flag | Disable config-file discovery |
+| `--defaults-mode` | `recommended` or `none` | Fallback behavior for unresolved values |
 | `--future-delta-t-transition` | selector | Future strategy beyond LSK coverage: `legacy-tt-utc-blend` (default) or `bridge-modern-endpoint` |
 | `--no-freeze-future-dut1` | flag | Use configured DUT1 fallback beyond EOP instead of freezing DUT1 |
 | `--future-transition-years` | f64 | Blend window length from anchor TT-UTC to model fallback (`100.0` default) |
 | `--smh-future-family` | selector | Post-EOP asymptotic family when `--future-delta-t-transition bridge-modern-endpoint` is active (`addendum2020`, `c-20`, `c-17.52`, `c-15.32`, `stephenson1997`, `stephenson2016`) |
 | `--stale-lsk-threshold-days` | f64 | Warn if LSK coverage end is older than threshold |
 | `--stale-eop-threshold-days` | f64 | Warn if EOP coverage end is older than threshold |
+
+---
+
+## Layered Config
+
+Precedence:
+
+1. Explicit CLI flags
+2. Operation-specific config
+3. Common config
+4. Recommended defaults (unless `--defaults-mode none`)
+
+Use `dhruv config-show-effective` to print resolved values for all config families.
 
 ---
 

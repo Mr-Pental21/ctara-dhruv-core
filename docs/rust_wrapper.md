@@ -1,10 +1,11 @@
-# `dhruv_rs` — Rust Convenience Wrapper
+# `dhruv_rs` — Rust Wrapper
 
 ## Purpose
 
-`dhruv_rs` provides a high-level Rust API over the ctara-dhruv engine crates. It removes boilerplate by managing a global engine singleton, accepting UTC dates directly, and returning spherical coordinates.
+`dhruv_rs` provides a context-first high-level API over ctara-dhruv crates.
+The public API uses `DhruvContext` (no global singleton).
 
-Users only need `use dhruv_rs::*` — all core types are re-exported.
+Users only need `use dhruv_rs::*` — core types are re-exported.
 
 ## Quick Start
 
@@ -12,29 +13,46 @@ Users only need `use dhruv_rs::*` — all core types are re-exported.
 use std::path::PathBuf;
 use dhruv_rs::*;
 
-// 1. Initialize once at startup
+// 1. Build engine config
 let config = EngineConfig::with_single_spk(
     PathBuf::from("kernels/data/de442s.bsp"),
     PathBuf::from("kernels/data/naif0012.tls"),
     256,
     true,
 );
-init(config).expect("engine init");
 
-// 2. Query with UTC dates
-let date: UtcDate = "2024-03-20T12:00:00Z".parse().unwrap();
-let lon = longitude(Body::Mars, Observer::Body(Body::Earth), date).unwrap();
-println!("Mars ecliptic longitude: {:.4}°", lon.to_degrees());
+// 2. Create explicit context (optionally with resolver)
+let ctx = DhruvContext::new(config).expect("context init");
+
+// 3. Execute operation APIs through context
+let req = ConjunctionRequest {
+    body1: Body::Sun,
+    body2: Body::Moon,
+    config: Some(ConjunctionConfig::conjunction(0.5)),
+    query: ConjunctionRequestQuery::Next {
+        at: TimeInput::Utc(UtcDate::new(2024, 3, 20, 12, 0, 0.0)),
+    },
+};
+let _result = conjunction(&ctx, &req).expect("conjunction");
 ```
 
 ## API Reference
 
-### Initialization
+### Context Lifecycle
 
 | Function | Description |
 |---|---|
-| `init(config: EngineConfig) -> Result<(), DhruvError>` | Initialize the global engine. Must be called once before queries. |
-| `is_initialized() -> bool` | Check whether the engine has been initialized. |
+| `DhruvContext::new(config)` | Build context from explicit engine config |
+| `DhruvContext::with_resolver(config, resolver)` | Build context with layered config resolver |
+| `DhruvContext::engine()` | Borrow inner engine |
+| `DhruvContext::resolver()` | Borrow optional resolver |
+| `DhruvContext::set_resolver(...)` | Replace resolver |
+| `DhruvContext::set_time_conversion_policy(...)` | Set per-context time policy |
+
+## Migration Note
+
+`dhruv_rs` high-level singleton APIs were removed from the public surface.
+Use `DhruvContext` + `ops::*` requests instead.
 
 ### Date Input
 
@@ -299,19 +317,21 @@ dhruv_eop_free(eop);                                    // manual free
 | `dhruv_eop_load(path, out)` | `(*u8, *mut *mut EopHandle) -> Status` | Load EOP data to heap |
 | `dhruv_eop_free(eop)` | `(*mut EopHandle) -> Status` | Free EOP handle |
 
-**Why no Rust wrappers:**
+**Lifecycle note:**
 
-`dhruv_rs` uses a global `OnceLock<Engine>` singleton — `init()` creates it once,
-`engine()` borrows it forever, and the process owns it until exit.  The CLI uses
-`Engine::new()` on the stack with automatic `Drop`.  `EopKernel::load()` is a
-native Rust constructor that returns an owned value — `Drop` handles cleanup.
-There is nothing to wrap because Rust's ownership model *is* the lifecycle.
+`dhruv_rs` now uses explicit context ownership (`DhruvContext`), so high-level calls
+do not depend on global process state.
 
 ```rust
-// dhruv_rs: global singleton (OnceLock)
-dhruv_rs::init(config)?;                    // Engine::new() + OnceLock::set()
-let pos = dhruv_rs::position(body, obs, d)?; // borrows &'static Engine
-// No free needed — OnceLock lives until process exit.
+// dhruv_rs: explicit context ownership
+let ctx = DhruvContext::new(config)?;
+let req = ConjunctionRequest {
+    body1: Body::Sun,
+    body2: Body::Moon,
+    config: Some(ConjunctionConfig::conjunction(0.5)),
+    query: ConjunctionRequestQuery::Next { at: TimeInput::JdTdb(2460388.0) },
+};
+let _event = conjunction(&ctx, &req)?;
 
 // CLI: stack ownership (RAII)
 let engine = Engine::new(config)?;           // owned on stack
@@ -430,10 +450,10 @@ DhruvConjunctionConfig conj_cfg = dhruv_conjunction_config_default();
 // Rust: Default trait handles this
 let rs_cfg = RiseSetConfig::default();
 let bh_cfg = BhavaConfig::default();
-let conj_cfg = ConjunctionConfig::default();
+let conj_cfg = ConjunctionConfig::conjunction(0.5);
 let grahan_cfg = GrahanConfig::default();
 let stat_cfg = StationaryConfig::default();
-let sank_cfg = SankrantiConfig::new(system, nutation); // or SankrantiConfig::default()
+let sank_cfg = SankrantiConfig::new(system, nutation); // or SankrantiConfig::default_lahiri()
 ```
 
 ### UTC Convenience Helpers (4 FFI functions)
@@ -454,10 +474,14 @@ equivalent of the internal `utc_to_jd_tdb()` helper or the high-level `position(
 wrapper:
 
 ```rust
-// Rust: UtcDate handles all conversions
-let date: UtcDate = "2024-03-20T12:00:00Z".parse()?;
-let pos = position(Body::Mars, Observer::Body(Body::Earth), date)?;  // UTC in, spherical out
-let lon = sidereal_longitude(Body::Mars, Observer::Body(Body::Earth), date, AyanamshaSystem::Lahiri, false)?;
+// Rust: context + operation request
+let ctx = DhruvContext::new(config)?;
+let req = SankrantiRequest {
+    target: SankrantiTarget::Any,
+    config: Some(SankrantiConfig::default_lahiri()),
+    query: SankrantiRequestQuery::Next { at: TimeInput::JdTdb(2460388.0) },
+};
+let _result = sankranti(&ctx, &req)?;
 ```
 
 ---
@@ -466,8 +490,8 @@ let lon = sidereal_longitude(Body::Mars, Observer::Body(Body::Earth), date, Ayan
 
 ```rust
 pub enum DhruvError {
-    NotInitialized,        // init() not called
-    AlreadyInitialized,    // init() called twice
+    NotInitialized,        // retained enum variant for compatibility
+    AlreadyInitialized,    // retained enum variant for compatibility
     DateParse(String),     // invalid ISO 8601 string
     Engine(EngineError),   // error from dhruv_core
     Time(TimeError),       // error from dhruv_time
@@ -496,7 +520,7 @@ These are re-exported from internal crates so callers only need `use dhruv_rs::*
 
 ## Design Notes
 
-- **Global singleton**: Uses `OnceLock<Engine>` — lock-free after initialization since `Engine` is `Send + Sync` and `query()` takes `&self`.
+- **Context-first**: high-level APIs execute through `DhruvContext`.
 - **No external dependencies**: ISO 8601 parsing is hand-rolled for the supported subset.
 - **Ecliptic J2000 default**: `position()`, `position_full()`, and `longitude()` always use ecliptic J2000, which is the standard frame for astrological and most astronomical longitude. Use `query()` for ICRF/J2000.
 - **Batch memoization**: `query_batch()` delegates to `Engine::query_batch()`, sharing memoization across same-epoch queries.
@@ -511,8 +535,8 @@ crates/dhruv_rs/
     lib.rs              # module declarations, re-exports
     error.rs            # DhruvError enum
     date.rs             # UtcDate struct + FromStr
-    global.rs           # OnceLock singleton
-    convenience.rs      # all wrapper functions (~120)
+    context.rs          # DhruvContext
+    ops.rs              # context-based operation APIs
   tests/
     integration.rs      # kernel-dependent tests
 ```

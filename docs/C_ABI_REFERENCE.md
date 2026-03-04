@@ -17,6 +17,7 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 5. [Functions](#functions)
    - [Versioning](#versioning)
    - [Engine Lifecycle](#engine-lifecycle)
+   - [Layered Config](#layered-config)
    - [Ephemeris Query](#ephemeris-query)
    - [Time Conversion](#time-conversion)
    - [Coordinate Conversion](#coordinate-conversion)
@@ -48,7 +49,8 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 ## Conventions
 
 - All functions return `DhruvStatus` (int32) unless stated otherwise.
-- Null pointer arguments return `DHRUV_STATUS_NULL_POINTER` (7).
+- Required null pointer arguments return `DHRUV_STATUS_NULL_POINTER` (7).
+- For operation config pointers, `NULL` is accepted and resolved through layered config fallback.
 - Out-of-range enum codes return `DHRUV_STATUS_INVALID_QUERY` (2).
 - Opaque handles are heap-allocated; always pair `*_load`/`*_new` with `*_free`.
 - No panics cross the FFI boundary (caught by `catch_unwind`).
@@ -609,6 +611,34 @@ DhruvStatus dhruv_engine_free(DhruvEngineHandle* engine);
 ```
 
 Destroy an engine handle. Null-safe (no-op if null).
+
+---
+
+### Layered Config
+
+```c
+typedef struct DhruvConfigHandle DhruvConfigHandle;
+
+DhruvStatus dhruv_config_load(
+    const char* path_utf8,            // nullable: auto-discovery when null
+    int32_t defaults_mode,            // 0=recommended, 1=none
+    DhruvConfigHandle** out_handle
+);
+
+DhruvStatus dhruv_config_free(DhruvConfigHandle* handle);
+DhruvStatus dhruv_config_clear_active(void);
+```
+
+Behavior:
+
+- `dhruv_config_load` parses TOML/JSON config and activates resolver fallback for nullable config pointers.
+- Non-null config pointers remain highest-priority explicit overrides.
+- Null config pointers resolve as:
+  1. operation config section
+  2. common config section
+  3. recommended defaults (when enabled)
+
+This applies to conjunction, grahan, stationary, sankranti, riseset, bhava, graha-positions, bindus, drishti, and full-kundali family calls.
 
 ---
 
