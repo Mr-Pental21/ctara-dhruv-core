@@ -27,6 +27,8 @@ pub enum DhruvError {
     Vedic(VedicError),
     /// Error from fixed star computation.
     Tara(TaraError),
+    /// Error resolving layered configuration.
+    Config(String),
 }
 
 impl Display for DhruvError {
@@ -42,6 +44,7 @@ impl Display for DhruvError {
             Self::Search(e) => write!(f, "search error: {e}"),
             Self::Vedic(e) => write!(f, "vedic error: {e}"),
             Self::Tara(e) => write!(f, "tara error: {e}"),
+            Self::Config(msg) => write!(f, "config error: {msg}"),
         }
     }
 }
@@ -109,6 +112,12 @@ mod tests {
     fn display_date_parse() {
         let e = DhruvError::DateParse("bad date".into());
         assert!(e.to_string().contains("bad date"));
+    }
+
+    #[test]
+    fn display_config() {
+        let e = DhruvError::Config("bad config".into());
+        assert!(e.to_string().contains("bad config"));
     }
 
     #[test]
