@@ -1,8 +1,11 @@
 //! C-facing adapter types for `ctara-dhruv-core`.
 
+use std::ffi::CStr;
 use std::path::PathBuf;
 use std::ptr;
+use std::sync::{LazyLock, RwLock};
 
+use dhruv_config::{ConfigResolver, DefaultsMode, load_with_discovery};
 use dhruv_core::{Body, Engine, EngineConfig, EngineError, Frame, Observer, Query, StateVector};
 use dhruv_search::{
     ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, GrahanConfig,
@@ -255,11 +258,270 @@ impl From<StateVector> for DhruvStateVector {
     }
 }
 
+/// Opaque config handle for FFI callers.
+pub struct DhruvConfigHandle {
+    resolver: ConfigResolver,
+}
+
+static FFI_CONFIG_RESOLVER: LazyLock<RwLock<Option<ConfigResolver>>> =
+    LazyLock::new(|| RwLock::new(None));
+
 /// Opaque engine handle type for ABI consumers.
 pub type DhruvEngineHandle = Engine;
 
 /// Opaque LSK handle type for ABI consumers.
 pub type DhruvLskHandle = dhruv_time::LeapSecondKernel;
+
+fn ffi_resolver() -> Option<ConfigResolver> {
+    let guard = FFI_CONFIG_RESOLVER.read().ok()?;
+    guard.as_ref().cloned()
+}
+
+fn resolve_conjunction_config_ptr(
+    config: *const DhruvConjunctionConfig,
+) -> Result<ConjunctionConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return Ok(conjunction_config_from_ffi(cfg));
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_conjunction(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    Ok(conjunction_config_from_ffi(
+        &dhruv_conjunction_config_default(),
+    ))
+}
+
+fn resolve_grahan_config_ptr(
+    config: *const DhruvGrahanConfig,
+) -> Result<GrahanConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return Ok(grahan_config_from_ffi(cfg));
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_grahan(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    Ok(grahan_config_from_ffi(&dhruv_grahan_config_default()))
+}
+
+fn resolve_stationary_config_ptr(
+    config: *const DhruvStationaryConfig,
+) -> Result<StationaryConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return Ok(stationary_config_from_ffi(cfg));
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_stationary(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    Ok(stationary_config_from_ffi(
+        &dhruv_stationary_config_default(),
+    ))
+}
+
+fn resolve_sankranti_config_ptr(
+    config: *const DhruvSankrantiConfig,
+) -> Result<SankrantiConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return sankranti_config_from_ffi(cfg).ok_or(DhruvStatus::InvalidQuery);
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_sankranti(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    sankranti_config_from_ffi(&dhruv_sankranti_config_default()).ok_or(DhruvStatus::InvalidQuery)
+}
+
+fn riseset_config_from_ffi(cfg: &DhruvRiseSetConfig) -> Result<RiseSetConfig, DhruvStatus> {
+    let sun_limb = match sun_limb_from_code(cfg.sun_limb) {
+        Some(l) => l,
+        None => return Err(DhruvStatus::InvalidQuery),
+    };
+    Ok(RiseSetConfig {
+        use_refraction: cfg.use_refraction != 0,
+        sun_limb,
+        altitude_correction: cfg.altitude_correction != 0,
+    })
+}
+
+fn resolve_riseset_config_ptr(
+    config: *const DhruvRiseSetConfig,
+) -> Result<RiseSetConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return riseset_config_from_ffi(cfg);
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_riseset(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    riseset_config_from_ffi(&dhruv_riseset_config_default())
+}
+
+fn resolve_bhava_config_ptr(config: *const DhruvBhavaConfig) -> Result<BhavaConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return bhava_config_from_ffi(cfg);
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_bhava(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    bhava_config_from_ffi(&dhruv_bhava_config_default())
+}
+
+fn graha_positions_config_from_ffi(
+    cfg: &DhruvGrahaPositionsConfig,
+) -> dhruv_search::GrahaPositionsConfig {
+    dhruv_search::GrahaPositionsConfig {
+        include_nakshatra: cfg.include_nakshatra != 0,
+        include_lagna: cfg.include_lagna != 0,
+        include_outer_planets: cfg.include_outer_planets != 0,
+        include_bhava: cfg.include_bhava != 0,
+    }
+}
+
+fn resolve_graha_positions_config_ptr(
+    config: *const DhruvGrahaPositionsConfig,
+) -> Result<dhruv_search::GrahaPositionsConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return Ok(graha_positions_config_from_ffi(cfg));
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_graha_positions(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    Ok(dhruv_search::GrahaPositionsConfig {
+        include_nakshatra: false,
+        include_lagna: false,
+        include_outer_planets: false,
+        include_bhava: false,
+    })
+}
+
+fn bindus_config_from_ffi(cfg: &DhruvBindusConfig) -> dhruv_search::BindusConfig {
+    dhruv_search::BindusConfig {
+        include_nakshatra: cfg.include_nakshatra != 0,
+        include_bhava: cfg.include_bhava != 0,
+    }
+}
+
+fn resolve_bindus_config_ptr(
+    config: *const DhruvBindusConfig,
+) -> Result<dhruv_search::BindusConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return Ok(bindus_config_from_ffi(cfg));
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_bindus(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    Ok(dhruv_search::BindusConfig {
+        include_nakshatra: false,
+        include_bhava: false,
+    })
+}
+
+fn drishti_config_from_ffi(cfg: &DhruvDrishtiConfig) -> dhruv_search::DrishtiConfig {
+    dhruv_search::DrishtiConfig {
+        include_bhava: cfg.include_bhava != 0,
+        include_lagna: cfg.include_lagna != 0,
+        include_bindus: cfg.include_bindus != 0,
+    }
+}
+
+fn resolve_drishti_config_ptr(
+    config: *const DhruvDrishtiConfig,
+) -> Result<dhruv_search::DrishtiConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return Ok(drishti_config_from_ffi(cfg));
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_drishti(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    Ok(dhruv_search::DrishtiConfig {
+        include_bhava: false,
+        include_lagna: false,
+        include_bindus: false,
+    })
+}
+
+fn full_kundali_config_from_ffi(
+    cfg: &DhruvFullKundaliConfig,
+) -> Result<dhruv_search::FullKundaliConfig, DhruvStatus> {
+    let amsha_sel = dhruv_search::AmshaSelectionConfig {
+        count: cfg.amsha_selection.count,
+        codes: cfg.amsha_selection.codes,
+        variations: cfg.amsha_selection.variations,
+    };
+    let node_dignity_policy = match cfg.node_dignity_policy {
+        0 => dhruv_vedic_base::NodeDignityPolicy::SignLordBased,
+        1 => dhruv_vedic_base::NodeDignityPolicy::AlwaysSama,
+        _ => return Err(DhruvStatus::InvalidSearchConfig),
+    };
+    Ok(dhruv_search::FullKundaliConfig {
+        include_bhava_cusps: cfg.include_bhava_cusps != 0,
+        include_graha_positions: cfg.include_graha_positions != 0,
+        include_bindus: cfg.include_bindus != 0,
+        include_drishti: cfg.include_drishti != 0,
+        include_ashtakavarga: cfg.include_ashtakavarga != 0,
+        include_upagrahas: cfg.include_upagrahas != 0,
+        include_special_lagnas: cfg.include_special_lagnas != 0,
+        include_amshas: cfg.include_amshas != 0,
+        include_shadbala: cfg.include_shadbala != 0,
+        include_vimsopaka: cfg.include_vimsopaka != 0,
+        include_avastha: cfg.include_avastha != 0,
+        node_dignity_policy,
+        graha_positions_config: graha_positions_config_from_ffi(&cfg.graha_positions_config),
+        bindus_config: bindus_config_from_ffi(&cfg.bindus_config),
+        drishti_config: drishti_config_from_ffi(&cfg.drishti_config),
+        amsha_scope: dhruv_search::AmshaChartScope {
+            include_bhava_cusps: cfg.amsha_scope.include_bhava_cusps != 0,
+            include_arudha_padas: cfg.amsha_scope.include_arudha_padas != 0,
+            include_upagrahas: cfg.amsha_scope.include_upagrahas != 0,
+            include_sphutas: cfg.amsha_scope.include_sphutas != 0,
+            include_special_lagnas: cfg.amsha_scope.include_special_lagnas != 0,
+        },
+        amsha_selection: amsha_sel,
+        include_panchang: cfg.include_panchang != 0 || cfg.include_calendar != 0,
+        include_calendar: cfg.include_calendar != 0,
+        include_dasha: cfg.include_dasha != 0,
+        dasha_config: dasha_selection_from_ffi(&cfg.dasha_config),
+    })
+}
+
+fn resolve_full_kundali_config_ptr(
+    config: *const DhruvFullKundaliConfig,
+) -> Result<dhruv_search::FullKundaliConfig, DhruvStatus> {
+    if let Some(cfg) = unsafe { config.as_ref() } {
+        return full_kundali_config_from_ffi(cfg);
+    }
+    if let Some(resolver) = ffi_resolver() {
+        return resolver
+            .resolve_full_kundali(None)
+            .map(|v| v.value)
+            .map_err(|_| DhruvStatus::InvalidSearchConfig);
+    }
+    full_kundali_config_from_ffi(&dhruv_full_kundali_config_default())
+}
 
 /// Build a core engine from C-compatible config.
 pub fn dhruv_engine_new_internal(config: &DhruvEngineConfig) -> Result<Engine, DhruvStatus> {
@@ -292,6 +554,96 @@ pub fn dhruv_query_once_internal(
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_api_version() -> u32 {
     DHRUV_API_VERSION
+}
+
+fn defaults_mode_from_i32(value: i32) -> Option<DefaultsMode> {
+    match value {
+        0 => Some(DefaultsMode::Recommended),
+        1 => Some(DefaultsMode::None),
+        _ => None,
+    }
+}
+
+/// Load layered configuration and make it active for nullable-config fallback.
+///
+/// `path_utf8` can be null to use auto-discovery.
+/// `defaults_mode`: 0 = recommended, 1 = none.
+///
+/// # Safety
+/// `out_handle` must be non-null. If non-null, `path_utf8` must be a valid\n/// NUL-terminated UTF-8 path string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_config_load(
+    path_utf8: *const i8,
+    defaults_mode: i32,
+    out_handle: *mut *mut DhruvConfigHandle,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if out_handle.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        let Some(mode) = defaults_mode_from_i32(defaults_mode) else {
+            return DhruvStatus::InvalidConfig;
+        };
+
+        let explicit_path = if path_utf8.is_null() {
+            None
+        } else {
+            let cstr = unsafe { CStr::from_ptr(path_utf8) };
+            match cstr.to_str() {
+                Ok(s) if !s.trim().is_empty() => Some(PathBuf::from(s)),
+                _ => return DhruvStatus::InvalidConfig,
+            }
+        };
+
+        let loaded = load_with_discovery(explicit_path.as_deref(), false)
+            .map_err(|_| DhruvStatus::InvalidConfig);
+        let loaded = match loaded {
+            Ok(v) => v,
+            Err(status) => return status,
+        };
+        let Some(loaded) = loaded else {
+            return DhruvStatus::InvalidConfig;
+        };
+
+        let resolver = ConfigResolver::new(loaded.file, mode);
+        let handle = DhruvConfigHandle {
+            resolver: resolver.clone(),
+        };
+        if let Ok(mut guard) = FFI_CONFIG_RESOLVER.write() {
+            *guard = Some(resolver);
+        }
+
+        unsafe { *out_handle = Box::into_raw(Box::new(handle)) };
+        DhruvStatus::Ok
+    })
+}
+
+/// Free a config handle previously returned by `dhruv_config_load`.
+///
+/// # Safety
+/// `handle` must be null or a pointer returned by `dhruv_config_load`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_config_free(handle: *mut DhruvConfigHandle) -> DhruvStatus {
+    ffi_boundary(|| {
+        if handle.is_null() {
+            return DhruvStatus::Ok;
+        }
+        let boxed = unsafe { Box::from_raw(handle) };
+        let _ = boxed.resolver.defaults_mode();
+        drop(boxed);
+        DhruvStatus::Ok
+    })
+}
+
+/// Clear active process-level resolver used for nullable-config fallback.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_config_clear_active() -> DhruvStatus {
+    ffi_boundary(|| {
+        if let Ok(mut guard) = FFI_CONFIG_RESOLVER.write() {
+            *guard = None;
+        }
+        DhruvStatus::Ok
+    })
 }
 
 /// Create an engine handle.
@@ -894,7 +1246,6 @@ pub unsafe extern "C" fn dhruv_compute_rise_set(
             || lsk.is_null()
             || eop.is_null()
             || location.is_null()
-            || config.is_null()
             || out_result.is_null()
         {
             return DhruvStatus::NullPointer;
@@ -910,21 +1261,15 @@ pub unsafe extern "C" fn dhruv_compute_rise_set(
         let lsk_ref = unsafe { &*lsk };
         let eop_ref = unsafe { &*eop };
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*config };
 
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
 
         match compute_rise_set(
@@ -970,7 +1315,6 @@ pub unsafe extern "C" fn dhruv_compute_all_events(
             || lsk.is_null()
             || eop.is_null()
             || location.is_null()
-            || config.is_null()
             || out_results.is_null()
         {
             return DhruvStatus::NullPointer;
@@ -981,21 +1325,15 @@ pub unsafe extern "C" fn dhruv_compute_all_events(
         let lsk_ref = unsafe { &*lsk };
         let eop_ref = unsafe { &*eop };
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*config };
 
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
 
         match compute_all_events(engine_ref, lsk_ref, eop_ref, &geo, jd_utc_noon, &rs_config) {
@@ -1377,7 +1715,6 @@ pub unsafe extern "C" fn dhruv_compute_bhavas(
             || lsk.is_null()
             || eop.is_null()
             || location.is_null()
-            || config.is_null()
             || out_result.is_null()
         {
             return DhruvStatus::NullPointer;
@@ -1388,7 +1725,6 @@ pub unsafe extern "C" fn dhruv_compute_bhavas(
         let lsk_ref = unsafe { &*lsk };
         let eop_ref = unsafe { &*eop };
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*config };
 
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
@@ -1396,7 +1732,7 @@ pub unsafe extern "C" fn dhruv_compute_bhavas(
             loc_ref.altitude_m,
         );
 
-        let rust_config = match bhava_config_from_ffi(cfg_ref) {
+        let rust_config = match resolve_bhava_config_ptr(config) {
             Ok(c) => c,
             Err(status) => return status,
         };
@@ -1898,7 +2234,7 @@ pub unsafe extern "C" fn dhruv_next_conjunction(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+        if engine.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -1913,8 +2249,10 @@ pub unsafe extern "C" fn dhruv_next_conjunction(
 
         // SAFETY: All pointers checked for null above.
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = conjunction_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_conjunction_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match next_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
@@ -1948,7 +2286,7 @@ pub unsafe extern "C" fn dhruv_prev_conjunction(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+        if engine.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -1963,8 +2301,10 @@ pub unsafe extern "C" fn dhruv_prev_conjunction(
 
         // SAFETY: All pointers checked for null above.
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = conjunction_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_conjunction_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match prev_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
@@ -2003,7 +2343,7 @@ pub unsafe extern "C" fn dhruv_search_conjunctions(
     out_count: *mut u32,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_events.is_null() || out_count.is_null() {
+        if engine.is_null() || out_events.is_null() || out_count.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -2018,8 +2358,10 @@ pub unsafe extern "C" fn dhruv_search_conjunctions(
 
         // SAFETY: All pointers checked for null above.
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = conjunction_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_conjunction_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match search_conjunctions(engine_ref, body1, body2, jd_start, jd_end, &rust_config) {
             Ok(events) => {
@@ -2353,14 +2695,16 @@ pub unsafe extern "C" fn dhruv_next_chandra_grahan(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+        if engine.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
         // SAFETY: All pointers checked for null above.
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = grahan_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match next_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
@@ -2391,13 +2735,15 @@ pub unsafe extern "C" fn dhruv_prev_chandra_grahan(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+        if engine.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = grahan_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match prev_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
@@ -2431,13 +2777,15 @@ pub unsafe extern "C" fn dhruv_search_chandra_grahan(
     out_count: *mut u32,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_results.is_null() || out_count.is_null() {
+        if engine.is_null() || out_results.is_null() || out_count.is_null() {
             return DhruvStatus::NullPointer;
         }
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = grahan_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match search_chandra_grahan(engine_ref, jd_start, jd_end, &rust_config) {
             Ok(results) => {
@@ -2471,13 +2819,15 @@ pub unsafe extern "C" fn dhruv_next_surya_grahan(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+        if engine.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = grahan_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match next_surya_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
@@ -2508,13 +2858,15 @@ pub unsafe extern "C" fn dhruv_prev_surya_grahan(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_result.is_null() || out_found.is_null() {
+        if engine.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = grahan_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match prev_surya_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
@@ -2548,13 +2900,15 @@ pub unsafe extern "C" fn dhruv_search_surya_grahan(
     out_count: *mut u32,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_results.is_null() || out_count.is_null() {
+        if engine.is_null() || out_results.is_null() || out_count.is_null() {
             return DhruvStatus::NullPointer;
         }
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = grahan_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match search_surya_grahan(engine_ref, jd_start, jd_end, &rust_config) {
             Ok(results) => {
@@ -2904,7 +3258,7 @@ pub unsafe extern "C" fn dhruv_next_stationary(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+        if engine.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -2914,8 +3268,10 @@ pub unsafe extern "C" fn dhruv_next_stationary(
         };
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = stationary_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match next_stationary(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
@@ -2947,7 +3303,7 @@ pub unsafe extern "C" fn dhruv_prev_stationary(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+        if engine.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -2957,8 +3313,10 @@ pub unsafe extern "C" fn dhruv_prev_stationary(
         };
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = stationary_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match prev_stationary(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
@@ -2993,7 +3351,7 @@ pub unsafe extern "C" fn dhruv_search_stationary(
     out_count: *mut u32,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_events.is_null() || out_count.is_null() {
+        if engine.is_null() || out_events.is_null() || out_count.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -3003,8 +3361,10 @@ pub unsafe extern "C" fn dhruv_search_stationary(
         };
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = stationary_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match search_stationary(engine_ref, body, jd_start, jd_end, &rust_config) {
             Ok(events) => {
@@ -3035,7 +3395,7 @@ pub unsafe extern "C" fn dhruv_next_max_speed(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+        if engine.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -3045,8 +3405,10 @@ pub unsafe extern "C" fn dhruv_next_max_speed(
         };
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = stationary_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match next_max_speed(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
@@ -3078,7 +3440,7 @@ pub unsafe extern "C" fn dhruv_prev_max_speed(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_event.is_null() || out_found.is_null() {
+        if engine.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -3088,8 +3450,10 @@ pub unsafe extern "C" fn dhruv_prev_max_speed(
         };
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = stationary_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match prev_max_speed(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
@@ -3124,7 +3488,7 @@ pub unsafe extern "C" fn dhruv_search_max_speed(
     out_count: *mut u32,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_events.is_null() || out_count.is_null() {
+        if engine.is_null() || out_events.is_null() || out_count.is_null() {
             return DhruvStatus::NullPointer;
         }
 
@@ -3134,8 +3498,10 @@ pub unsafe extern "C" fn dhruv_search_max_speed(
         };
 
         let engine_ref = unsafe { &*engine };
-        let cfg_ref = unsafe { &*config };
-        let rust_config = stationary_config_from_ffi(cfg_ref);
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
 
         match search_max_speed(engine_ref, body, jd_start, jd_end, &rust_config) {
             Ok(events) => {
@@ -4459,19 +4825,14 @@ pub unsafe extern "C" fn dhruv_next_sankranti(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match next_sankranti(engine_ref, &t, &cfg) {
             Ok(Some(e)) => {
@@ -4507,19 +4868,14 @@ pub unsafe extern "C" fn dhruv_prev_sankranti(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match prev_sankranti(engine_ref, &t, &cfg) {
             Ok(Some(e)) => {
@@ -4560,7 +4916,6 @@ pub unsafe extern "C" fn dhruv_search_sankrantis(
         if engine.is_null()
             || start.is_null()
             || end.is_null()
-            || config.is_null()
             || out_events.is_null()
             || out_count.is_null()
         {
@@ -4569,9 +4924,9 @@ pub unsafe extern "C" fn dhruv_search_sankrantis(
         let engine_ref = unsafe { &*engine };
         let s = ffi_to_utc_time(unsafe { &*start });
         let e = ffi_to_utc_time(unsafe { &*end });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match search_sankrantis(engine_ref, &s, &e, &cfg) {
             Ok(events) => {
@@ -4736,12 +5091,7 @@ pub unsafe extern "C" fn dhruv_next_specific_sankranti(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let rashi_idx = rashi_index as usize;
@@ -4751,9 +5101,9 @@ pub unsafe extern "C" fn dhruv_next_specific_sankranti(
         let rashi = dhruv_vedic_base::ALL_RASHIS[rashi_idx];
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match next_specific_sankranti(engine_ref, &t, rashi, &cfg) {
             Ok(Some(e)) => {
@@ -4790,12 +5140,7 @@ pub unsafe extern "C" fn dhruv_prev_specific_sankranti(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let rashi_idx = rashi_index as usize;
@@ -4805,9 +5150,9 @@ pub unsafe extern "C" fn dhruv_prev_specific_sankranti(
         let rashi = dhruv_vedic_base::ALL_RASHIS[rashi_idx];
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match prev_specific_sankranti(engine_ref, &t, rashi, &cfg) {
             Ok(Some(e)) => {
@@ -4843,14 +5188,14 @@ pub unsafe extern "C" fn dhruv_masa_for_date(
     out: *mut DhruvMasaInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+        if engine.is_null() || utc.is_null() || out.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match masa_for_date(engine_ref, &t, &cfg) {
             Ok(info) => {
@@ -4881,14 +5226,14 @@ pub unsafe extern "C" fn dhruv_ayana_for_date(
     out: *mut DhruvAyanaInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+        if engine.is_null() || utc.is_null() || out.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match ayana_for_date(engine_ref, &t, &cfg) {
             Ok(info) => {
@@ -4918,14 +5263,14 @@ pub unsafe extern "C" fn dhruv_varsha_for_date(
     out: *mut DhruvVarshaInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+        if engine.is_null() || utc.is_null() || out.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match varsha_for_date(engine_ref, &t, &cfg) {
             Ok(info) => {
@@ -5519,12 +5864,7 @@ pub unsafe extern "C" fn dhruv_next_conjunction_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let body1 = match Body::from_code(body1_code) {
@@ -5538,7 +5878,10 @@ pub unsafe extern "C" fn dhruv_next_conjunction_utc(
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
         let jd_tdb = t.to_jd_tdb(engine_ref.lsk());
-        let rust_config = conjunction_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_conjunction_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match next_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
                 unsafe {
@@ -5570,12 +5913,7 @@ pub unsafe extern "C" fn dhruv_prev_conjunction_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let body1 = match Body::from_code(body1_code) {
@@ -5589,7 +5927,10 @@ pub unsafe extern "C" fn dhruv_prev_conjunction_utc(
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
         let jd_tdb = t.to_jd_tdb(engine_ref.lsk());
-        let rust_config = conjunction_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_conjunction_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match prev_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
                 unsafe {
@@ -5627,7 +5968,6 @@ pub unsafe extern "C" fn dhruv_search_conjunctions_utc(
         if engine.is_null()
             || start.is_null()
             || end.is_null()
-            || config.is_null()
             || out_events.is_null()
             || out_count.is_null()
         {
@@ -5644,7 +5984,10 @@ pub unsafe extern "C" fn dhruv_search_conjunctions_utc(
         let engine_ref = unsafe { &*engine };
         let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
         let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = conjunction_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_conjunction_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match search_conjunctions(engine_ref, body1, body2, jd_start, jd_end, &rust_config) {
             Ok(events) => {
                 let count = events.len().min(max_count as usize);
@@ -5673,17 +6016,15 @@ pub unsafe extern "C" fn dhruv_next_chandra_grahan_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_result.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match next_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
                 unsafe {
@@ -5713,17 +6054,15 @@ pub unsafe extern "C" fn dhruv_prev_chandra_grahan_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_result.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match prev_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
                 unsafe {
@@ -5759,7 +6098,6 @@ pub unsafe extern "C" fn dhruv_search_chandra_grahan_utc(
         if engine.is_null()
             || start.is_null()
             || end.is_null()
-            || config.is_null()
             || out_results.is_null()
             || out_count.is_null()
         {
@@ -5768,7 +6106,10 @@ pub unsafe extern "C" fn dhruv_search_chandra_grahan_utc(
         let engine_ref = unsafe { &*engine };
         let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
         let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match search_chandra_grahan(engine_ref, jd_start, jd_end, &rust_config) {
             Ok(results) => {
                 let count = results.len().min(max_count as usize);
@@ -5797,17 +6138,15 @@ pub unsafe extern "C" fn dhruv_next_surya_grahan_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_result.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match next_surya_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
                 unsafe {
@@ -5837,17 +6176,15 @@ pub unsafe extern "C" fn dhruv_prev_surya_grahan_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_result.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match prev_surya_grahan(engine_ref, jd_tdb, &rust_config) {
             Ok(Some(grahan)) => {
                 unsafe {
@@ -5883,7 +6220,6 @@ pub unsafe extern "C" fn dhruv_search_surya_grahan_utc(
         if engine.is_null()
             || start.is_null()
             || end.is_null()
-            || config.is_null()
             || out_results.is_null()
             || out_count.is_null()
         {
@@ -5892,7 +6228,10 @@ pub unsafe extern "C" fn dhruv_search_surya_grahan_utc(
         let engine_ref = unsafe { &*engine };
         let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
         let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = grahan_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_grahan_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match search_surya_grahan(engine_ref, jd_start, jd_end, &rust_config) {
             Ok(results) => {
                 let count = results.len().min(max_count as usize);
@@ -5922,12 +6261,7 @@ pub unsafe extern "C" fn dhruv_next_stationary_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let body = match Body::from_code(body_code) {
@@ -5936,7 +6270,10 @@ pub unsafe extern "C" fn dhruv_next_stationary_utc(
         };
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = stationary_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match next_stationary(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
                 unsafe {
@@ -5967,12 +6304,7 @@ pub unsafe extern "C" fn dhruv_prev_stationary_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let body = match Body::from_code(body_code) {
@@ -5981,7 +6313,10 @@ pub unsafe extern "C" fn dhruv_prev_stationary_utc(
         };
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = stationary_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match prev_stationary(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
                 unsafe {
@@ -6018,7 +6353,6 @@ pub unsafe extern "C" fn dhruv_search_stationary_utc(
         if engine.is_null()
             || start.is_null()
             || end.is_null()
-            || config.is_null()
             || out_events.is_null()
             || out_count.is_null()
         {
@@ -6031,7 +6365,10 @@ pub unsafe extern "C" fn dhruv_search_stationary_utc(
         let engine_ref = unsafe { &*engine };
         let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
         let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = stationary_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match search_stationary(engine_ref, body, jd_start, jd_end, &rust_config) {
             Ok(events) => {
                 let count = events.len().min(max_count as usize);
@@ -6061,12 +6398,7 @@ pub unsafe extern "C" fn dhruv_next_max_speed_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let body = match Body::from_code(body_code) {
@@ -6075,7 +6407,10 @@ pub unsafe extern "C" fn dhruv_next_max_speed_utc(
         };
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = stationary_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match next_max_speed(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
                 unsafe {
@@ -6106,12 +6441,7 @@ pub unsafe extern "C" fn dhruv_prev_max_speed_utc(
     out_found: *mut u8,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || utc.is_null()
-            || config.is_null()
-            || out_event.is_null()
-            || out_found.is_null()
-        {
+        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
             return DhruvStatus::NullPointer;
         }
         let body = match Body::from_code(body_code) {
@@ -6120,7 +6450,10 @@ pub unsafe extern "C" fn dhruv_prev_max_speed_utc(
         };
         let engine_ref = unsafe { &*engine };
         let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = stationary_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match prev_max_speed(engine_ref, body, jd_tdb, &rust_config) {
             Ok(Some(event)) => {
                 unsafe {
@@ -6157,7 +6490,6 @@ pub unsafe extern "C" fn dhruv_search_max_speed_utc(
         if engine.is_null()
             || start.is_null()
             || end.is_null()
-            || config.is_null()
             || out_events.is_null()
             || out_count.is_null()
         {
@@ -6170,7 +6502,10 @@ pub unsafe extern "C" fn dhruv_search_max_speed_utc(
         let engine_ref = unsafe { &*engine };
         let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
         let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = stationary_config_from_ffi(unsafe { &*config });
+        let rust_config = match resolve_stationary_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
+        };
         match search_max_speed(engine_ref, body, jd_start, jd_end, &rust_config) {
             Ok(events) => {
                 let count = events.len().min(max_count as usize);
@@ -6212,7 +6547,6 @@ pub unsafe extern "C" fn dhruv_compute_rise_set_utc(
             || eop.is_null()
             || location.is_null()
             || utc.is_null()
-            || config.is_null()
             || out_result.is_null()
         {
             return DhruvStatus::NullPointer;
@@ -6225,20 +6559,14 @@ pub unsafe extern "C" fn dhruv_compute_rise_set_utc(
         let lsk_ref = unsafe { &*lsk };
         let eop_ref = unsafe { &*eop };
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*config };
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         let jd_utc_noon = ffi_utc_to_jd_utc(unsafe { &*utc });
         match compute_rise_set(
@@ -6280,7 +6608,6 @@ pub unsafe extern "C" fn dhruv_compute_all_events_utc(
             || eop.is_null()
             || location.is_null()
             || utc.is_null()
-            || config.is_null()
             || out_results.is_null()
         {
             return DhruvStatus::NullPointer;
@@ -6289,20 +6616,14 @@ pub unsafe extern "C" fn dhruv_compute_all_events_utc(
         let lsk_ref = unsafe { &*lsk };
         let eop_ref = unsafe { &*eop };
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*config };
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         let jd_utc_noon = ffi_utc_to_jd_utc(unsafe { &*utc });
         match compute_all_events(engine_ref, lsk_ref, eop_ref, &geo, jd_utc_noon, &rs_config) {
@@ -6338,7 +6659,6 @@ pub unsafe extern "C" fn dhruv_compute_bhavas_utc(
             || eop.is_null()
             || location.is_null()
             || utc.is_null()
-            || config.is_null()
             || out_result.is_null()
         {
             return DhruvStatus::NullPointer;
@@ -6347,13 +6667,12 @@ pub unsafe extern "C" fn dhruv_compute_bhavas_utc(
         let lsk_ref = unsafe { &*lsk };
         let eop_ref = unsafe { &*eop };
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*config };
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let rust_config = match bhava_config_from_ffi(cfg_ref) {
+        let rust_config = match resolve_bhava_config_ptr(config) {
             Ok(c) => c,
             Err(s) => return s,
         };
@@ -6952,14 +7271,14 @@ pub unsafe extern "C" fn dhruv_yoga_for_date(
     out: *mut DhruvYogaInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+        if engine.is_null() || utc.is_null() || out.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match yoga_for_date(engine_ref, &t, &cfg) {
             Ok(info) => {
@@ -6991,14 +7310,14 @@ pub unsafe extern "C" fn dhruv_nakshatra_for_date(
     out: *mut DhruvPanchangNakshatraInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || config.is_null() || out.is_null() {
+        if engine.is_null() || utc.is_null() || out.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
         let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match nakshatra_for_date(engine_ref, &t, &cfg) {
             Ok(info) => {
@@ -7031,12 +7350,7 @@ pub unsafe extern "C" fn dhruv_vaar_for_date(
     out: *mut DhruvVaarInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || eop.is_null()
-            || utc.is_null()
-            || location.is_null()
-            || riseset_config.is_null()
-            || out.is_null()
+        if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null()
         {
             return DhruvStatus::NullPointer;
         }
@@ -7044,20 +7358,14 @@ pub unsafe extern "C" fn dhruv_vaar_for_date(
         let eop_ref = unsafe { &*eop };
         let t = ffi_to_utc_time(unsafe { &*utc });
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*riseset_config };
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match vaar_for_date(engine_ref, eop_ref, &t, &geo, &rs_config) {
             Ok(info) => {
@@ -7089,12 +7397,7 @@ pub unsafe extern "C" fn dhruv_hora_for_date(
     out: *mut DhruvHoraInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || eop.is_null()
-            || utc.is_null()
-            || location.is_null()
-            || riseset_config.is_null()
-            || out.is_null()
+        if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null()
         {
             return DhruvStatus::NullPointer;
         }
@@ -7102,20 +7405,14 @@ pub unsafe extern "C" fn dhruv_hora_for_date(
         let eop_ref = unsafe { &*eop };
         let t = ffi_to_utc_time(unsafe { &*utc });
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*riseset_config };
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match hora_for_date(engine_ref, eop_ref, &t, &geo, &rs_config) {
             Ok(info) => {
@@ -7148,12 +7445,7 @@ pub unsafe extern "C" fn dhruv_ghatika_for_date(
     out: *mut DhruvGhatikaInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null()
-            || eop.is_null()
-            || utc.is_null()
-            || location.is_null()
-            || riseset_config.is_null()
-            || out.is_null()
+        if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null()
         {
             return DhruvStatus::NullPointer;
         }
@@ -7161,20 +7453,14 @@ pub unsafe extern "C" fn dhruv_ghatika_for_date(
         let eop_ref = unsafe { &*eop };
         let t = ffi_to_utc_time(unsafe { &*utc });
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*riseset_config };
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match ghatika_for_date(engine_ref, eop_ref, &t, &geo, &rs_config) {
             Ok(info) => {
@@ -7788,13 +8074,13 @@ pub unsafe extern "C" fn dhruv_sidereal_sum_at(
     out_deg: *mut f64,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out_deg.is_null() {
+        if engine.is_null() || out_deg.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match sidereal_sum_at(engine_ref, jd_tdb, &cfg) {
             Ok(deg) => {
@@ -7830,7 +8116,6 @@ pub unsafe extern "C" fn dhruv_vedic_day_sunrises(
             || eop.is_null()
             || utc.is_null()
             || location.is_null()
-            || riseset_config.is_null()
             || out_sunrise_jd.is_null()
             || out_next_sunrise_jd.is_null()
         {
@@ -7840,20 +8125,14 @@ pub unsafe extern "C" fn dhruv_vedic_day_sunrises(
         let eop_ref = unsafe { &*eop };
         let t = ffi_to_utc_time(unsafe { &*utc });
         let loc_ref = unsafe { &*location };
-        let cfg_ref = unsafe { &*riseset_config };
         let geo = GeoLocation::new(
             loc_ref.latitude_deg,
             loc_ref.longitude_deg,
             loc_ref.altitude_m,
         );
-        let sun_limb = match sun_limb_from_code(cfg_ref.sun_limb) {
-            Some(l) => l,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let rs_config = RiseSetConfig {
-            use_refraction: cfg_ref.use_refraction != 0,
-            sun_limb,
-            altitude_correction: cfg_ref.altitude_correction != 0,
+        let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match vedic_day_sunrises(engine_ref, eop_ref, &t, &geo, &rs_config) {
             Ok((sr, nsr)) => {
@@ -7982,13 +8261,13 @@ pub unsafe extern "C" fn dhruv_yoga_at(
     out: *mut DhruvYogaInfo,
 ) -> DhruvStatus {
     ffi_boundary(|| {
-        if engine.is_null() || config.is_null() || out.is_null() {
+        if engine.is_null() || out.is_null() {
             return DhruvStatus::NullPointer;
         }
         let engine_ref = unsafe { &*engine };
-        let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-            Some(c) => c,
-            None => return DhruvStatus::InvalidQuery,
+        let cfg = match resolve_sankranti_config_ptr(config) {
+            Ok(c) => c,
+            Err(status) => return status,
         };
         match yoga_at(engine_ref, jd_tdb, sidereal_sum_deg, &cfg) {
             Ok(info) => {
@@ -8412,13 +8691,7 @@ pub unsafe extern "C" fn dhruv_special_lagnas_for_date(
     use_nutation: u8,
     out: *mut DhruvSpecialLagnas,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || riseset_config.is_null()
-        || out.is_null()
-    {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -8426,7 +8699,6 @@ pub unsafe extern "C" fn dhruv_special_lagnas_for_date(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let rs_c = unsafe { &*riseset_config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -8439,15 +8711,9 @@ pub unsafe extern "C" fn dhruv_special_lagnas_for_date(
 
     let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
 
-    let sun_limb = match rs_c.sun_limb {
-        1 => SunLimb::Center,
-        2 => SunLimb::LowerLimb,
-        _ => SunLimb::UpperLimb,
-    };
-    let rs_config = RiseSetConfig {
-        sun_limb,
-        use_refraction: rs_c.use_refraction != 0,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
     let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
@@ -8739,12 +9005,7 @@ pub unsafe extern "C" fn dhruv_time_upagraha_jd_utc(
     upagraha_index: u32,
     out_jd: *mut f64,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || riseset_config.is_null()
-        || out_jd.is_null()
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out_jd.is_null()
     {
         return DhruvStatus::NullPointer;
     }
@@ -8758,7 +9019,6 @@ pub unsafe extern "C" fn dhruv_time_upagraha_jd_utc(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let rs_c = unsafe { &*riseset_config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -8771,14 +9031,9 @@ pub unsafe extern "C" fn dhruv_time_upagraha_jd_utc(
 
     let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
 
-    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
-        Some(l) => l,
-        None => return DhruvStatus::InvalidQuery,
-    };
-    let rs_config = RiseSetConfig {
-        use_refraction: rs_c.use_refraction != 0,
-        sun_limb,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
     // Compute sunrise pair (vedic day boundaries)
@@ -9376,14 +9631,7 @@ pub unsafe extern "C" fn dhruv_graha_positions(
     config: *const DhruvGrahaPositionsConfig,
     out: *mut DhruvGrahaPositions,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || bhava_config.is_null()
-        || config.is_null()
-        || out.is_null()
-    {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -9391,8 +9639,6 @@ pub unsafe extern "C" fn dhruv_graha_positions(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let cfg_c = unsafe { &*config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -9410,16 +9656,14 @@ pub unsafe extern "C" fn dhruv_graha_positions(
         None => return DhruvStatus::InvalidQuery,
     };
 
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
 
-    let rust_config = dhruv_search::GrahaPositionsConfig {
-        include_nakshatra: cfg_c.include_nakshatra != 0,
-        include_lagna: cfg_c.include_lagna != 0,
-        include_outer_planets: cfg_c.include_outer_planets != 0,
-        include_bhava: cfg_c.include_bhava != 0,
+    let rust_config = match resolve_graha_positions_config_ptr(config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
     let aya_config = SankrantiConfig::new(system, use_nutation != 0);
@@ -9501,15 +9745,7 @@ pub unsafe extern "C" fn dhruv_core_bindus(
     config: *const DhruvBindusConfig,
     out: *mut DhruvBindusResult,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
-        || config.is_null()
-        || out.is_null()
-    {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -9517,9 +9753,6 @@ pub unsafe extern "C" fn dhruv_core_bindus(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
-    let cfg_c = unsafe { &*config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -9537,25 +9770,19 @@ pub unsafe extern "C" fn dhruv_core_bindus(
         None => return DhruvStatus::InvalidQuery,
     };
 
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
 
-    let sun_limb = match rs_c.sun_limb {
-        1 => SunLimb::Center,
-        2 => SunLimb::LowerLimb,
-        _ => SunLimb::UpperLimb,
-    };
-    let rs_config = RiseSetConfig {
-        sun_limb,
-        use_refraction: rs_c.use_refraction != 0,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
-    let rust_config = dhruv_search::BindusConfig {
-        include_nakshatra: cfg_c.include_nakshatra != 0,
-        include_bhava: cfg_c.include_bhava != 0,
+    let rust_config = match resolve_bindus_config_ptr(config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
     let aya_config = SankrantiConfig::new(system, use_nutation != 0);
@@ -9654,15 +9881,7 @@ pub unsafe extern "C" fn dhruv_drishti(
     config: *const DhruvDrishtiConfig,
     out: *mut DhruvDrishtiResult,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
-        || config.is_null()
-        || out.is_null()
-    {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -9670,9 +9889,6 @@ pub unsafe extern "C" fn dhruv_drishti(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
-    let cfg_c = unsafe { &*config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -9690,26 +9906,19 @@ pub unsafe extern "C" fn dhruv_drishti(
         None => return DhruvStatus::InvalidQuery,
     };
 
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
 
-    let sun_limb = match rs_c.sun_limb {
-        1 => SunLimb::Center,
-        2 => SunLimb::LowerLimb,
-        _ => SunLimb::UpperLimb,
-    };
-    let rs_config = RiseSetConfig {
-        sun_limb,
-        use_refraction: rs_c.use_refraction != 0,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
-    let rust_config = dhruv_search::DrishtiConfig {
-        include_bhava: cfg_c.include_bhava != 0,
-        include_lagna: cfg_c.include_lagna != 0,
-        include_bindus: cfg_c.include_bindus != 0,
+    let rust_config = match resolve_drishti_config_ptr(config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
     let aya_config = SankrantiConfig::new(system, use_nutation != 0);
@@ -10234,15 +10443,7 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
     config: *const DhruvFullKundaliConfig,
     out: *mut DhruvFullKundaliResult,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
-        || config.is_null()
-        || out.is_null()
-    {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -10253,9 +10454,6 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
-    let cfg_c = unsafe { &*config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -10272,71 +10470,19 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
         None => return DhruvStatus::InvalidQuery,
     };
 
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
-    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
-        Some(l) => l,
-        None => return DhruvStatus::InvalidQuery,
-    };
-    let rs_config = RiseSetConfig {
-        use_refraction: rs_c.use_refraction != 0,
-        sun_limb,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
     let aya_config = SankrantiConfig::new(system, use_nutation != 0);
 
-    let amsha_sel = dhruv_search::AmshaSelectionConfig {
-        count: cfg_c.amsha_selection.count,
-        codes: cfg_c.amsha_selection.codes,
-        variations: cfg_c.amsha_selection.variations,
-    };
-
-    let rust_config = dhruv_search::FullKundaliConfig {
-        include_bhava_cusps: cfg_c.include_bhava_cusps != 0,
-        include_graha_positions: cfg_c.include_graha_positions != 0,
-        include_bindus: cfg_c.include_bindus != 0,
-        include_drishti: cfg_c.include_drishti != 0,
-        include_ashtakavarga: cfg_c.include_ashtakavarga != 0,
-        include_upagrahas: cfg_c.include_upagrahas != 0,
-        include_special_lagnas: cfg_c.include_special_lagnas != 0,
-        include_amshas: cfg_c.include_amshas != 0,
-        include_shadbala: cfg_c.include_shadbala != 0,
-        include_vimsopaka: cfg_c.include_vimsopaka != 0,
-        include_avastha: cfg_c.include_avastha != 0,
-        node_dignity_policy: match cfg_c.node_dignity_policy {
-            0 => dhruv_vedic_base::NodeDignityPolicy::SignLordBased,
-            1 => dhruv_vedic_base::NodeDignityPolicy::AlwaysSama,
-            _ => return DhruvStatus::InvalidSearchConfig,
-        },
-        graha_positions_config: dhruv_search::GrahaPositionsConfig {
-            include_nakshatra: cfg_c.graha_positions_config.include_nakshatra != 0,
-            include_lagna: cfg_c.graha_positions_config.include_lagna != 0,
-            include_outer_planets: cfg_c.graha_positions_config.include_outer_planets != 0,
-            include_bhava: cfg_c.graha_positions_config.include_bhava != 0,
-        },
-        bindus_config: dhruv_search::BindusConfig {
-            include_nakshatra: cfg_c.bindus_config.include_nakshatra != 0,
-            include_bhava: cfg_c.bindus_config.include_bhava != 0,
-        },
-        drishti_config: dhruv_search::DrishtiConfig {
-            include_bhava: cfg_c.drishti_config.include_bhava != 0,
-            include_lagna: cfg_c.drishti_config.include_lagna != 0,
-            include_bindus: cfg_c.drishti_config.include_bindus != 0,
-        },
-        amsha_scope: dhruv_search::AmshaChartScope {
-            include_bhava_cusps: cfg_c.amsha_scope.include_bhava_cusps != 0,
-            include_arudha_padas: cfg_c.amsha_scope.include_arudha_padas != 0,
-            include_upagrahas: cfg_c.amsha_scope.include_upagrahas != 0,
-            include_sphutas: cfg_c.amsha_scope.include_sphutas != 0,
-            include_special_lagnas: cfg_c.amsha_scope.include_special_lagnas != 0,
-        },
-        amsha_selection: amsha_sel,
-        include_panchang: cfg_c.include_panchang != 0 || cfg_c.include_calendar != 0,
-        include_calendar: cfg_c.include_calendar != 0,
-        include_dasha: cfg_c.include_dasha != 0,
-        dasha_config: dasha_selection_from_ffi(&cfg_c.dasha_config),
+    let rust_config = match resolve_full_kundali_config_ptr(config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
     match full_kundali_for_date(
@@ -10721,8 +10867,6 @@ pub unsafe extern "C" fn dhruv_amsha_chart_for_date(
         || eop.is_null()
         || utc.is_null()
         || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
         || scope.is_null()
         || out.is_null()
     {
@@ -10745,8 +10889,6 @@ pub unsafe extern "C" fn dhruv_amsha_chart_for_date(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
     let scope_c = unsafe { &*scope };
 
     let utc_time = UtcTime {
@@ -10762,18 +10904,13 @@ pub unsafe extern "C" fn dhruv_amsha_chart_for_date(
         Some(s) => s,
         None => return DhruvStatus::InvalidQuery,
     };
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
-    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
-        Some(l) => l,
-        None => return DhruvStatus::InvalidQuery,
-    };
-    let rs_config = RiseSetConfig {
-        use_refraction: rs_c.use_refraction != 0,
-        sun_limb,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
     let aya_config = SankrantiConfig::new(system, use_nutation != 0);
 
@@ -10827,14 +10964,7 @@ pub unsafe extern "C" fn dhruv_shadbala_for_date(
     use_nutation: u8,
     out: *mut DhruvShadbalaResult,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
-        || out.is_null()
-    {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -10842,8 +10972,6 @@ pub unsafe extern "C" fn dhruv_shadbala_for_date(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -10859,18 +10987,13 @@ pub unsafe extern "C" fn dhruv_shadbala_for_date(
         Some(s) => s,
         None => return DhruvStatus::InvalidQuery,
     };
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
-    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
-        Some(l) => l,
-        None => return DhruvStatus::InvalidQuery,
-    };
-    let rs_config = RiseSetConfig {
-        use_refraction: rs_c.use_refraction != 0,
-        sun_limb,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
     let aya_config = SankrantiConfig::new(system, use_nutation != 0);
 
@@ -11014,14 +11137,7 @@ pub unsafe extern "C" fn dhruv_avastha_for_date(
     node_dignity_policy: u32,
     out: *mut DhruvAllGrahaAvasthas,
 ) -> DhruvStatus {
-    if engine.is_null()
-        || eop.is_null()
-        || utc.is_null()
-        || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
-        || out.is_null()
-    {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -11029,8 +11145,6 @@ pub unsafe extern "C" fn dhruv_avastha_for_date(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -11046,18 +11160,13 @@ pub unsafe extern "C" fn dhruv_avastha_for_date(
         Some(s) => s,
         None => return DhruvStatus::InvalidQuery,
     };
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
-    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
-        Some(l) => l,
-        None => return DhruvStatus::InvalidQuery,
-    };
-    let rs_config = RiseSetConfig {
-        use_refraction: rs_c.use_refraction != 0,
-        sun_limb,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
     let policy = match node_dignity_policy {
         0 => dhruv_vedic_base::NodeDignityPolicy::SignLordBased,
@@ -11202,14 +11311,14 @@ pub unsafe extern "C" fn dhruv_nakshatra_at(
     config: *const DhruvSankrantiConfig,
     out: *mut DhruvPanchangNakshatraInfo,
 ) -> DhruvStatus {
-    if engine.is_null() || config.is_null() || out.is_null() {
+    if engine.is_null() || out.is_null() {
         return DhruvStatus::NullPointer;
     }
 
     let engine_ref = unsafe { &*engine };
-    let cfg = match sankranti_config_from_ffi(unsafe { &*config }) {
-        Some(c) => c,
-        None => return DhruvStatus::InvalidQuery,
+    let cfg = match resolve_sankranti_config_ptr(config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
 
     match nakshatra_at(engine_ref, jd_tdb, moon_sidereal_deg, &cfg) {
@@ -11444,8 +11553,6 @@ pub unsafe extern "C" fn dhruv_dasha_hierarchy_utc(
         || eop.is_null()
         || birth_utc.is_null()
         || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
         || out.is_null()
     {
         return DhruvStatus::NullPointer;
@@ -11455,8 +11562,6 @@ pub unsafe extern "C" fn dhruv_dasha_hierarchy_utc(
     let eop = unsafe { &*eop };
     let utc_c = unsafe { &*birth_utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
 
     let utc_time = UtcTime {
         year: utc_c.year,
@@ -11472,18 +11577,13 @@ pub unsafe extern "C" fn dhruv_dasha_hierarchy_utc(
         Some(s) => s,
         None => return DhruvStatus::InvalidQuery,
     };
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
-    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
-        Some(l) => l,
-        None => return DhruvStatus::InvalidQuery,
-    };
-    let rs_config = RiseSetConfig {
-        use_refraction: rs_c.use_refraction != 0,
-        sun_limb,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
     let aya_config = SankrantiConfig::new(aya_system, use_nutation != 0);
 
@@ -11541,8 +11641,6 @@ pub unsafe extern "C" fn dhruv_dasha_snapshot_utc(
         || birth_utc.is_null()
         || query_utc.is_null()
         || location.is_null()
-        || bhava_config.is_null()
-        || riseset_config.is_null()
         || out.is_null()
     {
         return DhruvStatus::NullPointer;
@@ -11553,8 +11651,6 @@ pub unsafe extern "C" fn dhruv_dasha_snapshot_utc(
     let birth_c = unsafe { &*birth_utc };
     let query_c = unsafe { &*query_utc };
     let loc_c = unsafe { &*location };
-    let bhava_cfg_c = unsafe { &*bhava_config };
-    let rs_c = unsafe { &*riseset_config };
 
     let birth_time = UtcTime {
         year: birth_c.year,
@@ -11578,18 +11674,13 @@ pub unsafe extern "C" fn dhruv_dasha_snapshot_utc(
         Some(s) => s,
         None => return DhruvStatus::InvalidQuery,
     };
-    let rust_bhava_config = match bhava_config_from_ffi(bhava_cfg_c) {
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
-    let sun_limb = match sun_limb_from_code(rs_c.sun_limb) {
-        Some(l) => l,
-        None => return DhruvStatus::InvalidQuery,
-    };
-    let rs_config = RiseSetConfig {
-        use_refraction: rs_c.use_refraction != 0,
-        sun_limb,
-        altitude_correction: rs_c.altitude_correction != 0,
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
     };
     let aya_config = SankrantiConfig::new(aya_system, use_nutation != 0);
 

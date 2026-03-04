@@ -72,6 +72,66 @@ fn angular_separation_deg(a: f64, b: f64) -> f64 {
 }
 
 #[test]
+fn ffi_next_sankranti_allows_null_config_pointer() {
+    let Some(engine_ptr) = make_engine() else {
+        return;
+    };
+
+    let utc = DhruvUtcTime {
+        year: 2024,
+        month: 3,
+        day: 20,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
+    let mut event: DhruvSankrantiEvent = unsafe { std::mem::zeroed() };
+    let mut found: u8 = 0;
+
+    // SAFETY: All pointers are valid for this test; null config pointer is intentional.
+    let status = unsafe {
+        dhruv_next_sankranti(
+            engine_ptr,
+            &utc,
+            ptr::null(),
+            &mut event as *mut DhruvSankrantiEvent,
+            &mut found as *mut u8,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    // SAFETY: Pointer was returned by dhruv_engine_new.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_next_conjunction_allows_null_config_pointer() {
+    let Some(engine_ptr) = make_engine() else {
+        return;
+    };
+
+    let mut event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
+    let mut found: u8 = 0;
+
+    // SAFETY: All pointers are valid for this test; null config pointer is intentional.
+    let status = unsafe {
+        dhruv_next_conjunction(
+            engine_ptr,
+            Body::Sun.code(),
+            Body::Mercury.code(),
+            2_460_390.5,
+            ptr::null(),
+            &mut event as *mut DhruvConjunctionEvent,
+            &mut found as *mut u8,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+
+    // SAFETY: Pointer was returned by dhruv_engine_new.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
 fn query_once_successfully_maps_through_core_contract() {
     let config = match real_config() {
         Some(c) => c,
