@@ -6395,26 +6395,46 @@ pub const DHRUV_SPHUTA_COUNT: u32 = 16;
 
 /// Return the name of a graha by index (0-8). Returns null for invalid index.
 ///
-/// The returned pointer is static and must not be freed.
+/// The returned pointer is a NUL-terminated static string and must not be freed.
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_graha_name(index: u32) -> *const std::ffi::c_char {
-    let all = dhruv_vedic_base::graha::ALL_GRAHAS;
-    if index >= all.len() as u32 {
+    static NAMES: [&str; 9] = [
+        "Surya\0",
+        "Chandra\0",
+        "Mangal\0",
+        "Buddh\0",
+        "Guru\0",
+        "Shukra\0",
+        "Shani\0",
+        "Rahu\0",
+        "Ketu\0",
+    ];
+    if index as usize >= NAMES.len() {
         return ptr::null();
     }
-    let name = all[index as usize].name();
-    name.as_ptr() as *const std::ffi::c_char
+    NAMES[index as usize].as_ptr() as *const std::ffi::c_char
 }
 
 /// Return the English name of a graha by index (0-8). Returns null for invalid index.
+///
+/// The returned pointer is a NUL-terminated static string and must not be freed.
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_graha_english_name(index: u32) -> *const std::ffi::c_char {
-    let all = dhruv_vedic_base::graha::ALL_GRAHAS;
-    if index >= all.len() as u32 {
+    static NAMES: [&str; 9] = [
+        "Sun\0",
+        "Moon\0",
+        "Mars\0",
+        "Mercury\0",
+        "Jupiter\0",
+        "Venus\0",
+        "Saturn\0",
+        "Rahu\0",
+        "Ketu\0",
+    ];
+    if index as usize >= NAMES.len() {
         return ptr::null();
     }
-    let name = all[index as usize].english_name();
-    name.as_ptr() as *const std::ffi::c_char
+    NAMES[index as usize].as_ptr() as *const std::ffi::c_char
 }
 
 /// Return the graha index (0-8) that is the lord of the rashi at `rashi_index` (0-11).
