@@ -1,0 +1,23 @@
+{
+  "name": "ctara-dhruv-node-open",
+  "version": "0.1.0",
+  "description": "Open-source Node.js wrapper for ctara-dhruv-core via dhruv_ffi_c",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "src/",
+    "native/",
+    "scripts/",
+    "build/Release/*.node"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node ./scripts/build-addon.mjs",
+    "test": "node --test",
+    "test:ci": "node --test"
+  }
+}

@@ -1,0 +1,81 @@
+# Node Wrapper (`node-open`)
+
+Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the canonical C ABI (`dhruv_ffi_c`).
+
+## Status
+
+- ABI target: `DHRUV_API_VERSION=42`
+- Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
+- Package: `bindings/node-open`
+
+## Prerequisites
+
+- Node.js 20+
+- C++ compiler (Linux/macOS currently)
+- Rust toolchain (`cargo`)
+
+## Build
+
+From `bindings/node-open`:
+
+```bash
+npm run build
+```
+
+This script builds `dhruv_ffi_c` in release mode, compiles `dhruv_node.node`, and copies the shared `dhruv_ffi_c` library next to the addon.
+
+## Test
+
+```bash
+npm test
+```
+
+Integration tests skip gracefully when kernel files are absent.
+
+## Quickstart
+
+```js
+const dhruv = require('./index');
+
+dhruv.verifyAbi();
+
+const engine = dhruv.Engine.create({
+  spkPaths: ['/abs/path/to/de442s.bsp'],
+  lskPath: '/abs/path/to/naif0012.tls',
+  cacheCapacity: 64,
+  strictValidation: false,
+});
+
+const state = engine.query({
+  target: 301,
+  observer: 399,
+  frame: 1,
+  epochTdbJd: 2451545.0,
+});
+
+console.log(state);
+engine.close();
+```
+
+## Coverage
+
+Public modules included in this wrapper:
+
+- engine/config/LSK/EOP lifecycle
+- time conversions and nutation
+- search (lunar phase unified search)
+- panchang (`tithi_for_date`, `vaar_for_date`)
+- jyotish (`graha_sidereal_longitudes`)
+- shadbala and full-kundali summary
+- dasha snapshot
+- tara catalog load/compute helpers
+
+## Library Loading
+
+- Optional addon override: `DHRUV_NODE_ADDON_PATH=/abs/path/to/dhruv_node.node`
+- The build script copies `libdhruv_ffi_c.{so,dylib}` (or `dhruv_ffi_c.dll`) next to the addon.
+
+## Notes
+
+- Windows build path is implemented in `scripts/build-addon.mjs` using MSVC `cl`.
+- If `cl`/`node.lib` discovery differs in your environment, set `NODE_INCLUDE_DIR` and use the package scripts from a Developer Command Prompt.

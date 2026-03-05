@@ -111,6 +111,26 @@ PY
   trap - RETURN
 }
 
+scan_go_wrapper() {
+  local wrapper_dir="$1"
+  local gomod="${wrapper_dir}/go.mod"
+
+  if [[ ! -f "${gomod}" ]]; then
+    return 0
+  fi
+
+  echo "==> Scanning Go wrapper licenses in ${wrapper_dir}"
+
+  # Deterministic policy for now: stdlib-only Go wrapper.
+  # If/when third-party modules are added, this gate must be expanded
+  # with module-level license extraction and allowlist checks.
+  if grep -Eq '^[[:space:]]*require[[:space:]]' "${gomod}"; then
+    echo "ERROR: ${wrapper_dir} declares Go module dependencies."
+    echo "Current policy for go-open requires stdlib-only dependencies."
+    return 1
+  fi
+}
+
 scan_wrappers() {
   if [[ ! -d "bindings" ]]; then
     echo "==> Skipping wrapper scans (no bindings directory)"
@@ -121,6 +141,7 @@ scan_wrappers() {
   while IFS= read -r wrapper; do
     scan_node_wrapper "${wrapper}"
     scan_python_wrapper "${wrapper}"
+    scan_go_wrapper "${wrapper}"
   done < <(find bindings -mindepth 1 -maxdepth 2 -type d | sort)
 }
 

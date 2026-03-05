@@ -1,0 +1,53 @@
+name: Go Bindings
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  go-open:
+    name: go-open (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build C ABI
+        run: cargo build -p dhruv_ffi_c --release
+
+      - name: Test go-open (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          export GOCACHE=/tmp/go-build
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            export LD_LIBRARY_PATH="$PWD/target/release:${LD_LIBRARY_PATH:-}"
+          else
+            export DYLD_LIBRARY_PATH="$PWD/target/release:${DYLD_LIBRARY_PATH:-}"
+          fi
+          cd bindings/go-open
+          go test ./...
+
+      - name: Test go-open (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:GOCACHE = "$env:TEMP\\go-build"
+          $env:PATH = "$PWD\\target\\release;$env:PATH"
+          cd bindings/go-open
+          go test ./...

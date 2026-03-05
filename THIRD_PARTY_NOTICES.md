@@ -30,6 +30,29 @@ When dependency sets change:
 2. Re-run license checks (`scripts/ci/license_gate.sh`).
 3. Update this file with any new third-party attribution requirements.
 
+## Python Bindings Dependencies
+
+The `ctara-dhruv` Python package (`bindings/python-open/`) uses the following
+runtime dependencies, pinned in `requirements.lock.txt`:
+
+| Package    | Version | License      | Purpose                        |
+|------------|---------|--------------|--------------------------------|
+| cffi       | 1.17.1  | MIT          | C FFI interface (ABI/dlopen)   |
+| pycparser  | 2.22    | BSD-3-Clause | C header parser (cffi dep)     |
+
+Both licenses are on the project allowlist.
+
+## Go Bindings Dependencies
+
+The Go wrapper (`bindings/go-open/`) currently uses only the Go standard
+library and does not introduce third-party Go module dependencies.
+
+## Node Bindings Dependencies
+
+The Node wrapper (`bindings/node-open/`) currently uses only Node.js built-in
+modules and an in-repo native Node-API addon implementation. It does not
+introduce third-party npm runtime dependencies.
+
 ## Bundled Data
 
 Kernel/data files in `kernels/` are sourced from public NAIF/JPL resources and
