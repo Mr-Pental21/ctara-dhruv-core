@@ -15,6 +15,24 @@ function grahaTropicalLongitudes(engine, jdTdb) {
   return r.longitudes;
 }
 
+function specialLagnasForDate(engine, eop, utc, location, risesetConfig, ayanamshaSystem = 0, useNutation = true) {
+  const r = addon.specialLagnasForDate(engine._handle, eop._handle, utc, location, risesetConfig, ayanamshaSystem, !!useNutation);
+  checkStatus('special_lagnas_for_date', r.status);
+  return r.lagnas;
+}
+
+function arudhaPadasForDate(engine, eop, utc, location, ayanamshaSystem = 0, useNutation = true) {
+  const r = addon.arudhaPadasForDate(engine._handle, eop._handle, utc, location, ayanamshaSystem, !!useNutation);
+  checkStatus('arudha_padas_for_date', r.status);
+  return r.results;
+}
+
+function allUpagrahasForDate(engine, eop, utc, location, ayanamshaSystem = 0, useNutation = true) {
+  const r = addon.allUpagrahasForDate(engine._handle, eop._handle, utc, location, ayanamshaSystem, !!useNutation);
+  checkStatus('all_upagrahas_for_date', r.status);
+  return r.upagrahas;
+}
+
 function rashiCount() {
   return addon.rashiCount();
 }
@@ -38,6 +56,42 @@ function nakshatraFromLongitude(siderealLongitudeDeg) {
 function nakshatra28FromLongitude(siderealLongitudeDeg) {
   const r = addon.nakshatra28FromLongitude(siderealLongitudeDeg);
   checkStatus('nakshatra28_from_longitude', r.status);
+  return r.nakshatra28;
+}
+
+function rashiFromTropical(tropicalLongitudeDeg, ayanamshaSystem, jdTdb, useNutation = true) {
+  const r = addon.rashiFromTropical(tropicalLongitudeDeg, ayanamshaSystem, jdTdb, !!useNutation);
+  checkStatus('rashi_from_tropical', r.status);
+  return r.rashi;
+}
+
+function nakshatraFromTropical(tropicalLongitudeDeg, ayanamshaSystem, jdTdb, useNutation = true) {
+  const r = addon.nakshatraFromTropical(tropicalLongitudeDeg, ayanamshaSystem, jdTdb, !!useNutation);
+  checkStatus('nakshatra_from_tropical', r.status);
+  return r.nakshatra;
+}
+
+function nakshatra28FromTropical(tropicalLongitudeDeg, ayanamshaSystem, jdTdb, useNutation = true) {
+  const r = addon.nakshatra28FromTropical(tropicalLongitudeDeg, ayanamshaSystem, jdTdb, !!useNutation);
+  checkStatus('nakshatra28_from_tropical', r.status);
+  return r.nakshatra28;
+}
+
+function rashiFromTropicalUtc(lsk, tropicalLongitudeDeg, ayanamshaSystem, utc, useNutation = true) {
+  const r = addon.rashiFromTropicalUtc(lsk._handle, tropicalLongitudeDeg, ayanamshaSystem, utc, !!useNutation);
+  checkStatus('rashi_from_tropical_utc', r.status);
+  return r.rashi;
+}
+
+function nakshatraFromTropicalUtc(lsk, tropicalLongitudeDeg, ayanamshaSystem, utc, useNutation = true) {
+  const r = addon.nakshatraFromTropicalUtc(lsk._handle, tropicalLongitudeDeg, ayanamshaSystem, utc, !!useNutation);
+  checkStatus('nakshatra_from_tropical_utc', r.status);
+  return r.nakshatra;
+}
+
+function nakshatra28FromTropicalUtc(lsk, tropicalLongitudeDeg, ayanamshaSystem, utc, useNutation = true) {
+  const r = addon.nakshatra28FromTropicalUtc(lsk._handle, tropicalLongitudeDeg, ayanamshaSystem, utc, !!useNutation);
+  checkStatus('nakshatra28_from_tropical_utc', r.status);
   return r.nakshatra28;
 }
 
@@ -99,11 +153,20 @@ function horaAt(vaarIndex, horaIndex) { return addon.horaAt(vaarIndex, horaIndex
 module.exports = {
   grahaSiderealLongitudes,
   grahaTropicalLongitudes,
+  specialLagnasForDate,
+  arudhaPadasForDate,
+  allUpagrahasForDate,
   rashiCount,
   nakshatraCount,
   rashiFromLongitude,
   nakshatraFromLongitude,
   nakshatra28FromLongitude,
+  rashiFromTropical,
+  nakshatraFromTropical,
+  nakshatra28FromTropical,
+  rashiFromTropicalUtc,
+  nakshatraFromTropicalUtc,
+  nakshatra28FromTropicalUtc,
   degToDms,
   tithiFromElongation,
   karanaFromElongation,

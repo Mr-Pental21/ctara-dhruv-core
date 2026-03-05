@@ -37,33 +37,33 @@ func (e *Engine) ComputeBhavasUTC(ep *EOP, lsk *LSK, loc GeoLocation, utc UtcTim
 	return out, statusErr("compute_bhavas_utc", st)
 }
 
-func (e *Engine) LagnaDeg(ep *EOP, loc GeoLocation, jdTdb float64) (float64, error) {
-	out, st := cabi.LagnaDeg(e.h, ep.h, loc, jdTdb)
+func (e *Engine) LagnaDeg(lsk *LSK, ep *EOP, loc GeoLocation, jdTdb float64) (float64, error) {
+	out, st := cabi.LagnaDeg(lsk.h, ep.h, loc, jdTdb)
 	return out, statusErr("lagna_deg", st)
 }
 
-func (e *Engine) MCDeg(ep *EOP, loc GeoLocation, jdTdb float64) (float64, error) {
-	out, st := cabi.MCDeg(e.h, ep.h, loc, jdTdb)
+func (e *Engine) MCDeg(lsk *LSK, ep *EOP, loc GeoLocation, jdTdb float64) (float64, error) {
+	out, st := cabi.MCDeg(lsk.h, ep.h, loc, jdTdb)
 	return out, statusErr("mc_deg", st)
 }
 
-func (e *Engine) RAMCDeg(ep *EOP, loc GeoLocation, jdTdb float64) (float64, error) {
-	out, st := cabi.RAMCDeg(e.h, ep.h, loc, jdTdb)
+func (e *Engine) RAMCDeg(lsk *LSK, ep *EOP, loc GeoLocation, jdTdb float64) (float64, error) {
+	out, st := cabi.RAMCDeg(lsk.h, ep.h, loc, jdTdb)
 	return out, statusErr("ramc_deg", st)
 }
 
-func (e *Engine) LagnaDegUTC(ep *EOP, loc GeoLocation, utc UtcTime) (float64, error) {
-	out, st := cabi.LagnaDegUTC(e.h, ep.h, loc, utc)
+func (e *Engine) LagnaDegUTC(lsk *LSK, ep *EOP, loc GeoLocation, utc UtcTime) (float64, error) {
+	out, st := cabi.LagnaDegUTC(lsk.h, ep.h, loc, utc)
 	return out, statusErr("lagna_deg_utc", st)
 }
 
-func (e *Engine) MCDegUTC(ep *EOP, loc GeoLocation, utc UtcTime) (float64, error) {
-	out, st := cabi.MCDegUTC(e.h, ep.h, loc, utc)
+func (e *Engine) MCDegUTC(lsk *LSK, ep *EOP, loc GeoLocation, utc UtcTime) (float64, error) {
+	out, st := cabi.MCDegUTC(lsk.h, ep.h, loc, utc)
 	return out, statusErr("mc_deg_utc", st)
 }
 
-func (e *Engine) RAMCDegUTC(ep *EOP, loc GeoLocation, utc UtcTime) (float64, error) {
-	out, st := cabi.RAMCDegUTC(e.h, ep.h, loc, utc)
+func (e *Engine) RAMCDegUTC(lsk *LSK, ep *EOP, loc GeoLocation, utc UtcTime) (float64, error) {
+	out, st := cabi.RAMCDegUTC(lsk.h, ep.h, loc, utc)
 	return out, statusErr("ramc_deg_utc", st)
 }
 

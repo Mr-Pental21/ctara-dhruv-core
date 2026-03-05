@@ -5,6 +5,7 @@ const time = require('./time');
 const search = require('./search');
 const panchang = require('./panchang');
 const jyotish = require('./jyotish');
+const extras = require('./extras');
 const shadbala = require('./shadbala');
 const dasha = require('./dasha');
 const tara = require('./tara');
@@ -16,6 +17,7 @@ module.exports = {
   ...search,
   ...panchang,
   ...jyotish,
+  ...extras,
   ...shadbala,
   ...dasha,
   ...tara,

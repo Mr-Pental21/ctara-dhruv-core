@@ -17,12 +17,12 @@ func (e *Engine) SpecialLagnasForDate(ep *EOP, utc UtcTime, loc GeoLocation, ris
 	return out, statusErr("special_lagnas_for_date", st)
 }
 
-func (e *Engine) ArudhaPadasForDate(ep *EOP, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, ayanamshaSystem uint32, useNutation bool) ([12]ArudhaResult, error) {
-	out, st := cabi.ArudhaPadasForDate(e.h, ep.h, utc, loc, bhavaCfg, ayanamshaSystem, useNutation)
+func (e *Engine) ArudhaPadasForDate(ep *EOP, utc UtcTime, loc GeoLocation, ayanamshaSystem uint32, useNutation bool) ([12]ArudhaResult, error) {
+	out, st := cabi.ArudhaPadasForDate(e.h, ep.h, utc, loc, ayanamshaSystem, useNutation)
 	return out, statusErr("arudha_padas_for_date", st)
 }
 
-func (e *Engine) AllUpagrahasForDate(ep *EOP, utc UtcTime, loc GeoLocation, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (AllUpagrahas, error) {
-	out, st := cabi.AllUpagrahasForDate(e.h, ep.h, utc, loc, riseCfg, ayanamshaSystem, useNutation)
+func (e *Engine) AllUpagrahasForDate(ep *EOP, utc UtcTime, loc GeoLocation, ayanamshaSystem uint32, useNutation bool) (AllUpagrahas, error) {
+	out, st := cabi.AllUpagrahasForDate(e.h, ep.h, utc, loc, ayanamshaSystem, useNutation)
 	return out, statusErr("all_upagrahas_for_date", st)
 }

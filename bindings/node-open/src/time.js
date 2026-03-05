@@ -21,6 +21,16 @@ function nutationIau2000b(jdTdb) {
   return { dpsi: r.dpsi, deps: r.deps };
 }
 
+function nutationIau2000bUtc(lsk, utc) {
+  const r = addon.nutationIau2000bUtc(lsk._handle, utc);
+  checkStatus('nutation_iau2000b_utc', r.status);
+  return { dpsi: r.dpsi, deps: r.deps };
+}
+
+function approximateLocalNoonJd(jdUtMidnight, longitudeDeg) {
+  return addon.approximateLocalNoonJd(jdUtMidnight, longitudeDeg);
+}
+
 function ayanamshaSystemCount() {
   return addon.ayanamshaSystemCount();
 }
@@ -30,7 +40,7 @@ function referencePlaneDefault(systemCode) {
 }
 
 function ayanamshaComputeEx(lsk, request, eop) {
-  const r = addon.ayanamshaComputeEx(lsk._handle, request, eop._handle, 0);
+  const r = addon.ayanamshaComputeEx(lsk._handle, request, eop._handle);
   checkStatus('ayanamsha_compute_ex', r.status);
   return r.ayanamshaDeg;
 }
@@ -51,6 +61,24 @@ function lunarNodeDegWithEngine(engine, nodeCode, modeCode, jdTdb) {
   return r.longitudeDeg;
 }
 
+function lunarNodeDegUtc(lsk, nodeCode, modeCode, utc) {
+  const r = addon.lunarNodeDegUtc(lsk._handle, nodeCode, modeCode, utc);
+  checkStatus('lunar_node_deg_utc', r.status);
+  return r.longitudeDeg;
+}
+
+function lunarNodeDegUtcWithEngine(engine, lsk, nodeCode, modeCode, utc) {
+  const r = addon.lunarNodeDegUtcWithEngine(engine._handle, lsk._handle, nodeCode, modeCode, utc);
+  checkStatus('lunar_node_deg_utc_with_engine', r.status);
+  return r.longitudeDeg;
+}
+
+function lunarNodeComputeEx(lsk, eop, request) {
+  const r = addon.lunarNodeComputeEx(lsk._handle, eop._handle, request);
+  checkStatus('lunar_node_compute_ex', r.status);
+  return r.longitudeDeg;
+}
+
 function riseSetConfigDefault() {
   return addon.riseSetConfigDefault();
 }
@@ -67,12 +95,17 @@ module.exports = {
   utcToTdbJd,
   jdTdbToUtc,
   nutationIau2000b,
+  nutationIau2000bUtc,
+  approximateLocalNoonJd,
   ayanamshaSystemCount,
   referencePlaneDefault,
   ayanamshaComputeEx,
   lunarNodeCount,
   lunarNodeDeg,
   lunarNodeDegWithEngine,
+  lunarNodeDegUtc,
+  lunarNodeDegUtcWithEngine,
+  lunarNodeComputeEx,
   riseSetConfigDefault,
   bhavaConfigDefault,
   sankrantiConfigDefault,

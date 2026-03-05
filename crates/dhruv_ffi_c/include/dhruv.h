@@ -1201,20 +1201,20 @@ DhruvStatus dhruv_riseset_result_to_utc(
 DhruvRiseSetConfig dhruv_riseset_config_default(void);
 DhruvStatus dhruv_compute_rise_set(
     const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
-    const DhruvRiseSetConfig *config,
     int32_t event_code,
     double  jd_tdb_approx,
-    const DhruvLskHandle *lsk,
+    const DhruvRiseSetConfig *config,
     DhruvRiseSetResult *out);
 DhruvStatus dhruv_compute_all_events(
     const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
-    const DhruvRiseSetConfig *config,
     double jd_tdb_approx,
-    const DhruvLskHandle *lsk,
+    const DhruvRiseSetConfig *config,
     DhruvRiseSetResult *out);
 double dhruv_approximate_local_noon_jd(double jd_ut_midnight, double longitude_deg);
 
@@ -1223,26 +1223,26 @@ DhruvBhavaConfig dhruv_bhava_config_default(void);
 uint32_t dhruv_bhava_system_count(void);
 DhruvStatus dhruv_compute_bhavas(
     const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
-    const DhruvLskHandle *lsk,
     double jd_tdb,
     const DhruvBhavaConfig *config,
     DhruvBhavaResult *out);
 DhruvStatus dhruv_lagna_deg(
-    const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     double jd_tdb,
     double *out);
 DhruvStatus dhruv_mc_deg(
-    const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     double jd_tdb,
     double *out);
 DhruvStatus dhruv_ramc_deg(
-    const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     double jd_tdb,
@@ -1375,8 +1375,8 @@ int32_t dhruv_nth_rashi_from(uint32_t rashi_index, uint32_t offset);
 /* --- UTC wrapper functions --- */
 DhruvStatus dhruv_compute_rise_set_utc(
     const DhruvEngineHandle *engine,
-    const DhruvEopHandle *eop,
     const DhruvLskHandle *lsk,
+    const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     int32_t event_code,
     const DhruvUtcTime *utc,
@@ -1384,34 +1384,34 @@ DhruvStatus dhruv_compute_rise_set_utc(
     DhruvRiseSetResultUtc *out);
 DhruvStatus dhruv_compute_all_events_utc(
     const DhruvEngineHandle *engine,
-    const DhruvEopHandle *eop,
     const DhruvLskHandle *lsk,
+    const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     const DhruvUtcTime *utc,
     const DhruvRiseSetConfig *config,
     DhruvRiseSetResultUtc *out);
 DhruvStatus dhruv_compute_bhavas_utc(
     const DhruvEngineHandle *engine,
-    const DhruvEopHandle *eop,
     const DhruvLskHandle *lsk,
+    const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     const DhruvUtcTime *utc,
     const DhruvBhavaConfig *config,
     DhruvBhavaResult *out);
 DhruvStatus dhruv_lagna_deg_utc(
-    const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     const DhruvUtcTime *utc,
     double *out);
 DhruvStatus dhruv_mc_deg_utc(
-    const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     const DhruvUtcTime *utc,
     double *out);
 DhruvStatus dhruv_ramc_deg_utc(
-    const DhruvEngineHandle *engine,
+    const DhruvLskHandle *lsk,
     const DhruvEopHandle *eop,
     const DhruvGeoLocation *location,
     const DhruvUtcTime *utc,
@@ -1520,7 +1520,7 @@ DhruvStatus dhruv_sidereal_sum_at(
 DhruvStatus dhruv_vedic_day_sunrises(
     const DhruvEngineHandle *engine,
     const DhruvEopHandle *eop,
-    const DhruvLskHandle *lsk,
+    const DhruvUtcTime *utc,
     const DhruvGeoLocation *location,
     const DhruvRiseSetConfig *config,
     double *out_sunrise,
@@ -1609,17 +1609,15 @@ DhruvStatus dhruv_special_lagnas_for_date(
 
 /* --- Arudha Padas --- */
 const char *dhruv_arudha_pada_name(uint32_t index);
-DhruvStatus dhruv_arudha_pada(
-    uint8_t bhava_number,
-    const uint8_t *graha_rashi_indices,
-    uint8_t lagna_rashi,
-    DhruvArudhaResult *out);
+double dhruv_arudha_pada(
+    double bhava_cusp_lon,
+    double lord_lon,
+    uint8_t *out_rashi);
 DhruvStatus dhruv_arudha_padas_for_date(
     const DhruvEngineHandle *engine,
     const DhruvEopHandle *eop,
     const DhruvUtcTime *utc,
     const DhruvGeoLocation *location,
-    const DhruvBhavaConfig *bhava_config,
     uint32_t ayanamsha_system,
     uint8_t use_nutation,
     DhruvArudhaResult *out);
@@ -1627,38 +1625,29 @@ DhruvStatus dhruv_arudha_padas_for_date(
 /* --- Upagrahas --- */
 const char *dhruv_upagraha_name(uint32_t index);
 DhruvStatus dhruv_sun_based_upagrahas(
-    const DhruvEngineHandle *engine,
-    double jd_tdb,
-    uint32_t ayanamsha_system,
-    uint8_t use_nutation,
-    double *dhooma, double *vyatipata,
-    double *parivesha, double *indra_chapa,
-    double *upaketu);
+    double sun_sid_lon,
+    DhruvAllUpagrahas *out);
 DhruvStatus dhruv_time_upagraha_jd(
-    const DhruvEngineHandle *engine,
-    const DhruvEopHandle *eop,
-    const DhruvGeoLocation *location,
-    const DhruvRiseSetConfig *riseset_config,
-    double jd_tdb,
     uint32_t upagraha_index,
-    double *out_jd, double *out_lon);
+    uint32_t weekday,
+    uint8_t is_day,
+    double sunrise_jd,
+    double sunset_jd,
+    double next_sunrise_jd,
+    double *out_jd);
 DhruvStatus dhruv_time_upagraha_jd_utc(
     const DhruvEngineHandle *engine,
     const DhruvEopHandle *eop,
-    const DhruvLskHandle *lsk,
+    const DhruvUtcTime *utc,
     const DhruvGeoLocation *location,
     const DhruvRiseSetConfig *riseset_config,
-    const DhruvUtcTime *utc,
     uint32_t upagraha_index,
-    uint32_t ayanamsha_system,
-    uint8_t use_nutation,
-    double *out_lon);
+    double *out_jd);
 DhruvStatus dhruv_all_upagrahas_for_date(
     const DhruvEngineHandle *engine,
     const DhruvEopHandle *eop,
     const DhruvUtcTime *utc,
     const DhruvGeoLocation *location,
-    const DhruvRiseSetConfig *riseset_config,
     uint32_t ayanamsha_system,
     uint8_t use_nutation,
     DhruvAllUpagrahas *out);

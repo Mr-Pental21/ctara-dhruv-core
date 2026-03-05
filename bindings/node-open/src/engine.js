@@ -94,6 +94,12 @@ class Engine {
     checkStatus('query_utc', r.status);
     return r.state;
   }
+
+  queryUtc(target, observer, frame, utc) {
+    const r = addon.queryUtc(this._handle, target, observer, frame, utc);
+    checkStatus('query_utc', r.status);
+    return r.state;
+  }
 }
 
 function apiVersion() {
@@ -111,6 +117,18 @@ function clearActiveConfig() {
   checkStatus('config_clear_active', addon.configClearActive());
 }
 
+function queryOnce(config, query) {
+  const r = addon.queryOnce(config, query);
+  checkStatus('query_once', r.status);
+  return r.state;
+}
+
+function cartesianToSpherical(positionKm) {
+  const r = addon.cartesianToSpherical(positionKm);
+  checkStatus('cartesian_to_spherical', r.status);
+  return r.coords;
+}
+
 module.exports = {
   Config,
   Engine,
@@ -119,4 +137,6 @@ module.exports = {
   apiVersion,
   verifyAbi,
   clearActiveConfig,
+  queryOnce,
+  cartesianToSpherical,
 };

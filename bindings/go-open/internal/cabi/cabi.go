@@ -387,7 +387,7 @@ func ComputeRiseSet(engine EngineHandle, eop EopHandle, loc GeoLocation, cfg Ris
 	cloc := cGeo(loc)
 	ccfg := cRiseSetConfig(cfg)
 	var out C.DhruvRiseSetResult
-	st := Status(C.dhruv_compute_rise_set(engine.ptr, eop.ptr, &cloc, &ccfg, C.int32_t(eventCode), C.double(jdTdbApprox), lsk.ptr, &out))
+	st := Status(C.dhruv_compute_rise_set(engine.ptr, lsk.ptr, eop.ptr, &cloc, C.int32_t(eventCode), C.double(jdTdbApprox), &ccfg, &out))
 	return RiseSetResult{ResultType: int32(out.result_type), EventCode: int32(out.event_code), JdTdb: float64(out.jd_tdb)}, st
 }
 
@@ -395,7 +395,7 @@ func ComputeAllEvents(engine EngineHandle, eop EopHandle, loc GeoLocation, cfg R
 	cloc := cGeo(loc)
 	ccfg := cRiseSetConfig(cfg)
 	var out [8]C.DhruvRiseSetResult
-	st := Status(C.dhruv_compute_all_events(engine.ptr, eop.ptr, &cloc, &ccfg, C.double(jdTdbApprox), lsk.ptr, (*C.DhruvRiseSetResult)(unsafe.Pointer(&out[0]))))
+	st := Status(C.dhruv_compute_all_events(engine.ptr, lsk.ptr, eop.ptr, &cloc, C.double(jdTdbApprox), &ccfg, (*C.DhruvRiseSetResult)(unsafe.Pointer(&out[0]))))
 	var goOut [8]RiseSetResult
 	for i := 0; i < 8; i++ {
 		goOut[i] = RiseSetResult{ResultType: int32(out[i].result_type), EventCode: int32(out[i].event_code), JdTdb: float64(out[i].jd_tdb)}
@@ -408,7 +408,7 @@ func ComputeRiseSetUTC(engine EngineHandle, eop EopHandle, lsk LskHandle, loc Ge
 	cutc := cUTC(utc)
 	ccfg := cRiseSetConfig(cfg)
 	var out C.DhruvRiseSetResultUtc
-	st := Status(C.dhruv_compute_rise_set_utc(engine.ptr, eop.ptr, lsk.ptr, &cloc, C.int32_t(eventCode), &cutc, &ccfg, &out))
+	st := Status(C.dhruv_compute_rise_set_utc(engine.ptr, lsk.ptr, eop.ptr, &cloc, C.int32_t(eventCode), &cutc, &ccfg, &out))
 	return RiseSetResultUTC{ResultType: int32(out.result_type), EventCode: int32(out.event_code), UTC: goUTC(out.utc)}, st
 }
 
@@ -417,7 +417,7 @@ func ComputeAllEventsUTC(engine EngineHandle, eop EopHandle, lsk LskHandle, loc 
 	cutc := cUTC(utc)
 	ccfg := cRiseSetConfig(cfg)
 	var out [8]C.DhruvRiseSetResultUtc
-	st := Status(C.dhruv_compute_all_events_utc(engine.ptr, eop.ptr, lsk.ptr, &cloc, &cutc, &ccfg, (*C.DhruvRiseSetResultUtc)(unsafe.Pointer(&out[0]))))
+	st := Status(C.dhruv_compute_all_events_utc(engine.ptr, lsk.ptr, eop.ptr, &cloc, &cutc, &ccfg, (*C.DhruvRiseSetResultUtc)(unsafe.Pointer(&out[0]))))
 	var goOut [8]RiseSetResultUTC
 	for i := 0; i < 8; i++ {
 		goOut[i] = RiseSetResultUTC{ResultType: int32(out[i].result_type), EventCode: int32(out[i].event_code), UTC: goUTC(out[i].utc)}
@@ -451,7 +451,7 @@ func ComputeBhavas(engine EngineHandle, eop EopHandle, loc GeoLocation, lsk LskH
 	cloc := cGeo(loc)
 	ccfg := cBhavaConfig(cfg)
 	var out C.DhruvBhavaResult
-	st := Status(C.dhruv_compute_bhavas(engine.ptr, eop.ptr, &cloc, lsk.ptr, C.double(jdTdb), &ccfg, &out))
+	st := Status(C.dhruv_compute_bhavas(engine.ptr, lsk.ptr, eop.ptr, &cloc, C.double(jdTdb), &ccfg, &out))
 	return goBhavaResult(out), st
 }
 
@@ -460,52 +460,52 @@ func ComputeBhavasUTC(engine EngineHandle, eop EopHandle, lsk LskHandle, loc Geo
 	cutc := cUTC(utc)
 	ccfg := cBhavaConfig(cfg)
 	var out C.DhruvBhavaResult
-	st := Status(C.dhruv_compute_bhavas_utc(engine.ptr, eop.ptr, lsk.ptr, &cloc, &cutc, &ccfg, &out))
+	st := Status(C.dhruv_compute_bhavas_utc(engine.ptr, lsk.ptr, eop.ptr, &cloc, &cutc, &ccfg, &out))
 	return goBhavaResult(out), st
 }
 
-func LagnaDeg(engine EngineHandle, eop EopHandle, loc GeoLocation, jdTdb float64) (float64, Status) {
+func LagnaDeg(lsk LskHandle, eop EopHandle, loc GeoLocation, jdTdb float64) (float64, Status) {
 	cloc := cGeo(loc)
 	var out C.double
-	st := Status(C.dhruv_lagna_deg(engine.ptr, eop.ptr, &cloc, C.double(jdTdb), &out))
+	st := Status(C.dhruv_lagna_deg(lsk.ptr, eop.ptr, &cloc, C.double(jdTdb), &out))
 	return float64(out), st
 }
 
-func MCDeg(engine EngineHandle, eop EopHandle, loc GeoLocation, jdTdb float64) (float64, Status) {
+func MCDeg(lsk LskHandle, eop EopHandle, loc GeoLocation, jdTdb float64) (float64, Status) {
 	cloc := cGeo(loc)
 	var out C.double
-	st := Status(C.dhruv_mc_deg(engine.ptr, eop.ptr, &cloc, C.double(jdTdb), &out))
+	st := Status(C.dhruv_mc_deg(lsk.ptr, eop.ptr, &cloc, C.double(jdTdb), &out))
 	return float64(out), st
 }
 
-func RAMCDeg(engine EngineHandle, eop EopHandle, loc GeoLocation, jdTdb float64) (float64, Status) {
+func RAMCDeg(lsk LskHandle, eop EopHandle, loc GeoLocation, jdTdb float64) (float64, Status) {
 	cloc := cGeo(loc)
 	var out C.double
-	st := Status(C.dhruv_ramc_deg(engine.ptr, eop.ptr, &cloc, C.double(jdTdb), &out))
+	st := Status(C.dhruv_ramc_deg(lsk.ptr, eop.ptr, &cloc, C.double(jdTdb), &out))
 	return float64(out), st
 }
 
-func LagnaDegUTC(engine EngineHandle, eop EopHandle, loc GeoLocation, utc UtcTime) (float64, Status) {
+func LagnaDegUTC(lsk LskHandle, eop EopHandle, loc GeoLocation, utc UtcTime) (float64, Status) {
 	cloc := cGeo(loc)
 	cutc := cUTC(utc)
 	var out C.double
-	st := Status(C.dhruv_lagna_deg_utc(engine.ptr, eop.ptr, &cloc, &cutc, &out))
+	st := Status(C.dhruv_lagna_deg_utc(lsk.ptr, eop.ptr, &cloc, &cutc, &out))
 	return float64(out), st
 }
 
-func MCDegUTC(engine EngineHandle, eop EopHandle, loc GeoLocation, utc UtcTime) (float64, Status) {
+func MCDegUTC(lsk LskHandle, eop EopHandle, loc GeoLocation, utc UtcTime) (float64, Status) {
 	cloc := cGeo(loc)
 	cutc := cUTC(utc)
 	var out C.double
-	st := Status(C.dhruv_mc_deg_utc(engine.ptr, eop.ptr, &cloc, &cutc, &out))
+	st := Status(C.dhruv_mc_deg_utc(lsk.ptr, eop.ptr, &cloc, &cutc, &out))
 	return float64(out), st
 }
 
-func RAMCDegUTC(engine EngineHandle, eop EopHandle, loc GeoLocation, utc UtcTime) (float64, Status) {
+func RAMCDegUTC(lsk LskHandle, eop EopHandle, loc GeoLocation, utc UtcTime) (float64, Status) {
 	cloc := cGeo(loc)
 	cutc := cUTC(utc)
 	var out C.double
-	st := Status(C.dhruv_ramc_deg_utc(engine.ptr, eop.ptr, &cloc, &cutc, &out))
+	st := Status(C.dhruv_ramc_deg_utc(lsk.ptr, eop.ptr, &cloc, &cutc, &out))
 	return float64(out), st
 }
 
@@ -1004,11 +1004,10 @@ func SpecialLagnasForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc G
 	}, st
 }
 
-func ArudhaPadasForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, ayanamshaSystem uint32, useNutation bool) ([12]ArudhaResult, Status) {
+func ArudhaPadasForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, ayanamshaSystem uint32, useNutation bool) ([12]ArudhaResult, Status) {
 	cutc, cloc := cUTC(utc), cGeo(loc)
-	cbhava := cBhavaConfig(bhavaCfg)
 	var out [12]C.DhruvArudhaResult
-	st := Status(C.dhruv_arudha_padas_for_date(engine.ptr, eop.ptr, &cutc, &cloc, &cbhava, C.uint32_t(ayanamshaSystem), boolU8(useNutation), (*C.DhruvArudhaResult)(unsafe.Pointer(&out[0]))))
+	st := Status(C.dhruv_arudha_padas_for_date(engine.ptr, eop.ptr, &cutc, &cloc, C.uint32_t(ayanamshaSystem), boolU8(useNutation), (*C.DhruvArudhaResult)(unsafe.Pointer(&out[0]))))
 	var goOut [12]ArudhaResult
 	for i := 0; i < 12; i++ {
 		goOut[i] = ArudhaResult{BhavaNumber: uint8(out[i].bhava_number), LongitudeDeg: float64(out[i].longitude_deg), RashiIndex: uint8(out[i].rashi_index)}
@@ -1016,10 +1015,10 @@ func ArudhaPadasForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc Geo
 	return goOut, st
 }
 
-func AllUpagrahasForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, riseset RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (AllUpagrahas, Status) {
-	cutc, cloc, ccfg := cUTC(utc), cGeo(loc), cRiseSetConfig(riseset)
+func AllUpagrahasForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, ayanamshaSystem uint32, useNutation bool) (AllUpagrahas, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
 	var out C.DhruvAllUpagrahas
-	st := Status(C.dhruv_all_upagrahas_for_date(engine.ptr, eop.ptr, &cutc, &cloc, &ccfg, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &out))
+	st := Status(C.dhruv_all_upagrahas_for_date(engine.ptr, eop.ptr, &cutc, &cloc, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &out))
 	return AllUpagrahas{
 		Gulika: float64(out.gulika), Maandi: float64(out.maandi), Kaala: float64(out.kaala), Mrityu: float64(out.mrityu),
 		ArthaPrahara: float64(out.artha_prahara), YamaGhantaka: float64(out.yama_ghantaka), Dhooma: float64(out.dhooma),

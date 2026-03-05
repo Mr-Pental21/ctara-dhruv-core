@@ -243,10 +243,10 @@ func SiderealSumAt(engine EngineHandle, jdTdb float64, config SankrantiConfig) (
 	return float64(out), st
 }
 
-func VedicDaySunrises(engine EngineHandle, eop EopHandle, lsk LskHandle, loc GeoLocation, config RiseSetConfig) (float64, float64, Status) {
-	cloc, ccfg := cGeo(loc), cRiseSetConfig(config)
+func VedicDaySunrises(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, config RiseSetConfig) (float64, float64, Status) {
+	cutc, cloc, ccfg := cUTC(utc), cGeo(loc), cRiseSetConfig(config)
 	var sunrise, next C.double
-	st := Status(C.dhruv_vedic_day_sunrises(engine.ptr, eop.ptr, lsk.ptr, &cloc, &ccfg, &sunrise, &next))
+	st := Status(C.dhruv_vedic_day_sunrises(engine.ptr, eop.ptr, &cutc, &cloc, &ccfg, &sunrise, &next))
 	return float64(sunrise), float64(next), st
 }
 
@@ -406,30 +406,41 @@ func InduLagna(moonLon float64, lagnaLord, moon9thLord uint32) float64 {
 	return float64(C.dhruv_indu_lagna(C.double(moonLon), C.uint32_t(lagnaLord), C.uint32_t(moon9thLord)))
 }
 
-func ArudhaPada(bhavaNumber uint8, grahaRashiIndices [GrahaCount]uint8, lagnaRashi uint8) (ArudhaResult, Status) {
-	var out C.DhruvArudhaResult
-	st := Status(C.dhruv_arudha_pada(C.uint8_t(bhavaNumber), (*C.uint8_t)(unsafe.Pointer(&grahaRashiIndices[0])), C.uint8_t(lagnaRashi), &out))
-	return ArudhaResult{BhavaNumber: uint8(out.bhava_number), LongitudeDeg: float64(out.longitude_deg), RashiIndex: uint8(out.rashi_index)}, st
+func ArudhaPada(bhavaCuspLon, lordLon float64) (ArudhaResult, Status) {
+	var outRashi C.uint8_t
+	lon := C.dhruv_arudha_pada(C.double(bhavaCuspLon), C.double(lordLon), &outRashi)
+	return ArudhaResult{BhavaNumber: 0, LongitudeDeg: float64(lon), RashiIndex: uint8(outRashi)}, StatusOK
 }
 
-func SunBasedUpagrahas(engine EngineHandle, jdTdb float64, ayanamshaSystem uint32, useNutation bool) (dhooma, vyatipata, parivesha, indraChapa, upaketu float64, st Status) {
-	var d, v, p, i, u C.double
-	st = Status(C.dhruv_sun_based_upagrahas(engine.ptr, C.double(jdTdb), C.uint32_t(ayanamshaSystem), boolU8(useNutation), &d, &v, &p, &i, &u))
-	return float64(d), float64(v), float64(p), float64(i), float64(u), st
+func SunBasedUpagrahas(sunSidLon float64) (AllUpagrahas, Status) {
+	var out C.DhruvAllUpagrahas
+	st := Status(C.dhruv_sun_based_upagrahas(C.double(sunSidLon), &out))
+	return AllUpagrahas{
+		Gulika: float64(out.gulika), Maandi: float64(out.maandi), Kaala: float64(out.kaala), Mrityu: float64(out.mrityu),
+		ArthaPrahara: float64(out.artha_prahara), YamaGhantaka: float64(out.yama_ghantaka), Dhooma: float64(out.dhooma),
+		Vyatipata: float64(out.vyatipata), Parivesha: float64(out.parivesha), IndraChapa: float64(out.indra_chapa), Upaketu: float64(out.upaketu),
+	}, st
 }
 
-func TimeUpagrahaJD(engine EngineHandle, eop EopHandle, loc GeoLocation, risesetConfig RiseSetConfig, jdTdb float64, upagrahaIndex uint32) (float64, float64, Status) {
-	cloc, ccfg := cGeo(loc), cRiseSetConfig(risesetConfig)
-	var outJd, outLon C.double
-	st := Status(C.dhruv_time_upagraha_jd(engine.ptr, eop.ptr, &cloc, &ccfg, C.double(jdTdb), C.uint32_t(upagrahaIndex), &outJd, &outLon))
-	return float64(outJd), float64(outLon), st
+func TimeUpagrahaJD(upagrahaIndex uint32, weekday uint32, isDay bool, sunriseJd, sunsetJd, nextSunriseJd float64) (float64, Status) {
+	var outJd C.double
+	st := Status(C.dhruv_time_upagraha_jd(
+		C.uint32_t(upagrahaIndex),
+		C.uint32_t(weekday),
+		boolU8(isDay),
+		C.double(sunriseJd),
+		C.double(sunsetJd),
+		C.double(nextSunriseJd),
+		&outJd,
+	))
+	return float64(outJd), st
 }
 
-func TimeUpagrahaJDUTC(engine EngineHandle, eop EopHandle, lsk LskHandle, loc GeoLocation, risesetConfig RiseSetConfig, utc UtcTime, upagrahaIndex uint32, ayanamshaSystem uint32, useNutation bool) (float64, Status) {
+func TimeUpagrahaJDUTC(engine EngineHandle, eop EopHandle, loc GeoLocation, risesetConfig RiseSetConfig, utc UtcTime, upagrahaIndex uint32) (float64, Status) {
 	cloc, ccfg, cutc := cGeo(loc), cRiseSetConfig(risesetConfig), cUTC(utc)
-	var outLon C.double
-	st := Status(C.dhruv_time_upagraha_jd_utc(engine.ptr, eop.ptr, lsk.ptr, &cloc, &ccfg, &cutc, C.uint32_t(upagrahaIndex), C.uint32_t(ayanamshaSystem), boolU8(useNutation), &outLon))
-	return float64(outLon), st
+	var outJD C.double
+	st := Status(C.dhruv_time_upagraha_jd_utc(engine.ptr, eop.ptr, &cutc, &cloc, &ccfg, C.uint32_t(upagrahaIndex), &outJD))
+	return float64(outJD), st
 }
 
 func goBhinna(v C.DhruvBhinnaAshtakavarga) BhinnaAshtakavarga {

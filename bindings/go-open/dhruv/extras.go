@@ -114,8 +114,8 @@ func (e *Engine) SiderealSumAt(jdTdb float64, config SankrantiConfig) (float64, 
 	return out, statusErr("sidereal_sum_at", st)
 }
 
-func (e *Engine) VedicDaySunrises(ep *EOP, lsk *LSK, loc GeoLocation, config RiseSetConfig) (float64, float64, error) {
-	sunrise, next, st := cabi.VedicDaySunrises(e.h, ep.h, lsk.h, loc, config)
+func (e *Engine) VedicDaySunrises(ep *EOP, utc UtcTime, loc GeoLocation, config RiseSetConfig) (float64, float64, error) {
+	sunrise, next, st := cabi.VedicDaySunrises(e.h, ep.h, utc, loc, config)
 	return sunrise, next, statusErr("vedic_day_sunrises", st)
 }
 
@@ -211,24 +211,28 @@ func InduLagna(moonLon float64, lagnaLord, moon9thLord uint32) float64 {
 	return cabi.InduLagna(moonLon, lagnaLord, moon9thLord)
 }
 
-func ArudhaPada(bhavaNumber uint8, grahaRashiIndices [GrahaCount]uint8, lagnaRashi uint8) (ArudhaResult, error) {
-	out, st := cabi.ArudhaPada(bhavaNumber, grahaRashiIndices, lagnaRashi)
+func ArudhaPada(bhavaCuspLon, lordLon float64) (ArudhaResult, error) {
+	out, st := cabi.ArudhaPada(bhavaCuspLon, lordLon)
 	return out, statusErr("arudha_pada", st)
 }
 
-func (e *Engine) SunBasedUpagrahas(jdTdb float64, ayanamshaSystem uint32, useNutation bool) (float64, float64, float64, float64, float64, error) {
-	d, v, p, i, u, st := cabi.SunBasedUpagrahas(e.h, jdTdb, ayanamshaSystem, useNutation)
-	return d, v, p, i, u, statusErr("sun_based_upagrahas", st)
+func (e *Engine) SunBasedUpagrahas(jdTdb float64, ayanamshaSystem uint32, useNutation bool) (AllUpagrahas, error) {
+	lons, err := e.GrahaSiderealLongitudes(jdTdb, ayanamshaSystem, useNutation)
+	if err != nil {
+		return AllUpagrahas{}, err
+	}
+	out, st := cabi.SunBasedUpagrahas(lons.Longitudes[0])
+	return out, statusErr("sun_based_upagrahas", st)
 }
 
-func (e *Engine) TimeUpagrahaJD(ep *EOP, loc GeoLocation, riseCfg RiseSetConfig, jdTdb float64, upagrahaIndex uint32) (float64, float64, error) {
-	jd, lon, st := cabi.TimeUpagrahaJD(e.h, ep.h, loc, riseCfg, jdTdb, upagrahaIndex)
-	return jd, lon, statusErr("time_upagraha_jd", st)
+func TimeUpagrahaJD(upagrahaIndex uint32, weekday uint32, isDay bool, sunriseJd, sunsetJd, nextSunriseJd float64) (float64, error) {
+	jd, st := cabi.TimeUpagrahaJD(upagrahaIndex, weekday, isDay, sunriseJd, sunsetJd, nextSunriseJd)
+	return jd, statusErr("time_upagraha_jd", st)
 }
 
-func (e *Engine) TimeUpagrahaJDUTC(ep *EOP, lsk *LSK, loc GeoLocation, riseCfg RiseSetConfig, utc UtcTime, upagrahaIndex uint32, ayanamshaSystem uint32, useNutation bool) (float64, error) {
-	lon, st := cabi.TimeUpagrahaJDUTC(e.h, ep.h, lsk.h, loc, riseCfg, utc, upagrahaIndex, ayanamshaSystem, useNutation)
-	return lon, statusErr("time_upagraha_jd_utc", st)
+func (e *Engine) TimeUpagrahaJDUTC(ep *EOP, loc GeoLocation, riseCfg RiseSetConfig, utc UtcTime, upagrahaIndex uint32) (float64, error) {
+	jd, st := cabi.TimeUpagrahaJDUTC(e.h, ep.h, loc, riseCfg, utc, upagrahaIndex)
+	return jd, statusErr("time_upagraha_jd_utc", st)
 }
 
 func CalculateAshtakavarga(grahaRashis [7]uint8, lagnaRashi uint8) (AshtakavargaResult, error) {
