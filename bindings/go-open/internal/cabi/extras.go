@@ -358,7 +358,8 @@ func RahuTithiSphuta(rahu, sun, lagna float64) float64 {
 	return float64(C.dhruv_rahu_tithi_sphuta(C.double(rahu), C.double(sun), C.double(lagna)))
 }
 func KshetraSphuta(moon, mars, jupiter, venus, lagna float64) float64 {
-	return float64(C.dhruv_kshetra_sphuta(C.double(moon), C.double(mars), C.double(jupiter), C.double(venus), C.double(lagna)))
+	// Keep Go API argument order stable while mapping to C ABI order.
+	return float64(C.dhruv_kshetra_sphuta(C.double(venus), C.double(moon), C.double(mars), C.double(jupiter), C.double(lagna)))
 }
 func BeejaSphuta(sun, venus, jupiter float64) float64 {
 	return float64(C.dhruv_beeja_sphuta(C.double(sun), C.double(venus), C.double(jupiter)))

@@ -1576,8 +1576,8 @@ double dhruv_yoga_sphuta(double sun, double moon);
 double dhruv_yoga_sphuta_normalized(double sun, double moon);
 double dhruv_rahu_tithi_sphuta(double rahu, double sun, double lagna);
 double dhruv_kshetra_sphuta(
-    double moon, double mars, double jupiter,
-    double venus, double lagna);
+    double venus, double moon, double mars,
+    double jupiter, double lagna);
 double dhruv_beeja_sphuta(double sun, double venus, double jupiter);
 double dhruv_trisphuta(double lagna, double moon, double gulika);
 double dhruv_chatussphuta(double trisphuta_val, double sun);

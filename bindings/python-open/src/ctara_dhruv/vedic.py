@@ -847,7 +847,8 @@ def rahu_tithi_sphuta(rahu: float, sun: float, lagna: float) -> float:
 def kshetra_sphuta(moon: float, mars: float, jupiter: float,
                    venus: float, lagna: float) -> float:
     """Kshetra Sphuta (pure math)."""
-    return lib.dhruv_kshetra_sphuta(moon, mars, jupiter, venus, lagna)
+    # Keep Python API argument order stable while mapping to C ABI order.
+    return lib.dhruv_kshetra_sphuta(venus, moon, mars, jupiter, lagna)
 
 
 def beeja_sphuta(sun: float, venus: float, jupiter: float) -> float:

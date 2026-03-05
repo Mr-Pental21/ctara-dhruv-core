@@ -350,6 +350,10 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     gulika: 90,
   });
   assert.equal(sphutas.longitudes.length, 16);
+  const kshetraViaScalar = dhruv.kshetraSphuta(20, 30, 40, 50, 70);
+  // ALL_SPHUTAS order in dhruv_vedic_base: KshetraSphuta is index 8.
+  const kshetraIdx = 8;
+  assert.ok(Math.abs(kshetraViaScalar - sphutas.longitudes[kshetraIdx]) < 1e-9);
 
   const arudhaPada = dhruv.arudhaPada(100, 130, 0);
   assert.ok(Number.isFinite(arudhaPada.longitudeDeg));

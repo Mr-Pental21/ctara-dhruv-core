@@ -3683,7 +3683,22 @@ DEFINE_SCALAR3_WRAPPER(TithiSphuta, dhruv_tithi_sphuta)
 DEFINE_SCALAR2_WRAPPER(YogaSphuta, dhruv_yoga_sphuta)
 DEFINE_SCALAR2_WRAPPER(YogaSphutaNormalized, dhruv_yoga_sphuta_normalized)
 DEFINE_SCALAR3_WRAPPER(RahuTithiSphuta, dhruv_rahu_tithi_sphuta)
-DEFINE_SCALAR5_WRAPPER(KshetraSphuta, dhruv_kshetra_sphuta)
+
+napi_value KshetraSphuta(napi_env env, napi_callback_info info) {
+    size_t argc = 5;
+    napi_value args[5];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 5) return MakeDouble(env, 0.0);
+    double moon = 0.0, mars = 0.0, jupiter = 0.0, venus = 0.0, lagna = 0.0;
+    if (!GetDouble(env, args[0], &moon) || !GetDouble(env, args[1], &mars) ||
+        !GetDouble(env, args[2], &jupiter) || !GetDouble(env, args[3], &venus) ||
+        !GetDouble(env, args[4], &lagna)) {
+        return MakeDouble(env, 0.0);
+    }
+    // Keep Node API argument order stable while mapping to C ABI order.
+    return MakeDouble(env, dhruv_kshetra_sphuta(venus, moon, mars, jupiter, lagna));
+}
+
 DEFINE_SCALAR3_WRAPPER(BeejaSphuta, dhruv_beeja_sphuta)
 DEFINE_SCALAR3_WRAPPER(Trisphuta, dhruv_trisphuta)
 DEFINE_SCALAR2_WRAPPER(Chatussphuta, dhruv_chatussphuta)

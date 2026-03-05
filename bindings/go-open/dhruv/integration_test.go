@@ -40,6 +40,24 @@ func TestABIVersion(t *testing.T) {
 	}
 }
 
+func TestKshetraSphutaMatchesAllSphutas(t *testing.T) {
+	inputs := SphutalInputs{
+		Sun: 10, Moon: 20, Mars: 30, Jupiter: 40, Venus: 50,
+		Rahu: 60, Lagna: 70, EighthLord: 80, Gulika: 90,
+	}
+	all, err := AllSphutas(inputs)
+	if err != nil {
+		t.Fatalf("AllSphutas: %v", err)
+	}
+	scalar := KshetraSphuta(inputs.Moon, inputs.Mars, inputs.Jupiter, inputs.Venus, inputs.Lagna)
+
+	// ALL_SPHUTAS order in dhruv_vedic_base: KshetraSphuta is index 8.
+	kshetraIdx := 8
+	if math.Abs(scalar-all.Longitudes[kshetraIdx]) > 1e-9 {
+		t.Fatalf("kshetra mismatch: scalar=%v all[%d]=%v", scalar, kshetraIdx, all.Longitudes[kshetraIdx])
+	}
+}
+
 func TestEngineQueryAndTimeRoundTrip(t *testing.T) {
 	spk, lskPath, _, ok := kernelPaths(t)
 	if !ok {

@@ -212,8 +212,23 @@ class TestSphutas:
         assert 0 <= result < 360
 
     def test_kshetra_sphuta(self):
-        from ctara_dhruv.vedic import kshetra_sphuta
-        result = kshetra_sphuta(200.0, 50.0, 120.0, 300.0, 100.0)
+        from ctara_dhruv.vedic import all_sphutas, kshetra_sphuta
+
+        sun = 10.0
+        moon = 20.0
+        mars = 30.0
+        jupiter = 40.0
+        venus = 50.0
+        rahu = 60.0
+        lagna = 70.0
+        eighth_lord = 80.0
+        gulika = 90.0
+
+        result = kshetra_sphuta(moon, mars, jupiter, venus, lagna)
+        all_result = all_sphutas(sun, moon, mars, jupiter, venus, rahu, lagna, eighth_lord, gulika)
+        # ALL_SPHUTAS order in dhruv_vedic_base: KshetraSphuta is index 8.
+        idx = 8
+        assert result == pytest.approx(all_result.longitudes[idx], abs=1e-9)
         assert 0 <= result < 360
 
     def test_beeja_sphuta(self):
