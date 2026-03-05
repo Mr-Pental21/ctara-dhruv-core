@@ -72,60 +72,74 @@ fn angular_separation_deg(a: f64, b: f64) -> f64 {
 }
 
 #[test]
-fn ffi_next_sankranti_allows_null_config_pointer() {
+fn ffi_sankranti_search_ex_default_config_works() {
     let Some(engine_ptr) = make_engine() else {
         return;
     };
 
-    let utc = DhruvUtcTime {
-        year: 2024,
-        month: 3,
-        day: 20,
-        hour: 0,
-        minute: 0,
-        second: 0.0,
+    let request = DhruvSankrantiSearchRequest {
+        target_kind: DHRUV_SANKRANTI_TARGET_ANY,
+        query_mode: DHRUV_SANKRANTI_QUERY_MODE_NEXT,
+        rashi_index: 0,
+        at_jd_tdb: calendar_to_jd(2024, 3, 20.0),
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        config: dhruv_sankranti_config_default(),
     };
     let mut event: DhruvSankrantiEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
 
-    // SAFETY: All pointers are valid for this test; null config pointer is intentional.
+    // SAFETY: Valid pointers and request for this test scope.
     let status = unsafe {
-        dhruv_next_sankranti(
+        dhruv_sankranti_search_ex(
             engine_ptr,
-            &utc,
-            ptr::null(),
-            &mut event as *mut DhruvSankrantiEvent,
-            &mut found as *mut u8,
+            &request,
+            &mut event,
+            &mut found,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(found, 1);
 
     // SAFETY: Pointer was returned by dhruv_engine_new.
     unsafe { dhruv_engine_free(engine_ptr) };
 }
 
 #[test]
-fn ffi_next_conjunction_allows_null_config_pointer() {
+fn ffi_conjunction_search_ex_default_config_works() {
     let Some(engine_ptr) = make_engine() else {
         return;
     };
 
+    let request = DhruvConjunctionSearchRequest {
+        body1_code: Body::Sun.code(),
+        body2_code: Body::Mercury.code(),
+        query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+        at_jd_tdb: 2_460_390.5,
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        config: dhruv_conjunction_config_default(),
+    };
     let mut event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
 
-    // SAFETY: All pointers are valid for this test; null config pointer is intentional.
+    // SAFETY: Valid pointers and request for this test scope.
     let status = unsafe {
-        dhruv_next_conjunction(
+        dhruv_conjunction_search_ex(
             engine_ptr,
-            Body::Sun.code(),
-            Body::Mercury.code(),
-            2_460_390.5,
-            ptr::null(),
-            &mut event as *mut DhruvConjunctionEvent,
-            &mut found as *mut u8,
+            &request,
+            &mut event,
+            &mut found,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(found, 1);
 
     // SAFETY: Pointer was returned by dhruv_engine_new.
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -1360,36 +1374,34 @@ fn ffi_utc_conjunction_roundtrip() {
     let status = unsafe { dhruv_lsk_load(lsk_path.as_ptr() as *const u8, &mut lsk_ptr) };
     assert_eq!(status, DhruvStatus::Ok);
 
-    // Find next Sun-Moon conjunction after 2024-03-20 using JD version
+    // Find next Sun-Moon conjunction after 2024-03-20 using direct JD input.
     let jd_start = calendar_to_jd(2024, 3, 20.5);
-    let cfg = dhruv_conjunction_config_default();
-
-    let mut jd_event = DhruvConjunctionEvent {
-        jd_tdb: 0.0,
-        actual_separation_deg: 0.0,
-        body1_longitude_deg: 0.0,
-        body2_longitude_deg: 0.0,
-        body1_latitude_deg: 0.0,
-        body2_latitude_deg: 0.0,
-        body1_code: 0,
-        body2_code: 0,
+    let request_jd = DhruvConjunctionSearchRequest {
+        body1_code: Body::Sun.code(),
+        body2_code: Body::Moon.code(),
+        query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+        at_jd_tdb: jd_start,
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        config: dhruv_conjunction_config_default(),
     };
+    let mut jd_event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
     let status = unsafe {
-        dhruv_next_conjunction(
+        dhruv_conjunction_search_ex(
             engine_ptr,
-            Body::Sun.code(),
-            Body::Moon.code(),
-            jd_start,
-            &cfg,
+            &request_jd,
             &mut jd_event,
             &mut found,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1, "should find a conjunction");
 
-    // Now call the UTC version with the same start time
+    // Convert UTC start to JD and run the same unified query.
     let utc_start = DhruvUtcTime {
         year: 2024,
         month: 3,
@@ -1398,48 +1410,50 @@ fn ffi_utc_conjunction_roundtrip() {
         minute: 0,
         second: 0.0,
     };
-    let mut utc_event = DhruvConjunctionEventUtc {
-        utc: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        actual_separation_deg: 0.0,
-        body1_longitude_deg: 0.0,
-        body2_longitude_deg: 0.0,
-        body1_latitude_deg: 0.0,
-        body2_latitude_deg: 0.0,
-        body1_code: 0,
-        body2_code: 0,
-    };
-    let mut found_utc: u8 = 0;
+    let mut jd_from_utc_start: f64 = 0.0;
     let status = unsafe {
-        dhruv_next_conjunction_utc(
-            engine_ptr,
-            Body::Sun.code(),
-            Body::Moon.code(),
-            &utc_start,
-            &cfg,
-            &mut utc_event,
-            &mut found_utc,
+        dhruv_utc_to_tdb_jd(
+            lsk_ptr,
+            utc_start.year,
+            utc_start.month,
+            utc_start.day,
+            utc_start.hour,
+            utc_start.minute,
+            utc_start.second,
+            &mut jd_from_utc_start,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
-    assert_eq!(found_utc, 1, "UTC version should also find conjunction");
+    let request_from_utc = DhruvConjunctionSearchRequest {
+        at_jd_tdb: jd_from_utc_start,
+        ..request_jd
+    };
+    let mut utc_path_event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
+    let mut found_utc: u8 = 0;
+    let status = unsafe {
+        dhruv_conjunction_search_ex(
+            engine_ptr,
+            &request_from_utc,
+            &mut utc_path_event,
+            &mut found_utc,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(found_utc, 1, "UTC path should also find conjunction");
 
-    // Verify the UTC result matches the JD result
-    assert_utc_matches_jd(lsk_ptr, &utc_event.utc, jd_event.jd_tdb, "conjunction time");
-
-    // Non-time fields should be identical
     assert!(
-        (utc_event.actual_separation_deg - jd_event.actual_separation_deg).abs() < 1e-6,
+        (utc_path_event.jd_tdb - jd_event.jd_tdb).abs() < 2e-5,
+        "time mismatch"
+    );
+    assert!(
+        (utc_path_event.actual_separation_deg - jd_event.actual_separation_deg).abs() < 1e-6,
         "separation mismatch"
     );
     assert!(
-        (utc_event.body1_longitude_deg - jd_event.body1_longitude_deg).abs() < 1e-6,
+        (utc_path_event.body1_longitude_deg - jd_event.body1_longitude_deg).abs() < 1e-6,
         "body1 lon mismatch"
     );
 
@@ -1459,31 +1473,33 @@ fn ffi_utc_chandra_grahan_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     let jd_start = calendar_to_jd(2024, 3, 1.0);
-    let cfg = dhruv_grahan_config_default();
-
-    // JD version
-    let mut jd_result = DhruvChandraGrahanResult {
-        grahan_type: 0,
-        magnitude: 0.0,
-        penumbral_magnitude: 0.0,
-        greatest_grahan_jd: 0.0,
-        p1_jd: 0.0,
-        u1_jd: 0.0,
-        u2_jd: 0.0,
-        u3_jd: 0.0,
-        u4_jd: 0.0,
-        p4_jd: 0.0,
-        moon_ecliptic_lat_deg: 0.0,
-        angular_separation_deg: 0.0,
+    let request_jd = DhruvGrahanSearchRequest {
+        grahan_kind: DHRUV_GRAHAN_KIND_CHANDRA,
+        query_mode: DHRUV_GRAHAN_QUERY_MODE_NEXT,
+        at_jd_tdb: jd_start,
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        config: dhruv_grahan_config_default(),
     };
+    let mut jd_result: DhruvChandraGrahanResult = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
     let status = unsafe {
-        dhruv_next_chandra_grahan(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found)
+        dhruv_grahan_search_ex(
+            engine_ptr,
+            &request_jd,
+            &mut jd_result,
+            ptr::null_mut(),
+            &mut found,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1, "should find a chandra grahan");
 
-    // UTC version
+    // UTC path: convert anchor UTC -> JD, then call unified API.
     let utc_start = DhruvUtcTime {
         year: 2024,
         month: 3,
@@ -1492,132 +1508,74 @@ fn ffi_utc_chandra_grahan_roundtrip() {
         minute: 0,
         second: 0.0,
     };
-    let mut utc_result = DhruvChandraGrahanResultUtc {
-        grahan_type: 0,
-        magnitude: 0.0,
-        penumbral_magnitude: 0.0,
-        greatest_grahan: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        p1: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        u1: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        u2: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        u3: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        u4: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        p4: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        moon_ecliptic_lat_deg: 0.0,
-        angular_separation_deg: 0.0,
-        u1_valid: 0,
-        u2_valid: 0,
-        u3_valid: 0,
-        u4_valid: 0,
-    };
-    let mut found_utc: u8 = 0;
+    let mut jd_from_utc_start: f64 = 0.0;
     let status = unsafe {
-        dhruv_next_chandra_grahan_utc(
-            engine_ptr,
-            &utc_start,
-            &cfg,
-            &mut utc_result,
-            &mut found_utc,
+        dhruv_utc_to_tdb_jd(
+            lsk_ptr,
+            utc_start.year,
+            utc_start.month,
+            utc_start.day,
+            utc_start.hour,
+            utc_start.minute,
+            utc_start.second,
+            &mut jd_from_utc_start,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
-    assert_eq!(found_utc, 1, "UTC version should also find grahan");
+    let request_from_utc = DhruvGrahanSearchRequest {
+        at_jd_tdb: jd_from_utc_start,
+        ..request_jd
+    };
+    let mut utc_path_result: DhruvChandraGrahanResult = unsafe { std::mem::zeroed() };
+    let mut found_utc: u8 = 0;
+    let status = unsafe {
+        dhruv_grahan_search_ex(
+            engine_ptr,
+            &request_from_utc,
+            &mut utc_path_result,
+            ptr::null_mut(),
+            &mut found_utc,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(found_utc, 1, "UTC path should also find grahan");
 
-    // Grahan type and magnitudes should match exactly
     assert_eq!(
-        utc_result.grahan_type, jd_result.grahan_type,
+        utc_path_result.grahan_type, jd_result.grahan_type,
         "grahan type mismatch"
     );
     assert!(
-        (utc_result.magnitude - jd_result.magnitude).abs() < 1e-6,
+        (utc_path_result.magnitude - jd_result.magnitude).abs() < 1e-6,
         "magnitude mismatch"
     );
-
-    // Greatest grahan time roundtrip
-    assert_utc_matches_jd(
-        lsk_ptr,
-        &utc_result.greatest_grahan,
-        jd_result.greatest_grahan_jd,
-        "greatest grahan",
+    assert!(
+        (utc_path_result.greatest_grahan_jd - jd_result.greatest_grahan_jd).abs() < 2e-5,
+        "greatest grahan mismatch"
     );
-
-    // P1 always present
-    assert_utc_matches_jd(lsk_ptr, &utc_result.p1, jd_result.p1_jd, "P1");
-
-    // Verify valid flags match JD sentinel pattern (DHRUV_JD_ABSENT = -1.0)
-    if jd_result.u1_jd < 0.0 {
-        assert_eq!(utc_result.u1_valid, 0, "u1 should be absent");
-    } else {
-        assert_eq!(utc_result.u1_valid, 1, "u1 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.u1, jd_result.u1_jd, "U1");
-    }
-    if jd_result.u2_jd < 0.0 {
-        assert_eq!(utc_result.u2_valid, 0, "u2 should be absent");
-    } else {
-        assert_eq!(utc_result.u2_valid, 1, "u2 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.u2, jd_result.u2_jd, "U2");
-    }
-    if jd_result.u3_jd < 0.0 {
-        assert_eq!(utc_result.u3_valid, 0, "u3 should be absent");
-    } else {
-        assert_eq!(utc_result.u3_valid, 1, "u3 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.u3, jd_result.u3_jd, "U3");
-    }
-    if jd_result.u4_jd < 0.0 {
-        assert_eq!(utc_result.u4_valid, 0, "u4 should be absent");
-    } else {
-        assert_eq!(utc_result.u4_valid, 1, "u4 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.u4, jd_result.u4_jd, "U4");
-    }
+    assert_eq!(
+        utc_path_result.u1_jd < 0.0,
+        jd_result.u1_jd < 0.0,
+        "u1 presence mismatch"
+    );
+    assert_eq!(
+        utc_path_result.u2_jd < 0.0,
+        jd_result.u2_jd < 0.0,
+        "u2 presence mismatch"
+    );
+    assert_eq!(
+        utc_path_result.u3_jd < 0.0,
+        jd_result.u3_jd < 0.0,
+        "u3 presence mismatch"
+    );
+    assert_eq!(
+        utc_path_result.u4_jd < 0.0,
+        jd_result.u4_jd < 0.0,
+        "u4 presence mismatch"
+    );
 
     unsafe { dhruv_lsk_free(lsk_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -1635,27 +1593,33 @@ fn ffi_utc_surya_grahan_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     let jd_start = calendar_to_jd(2024, 3, 1.0);
-    let cfg = dhruv_grahan_config_default();
-
-    // JD version
-    let mut jd_result = DhruvSuryaGrahanResult {
-        grahan_type: 0,
-        magnitude: 0.0,
-        greatest_grahan_jd: 0.0,
-        c1_jd: 0.0,
-        c2_jd: 0.0,
-        c3_jd: 0.0,
-        c4_jd: 0.0,
-        moon_ecliptic_lat_deg: 0.0,
-        angular_separation_deg: 0.0,
+    let request_jd = DhruvGrahanSearchRequest {
+        grahan_kind: DHRUV_GRAHAN_KIND_SURYA,
+        query_mode: DHRUV_GRAHAN_QUERY_MODE_NEXT,
+        at_jd_tdb: jd_start,
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        config: dhruv_grahan_config_default(),
     };
+    let mut jd_result: DhruvSuryaGrahanResult = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
-    let status =
-        unsafe { dhruv_next_surya_grahan(engine_ptr, jd_start, &cfg, &mut jd_result, &mut found) };
+    let status = unsafe {
+        dhruv_grahan_search_ex(
+            engine_ptr,
+            &request_jd,
+            ptr::null_mut(),
+            &mut jd_result,
+            &mut found,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
+    };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1, "should find a surya grahan");
 
-    // UTC version
+    // UTC path: convert anchor UTC -> JD, then call unified API.
     let utc_start = DhruvUtcTime {
         year: 2024,
         month: 3,
@@ -1664,112 +1628,74 @@ fn ffi_utc_surya_grahan_roundtrip() {
         minute: 0,
         second: 0.0,
     };
-    let mut utc_result = DhruvSuryaGrahanResultUtc {
-        grahan_type: 0,
-        magnitude: 0.0,
-        greatest_grahan: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        c1: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        c2: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        c3: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        c4: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        moon_ecliptic_lat_deg: 0.0,
-        angular_separation_deg: 0.0,
-        c1_valid: 0,
-        c2_valid: 0,
-        c3_valid: 0,
-        c4_valid: 0,
-    };
-    let mut found_utc: u8 = 0;
+    let mut jd_from_utc_start: f64 = 0.0;
     let status = unsafe {
-        dhruv_next_surya_grahan_utc(
-            engine_ptr,
-            &utc_start,
-            &cfg,
-            &mut utc_result,
-            &mut found_utc,
+        dhruv_utc_to_tdb_jd(
+            lsk_ptr,
+            utc_start.year,
+            utc_start.month,
+            utc_start.day,
+            utc_start.hour,
+            utc_start.minute,
+            utc_start.second,
+            &mut jd_from_utc_start,
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
-    assert_eq!(found_utc, 1, "UTC version should also find grahan");
+    let request_from_utc = DhruvGrahanSearchRequest {
+        at_jd_tdb: jd_from_utc_start,
+        ..request_jd
+    };
+    let mut utc_path_result: DhruvSuryaGrahanResult = unsafe { std::mem::zeroed() };
+    let mut found_utc: u8 = 0;
+    let status = unsafe {
+        dhruv_grahan_search_ex(
+            engine_ptr,
+            &request_from_utc,
+            ptr::null_mut(),
+            &mut utc_path_result,
+            &mut found_utc,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(found_utc, 1, "UTC path should also find grahan");
 
-    // Type and magnitude match
     assert_eq!(
-        utc_result.grahan_type, jd_result.grahan_type,
+        utc_path_result.grahan_type, jd_result.grahan_type,
         "grahan type mismatch"
     );
     assert!(
-        (utc_result.magnitude - jd_result.magnitude).abs() < 1e-6,
+        (utc_path_result.magnitude - jd_result.magnitude).abs() < 1e-6,
         "magnitude mismatch"
     );
-
-    // Greatest grahan roundtrip
-    assert_utc_matches_jd(
-        lsk_ptr,
-        &utc_result.greatest_grahan,
-        jd_result.greatest_grahan_jd,
-        "greatest surya grahan",
+    assert!(
+        (utc_path_result.greatest_grahan_jd - jd_result.greatest_grahan_jd).abs() < 2e-5,
+        "greatest surya grahan mismatch"
     );
-
-    // Contact valid flags vs JD sentinels
-    if jd_result.c1_jd < 0.0 {
-        assert_eq!(utc_result.c1_valid, 0, "c1 should be absent");
-    } else {
-        assert_eq!(utc_result.c1_valid, 1, "c1 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.c1, jd_result.c1_jd, "C1");
-    }
-    if jd_result.c2_jd < 0.0 {
-        assert_eq!(utc_result.c2_valid, 0, "c2 should be absent");
-    } else {
-        assert_eq!(utc_result.c2_valid, 1, "c2 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.c2, jd_result.c2_jd, "C2");
-    }
-    if jd_result.c3_jd < 0.0 {
-        assert_eq!(utc_result.c3_valid, 0, "c3 should be absent");
-    } else {
-        assert_eq!(utc_result.c3_valid, 1, "c3 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.c3, jd_result.c3_jd, "C3");
-    }
-    if jd_result.c4_jd < 0.0 {
-        assert_eq!(utc_result.c4_valid, 0, "c4 should be absent");
-    } else {
-        assert_eq!(utc_result.c4_valid, 1, "c4 should be present");
-        assert_utc_matches_jd(lsk_ptr, &utc_result.c4, jd_result.c4_jd, "C4");
-    }
+    assert_eq!(
+        utc_path_result.c1_jd < 0.0,
+        jd_result.c1_jd < 0.0,
+        "c1 presence mismatch"
+    );
+    assert_eq!(
+        utc_path_result.c2_jd < 0.0,
+        jd_result.c2_jd < 0.0,
+        "c2 presence mismatch"
+    );
+    assert_eq!(
+        utc_path_result.c3_jd < 0.0,
+        jd_result.c3_jd < 0.0,
+        "c3 presence mismatch"
+    );
+    assert_eq!(
+        utc_path_result.c4_jd < 0.0,
+        jd_result.c4_jd < 0.0,
+        "c4 presence mismatch"
+    );
 
     unsafe { dhruv_lsk_free(lsk_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -1787,31 +1713,34 @@ fn ffi_utc_stationary_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     let jd_start = calendar_to_jd(2024, 1, 1.0);
-    let cfg = dhruv_stationary_config_default();
-
-    // JD version: Mercury next station
-    let mut jd_event = DhruvStationaryEvent {
-        jd_tdb: 0.0,
-        body_code: 0,
-        longitude_deg: 0.0,
-        latitude_deg: 0.0,
-        station_type: 0,
+    let request_jd = DhruvMotionSearchRequest {
+        body_code: Body::Mercury.code(),
+        motion_kind: DHRUV_MOTION_KIND_STATIONARY,
+        query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+        at_jd_tdb: jd_start,
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        config: dhruv_stationary_config_default(),
     };
+    let mut jd_event: DhruvStationaryEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
     let status = unsafe {
-        dhruv_next_stationary(
+        dhruv_motion_search_ex(
             engine_ptr,
-            Body::Mercury.code(),
-            jd_start,
-            &cfg,
+            &request_jd,
             &mut jd_event,
+            ptr::null_mut(),
             &mut found,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1);
 
-    // UTC version
+    // UTC path: convert anchor UTC -> JD, then call unified API.
     let utc_start = DhruvUtcTime {
         year: 2024,
         month: 1,
@@ -1820,42 +1749,52 @@ fn ffi_utc_stationary_roundtrip() {
         minute: 0,
         second: 0.0,
     };
-    let mut utc_event = DhruvStationaryEventUtc {
-        utc: DhruvUtcTime {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        },
-        body_code: 0,
-        longitude_deg: 0.0,
-        latitude_deg: 0.0,
-        station_type: 0,
+    let mut jd_from_utc_start: f64 = 0.0;
+    let status = unsafe {
+        dhruv_utc_to_tdb_jd(
+            lsk_ptr,
+            utc_start.year,
+            utc_start.month,
+            utc_start.day,
+            utc_start.hour,
+            utc_start.minute,
+            utc_start.second,
+            &mut jd_from_utc_start,
+        )
     };
+    assert_eq!(status, DhruvStatus::Ok);
+    let request_from_utc = DhruvMotionSearchRequest {
+        at_jd_tdb: jd_from_utc_start,
+        ..request_jd
+    };
+    let mut utc_path_event: DhruvStationaryEvent = unsafe { std::mem::zeroed() };
     let mut found_utc: u8 = 0;
     let status = unsafe {
-        dhruv_next_stationary_utc(
+        dhruv_motion_search_ex(
             engine_ptr,
-            Body::Mercury.code(),
-            &utc_start,
-            &cfg,
-            &mut utc_event,
+            &request_from_utc,
+            &mut utc_path_event,
+            ptr::null_mut(),
             &mut found_utc,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
         )
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found_utc, 1);
 
-    // Verify match
-    assert_utc_matches_jd(lsk_ptr, &utc_event.utc, jd_event.jd_tdb, "stationary time");
+    assert!(
+        (utc_path_event.jd_tdb - jd_event.jd_tdb).abs() < 2e-5,
+        "stationary time mismatch"
+    );
     assert_eq!(
-        utc_event.station_type, jd_event.station_type,
+        utc_path_event.station_type, jd_event.station_type,
         "station type mismatch"
     );
     assert!(
-        (utc_event.longitude_deg - jd_event.longitude_deg).abs() < 1e-6,
+        (utc_path_event.longitude_deg - jd_event.longitude_deg).abs() < 1e-6,
         "longitude mismatch"
     );
 

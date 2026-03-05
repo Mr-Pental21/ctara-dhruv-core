@@ -5,25 +5,28 @@ use criterion::{
 };
 use dhruv_core::{Body, Frame, Observer};
 use dhruv_ffi_c::{
-    DhruvBhinnaAshtakavarga, DhruvDrishtiEntry, DhruvEngineConfig, DhruvGrahaDrishtiMatrix,
-    DhruvGrahaLongitudes, DhruvKaranaPosition, DhruvNakshatra28Info, DhruvNakshatraInfo,
-    DhruvPanchangNakshatraInfo, DhruvQuery, DhruvRashiInfo, DhruvSamvatsaraResult,
-    DhruvSarvaAshtakavarga, DhruvSphericalCoords, DhruvSphericalState, DhruvStateVector,
-    DhruvStatus, DhruvTithiPosition, DhruvUtcTime, DhruvYogaPosition,
-    dhruv_ayana_from_sidereal_longitude, dhruv_ayanamsha_deg, dhruv_ayanamsha_mean_deg,
-    dhruv_ayanamsha_true_deg, dhruv_calculate_all_bav, dhruv_calculate_bav, dhruv_calculate_sav,
-    dhruv_cartesian_to_spherical, dhruv_ekadhipatya_sodhana, dhruv_engine_new_internal,
-    dhruv_engine_query, dhruv_engine_query_internal, dhruv_ghatika_from_elapsed,
-    dhruv_ghatikas_since_sunrise, dhruv_graha_drishti, dhruv_graha_drishti_matrix,
-    dhruv_graha_sidereal_longitudes, dhruv_graha_tropical_longitudes, dhruv_hora_at,
-    dhruv_jd_tdb_to_utc, dhruv_karana_from_elongation, dhruv_lunar_node_deg,
-    dhruv_masa_from_rashi_index, dhruv_nakshatra_at, dhruv_nakshatra_from_longitude,
-    dhruv_nakshatra_from_tropical, dhruv_nakshatra28_from_longitude, dhruv_nth_rashi_from,
-    dhruv_nutation_iau2000b, dhruv_query_once, dhruv_query_once_internal, dhruv_query_utc,
-    dhruv_query_utc_spherical, dhruv_query_utc_spherical_internal, dhruv_rashi_from_longitude,
-    dhruv_rashi_from_tropical, dhruv_rashi_lord, dhruv_samvatsara_from_year,
-    dhruv_sankranti_config_default, dhruv_time_upagraha_jd, dhruv_tithi_from_elongation,
-    dhruv_trikona_sodhana, dhruv_utc_to_tdb_jd, dhruv_vaar_from_jd, dhruv_yoga_from_sum,
+    DHRUV_AYANAMSHA_MODE_MEAN, DHRUV_AYANAMSHA_MODE_TRUE, DHRUV_AYANAMSHA_MODE_UNIFIED,
+    DHRUV_AYANAMSHA_TIME_JD_TDB, DHRUV_AYANAMSHA_TIME_UTC, DHRUV_PANCHANG_INCLUDE_ALL,
+    DHRUV_PANCHANG_TIME_UTC, DhruvAyanamshaComputeRequest, DhruvBhinnaAshtakavarga,
+    DhruvDrishtiEntry, DhruvEngineConfig, DhruvGrahaDrishtiMatrix, DhruvGrahaLongitudes,
+    DhruvKaranaPosition, DhruvNakshatra28Info, DhruvNakshatraInfo, DhruvPanchangComputeRequest,
+    DhruvPanchangNakshatraInfo, DhruvPanchangOperationResult, DhruvQuery, DhruvRashiInfo,
+    DhruvSamvatsaraResult, DhruvSarvaAshtakavarga, DhruvSphericalCoords, DhruvSphericalState,
+    DhruvStateVector, DhruvStatus, DhruvTithiPosition, DhruvUtcTime, DhruvYogaPosition,
+    dhruv_ayana_from_sidereal_longitude, dhruv_ayanamsha_compute_ex, dhruv_calculate_all_bav,
+    dhruv_calculate_bav, dhruv_calculate_sav, dhruv_cartesian_to_spherical,
+    dhruv_ekadhipatya_sodhana, dhruv_engine_new_internal, dhruv_engine_query,
+    dhruv_engine_query_internal, dhruv_ghatika_from_elapsed, dhruv_ghatikas_since_sunrise,
+    dhruv_graha_drishti, dhruv_graha_drishti_matrix, dhruv_graha_sidereal_longitudes,
+    dhruv_graha_tropical_longitudes, dhruv_hora_at, dhruv_jd_tdb_to_utc,
+    dhruv_karana_from_elongation, dhruv_lunar_node_deg, dhruv_masa_from_rashi_index,
+    dhruv_nakshatra_at, dhruv_nakshatra_from_longitude, dhruv_nakshatra_from_tropical,
+    dhruv_nakshatra28_from_longitude, dhruv_nth_rashi_from, dhruv_nutation_iau2000b,
+    dhruv_query_once, dhruv_query_once_internal, dhruv_query_utc, dhruv_query_utc_spherical,
+    dhruv_query_utc_spherical_internal, dhruv_rashi_from_longitude, dhruv_rashi_from_tropical,
+    dhruv_rashi_lord, dhruv_samvatsara_from_year, dhruv_sankranti_config_default,
+    dhruv_time_upagraha_jd, dhruv_tithi_from_elongation, dhruv_trikona_sodhana,
+    dhruv_utc_to_tdb_jd, dhruv_vaar_from_jd, dhruv_yoga_from_sum,
 };
 use dhruv_frames::{
     cartesian_to_spherical as rust_cartesian_to_spherical,
@@ -382,6 +385,14 @@ fn ffi_vedic_primitives_bench(c: &mut Criterion) {
     let t = rust_jd_tdb_to_centuries(jd_tdb);
     let system = AyanamshaSystem::all()[0];
     let system_code = 0_i32;
+    let zero_utc = DhruvUtcTime {
+        year: 0,
+        month: 0,
+        day: 0,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
 
     let mut out_deg = 0.0_f64;
     bench_pair(
@@ -389,7 +400,21 @@ fn ffi_vedic_primitives_bench(c: &mut Criterion) {
         "ayanamsha_mean_deg",
         || rust_ayanamsha_mean_deg(black_box(system), black_box(t)),
         || unsafe {
-            expect_ok(dhruv_ayanamsha_mean_deg(system_code, jd_tdb, &mut out_deg));
+            let req = DhruvAyanamshaComputeRequest {
+                system_code,
+                mode: DHRUV_AYANAMSHA_MODE_MEAN,
+                time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+                jd_tdb,
+                utc: zero_utc,
+                use_nutation: 0,
+                delta_psi_arcsec: 0.0,
+            };
+            expect_ok(dhruv_ayanamsha_compute_ex(
+                std::ptr::null(),
+                &req,
+                std::ptr::null(),
+                &mut out_deg,
+            ));
             out_deg
         },
     );
@@ -400,10 +425,19 @@ fn ffi_vedic_primitives_bench(c: &mut Criterion) {
         "ayanamsha_true_deg",
         || rust_ayanamsha_true_deg(black_box(system), black_box(t), black_box(dpsi)),
         || unsafe {
-            expect_ok(dhruv_ayanamsha_true_deg(
+            let req = DhruvAyanamshaComputeRequest {
                 system_code,
+                mode: DHRUV_AYANAMSHA_MODE_TRUE,
+                time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
                 jd_tdb,
-                dpsi,
+                utc: zero_utc,
+                use_nutation: 0,
+                delta_psi_arcsec: dpsi,
+            };
+            expect_ok(dhruv_ayanamsha_compute_ex(
+                std::ptr::null(),
+                &req,
+                std::ptr::null(),
                 &mut out_deg,
             ));
             out_deg
@@ -415,7 +449,21 @@ fn ffi_vedic_primitives_bench(c: &mut Criterion) {
         "ayanamsha_deg",
         || rust_ayanamsha_deg(black_box(system), black_box(t), false),
         || unsafe {
-            expect_ok(dhruv_ayanamsha_deg(system_code, jd_tdb, 0, &mut out_deg));
+            let req = DhruvAyanamshaComputeRequest {
+                system_code,
+                mode: DHRUV_AYANAMSHA_MODE_UNIFIED,
+                time_kind: DHRUV_AYANAMSHA_TIME_JD_TDB,
+                jd_tdb,
+                utc: zero_utc,
+                use_nutation: 0,
+                delta_psi_arcsec: 0.0,
+            };
+            expect_ok(dhruv_ayanamsha_compute_ex(
+                std::ptr::null(),
+                &req,
+                std::ptr::null(),
+                &mut out_deg,
+            ));
             out_deg
         },
     );
@@ -588,10 +636,19 @@ fn ffi_vedic_primitives_bench(c: &mut Criterion) {
             "ayanamsha_mean_deg_utc",
             || rust_ayanamsha_mean_deg(black_box(system), black_box(t_utc)),
             || unsafe {
-                expect_ok(dhruv_ffi_c::dhruv_ayanamsha_mean_deg_utc(
-                    black_box(&ctx.lsk as *const _),
+                let req = DhruvAyanamshaComputeRequest {
                     system_code,
-                    black_box(&utc as *const _),
+                    mode: DHRUV_AYANAMSHA_MODE_MEAN,
+                    time_kind: DHRUV_AYANAMSHA_TIME_UTC,
+                    jd_tdb: 0.0,
+                    utc,
+                    use_nutation: 0,
+                    delta_psi_arcsec: 0.0,
+                };
+                expect_ok(dhruv_ffi_c::dhruv_ayanamsha_compute_ex(
+                    black_box(&ctx.lsk as *const _),
+                    black_box(&req as *const _),
+                    std::ptr::null(),
                     &mut out_utc_deg,
                 ));
                 out_utc_deg
@@ -603,11 +660,19 @@ fn ffi_vedic_primitives_bench(c: &mut Criterion) {
             "ayanamsha_true_deg_utc",
             || rust_ayanamsha_true_deg(black_box(system), black_box(t_utc), black_box(dpsi)),
             || unsafe {
-                expect_ok(dhruv_ffi_c::dhruv_ayanamsha_true_deg_utc(
-                    black_box(&ctx.lsk as *const _),
+                let req = DhruvAyanamshaComputeRequest {
                     system_code,
-                    black_box(&utc as *const _),
-                    dpsi,
+                    mode: DHRUV_AYANAMSHA_MODE_TRUE,
+                    time_kind: DHRUV_AYANAMSHA_TIME_UTC,
+                    jd_tdb: 0.0,
+                    utc,
+                    use_nutation: 0,
+                    delta_psi_arcsec: dpsi,
+                };
+                expect_ok(dhruv_ffi_c::dhruv_ayanamsha_compute_ex(
+                    black_box(&ctx.lsk as *const _),
+                    black_box(&req as *const _),
+                    std::ptr::null(),
                     &mut out_utc_deg,
                 ));
                 out_utc_deg
@@ -619,11 +684,19 @@ fn ffi_vedic_primitives_bench(c: &mut Criterion) {
             "ayanamsha_deg_utc",
             || rust_ayanamsha_deg(black_box(system), black_box(t_utc), false),
             || unsafe {
-                expect_ok(dhruv_ffi_c::dhruv_ayanamsha_deg_utc(
-                    black_box(&ctx.lsk as *const _),
+                let req = DhruvAyanamshaComputeRequest {
                     system_code,
-                    black_box(&utc as *const _),
-                    0,
+                    mode: DHRUV_AYANAMSHA_MODE_UNIFIED,
+                    time_kind: DHRUV_AYANAMSHA_TIME_UTC,
+                    jd_tdb: 0.0,
+                    utc,
+                    use_nutation: 0,
+                    delta_psi_arcsec: 0.0,
+                };
+                expect_ok(dhruv_ffi_c::dhruv_ayanamsha_compute_ex(
+                    black_box(&ctx.lsk as *const _),
+                    black_box(&req as *const _),
+                    std::ptr::null(),
                     &mut out_utc_deg,
                 ));
                 out_utc_deg
@@ -1135,1411 +1208,6 @@ fn ffi_search_sidereal_bench(c: &mut Criterion) {
                 &mut nakshatra_out,
             );
             nakshatra_out.nakshatra_index
-        },
-    );
-
-    group.finish();
-}
-
-fn ffi_search_conjunction_grahan_bench(c: &mut Criterion) {
-    let ctx = match load_context() {
-        Some(v) => v,
-        None => return,
-    };
-
-    let mut group = c.benchmark_group("ffi_search_conjunction_grahan");
-    group.sample_size(10);
-
-    let jd = 2_460_000.5_f64;
-    let jd_end = 2_460_400.5_f64;
-
-    let conj_cfg_rust = dhruv_search::ConjunctionConfig {
-        target_separation_deg: 0.0,
-        step_size_days: 0.5,
-        max_iterations: 50,
-        convergence_days: 1e-8,
-    };
-    let conj_cfg_ffi = dhruv_ffi_c::dhruv_conjunction_config_default();
-
-    let mut conj_out: dhruv_ffi_c::DhruvConjunctionEvent = zeroed();
-    let mut found_u8 = 0_u8;
-    bench_pair(
-        &mut group,
-        "next_conjunction",
-        || {
-            dhruv_search::next_conjunction(
-                black_box(&ctx.engine),
-                Body::Sun,
-                Body::Moon,
-                black_box(jd),
-                black_box(&conj_cfg_rust),
-            )
-            .expect("next conjunction")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_conjunction(
-                black_box(&ctx.engine as *const _),
-                Body::Sun.code(),
-                Body::Moon.code(),
-                jd,
-                black_box(&conj_cfg_ffi as *const _),
-                &mut conj_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 { -1.0 } else { conj_out.jd_tdb }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_conjunction",
-        || {
-            dhruv_search::prev_conjunction(
-                black_box(&ctx.engine),
-                Body::Sun,
-                Body::Moon,
-                black_box(jd),
-                black_box(&conj_cfg_rust),
-            )
-            .expect("prev conjunction")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_conjunction(
-                black_box(&ctx.engine as *const _),
-                Body::Sun.code(),
-                Body::Moon.code(),
-                jd,
-                black_box(&conj_cfg_ffi as *const _),
-                &mut conj_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 { -1.0 } else { conj_out.jd_tdb }
-        },
-    );
-
-    let mut conj_outs: [dhruv_ffi_c::DhruvConjunctionEvent; 32] = zeroed();
-    let mut out_count = 0_u32;
-    bench_pair(
-        &mut group,
-        "search_conjunctions",
-        || {
-            dhruv_search::search_conjunctions(
-                black_box(&ctx.engine),
-                Body::Sun,
-                Body::Moon,
-                black_box(jd),
-                black_box(jd_end),
-                black_box(&conj_cfg_rust),
-            )
-            .expect("search conjunctions")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_conjunctions(
-                black_box(&ctx.engine as *const _),
-                Body::Sun.code(),
-                Body::Moon.code(),
-                jd,
-                jd_end,
-                black_box(&conj_cfg_ffi as *const _),
-                conj_outs.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let grahan_cfg_rust = dhruv_search::GrahanConfig::default();
-    let grahan_cfg_ffi = dhruv_ffi_c::dhruv_grahan_config_default();
-
-    let mut chandra_out: dhruv_ffi_c::DhruvChandraGrahanResult = zeroed();
-    bench_pair(
-        &mut group,
-        "next_chandra_grahan",
-        || {
-            dhruv_search::next_chandra_grahan(
-                black_box(&ctx.engine),
-                black_box(jd),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("next chandra grahan")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_chandra_grahan(
-                black_box(&ctx.engine as *const _),
-                jd,
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut chandra_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                chandra_out.greatest_grahan_jd
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_chandra_grahan",
-        || {
-            dhruv_search::prev_chandra_grahan(
-                black_box(&ctx.engine),
-                black_box(jd),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("prev chandra grahan")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_chandra_grahan(
-                black_box(&ctx.engine as *const _),
-                jd,
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut chandra_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                chandra_out.greatest_grahan_jd
-            }
-        },
-    );
-
-    let mut chandra_outs: [dhruv_ffi_c::DhruvChandraGrahanResult; 16] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_chandra_grahan",
-        || {
-            dhruv_search::search_chandra_grahan(
-                black_box(&ctx.engine),
-                black_box(jd),
-                black_box(jd_end),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("search chandra grahan")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_chandra_grahan(
-                black_box(&ctx.engine as *const _),
-                jd,
-                jd_end,
-                black_box(&grahan_cfg_ffi as *const _),
-                chandra_outs.as_mut_ptr(),
-                16,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let mut surya_out: dhruv_ffi_c::DhruvSuryaGrahanResult = zeroed();
-    bench_pair(
-        &mut group,
-        "next_surya_grahan",
-        || {
-            dhruv_search::next_surya_grahan(
-                black_box(&ctx.engine),
-                black_box(jd),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("next surya grahan")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_surya_grahan(
-                black_box(&ctx.engine as *const _),
-                jd,
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut surya_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                surya_out.greatest_grahan_jd
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_surya_grahan",
-        || {
-            dhruv_search::prev_surya_grahan(
-                black_box(&ctx.engine),
-                black_box(jd),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("prev surya grahan")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_surya_grahan(
-                black_box(&ctx.engine as *const _),
-                jd,
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut surya_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                surya_out.greatest_grahan_jd
-            }
-        },
-    );
-
-    let mut surya_outs: [dhruv_ffi_c::DhruvSuryaGrahanResult; 16] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_surya_grahan",
-        || {
-            dhruv_search::search_surya_grahan(
-                black_box(&ctx.engine),
-                black_box(jd),
-                black_box(jd_end),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("search surya grahan")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_surya_grahan(
-                black_box(&ctx.engine as *const _),
-                jd,
-                jd_end,
-                black_box(&grahan_cfg_ffi as *const _),
-                surya_outs.as_mut_ptr(),
-                16,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let utc = DhruvUtcTime {
-        year: 2024,
-        month: 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-        second: 0.0,
-    };
-    let utc_end = DhruvUtcTime {
-        year: 2025,
-        month: 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-        second: 0.0,
-    };
-    let jd_utc_start_tdb = ffi_utc_to_jd_tdb(&utc, &ctx.lsk);
-    let jd_utc_end_tdb = ffi_utc_to_jd_tdb(&utc_end, &ctx.lsk);
-
-    let mut conj_out_utc: dhruv_ffi_c::DhruvConjunctionEventUtc = zeroed();
-    bench_pair(
-        &mut group,
-        "next_conjunction_utc",
-        || {
-            dhruv_search::next_conjunction(
-                black_box(&ctx.engine),
-                Body::Sun,
-                Body::Moon,
-                black_box(jd_utc_start_tdb),
-                black_box(&conj_cfg_rust),
-            )
-            .expect("next conjunction utc-rust")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_conjunction_utc(
-                black_box(&ctx.engine as *const _),
-                Body::Sun.code(),
-                Body::Moon.code(),
-                black_box(&utc as *const _),
-                black_box(&conj_cfg_ffi as *const _),
-                &mut conj_out_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&conj_out_utc.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_conjunction_utc",
-        || {
-            dhruv_search::prev_conjunction(
-                black_box(&ctx.engine),
-                Body::Sun,
-                Body::Moon,
-                black_box(jd_utc_start_tdb),
-                black_box(&conj_cfg_rust),
-            )
-            .expect("prev conjunction utc-rust")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_conjunction_utc(
-                black_box(&ctx.engine as *const _),
-                Body::Sun.code(),
-                Body::Moon.code(),
-                black_box(&utc as *const _),
-                black_box(&conj_cfg_ffi as *const _),
-                &mut conj_out_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&conj_out_utc.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut conj_outs_utc: [dhruv_ffi_c::DhruvConjunctionEventUtc; 32] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_conjunctions_utc",
-        || {
-            dhruv_search::search_conjunctions(
-                black_box(&ctx.engine),
-                Body::Sun,
-                Body::Moon,
-                black_box(jd_utc_start_tdb),
-                black_box(jd_utc_end_tdb),
-                black_box(&conj_cfg_rust),
-            )
-            .expect("search conjunctions utc-rust")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_conjunctions_utc(
-                black_box(&ctx.engine as *const _),
-                Body::Sun.code(),
-                Body::Moon.code(),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                black_box(&conj_cfg_ffi as *const _),
-                conj_outs_utc.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let mut chandra_out_utc: dhruv_ffi_c::DhruvChandraGrahanResultUtc = zeroed();
-    bench_pair(
-        &mut group,
-        "next_chandra_grahan_utc",
-        || {
-            dhruv_search::next_chandra_grahan(
-                black_box(&ctx.engine),
-                black_box(jd_utc_start_tdb),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("next chandra grahan utc-rust")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_chandra_grahan_utc(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut chandra_out_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&chandra_out_utc.greatest_grahan, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_chandra_grahan_utc",
-        || {
-            dhruv_search::prev_chandra_grahan(
-                black_box(&ctx.engine),
-                black_box(jd_utc_start_tdb),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("prev chandra grahan utc-rust")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_chandra_grahan_utc(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut chandra_out_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&chandra_out_utc.greatest_grahan, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut chandra_outs_utc: [dhruv_ffi_c::DhruvChandraGrahanResultUtc; 16] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_chandra_grahan_utc",
-        || {
-            dhruv_search::search_chandra_grahan(
-                black_box(&ctx.engine),
-                black_box(jd_utc_start_tdb),
-                black_box(jd_utc_end_tdb),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("search chandra grahan utc-rust")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_chandra_grahan_utc(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                black_box(&grahan_cfg_ffi as *const _),
-                chandra_outs_utc.as_mut_ptr(),
-                16,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let mut surya_out_utc: dhruv_ffi_c::DhruvSuryaGrahanResultUtc = zeroed();
-    bench_pair(
-        &mut group,
-        "next_surya_grahan_utc",
-        || {
-            dhruv_search::next_surya_grahan(
-                black_box(&ctx.engine),
-                black_box(jd_utc_start_tdb),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("next surya grahan utc-rust")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_surya_grahan_utc(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut surya_out_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&surya_out_utc.greatest_grahan, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_surya_grahan_utc",
-        || {
-            dhruv_search::prev_surya_grahan(
-                black_box(&ctx.engine),
-                black_box(jd_utc_start_tdb),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("prev surya grahan utc-rust")
-            .map(|e| e.greatest_grahan_jd)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_surya_grahan_utc(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&grahan_cfg_ffi as *const _),
-                &mut surya_out_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&surya_out_utc.greatest_grahan, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut surya_outs_utc: [dhruv_ffi_c::DhruvSuryaGrahanResultUtc; 16] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_surya_grahan_utc",
-        || {
-            dhruv_search::search_surya_grahan(
-                black_box(&ctx.engine),
-                black_box(jd_utc_start_tdb),
-                black_box(jd_utc_end_tdb),
-                black_box(&grahan_cfg_rust),
-            )
-            .expect("search surya grahan utc-rust")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_surya_grahan_utc(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                black_box(&grahan_cfg_ffi as *const _),
-                surya_outs_utc.as_mut_ptr(),
-                16,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    group.finish();
-}
-
-fn ffi_search_stationary_bench(c: &mut Criterion) {
-    let ctx = match load_context() {
-        Some(v) => v,
-        None => return,
-    };
-
-    let mut group = c.benchmark_group("ffi_search_stationary");
-    group.sample_size(10);
-
-    let body = Body::Mercury;
-    let jd = 2_460_000.5_f64;
-    let jd_end = 2_460_400.5_f64;
-    let cfg_rust = dhruv_search::StationaryConfig::inner_planet();
-    let cfg_ffi = dhruv_ffi_c::dhruv_stationary_config_default();
-
-    let mut found_u8 = 0_u8;
-    let mut out_stationary: dhruv_ffi_c::DhruvStationaryEvent = zeroed();
-    bench_pair(
-        &mut group,
-        "next_stationary",
-        || {
-            dhruv_search::next_stationary(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd),
-                black_box(&cfg_rust),
-            )
-            .expect("next stationary")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_stationary(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                jd,
-                black_box(&cfg_ffi as *const _),
-                &mut out_stationary,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                out_stationary.jd_tdb
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_stationary",
-        || {
-            dhruv_search::prev_stationary(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd),
-                black_box(&cfg_rust),
-            )
-            .expect("prev stationary")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_stationary(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                jd,
-                black_box(&cfg_ffi as *const _),
-                &mut out_stationary,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                out_stationary.jd_tdb
-            }
-        },
-    );
-
-    let mut out_stationary_events: [dhruv_ffi_c::DhruvStationaryEvent; 32] = zeroed();
-    let mut out_count = 0_u32;
-    bench_pair(
-        &mut group,
-        "search_stationary",
-        || {
-            dhruv_search::search_stationary(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd),
-                black_box(jd_end),
-                black_box(&cfg_rust),
-            )
-            .expect("search stationary")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_stationary(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                jd,
-                jd_end,
-                black_box(&cfg_ffi as *const _),
-                out_stationary_events.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let mut out_max_speed: dhruv_ffi_c::DhruvMaxSpeedEvent = zeroed();
-    bench_pair(
-        &mut group,
-        "next_max_speed",
-        || {
-            dhruv_search::next_max_speed(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd),
-                black_box(&cfg_rust),
-            )
-            .expect("next max speed")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_max_speed(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                jd,
-                black_box(&cfg_ffi as *const _),
-                &mut out_max_speed,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                out_max_speed.jd_tdb
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_max_speed",
-        || {
-            dhruv_search::prev_max_speed(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd),
-                black_box(&cfg_rust),
-            )
-            .expect("prev max speed")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_max_speed(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                jd,
-                black_box(&cfg_ffi as *const _),
-                &mut out_max_speed,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                out_max_speed.jd_tdb
-            }
-        },
-    );
-
-    let mut out_max_speed_events: [dhruv_ffi_c::DhruvMaxSpeedEvent; 32] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_max_speed",
-        || {
-            dhruv_search::search_max_speed(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd),
-                black_box(jd_end),
-                black_box(&cfg_rust),
-            )
-            .expect("search max speed")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_max_speed(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                jd,
-                jd_end,
-                black_box(&cfg_ffi as *const _),
-                out_max_speed_events.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let utc = DhruvUtcTime {
-        year: 2024,
-        month: 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-        second: 0.0,
-    };
-    let utc_end = DhruvUtcTime {
-        year: 2025,
-        month: 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-        second: 0.0,
-    };
-    let jd_utc_start_tdb = ffi_utc_to_jd_tdb(&utc, &ctx.lsk);
-    let jd_utc_end_tdb = ffi_utc_to_jd_tdb(&utc_end, &ctx.lsk);
-
-    let mut out_stationary_utc: dhruv_ffi_c::DhruvStationaryEventUtc = zeroed();
-    bench_pair(
-        &mut group,
-        "next_stationary_utc",
-        || {
-            dhruv_search::next_stationary(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd_utc_start_tdb),
-                black_box(&cfg_rust),
-            )
-            .expect("next stationary utc-rust")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_stationary_utc(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                black_box(&utc as *const _),
-                black_box(&cfg_ffi as *const _),
-                &mut out_stationary_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&out_stationary_utc.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_stationary_utc",
-        || {
-            dhruv_search::prev_stationary(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd_utc_start_tdb),
-                black_box(&cfg_rust),
-            )
-            .expect("prev stationary utc-rust")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_stationary_utc(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                black_box(&utc as *const _),
-                black_box(&cfg_ffi as *const _),
-                &mut out_stationary_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&out_stationary_utc.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut out_stationary_events_utc: [dhruv_ffi_c::DhruvStationaryEventUtc; 32] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_stationary_utc",
-        || {
-            dhruv_search::search_stationary(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd_utc_start_tdb),
-                black_box(jd_utc_end_tdb),
-                black_box(&cfg_rust),
-            )
-            .expect("search stationary utc-rust")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_stationary_utc(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                black_box(&cfg_ffi as *const _),
-                out_stationary_events_utc.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let mut out_max_speed_utc: dhruv_ffi_c::DhruvMaxSpeedEventUtc = zeroed();
-    bench_pair(
-        &mut group,
-        "next_max_speed_utc",
-        || {
-            dhruv_search::next_max_speed(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd_utc_start_tdb),
-                black_box(&cfg_rust),
-            )
-            .expect("next max speed utc-rust")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_max_speed_utc(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                black_box(&utc as *const _),
-                black_box(&cfg_ffi as *const _),
-                &mut out_max_speed_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&out_max_speed_utc.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_max_speed_utc",
-        || {
-            dhruv_search::prev_max_speed(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd_utc_start_tdb),
-                black_box(&cfg_rust),
-            )
-            .expect("prev max speed utc-rust")
-            .map(|e| e.jd_tdb)
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_max_speed_utc(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                black_box(&utc as *const _),
-                black_box(&cfg_ffi as *const _),
-                &mut out_max_speed_utc,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&out_max_speed_utc.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut out_max_speed_events_utc: [dhruv_ffi_c::DhruvMaxSpeedEventUtc; 32] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_max_speed_utc",
-        || {
-            dhruv_search::search_max_speed(
-                black_box(&ctx.engine),
-                body,
-                black_box(jd_utc_start_tdb),
-                black_box(jd_utc_end_tdb),
-                black_box(&cfg_rust),
-            )
-            .expect("search max speed utc-rust")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_max_speed_utc(
-                black_box(&ctx.engine as *const _),
-                body.code(),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                black_box(&cfg_ffi as *const _),
-                out_max_speed_events_utc.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    group.finish();
-}
-
-fn ffi_lunar_sankranti_bench(c: &mut Criterion) {
-    let ctx = match load_context() {
-        Some(v) => v,
-        None => return,
-    };
-
-    let mut group = c.benchmark_group("ffi_lunar_sankranti");
-    group.sample_size(10);
-
-    let utc = DhruvUtcTime {
-        year: 2024,
-        month: 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-        second: 0.0,
-    };
-    let utc_end = DhruvUtcTime {
-        year: 2025,
-        month: 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-        second: 0.0,
-    };
-    let utc_rust = ffi_utc_to_rust(&utc);
-    let utc_end_rust = ffi_utc_to_rust(&utc_end);
-
-    let mut found_u8 = 0_u8;
-    let mut lunar_out: dhruv_ffi_c::DhruvLunarPhaseEvent = zeroed();
-    let mut out_count = 0_u32;
-
-    bench_pair(
-        &mut group,
-        "next_purnima",
-        || {
-            dhruv_search::next_purnima(black_box(&ctx.engine), black_box(&utc_rust))
-                .expect("next purnima")
-                .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-                .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_purnima(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                &mut lunar_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&lunar_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_purnima",
-        || {
-            dhruv_search::prev_purnima(black_box(&ctx.engine), black_box(&utc_rust))
-                .expect("prev purnima")
-                .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-                .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_purnima(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                &mut lunar_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&lunar_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut lunar_outs: [dhruv_ffi_c::DhruvLunarPhaseEvent; 32] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_purnimas",
-        || {
-            dhruv_search::search_purnimas(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&utc_end_rust),
-            )
-            .expect("search purnimas")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_purnimas(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                lunar_outs.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "next_amavasya",
-        || {
-            dhruv_search::next_amavasya(black_box(&ctx.engine), black_box(&utc_rust))
-                .expect("next amavasya")
-                .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-                .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_amavasya(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                &mut lunar_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&lunar_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_amavasya",
-        || {
-            dhruv_search::prev_amavasya(black_box(&ctx.engine), black_box(&utc_rust))
-                .expect("prev amavasya")
-                .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-                .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_amavasya(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                &mut lunar_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&lunar_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "search_amavasyas",
-        || {
-            dhruv_search::search_amavasyas(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&utc_end_rust),
-            )
-            .expect("search amavasyas")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_amavasyas(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                lunar_outs.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    let sankranti_cfg_rust = SankrantiConfig::new(AyanamshaSystem::Lahiri, false);
-    let sankranti_cfg_ffi = dhruv_sankranti_config_default();
-    let mut sankranti_out: dhruv_ffi_c::DhruvSankrantiEvent = zeroed();
-
-    bench_pair(
-        &mut group,
-        "next_sankranti",
-        || {
-            dhruv_search::next_sankranti(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("next sankranti")
-            .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_sankranti(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&sankranti_cfg_ffi as *const _),
-                &mut sankranti_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&sankranti_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_sankranti",
-        || {
-            dhruv_search::prev_sankranti(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("prev sankranti")
-            .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_sankranti(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&sankranti_cfg_ffi as *const _),
-                &mut sankranti_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&sankranti_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut sankranti_outs: [dhruv_ffi_c::DhruvSankrantiEvent; 32] = zeroed();
-    bench_pair(
-        &mut group,
-        "search_sankrantis",
-        || {
-            dhruv_search::search_sankrantis(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&utc_end_rust),
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("search sankrantis")
-            .len() as f64
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_search_sankrantis(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&utc_end as *const _),
-                black_box(&sankranti_cfg_ffi as *const _),
-                sankranti_outs.as_mut_ptr(),
-                32,
-                &mut out_count,
-            ));
-            out_count as f64
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "next_specific_sankranti",
-        || {
-            dhruv_search::next_specific_sankranti(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                dhruv_vedic_base::ALL_RASHIS[0],
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("next specific sankranti")
-            .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_next_specific_sankranti(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                0,
-                black_box(&sankranti_cfg_ffi as *const _),
-                &mut sankranti_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&sankranti_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    bench_pair(
-        &mut group,
-        "prev_specific_sankranti",
-        || {
-            dhruv_search::prev_specific_sankranti(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                dhruv_vedic_base::ALL_RASHIS[0],
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("prev specific sankranti")
-            .map(|e| e.utc.to_jd_tdb(ctx.engine.lsk()))
-            .unwrap_or(-1.0)
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_prev_specific_sankranti(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                0,
-                black_box(&sankranti_cfg_ffi as *const _),
-                &mut sankranti_out,
-                &mut found_u8,
-            ));
-            if found_u8 == 0 {
-                -1.0
-            } else {
-                ffi_utc_to_jd_tdb(&sankranti_out.utc, &ctx.lsk)
-            }
-        },
-    );
-
-    let mut masa_out: dhruv_ffi_c::DhruvMasaInfo = zeroed();
-    bench_pair(
-        &mut group,
-        "masa_for_date",
-        || {
-            dhruv_search::masa_for_date(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("masa_for_date")
-            .masa
-            .index() as i32
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_masa_for_date(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&sankranti_cfg_ffi as *const _),
-                &mut masa_out,
-            ));
-            masa_out.masa_index
-        },
-    );
-
-    let mut ayana_out: dhruv_ffi_c::DhruvAyanaInfo = zeroed();
-    bench_pair(
-        &mut group,
-        "ayana_for_date",
-        || {
-            dhruv_search::ayana_for_date(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("ayana_for_date")
-            .ayana
-            .index() as i32
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_ayana_for_date(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&sankranti_cfg_ffi as *const _),
-                &mut ayana_out,
-            ));
-            ayana_out.ayana
-        },
-    );
-
-    let mut varsha_out: dhruv_ffi_c::DhruvVarshaInfo = zeroed();
-    bench_pair(
-        &mut group,
-        "varsha_for_date",
-        || {
-            dhruv_search::varsha_for_date(
-                black_box(&ctx.engine),
-                black_box(&utc_rust),
-                black_box(&sankranti_cfg_rust),
-            )
-            .expect("varsha_for_date")
-            .samvatsara
-            .index() as i32
-        },
-        || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_varsha_for_date(
-                black_box(&ctx.engine as *const _),
-                black_box(&utc as *const _),
-                black_box(&sankranti_cfg_ffi as *const _),
-                &mut varsha_out,
-            ));
-            varsha_out.samvatsara_index
         },
     );
 
@@ -3415,7 +2083,16 @@ fn ffi_panchang_runtime_bench(c: &mut Criterion) {
         },
     );
 
-    let mut out_panchang: dhruv_ffi_c::DhruvPanchangInfo = zeroed();
+    let mut out_panchang: DhruvPanchangOperationResult = zeroed();
+    let panchang_req = DhruvPanchangComputeRequest {
+        time_kind: DHRUV_PANCHANG_TIME_UTC,
+        jd_tdb: 0.0,
+        utc,
+        include_mask: DHRUV_PANCHANG_INCLUDE_ALL,
+        location: loc_ffi,
+        riseset_config: rs_cfg_ffi,
+        sankranti_config: sank_cfg_ffi,
+    };
     bench_pair(
         &mut group,
         "panchang_for_date",
@@ -3434,14 +2111,11 @@ fn ffi_panchang_runtime_bench(c: &mut Criterion) {
             .tithi_index as i32
         },
         || unsafe {
-            expect_ok(dhruv_ffi_c::dhruv_panchang_for_date(
+            expect_ok(dhruv_ffi_c::dhruv_panchang_compute_ex(
                 black_box(&ctx.engine as *const _),
                 black_box(&ctx.eop as *const _),
-                black_box(&utc as *const _),
-                black_box(&loc_ffi as *const _),
-                black_box(&rs_cfg_ffi as *const _),
-                black_box(&sank_cfg_ffi as *const _),
-                1,
+                std::ptr::null(),
+                black_box(&panchang_req as *const _),
                 &mut out_panchang,
             ));
             out_panchang.tithi.tithi_index
@@ -4098,9 +2772,6 @@ criterion_group!(
     ffi_ghatika_hora_bench,
     ffi_upagraha_bench,
     ffi_search_sidereal_bench,
-    ffi_search_conjunction_grahan_bench,
-    ffi_search_stationary_bench,
-    ffi_lunar_sankranti_bench,
     ffi_riseset_bhava_bench,
     ffi_panchang_runtime_bench,
     ffi_orchestrators_bench,

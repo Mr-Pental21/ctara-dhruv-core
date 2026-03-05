@@ -45,6 +45,10 @@ jobs:
       - name: Tests
         run: cargo test --workspace --all-targets --quiet
 
+      - name: cdylib artifact check
+        shell: bash
+        run: ./scripts/ci/check_cdylib_artifact.sh
+
   abi-contract:
     name: ABI Contract Checks
     runs-on: ubuntu-latest

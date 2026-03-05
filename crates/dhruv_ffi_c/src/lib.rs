@@ -277,55 +277,6 @@ fn ffi_resolver() -> Option<ConfigResolver> {
     guard.as_ref().cloned()
 }
 
-fn resolve_conjunction_config_ptr(
-    config: *const DhruvConjunctionConfig,
-) -> Result<ConjunctionConfig, DhruvStatus> {
-    if let Some(cfg) = unsafe { config.as_ref() } {
-        return Ok(conjunction_config_from_ffi(cfg));
-    }
-    if let Some(resolver) = ffi_resolver() {
-        return resolver
-            .resolve_conjunction(None)
-            .map(|v| v.value)
-            .map_err(|_| DhruvStatus::InvalidSearchConfig);
-    }
-    Ok(conjunction_config_from_ffi(
-        &dhruv_conjunction_config_default(),
-    ))
-}
-
-fn resolve_grahan_config_ptr(
-    config: *const DhruvGrahanConfig,
-) -> Result<GrahanConfig, DhruvStatus> {
-    if let Some(cfg) = unsafe { config.as_ref() } {
-        return Ok(grahan_config_from_ffi(cfg));
-    }
-    if let Some(resolver) = ffi_resolver() {
-        return resolver
-            .resolve_grahan(None)
-            .map(|v| v.value)
-            .map_err(|_| DhruvStatus::InvalidSearchConfig);
-    }
-    Ok(grahan_config_from_ffi(&dhruv_grahan_config_default()))
-}
-
-fn resolve_stationary_config_ptr(
-    config: *const DhruvStationaryConfig,
-) -> Result<StationaryConfig, DhruvStatus> {
-    if let Some(cfg) = unsafe { config.as_ref() } {
-        return Ok(stationary_config_from_ffi(cfg));
-    }
-    if let Some(resolver) = ffi_resolver() {
-        return resolver
-            .resolve_stationary(None)
-            .map(|v| v.value)
-            .map_err(|_| DhruvStatus::InvalidSearchConfig);
-    }
-    Ok(stationary_config_from_ffi(
-        &dhruv_stationary_config_default(),
-    ))
-}
-
 fn resolve_sankranti_config_ptr(
     config: *const DhruvSankrantiConfig,
 ) -> Result<SankrantiConfig, DhruvStatus> {
@@ -2218,168 +2169,6 @@ pub extern "C" fn dhruv_conjunction_config_default() -> DhruvConjunctionConfig {
     }
 }
 
-/// Find the next conjunction/aspect event after `jd_tdb`.
-///
-/// Returns Ok with `found` set to 1 if an event was found, 0 otherwise.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_conjunction(
-    engine: *const DhruvEngineHandle,
-    body1_code: i32,
-    body2_code: i32,
-    jd_tdb: f64,
-    config: *const DhruvConjunctionConfig,
-    out_event: *mut DhruvConjunctionEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body1 = match Body::from_code(body1_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let body2 = match Body::from_code(body2_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        // SAFETY: All pointers checked for null above.
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_conjunction_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match next_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                // SAFETY: Pointers checked for null.
-                unsafe {
-                    *out_event = DhruvConjunctionEvent::from(&event);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous conjunction/aspect event before `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_conjunction(
-    engine: *const DhruvEngineHandle,
-    body1_code: i32,
-    body2_code: i32,
-    jd_tdb: f64,
-    config: *const DhruvConjunctionConfig,
-    out_event: *mut DhruvConjunctionEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body1 = match Body::from_code(body1_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let body2 = match Body::from_code(body2_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        // SAFETY: All pointers checked for null above.
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_conjunction_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match prev_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = DhruvConjunctionEvent::from(&event);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all conjunction/aspect events in a time range.
-///
-/// Caller provides `out_events` pointing to an array of at least `max_count`
-/// elements. The actual number found is written to `out_count`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvConjunctionEvent`.
-pub unsafe extern "C" fn dhruv_search_conjunctions(
-    engine: *const DhruvEngineHandle,
-    body1_code: i32,
-    body2_code: i32,
-    jd_start: f64,
-    jd_end: f64,
-    config: *const DhruvConjunctionConfig,
-    out_events: *mut DhruvConjunctionEvent,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_events.is_null() || out_count.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body1 = match Body::from_code(body1_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let body2 = match Body::from_code(body2_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        // SAFETY: All pointers checked for null above.
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_conjunction_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match search_conjunctions(engine_ref, body1, body2, jd_start, jd_end, &rust_config) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                // SAFETY: out_events points to at least max_count elements.
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, e) in events.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvConjunctionEvent::from(e);
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
 /// Unified conjunction search entrypoint.
 ///
 /// Mode behavior:
@@ -2677,253 +2466,6 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
             angular_separation_deg: e.angular_separation_deg,
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Chandra grahan FFI functions
-// ---------------------------------------------------------------------------
-
-/// Find the next chandra grahan (lunar eclipse) after `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_chandra_grahan(
-    engine: *const DhruvEngineHandle,
-    jd_tdb: f64,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvChandraGrahanResult,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        // SAFETY: All pointers checked for null above.
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match next_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = DhruvChandraGrahanResult::from(&grahan);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous chandra grahan (lunar eclipse) before `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_chandra_grahan(
-    engine: *const DhruvEngineHandle,
-    jd_tdb: f64,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvChandraGrahanResult,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match prev_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = DhruvChandraGrahanResult::from(&grahan);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all chandra grahan (lunar eclipses) in a time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvChandraGrahanResult`.
-pub unsafe extern "C" fn dhruv_search_chandra_grahan(
-    engine: *const DhruvEngineHandle,
-    jd_start: f64,
-    jd_end: f64,
-    config: *const DhruvGrahanConfig,
-    out_results: *mut DhruvChandraGrahanResult,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_results.is_null() || out_count.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match search_chandra_grahan(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(results) => {
-                let count = results.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_results, max_count as usize) };
-                for (i, e) in results.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvChandraGrahanResult::from(e);
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-// ---------------------------------------------------------------------------
-// Surya grahan FFI functions
-// ---------------------------------------------------------------------------
-
-/// Find the next surya grahan (solar eclipse) after `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_surya_grahan(
-    engine: *const DhruvEngineHandle,
-    jd_tdb: f64,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvSuryaGrahanResult,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match next_surya_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = DhruvSuryaGrahanResult::from(&grahan);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous surya grahan (solar eclipse) before `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_surya_grahan(
-    engine: *const DhruvEngineHandle,
-    jd_tdb: f64,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvSuryaGrahanResult,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match prev_surya_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = DhruvSuryaGrahanResult::from(&grahan);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all surya grahan (solar eclipses) in a time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvSuryaGrahanResult`.
-pub unsafe extern "C" fn dhruv_search_surya_grahan(
-    engine: *const DhruvEngineHandle,
-    jd_start: f64,
-    jd_end: f64,
-    config: *const DhruvGrahanConfig,
-    out_results: *mut DhruvSuryaGrahanResult,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_results.is_null() || out_count.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match search_surya_grahan(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(results) => {
-                let count = results.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_results, max_count as usize) };
-                for (i, e) in results.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvSuryaGrahanResult::from(e);
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
 }
 
 /// Unified grahan search entrypoint.
@@ -3243,280 +2785,6 @@ pub extern "C" fn dhruv_stationary_config_default() -> DhruvStationaryConfig {
         convergence_days: 1e-8,
         numerical_step_days: 0.01,
     }
-}
-
-/// Find the next stationary point after `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_stationary(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    jd_tdb: f64,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvStationaryEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match next_stationary(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = DhruvStationaryEvent::from(&event);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous stationary point before `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_stationary(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    jd_tdb: f64,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvStationaryEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match prev_stationary(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = DhruvStationaryEvent::from(&event);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all stationary points in a time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvStationaryEvent`.
-pub unsafe extern "C" fn dhruv_search_stationary(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    jd_start: f64,
-    jd_end: f64,
-    config: *const DhruvStationaryConfig,
-    out_events: *mut DhruvStationaryEvent,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_events.is_null() || out_count.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match search_stationary(engine_ref, body, jd_start, jd_end, &rust_config) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, e) in events.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvStationaryEvent::from(e);
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the next max-speed event after `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_max_speed(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    jd_tdb: f64,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvMaxSpeedEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match next_max_speed(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = DhruvMaxSpeedEvent::from(&event);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous max-speed event before `jd_tdb`.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_max_speed(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    jd_tdb: f64,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvMaxSpeedEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match prev_max_speed(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = DhruvMaxSpeedEvent::from(&event);
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all max-speed events in a time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvMaxSpeedEvent`.
-pub unsafe extern "C" fn dhruv_search_max_speed(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    jd_start: f64,
-    jd_end: f64,
-    config: *const DhruvStationaryConfig,
-    out_events: *mut DhruvMaxSpeedEvent,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || out_events.is_null() || out_count.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-
-        let engine_ref = unsafe { &*engine };
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-
-        match search_max_speed(engine_ref, body, jd_start, jd_end, &rust_config) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, e) in events.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvMaxSpeedEvent::from(e);
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
 }
 
 /// Unified motion search entrypoint.
@@ -4407,251 +3675,6 @@ pub extern "C" fn dhruv_sankranti_config_default() -> DhruvSankrantiConfig {
     }
 }
 
-/// Find the next Purnima (full moon) after the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_purnima(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    out_event: *mut DhruvLunarPhaseEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let utc_ref = unsafe { &*utc };
-        let t = ffi_to_utc_time(utc_ref);
-        match next_purnima(engine_ref, &t) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvLunarPhaseEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        phase: lunar_phase_to_code(e.phase),
-                        moon_longitude_deg: e.moon_longitude_deg,
-                        sun_longitude_deg: e.sun_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous Purnima (full moon) before the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_purnima(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    out_event: *mut DhruvLunarPhaseEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        match prev_purnima(engine_ref, &t) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvLunarPhaseEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        phase: lunar_phase_to_code(e.phase),
-                        moon_longitude_deg: e.moon_longitude_deg,
-                        sun_longitude_deg: e.sun_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the next Amavasya (new moon) after the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_amavasya(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    out_event: *mut DhruvLunarPhaseEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        match next_amavasya(engine_ref, &t) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvLunarPhaseEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        phase: lunar_phase_to_code(e.phase),
-                        moon_longitude_deg: e.moon_longitude_deg,
-                        sun_longitude_deg: e.sun_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous Amavasya (new moon) before the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_amavasya(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    out_event: *mut DhruvLunarPhaseEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        match prev_amavasya(engine_ref, &t) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvLunarPhaseEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        phase: lunar_phase_to_code(e.phase),
-                        moon_longitude_deg: e.moon_longitude_deg,
-                        sun_longitude_deg: e.sun_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all Purnimas in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvLunarPhaseEvent`.
-pub unsafe extern "C" fn dhruv_search_purnimas(
-    engine: *const DhruvEngineHandle,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    out_events: *mut DhruvLunarPhaseEvent,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_events.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let s = ffi_to_utc_time(unsafe { &*start });
-        let e = ffi_to_utc_time(unsafe { &*end });
-        match search_purnimas(engine_ref, &s, &e) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, ev) in events.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvLunarPhaseEvent {
-                        utc: utc_time_to_ffi(&ev.utc),
-                        phase: lunar_phase_to_code(ev.phase),
-                        moon_longitude_deg: ev.moon_longitude_deg,
-                        sun_longitude_deg: ev.sun_longitude_deg,
-                    };
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all Amavasyas in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvLunarPhaseEvent`.
-pub unsafe extern "C" fn dhruv_search_amavasyas(
-    engine: *const DhruvEngineHandle,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    out_events: *mut DhruvLunarPhaseEvent,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_events.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let s = ffi_to_utc_time(unsafe { &*start });
-        let e = ffi_to_utc_time(unsafe { &*end });
-        match search_amavasyas(engine_ref, &s, &e) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, ev) in events.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvLunarPhaseEvent {
-                        utc: utc_time_to_ffi(&ev.utc),
-                        phase: lunar_phase_to_code(ev.phase),
-                        moon_longitude_deg: ev.moon_longitude_deg,
-                        sun_longitude_deg: ev.sun_longitude_deg,
-                    };
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
 /// Unified lunar-phase search entrypoint.
 ///
 /// Mode behavior:
@@ -4813,142 +3836,6 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
     })
 }
 
-/// Find the next Sankranti (Sun entering any rashi).
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_sankranti(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvSankrantiConfig,
-    out_event: *mut DhruvSankrantiEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match resolve_sankranti_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match next_sankranti(engine_ref, &t, &cfg) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvSankrantiEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        rashi_index: e.rashi_index as i32,
-                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
-                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous Sankranti.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_sankranti(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvSankrantiConfig,
-    out_event: *mut DhruvSankrantiEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match resolve_sankranti_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match prev_sankranti(engine_ref, &t, &cfg) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvSankrantiEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        rashi_index: e.rashi_index as i32,
-                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
-                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all Sankrantis in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_search_sankrantis(
-    engine: *const DhruvEngineHandle,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    config: *const DhruvSankrantiConfig,
-    out_events: *mut DhruvSankrantiEvent,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_events.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let s = ffi_to_utc_time(unsafe { &*start });
-        let e = ffi_to_utc_time(unsafe { &*end });
-        let cfg = match resolve_sankranti_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match search_sankrantis(engine_ref, &s, &e, &cfg) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, ev) in events.iter().take(count).enumerate() {
-                    out_slice[i] = DhruvSankrantiEvent {
-                        utc: utc_time_to_ffi(&ev.utc),
-                        rashi_index: ev.rashi_index as i32,
-                        sun_sidereal_longitude_deg: ev.sun_sidereal_longitude_deg,
-                        sun_tropical_longitude_deg: ev.sun_tropical_longitude_deg,
-                    };
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
 /// Unified sankranti search entrypoint.
 ///
 /// Mode behavior:
@@ -5074,104 +3961,6 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                 }
             }
             _ => DhruvStatus::InvalidQuery,
-        }
-    })
-}
-
-/// Find the next time the Sun enters a specific rashi.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_specific_sankranti(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    rashi_index: i32,
-    config: *const DhruvSankrantiConfig,
-    out_event: *mut DhruvSankrantiEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let rashi_idx = rashi_index as usize;
-        if rashi_idx >= 12 {
-            return DhruvStatus::InvalidQuery;
-        }
-        let rashi = dhruv_vedic_base::ALL_RASHIS[rashi_idx];
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match resolve_sankranti_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match next_specific_sankranti(engine_ref, &t, rashi, &cfg) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvSankrantiEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        rashi_index: e.rashi_index as i32,
-                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
-                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous time the Sun entered a specific rashi.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_specific_sankranti(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    rashi_index: i32,
-    config: *const DhruvSankrantiConfig,
-    out_event: *mut DhruvSankrantiEvent,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let rashi_idx = rashi_index as usize;
-        if rashi_idx >= 12 {
-            return DhruvStatus::InvalidQuery;
-        }
-        let rashi = dhruv_vedic_base::ALL_RASHIS[rashi_idx];
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        let cfg = match resolve_sankranti_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match prev_specific_sankranti(engine_ref, &t, rashi, &cfg) {
-            Ok(Some(e)) => {
-                unsafe {
-                    *out_event = DhruvSankrantiEvent {
-                        utc: utc_time_to_ffi(&e.utc),
-                        rashi_index: e.rashi_index as i32,
-                        sun_sidereal_longitude_deg: e.sun_sidereal_longitude_deg,
-                        sun_tropical_longitude_deg: e.sun_tropical_longitude_deg,
-                    };
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
         }
     })
 }
@@ -5713,56 +4502,6 @@ fn jd_tdb_to_utc_time(jd_tdb: f64, lsk: &dhruv_time::LeapSecondKernel) -> DhruvU
     utc_time_to_ffi(&UtcTime::from_jd_tdb(jd_tdb, lsk))
 }
 
-fn option_jd_to_utc(opt: Option<f64>, lsk: &dhruv_time::LeapSecondKernel) -> (DhruvUtcTime, u8) {
-    match opt {
-        Some(jd) => (jd_tdb_to_utc_time(jd, lsk), 1),
-        None => (ZEROED_UTC, 0),
-    }
-}
-
-fn conjunction_event_to_utc(
-    e: &ConjunctionEvent,
-    lsk: &dhruv_time::LeapSecondKernel,
-) -> DhruvConjunctionEventUtc {
-    DhruvConjunctionEventUtc {
-        utc: jd_tdb_to_utc_time(e.jd_tdb, lsk),
-        actual_separation_deg: e.actual_separation_deg,
-        body1_longitude_deg: e.body1_longitude_deg,
-        body2_longitude_deg: e.body2_longitude_deg,
-        body1_latitude_deg: e.body1_latitude_deg,
-        body2_latitude_deg: e.body2_latitude_deg,
-        body1_code: e.body1.code(),
-        body2_code: e.body2.code(),
-    }
-}
-
-fn stationary_event_to_utc(
-    e: &StationaryEvent,
-    lsk: &dhruv_time::LeapSecondKernel,
-) -> DhruvStationaryEventUtc {
-    DhruvStationaryEventUtc {
-        utc: jd_tdb_to_utc_time(e.jd_tdb, lsk),
-        body_code: e.body.code(),
-        longitude_deg: e.longitude_deg,
-        latitude_deg: e.latitude_deg,
-        station_type: station_type_to_code(e.station_type),
-    }
-}
-
-fn max_speed_event_to_utc(
-    e: &MaxSpeedEvent,
-    lsk: &dhruv_time::LeapSecondKernel,
-) -> DhruvMaxSpeedEventUtc {
-    DhruvMaxSpeedEventUtc {
-        utc: jd_tdb_to_utc_time(e.jd_tdb, lsk),
-        body_code: e.body.code(),
-        longitude_deg: e.longitude_deg,
-        latitude_deg: e.latitude_deg,
-        speed_deg_per_day: e.speed_deg_per_day,
-        speed_type: max_speed_type_to_code(e.speed_type),
-    }
-}
-
 fn riseset_result_to_utc(
     r: &RiseSetResult,
     lsk: &dhruv_time::LeapSecondKernel,
@@ -5786,740 +4525,11 @@ fn riseset_result_to_utc(
     }
 }
 
-fn chandra_grahan_to_utc(
-    e: &ChandraGrahan,
-    lsk: &dhruv_time::LeapSecondKernel,
-) -> DhruvChandraGrahanResultUtc {
-    let (u1, u1_valid) = option_jd_to_utc(e.u1_jd, lsk);
-    let (u2, u2_valid) = option_jd_to_utc(e.u2_jd, lsk);
-    let (u3, u3_valid) = option_jd_to_utc(e.u3_jd, lsk);
-    let (u4, u4_valid) = option_jd_to_utc(e.u4_jd, lsk);
-    DhruvChandraGrahanResultUtc {
-        grahan_type: chandra_grahan_type_to_code(e.grahan_type),
-        magnitude: e.magnitude,
-        penumbral_magnitude: e.penumbral_magnitude,
-        greatest_grahan: jd_tdb_to_utc_time(e.greatest_grahan_jd, lsk),
-        p1: jd_tdb_to_utc_time(e.p1_jd, lsk),
-        u1,
-        u2,
-        u3,
-        u4,
-        p4: jd_tdb_to_utc_time(e.p4_jd, lsk),
-        moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
-        angular_separation_deg: e.angular_separation_deg,
-        u1_valid,
-        u2_valid,
-        u3_valid,
-        u4_valid,
-    }
-}
-
-fn surya_grahan_to_utc(
-    e: &SuryaGrahan,
-    lsk: &dhruv_time::LeapSecondKernel,
-) -> DhruvSuryaGrahanResultUtc {
-    let (c1, c1_valid) = option_jd_to_utc(e.c1_jd, lsk);
-    let (c2, c2_valid) = option_jd_to_utc(e.c2_jd, lsk);
-    let (c3, c3_valid) = option_jd_to_utc(e.c3_jd, lsk);
-    let (c4, c4_valid) = option_jd_to_utc(e.c4_jd, lsk);
-    DhruvSuryaGrahanResultUtc {
-        grahan_type: surya_grahan_type_to_code(e.grahan_type),
-        magnitude: e.magnitude,
-        greatest_grahan: jd_tdb_to_utc_time(e.greatest_grahan_jd, lsk),
-        c1,
-        c2,
-        c3,
-        c4,
-        moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
-        angular_separation_deg: e.angular_separation_deg,
-        c1_valid,
-        c2_valid,
-        c3_valid,
-        c4_valid,
-    }
-}
-
 /// Convert DhruvUtcTime to JD UTC (no TDB conversion, pure calendar arithmetic).
 fn ffi_utc_to_jd_utc(t: &DhruvUtcTime) -> f64 {
     let day_frac =
         t.day as f64 + t.hour as f64 / 24.0 + t.minute as f64 / 1440.0 + t.second / 86_400.0;
     dhruv_time::calendar_to_jd(t.year, t.month, day_frac)
-}
-
-// ---------------------------------------------------------------------------
-// Group A: Search _utc functions (15 functions)
-// ---------------------------------------------------------------------------
-
-/// Find the next conjunction/aspect event after the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_conjunction_utc(
-    engine: *const DhruvEngineHandle,
-    body1_code: i32,
-    body2_code: i32,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvConjunctionConfig,
-    out_event: *mut DhruvConjunctionEventUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let body1 = match Body::from_code(body1_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let body2 = match Body::from_code(body2_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        let jd_tdb = t.to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_conjunction_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match next_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = conjunction_event_to_utc(&event, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous conjunction/aspect event before the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_conjunction_utc(
-    engine: *const DhruvEngineHandle,
-    body1_code: i32,
-    body2_code: i32,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvConjunctionConfig,
-    out_event: *mut DhruvConjunctionEventUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let body1 = match Body::from_code(body1_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let body2 = match Body::from_code(body2_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let t = ffi_to_utc_time(unsafe { &*utc });
-        let jd_tdb = t.to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_conjunction_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match prev_conjunction(engine_ref, body1, body2, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = conjunction_event_to_utc(&event, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all conjunction/aspect events in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvConjunctionEventUtc`.
-pub unsafe extern "C" fn dhruv_search_conjunctions_utc(
-    engine: *const DhruvEngineHandle,
-    body1_code: i32,
-    body2_code: i32,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    config: *const DhruvConjunctionConfig,
-    out_events: *mut DhruvConjunctionEventUtc,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_events.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let body1 = match Body::from_code(body1_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let body2 = match Body::from_code(body2_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
-        let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_conjunction_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match search_conjunctions(engine_ref, body1, body2, jd_start, jd_end, &rust_config) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, e) in events.iter().take(count).enumerate() {
-                    out_slice[i] = conjunction_event_to_utc(e, engine_ref.lsk());
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the next chandra grahan after the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_chandra_grahan_utc(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvChandraGrahanResultUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match next_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = chandra_grahan_to_utc(&grahan, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous chandra grahan before the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_chandra_grahan_utc(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvChandraGrahanResultUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match prev_chandra_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = chandra_grahan_to_utc(&grahan, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all chandra grahan in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvChandraGrahanResultUtc`.
-pub unsafe extern "C" fn dhruv_search_chandra_grahan_utc(
-    engine: *const DhruvEngineHandle,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    config: *const DhruvGrahanConfig,
-    out_results: *mut DhruvChandraGrahanResultUtc,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_results.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
-        let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match search_chandra_grahan(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(results) => {
-                let count = results.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_results, max_count as usize) };
-                for (i, e) in results.iter().take(count).enumerate() {
-                    out_slice[i] = chandra_grahan_to_utc(e, engine_ref.lsk());
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the next surya grahan after the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_surya_grahan_utc(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvSuryaGrahanResultUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match next_surya_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = surya_grahan_to_utc(&grahan, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous surya grahan before the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_surya_grahan_utc(
-    engine: *const DhruvEngineHandle,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvGrahanConfig,
-    out_result: *mut DhruvSuryaGrahanResultUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_result.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match prev_surya_grahan(engine_ref, jd_tdb, &rust_config) {
-            Ok(Some(grahan)) => {
-                unsafe {
-                    *out_result = surya_grahan_to_utc(&grahan, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all surya grahan in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_results` must point to at least `max_count` contiguous `DhruvSuryaGrahanResultUtc`.
-pub unsafe extern "C" fn dhruv_search_surya_grahan_utc(
-    engine: *const DhruvEngineHandle,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    config: *const DhruvGrahanConfig,
-    out_results: *mut DhruvSuryaGrahanResultUtc,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_results.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let engine_ref = unsafe { &*engine };
-        let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
-        let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_grahan_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match search_surya_grahan(engine_ref, jd_start, jd_end, &rust_config) {
-            Ok(results) => {
-                let count = results.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_results, max_count as usize) };
-                for (i, e) in results.iter().take(count).enumerate() {
-                    out_slice[i] = surya_grahan_to_utc(e, engine_ref.lsk());
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the next stationary point after the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_stationary_utc(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvStationaryEventUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match next_stationary(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = stationary_event_to_utc(&event, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous stationary point before the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_stationary_utc(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvStationaryEventUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match prev_stationary(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = stationary_event_to_utc(&event, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all stationary points in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvStationaryEventUtc`.
-pub unsafe extern "C" fn dhruv_search_stationary_utc(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    config: *const DhruvStationaryConfig,
-    out_events: *mut DhruvStationaryEventUtc,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_events.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
-        let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match search_stationary(engine_ref, body, jd_start, jd_end, &rust_config) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, e) in events.iter().take(count).enumerate() {
-                    out_slice[i] = stationary_event_to_utc(e, engine_ref.lsk());
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the next max-speed event after the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_next_max_speed_utc(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvMaxSpeedEventUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match next_max_speed(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = max_speed_event_to_utc(&event, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Find the previous max-speed event before the given UTC time.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-pub unsafe extern "C" fn dhruv_prev_max_speed_utc(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    utc: *const DhruvUtcTime,
-    config: *const DhruvStationaryConfig,
-    out_event: *mut DhruvMaxSpeedEventUtc,
-    out_found: *mut u8,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null() || utc.is_null() || out_event.is_null() || out_found.is_null() {
-            return DhruvStatus::NullPointer;
-        }
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let jd_tdb = ffi_to_utc_time(unsafe { &*utc }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match prev_max_speed(engine_ref, body, jd_tdb, &rust_config) {
-            Ok(Some(event)) => {
-                unsafe {
-                    *out_event = max_speed_event_to_utc(&event, engine_ref.lsk());
-                    *out_found = 1;
-                }
-                DhruvStatus::Ok
-            }
-            Ok(None) => {
-                unsafe { *out_found = 0 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
-}
-
-/// Search for all max-speed events in a UTC time range.
-///
-/// # Safety
-/// All pointer arguments must be valid and non-null.
-/// `out_events` must point to at least `max_count` contiguous `DhruvMaxSpeedEventUtc`.
-pub unsafe extern "C" fn dhruv_search_max_speed_utc(
-    engine: *const DhruvEngineHandle,
-    body_code: i32,
-    start: *const DhruvUtcTime,
-    end: *const DhruvUtcTime,
-    config: *const DhruvStationaryConfig,
-    out_events: *mut DhruvMaxSpeedEventUtc,
-    max_count: u32,
-    out_count: *mut u32,
-) -> DhruvStatus {
-    ffi_boundary(|| {
-        if engine.is_null()
-            || start.is_null()
-            || end.is_null()
-            || out_events.is_null()
-            || out_count.is_null()
-        {
-            return DhruvStatus::NullPointer;
-        }
-        let body = match Body::from_code(body_code) {
-            Some(b) => b,
-            None => return DhruvStatus::InvalidQuery,
-        };
-        let engine_ref = unsafe { &*engine };
-        let jd_start = ffi_to_utc_time(unsafe { &*start }).to_jd_tdb(engine_ref.lsk());
-        let jd_end = ffi_to_utc_time(unsafe { &*end }).to_jd_tdb(engine_ref.lsk());
-        let rust_config = match resolve_stationary_config_ptr(config) {
-            Ok(c) => c,
-            Err(status) => return status,
-        };
-        match search_max_speed(engine_ref, body, jd_start, jd_end, &rust_config) {
-            Ok(events) => {
-                let count = events.len().min(max_count as usize);
-                let out_slice =
-                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
-                for (i, e) in events.iter().take(count).enumerate() {
-                    out_slice[i] = max_speed_event_to_utc(e, engine_ref.lsk());
-                }
-                unsafe { *out_count = count as u32 };
-                DhruvStatus::Ok
-            }
-            Err(e) => DhruvStatus::from(&e),
-        }
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -12913,86 +10923,6 @@ mod tests {
     }
 
     #[test]
-    fn ffi_next_conjunction_rejects_null() {
-        let cfg = dhruv_conjunction_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
-        let mut found: u8 = 0;
-        // SAFETY: Null engine pointer is intentional for validation.
-        let status = unsafe {
-            dhruv_next_conjunction(
-                ptr::null(),
-                10,
-                301,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_conjunction_rejects_null() {
-        let cfg = dhruv_conjunction_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_conjunction(
-                ptr::null(),
-                10,
-                301,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_conjunctions_rejects_null() {
-        let cfg = dhruv_conjunction_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_conjunctions(
-                ptr::null(),
-                10,
-                301,
-                2_460_000.5,
-                2_460_100.5,
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_conjunction_rejects_invalid_body() {
-        // Use a dangling engine pointer — function should reject body code first.
-        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
-        let cfg = dhruv_conjunction_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_conjunction(
-                fake_engine as *const _,
-                999999,
-                301,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::InvalidQuery);
-    }
-
-    #[test]
     fn ffi_conjunction_search_ex_rejects_null_request() {
         let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
         let mut found: u8 = 0;
@@ -13038,6 +10968,61 @@ mod tests {
         assert_eq!(status, DhruvStatus::InvalidQuery);
     }
 
+    #[test]
+    fn ffi_conjunction_search_ex_next_rejects_null_engine() {
+        let request = DhruvConjunctionSearchRequest {
+            body1_code: 10,
+            body2_code: 301,
+            query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_conjunction_config_default(),
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_conjunction_search_ex(
+                ptr::null(),
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_conjunction_search_ex_rejects_invalid_body_code() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvConjunctionSearchRequest {
+            body1_code: 999999,
+            body2_code: 301,
+            query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_conjunction_config_default(),
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_conjunction_search_ex(
+                fake_engine as *const _,
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
     // --- Grahan FFI tests ---
 
     #[test]
@@ -13045,110 +11030,6 @@ mod tests {
         let cfg = dhruv_grahan_config_default();
         assert_eq!(cfg.include_penumbral, 1);
         assert_eq!(cfg.include_peak_details, 1);
-    }
-
-    #[test]
-    fn ffi_next_chandra_grahan_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_chandra_grahan(
-                ptr::null(),
-                2_460_000.5,
-                &cfg,
-                result.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_chandra_grahan_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_chandra_grahan(
-                ptr::null(),
-                2_460_000.5,
-                &cfg,
-                result.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_chandra_grahan_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_chandra_grahan(
-                ptr::null(),
-                2_460_000.5,
-                2_460_400.5,
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_surya_grahan_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResult>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_surya_grahan(
-                ptr::null(),
-                2_460_000.5,
-                &cfg,
-                result.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_surya_grahan_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResult>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_surya_grahan(
-                ptr::null(),
-                2_460_000.5,
-                &cfg,
-                result.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_surya_grahan_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_surya_grahan(
-                ptr::null(),
-                2_460_000.5,
-                2_460_400.5,
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
@@ -13198,6 +11079,62 @@ mod tests {
             )
         };
         assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_grahan_search_ex_chandra_next_rejects_null_engine() {
+        let request = DhruvGrahanSearchRequest {
+            grahan_kind: DHRUV_GRAHAN_KIND_CHANDRA,
+            query_mode: DHRUV_GRAHAN_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_grahan_config_default(),
+        };
+        let mut chandra = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_grahan_search_ex(
+                ptr::null(),
+                &request,
+                chandra.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_grahan_search_ex_surya_prev_rejects_null_engine() {
+        let request = DhruvGrahanSearchRequest {
+            grahan_kind: DHRUV_GRAHAN_KIND_SURYA,
+            query_mode: DHRUV_GRAHAN_QUERY_MODE_PREV,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_grahan_config_default(),
+        };
+        let mut surya = std::mem::MaybeUninit::<DhruvSuryaGrahanResult>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_grahan_search_ex(
+                ptr::null(),
+                &request,
+                ptr::null_mut(),
+                surya.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
@@ -13254,173 +11191,6 @@ mod tests {
     }
 
     #[test]
-    fn ffi_next_stationary_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_stationary(
-                ptr::null(),
-                199,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_stationary_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_stationary(
-                ptr::null(),
-                199,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_stationary_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_stationary(
-                ptr::null(),
-                199,
-                2_460_000.5,
-                2_460_100.5,
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_stationary_rejects_invalid_body() {
-        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_stationary(
-                fake_engine as *const _,
-                999999,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::InvalidQuery);
-    }
-
-    #[test]
-    fn ffi_next_stationary_rejects_sun() {
-        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_stationary(
-                fake_engine as *const _,
-                10, // Sun
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::InvalidSearchConfig);
-    }
-
-    #[test]
-    fn ffi_next_max_speed_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_max_speed(
-                ptr::null(),
-                199,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_max_speed_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_max_speed(
-                ptr::null(),
-                199,
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_max_speed_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_max_speed(
-                ptr::null(),
-                199,
-                2_460_000.5,
-                2_460_100.5,
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_max_speed_rejects_earth() {
-        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_max_speed(
-                fake_engine as *const _,
-                399, // Earth
-                2_460_000.5,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::InvalidSearchConfig);
-    }
-
-    #[test]
     fn ffi_motion_search_ex_rejects_null_request() {
         let mut found: u8 = 0;
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
@@ -13468,6 +11238,154 @@ mod tests {
             )
         };
         assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_motion_search_ex_stationary_next_rejects_null_engine() {
+        let request = DhruvMotionSearchRequest {
+            body_code: 199,
+            motion_kind: DHRUV_MOTION_KIND_STATIONARY,
+            query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_stationary_config_default(),
+        };
+        let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_motion_search_ex(
+                ptr::null(),
+                &request,
+                stationary.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_motion_search_ex_max_speed_prev_rejects_null_engine() {
+        let request = DhruvMotionSearchRequest {
+            body_code: 199,
+            motion_kind: DHRUV_MOTION_KIND_MAX_SPEED,
+            query_mode: DHRUV_MOTION_QUERY_MODE_PREV,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_stationary_config_default(),
+        };
+        let mut max_speed = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_motion_search_ex(
+                ptr::null(),
+                &request,
+                ptr::null_mut(),
+                max_speed.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_motion_search_ex_rejects_invalid_body_code() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvMotionSearchRequest {
+            body_code: 999999,
+            motion_kind: DHRUV_MOTION_KIND_STATIONARY,
+            query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_stationary_config_default(),
+        };
+        let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_motion_search_ex(
+                fake_engine as *const _,
+                &request,
+                stationary.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_motion_search_ex_stationary_rejects_sun() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvMotionSearchRequest {
+            body_code: 10, // Sun
+            motion_kind: DHRUV_MOTION_KIND_STATIONARY,
+            query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_stationary_config_default(),
+        };
+        let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_motion_search_ex(
+                fake_engine as *const _,
+                &request,
+                stationary.as_mut_ptr(),
+                ptr::null_mut(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidSearchConfig);
+    }
+
+    #[test]
+    fn ffi_motion_search_ex_max_speed_rejects_earth() {
+        let fake_engine = std::ptr::NonNull::<DhruvEngineHandle>::dangling().as_ptr();
+        let request = DhruvMotionSearchRequest {
+            body_code: 399, // Earth
+            motion_kind: DHRUV_MOTION_KIND_MAX_SPEED,
+            query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_stationary_config_default(),
+        };
+        let mut max_speed = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_motion_search_ex(
+                fake_engine as *const _,
+                &request,
+                ptr::null_mut(),
+                max_speed.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::InvalidSearchConfig);
     }
 
     // --- Rashi/Nakshatra FFI tests ---
@@ -13669,71 +11587,6 @@ mod tests {
     }
 
     #[test]
-    fn ffi_next_purnima_rejects_null() {
-        let utc = DhruvUtcTime {
-            year: 2024,
-            month: 1,
-            day: 1,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        };
-        let status = unsafe {
-            dhruv_next_purnima(
-                std::ptr::null(),
-                &utc,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_amavasya_rejects_null() {
-        let utc = DhruvUtcTime {
-            year: 2024,
-            month: 1,
-            day: 1,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        };
-        let status = unsafe {
-            dhruv_next_amavasya(
-                std::ptr::null(),
-                &utc,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_sankranti_rejects_null() {
-        let utc = DhruvUtcTime {
-            year: 2024,
-            month: 1,
-            day: 1,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        };
-        let config = dhruv_sankranti_config_default();
-        let status = unsafe {
-            dhruv_next_sankranti(
-                std::ptr::null(),
-                &utc,
-                &config,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
     fn ffi_lunar_phase_search_ex_rejects_null_request() {
         let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
         let mut found: u8 = 0;
@@ -13775,6 +11628,56 @@ mod tests {
             )
         };
         assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_lunar_phase_search_ex_purnima_next_rejects_null_engine() {
+        let request = DhruvLunarPhaseSearchRequest {
+            phase_kind: DHRUV_LUNAR_PHASE_KIND_PURNIMA,
+            query_mode: DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_lunar_phase_search_ex(
+                ptr::null(),
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_lunar_phase_search_ex_amavasya_next_rejects_null_engine() {
+        let request = DhruvLunarPhaseSearchRequest {
+            phase_kind: DHRUV_LUNAR_PHASE_KIND_AMAVASYA,
+            query_mode: DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_lunar_phase_search_ex(
+                ptr::null(),
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
@@ -13821,6 +11724,33 @@ mod tests {
             )
         };
         assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    #[test]
+    fn ffi_sankranti_search_ex_next_any_rejects_null_engine() {
+        let request = DhruvSankrantiSearchRequest {
+            target_kind: DHRUV_SANKRANTI_TARGET_ANY,
+            query_mode: DHRUV_SANKRANTI_QUERY_MODE_NEXT,
+            rashi_index: 0,
+            at_jd_tdb: 2_460_000.5,
+            start_jd_tdb: 2_460_000.5,
+            end_jd_tdb: 2_460_100.5,
+            config: dhruv_sankranti_config_default(),
+        };
+        let mut event = std::mem::MaybeUninit::<DhruvSankrantiEvent>::uninit();
+        let mut found: u8 = 0;
+        let status = unsafe {
+            dhruv_sankranti_search_ex(
+                ptr::null(),
+                &request,
+                event.as_mut_ptr(),
+                &mut found,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     #[test]
@@ -14067,249 +11997,6 @@ mod tests {
     fn ffi_nth_rashi_from_invalid() {
         assert_eq!(dhruv_nth_rashi_from(12, 1), -1);
         assert_eq!(dhruv_nth_rashi_from(255, 5), -1);
-    }
-
-    // --- UTC variant null rejection tests ---
-
-    fn test_utc() -> DhruvUtcTime {
-        DhruvUtcTime {
-            year: 2024,
-            month: 1,
-            day: 1,
-            hour: 0,
-            minute: 0,
-            second: 0.0,
-        }
-    }
-
-    #[test]
-    fn ffi_next_conjunction_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_conjunction_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEventUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_conjunction_utc(
-                ptr::null(),
-                10,
-                301,
-                &utc,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_conjunction_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_conjunction_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvConjunctionEventUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_conjunction_utc(
-                ptr::null(),
-                10,
-                301,
-                &utc,
-                &cfg,
-                event.as_mut_ptr(),
-                &mut found,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_conjunctions_utc_rejects_null() {
-        let cfg = dhruv_conjunction_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_conjunctions_utc(
-                ptr::null(),
-                10,
-                301,
-                ptr::null(),
-                ptr::null(),
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_chandra_grahan_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResultUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_chandra_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_chandra_grahan_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvChandraGrahanResultUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_chandra_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_chandra_grahan_utc_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_chandra_grahan_utc(
-                ptr::null(),
-                ptr::null(),
-                ptr::null(),
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_surya_grahan_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResultUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_surya_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_surya_grahan_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_grahan_config_default();
-        let mut result = std::mem::MaybeUninit::<DhruvSuryaGrahanResultUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_surya_grahan_utc(ptr::null(), &utc, &cfg, result.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_surya_grahan_utc_rejects_null() {
-        let cfg = dhruv_grahan_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_surya_grahan_utc(
-                ptr::null(),
-                ptr::null(),
-                ptr::null(),
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_stationary_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvStationaryEventUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_stationary_utc(ptr::null(), 199, &utc, &cfg, event.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_stationary_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvStationaryEventUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_stationary_utc(ptr::null(), 199, &utc, &cfg, event.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_stationary_utc_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_stationary_utc(
-                ptr::null(),
-                199,
-                ptr::null(),
-                ptr::null(),
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_next_max_speed_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvMaxSpeedEventUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_next_max_speed_utc(ptr::null(), 199, &utc, &cfg, event.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_prev_max_speed_utc_rejects_null() {
-        let utc = test_utc();
-        let cfg = dhruv_stationary_config_default();
-        let mut event = std::mem::MaybeUninit::<DhruvMaxSpeedEventUtc>::uninit();
-        let mut found: u8 = 0;
-        let status = unsafe {
-            dhruv_prev_max_speed_utc(ptr::null(), 199, &utc, &cfg, event.as_mut_ptr(), &mut found)
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
-    }
-
-    #[test]
-    fn ffi_search_max_speed_utc_rejects_null() {
-        let cfg = dhruv_stationary_config_default();
-        let mut count: u32 = 0;
-        let status = unsafe {
-            dhruv_search_max_speed_utc(
-                ptr::null(),
-                199,
-                ptr::null(),
-                ptr::null(),
-                &cfg,
-                ptr::null_mut(),
-                10,
-                &mut count,
-            )
-        };
-        assert_eq!(status, DhruvStatus::NullPointer);
     }
 
     // Group B null rejection

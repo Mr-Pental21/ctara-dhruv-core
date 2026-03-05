@@ -4,6 +4,9 @@ version = "0.1.0"
 license = "Apache-2.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
 [dependencies]
 dhruv_core = { path = "../dhruv_core" }
 dhruv_config = { path = "../dhruv_config" }

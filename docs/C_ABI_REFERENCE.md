@@ -6,6 +6,12 @@ Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
+**Release build artifacts:**
+- Linux: `target/release/libdhruv_ffi_c.so`
+- macOS: `target/release/libdhruv_ffi_c.dylib`
+- Windows: `target/release/dhruv_ffi_c.dll`
+- Build command: `cargo build -p dhruv_ffi_c --release`
+
 ---
 
 ## Table of Contents
@@ -1083,50 +1089,6 @@ DhruvConjunctionConfig dhruv_conjunction_config_default(void);
 Returns default: `target_separation_deg=0`, `step_size_days=0.5`, `max_iterations=50`, `convergence_days=1e-8`.
 
 ```c
-DhruvStatus dhruv_next_conjunction(
-    const DhruvEngineHandle*      engine,
-    int32_t                       body1_code,  // NAIF code
-    int32_t                       body2_code,  // NAIF code
-    double                        jd_tdb,      // Search start
-    const DhruvConjunctionConfig* config,
-    DhruvConjunctionEvent*        out_event,
-    uint8_t*                      out_found    // 1=found, 0=not found
-);
-```
-
-Find the next conjunction/aspect event after `jd_tdb`.
-
-```c
-DhruvStatus dhruv_prev_conjunction(
-    const DhruvEngineHandle*      engine,
-    int32_t                       body1_code,
-    int32_t                       body2_code,
-    double                        jd_tdb,
-    const DhruvConjunctionConfig* config,
-    DhruvConjunctionEvent*        out_event,
-    uint8_t*                      out_found
-);
-```
-
-Find the previous conjunction/aspect event before `jd_tdb`.
-
-```c
-DhruvStatus dhruv_search_conjunctions(
-    const DhruvEngineHandle*      engine,
-    int32_t                       body1_code,
-    int32_t                       body2_code,
-    double                        jd_start,
-    double                        jd_end,
-    const DhruvConjunctionConfig* config,
-    DhruvConjunctionEvent*        out_events,   // Array of max_count
-    uint32_t                      max_count,
-    uint32_t*                     out_count      // Actual count found
-);
-```
-
-Search for all conjunction/aspect events in a time range.
-
-```c
 #define DHRUV_CONJUNCTION_QUERY_MODE_NEXT  0
 #define DHRUV_CONJUNCTION_QUERY_MODE_PREV  1
 #define DHRUV_CONJUNCTION_QUERY_MODE_RANGE 2
@@ -1200,87 +1162,7 @@ Unified grahan entrypoint:
 - `query_mode=NEXT/PREV` uses `at_jd_tdb`, `out_found`, and single-result pointer.
 - `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and array output pointer + `out_count`.
 
-```c
-DhruvStatus dhruv_next_chandra_grahan(
-    const DhruvEngineHandle*   engine,
-    double                     jd_tdb,
-    const DhruvGrahanConfig*   config,
-    DhruvChandraGrahanResult*  out_result,
-    uint8_t*                   out_found
-);
-```
-
-Find the next chandra grahan (lunar eclipse) after `jd_tdb`.
-
-```c
-DhruvStatus dhruv_prev_chandra_grahan(
-    const DhruvEngineHandle*   engine,
-    double                     jd_tdb,
-    const DhruvGrahanConfig*   config,
-    DhruvChandraGrahanResult*  out_result,
-    uint8_t*                   out_found
-);
-```
-
-Find the previous chandra grahan (lunar eclipse) before `jd_tdb`.
-
-```c
-DhruvStatus dhruv_search_chandra_grahan(
-    const DhruvEngineHandle*   engine,
-    double                     jd_start,
-    double                     jd_end,
-    const DhruvGrahanConfig*   config,
-    DhruvChandraGrahanResult*  out_results,  // Array of max_count
-    uint32_t                   max_count,
-    uint32_t*                  out_count
-);
-```
-
-Search for all chandra grahan (lunar eclipses) in a time range.
-
----
-
-### Surya Grahan
-
-```c
-DhruvStatus dhruv_next_surya_grahan(
-    const DhruvEngineHandle*  engine,
-    double                    jd_tdb,
-    const DhruvGrahanConfig*  config,
-    DhruvSuryaGrahanResult*   out_result,
-    uint8_t*                  out_found
-);
-```
-
-Find the next surya grahan (solar eclipse) after `jd_tdb`.
-
-```c
-DhruvStatus dhruv_prev_surya_grahan(
-    const DhruvEngineHandle*  engine,
-    double                    jd_tdb,
-    const DhruvGrahanConfig*  config,
-    DhruvSuryaGrahanResult*   out_result,
-    uint8_t*                  out_found
-);
-```
-
-Find the previous surya grahan (solar eclipse) before `jd_tdb`.
-
-```c
-DhruvStatus dhruv_search_surya_grahan(
-    const DhruvEngineHandle*  engine,
-    double                    jd_start,
-    double                    jd_end,
-    const DhruvGrahanConfig*  config,
-    DhruvSuryaGrahanResult*   out_results,  // Array of max_count
-    uint32_t                  max_count,
-    uint32_t*                 out_count
-);
-```
-
-Search for all surya grahan (solar eclipses) in a time range.
-
-**Note:** Surya grahan computation is geocentric. Surface-specific effects (lunar parallax ~57') are not modeled.
+**Note:** Legacy split grahan wrappers were removed in v42. Use `dhruv_grahan_search_ex`.
 
 ---
 
@@ -1327,91 +1209,7 @@ Unified motion entrypoint:
 - `query_mode=NEXT/PREV` uses `at_jd_tdb`, `out_found`, and single-result pointer.
 - `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and array output pointer + `out_count`.
 
-```c
-DhruvStatus dhruv_next_stationary(
-    const DhruvEngineHandle*     engine,
-    int32_t                      body_code,   // NAIF code (not Sun/Moon/Earth)
-    double                       jd_tdb,
-    const DhruvStationaryConfig* config,
-    DhruvStationaryEvent*        out_event,
-    uint8_t*                     out_found
-);
-```
-
-Find the next stationary point after `jd_tdb`. Returns `InvalidSearchConfig` for Sun, Moon, or Earth.
-
-```c
-DhruvStatus dhruv_prev_stationary(
-    const DhruvEngineHandle*     engine,
-    int32_t                      body_code,
-    double                       jd_tdb,
-    const DhruvStationaryConfig* config,
-    DhruvStationaryEvent*        out_event,
-    uint8_t*                     out_found
-);
-```
-
-Find the previous stationary point before `jd_tdb`.
-
-```c
-DhruvStatus dhruv_search_stationary(
-    const DhruvEngineHandle*     engine,
-    int32_t                      body_code,
-    double                       jd_start,
-    double                       jd_end,
-    const DhruvStationaryConfig* config,
-    DhruvStationaryEvent*        out_events,  // Array of max_count
-    uint32_t                     max_count,
-    uint32_t*                    out_count
-);
-```
-
-Search for all stationary points in a time range.
-
----
-
-### Max Speed Search
-
-```c
-DhruvStatus dhruv_next_max_speed(
-    const DhruvEngineHandle*     engine,
-    int32_t                      body_code,   // NAIF code (not Earth)
-    double                       jd_tdb,
-    const DhruvStationaryConfig* config,
-    DhruvMaxSpeedEvent*          out_event,
-    uint8_t*                     out_found
-);
-```
-
-Find the next max-speed event after `jd_tdb`. Sun and Moon are allowed. Returns `InvalidSearchConfig` for Earth.
-
-```c
-DhruvStatus dhruv_prev_max_speed(
-    const DhruvEngineHandle*     engine,
-    int32_t                      body_code,
-    double                       jd_tdb,
-    const DhruvStationaryConfig* config,
-    DhruvMaxSpeedEvent*          out_event,
-    uint8_t*                     out_found
-);
-```
-
-Find the previous max-speed event before `jd_tdb`.
-
-```c
-DhruvStatus dhruv_search_max_speed(
-    const DhruvEngineHandle*     engine,
-    int32_t                      body_code,
-    double                       jd_start,
-    double                       jd_end,
-    const DhruvStationaryConfig* config,
-    DhruvMaxSpeedEvent*          out_events,  // Array of max_count
-    uint32_t                     max_count,
-    uint32_t*                    out_count
-);
-```
-
-Search for all max-speed events in a time range.
+**Note:** Legacy split motion wrappers were removed in v42. Use `dhruv_motion_search_ex`.
 
 ---
 
@@ -1819,23 +1617,8 @@ Use the unified `*_search_ex` / `*_compute_ex` entries documented above.
 | 29 | `dhruv_lagna_deg` | | yes | yes | |
 | 30 | `dhruv_mc_deg` | | yes | yes | |
 | 31 | `dhruv_conjunction_config_default` | | | | yes |
-| 32 | `dhruv_next_conjunction` | yes | | | |
-| 33 | `dhruv_prev_conjunction` | yes | | | |
-| 34 | `dhruv_search_conjunctions` | yes | | | |
 | 35 | `dhruv_grahan_config_default` | | | | yes |
-| 36 | `dhruv_next_chandra_grahan` | yes | | | |
-| 37 | `dhruv_prev_chandra_grahan` | yes | | | |
-| 38 | `dhruv_search_chandra_grahan` | yes | | | |
-| 39 | `dhruv_next_surya_grahan` | yes | | | |
-| 40 | `dhruv_prev_surya_grahan` | yes | | | |
-| 41 | `dhruv_search_surya_grahan` | yes | | | |
 | 42 | `dhruv_stationary_config_default` | | | | yes |
-| 43 | `dhruv_next_stationary` | yes | | | |
-| 44 | `dhruv_prev_stationary` | yes | | | |
-| 45 | `dhruv_search_stationary` | yes | | | |
-| 46 | `dhruv_next_max_speed` | yes | | | |
-| 47 | `dhruv_prev_max_speed` | yes | | | |
-| 48 | `dhruv_search_max_speed` | yes | | | |
 | 49 | `dhruv_graha_sidereal_longitudes` | yes | | | |
 | 50 | `dhruv_graha_tropical_longitudes` | yes | | | |
 | 51 | `dhruv_nakshatra_at` | yes | | | |
