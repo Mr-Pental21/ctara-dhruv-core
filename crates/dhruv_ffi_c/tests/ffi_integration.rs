@@ -3120,6 +3120,7 @@ fn ffi_lunar_node_with_engine_mean_matches_pure_utc() {
     let s2 = unsafe {
         dhruv_lunar_node_deg_utc_with_engine(
             engine_ptr as *const _,
+            lsk_ptr as *const _,
             DHRUV_NODE_RAHU,
             DHRUV_NODE_MODE_MEAN,
             &utc,
@@ -3207,6 +3208,7 @@ fn ffi_lunar_node_fitted_tracks_osculating_utc() {
         let s2 = unsafe {
             dhruv_lunar_node_deg_utc_with_engine(
                 engine_ptr as *const _,
+                lsk_ptr as *const _,
                 DHRUV_NODE_RAHU,
                 DHRUV_NODE_MODE_TRUE,
                 utc,

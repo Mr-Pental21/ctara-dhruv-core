@@ -436,3 +436,154 @@ def samvatsara_from_year(ce_year: int) -> SamvatsaraResult:
         samvatsara_index=out.samvatsara_index,
         cycle_position=out.cycle_position,
     )
+
+
+# ---------------------------------------------------------------------------
+# Composable intermediates (JD-based)
+# ---------------------------------------------------------------------------
+
+
+def elongation_at(engine, jd_tdb: float) -> float:
+    """Compute Sun-Moon elongation at a JD TDB instant.
+
+    Args:
+        engine: DhruvEngineHandle pointer.
+        jd_tdb: Julian date in TDB.
+
+    Returns:
+        Elongation in degrees.
+    """
+    out = ffi.new("double *")
+    check(lib.dhruv_elongation_at(engine, jd_tdb, out), "elongation_at")
+    return out[0]
+
+
+def tithi_at(engine, jd_tdb: float, elongation_deg: float) -> TithiInfo:
+    """Compute tithi from a pre-computed Sun-Moon elongation.
+
+    Args:
+        engine: DhruvEngineHandle pointer.
+        jd_tdb: Julian date in TDB.
+        elongation_deg: Pre-computed elongation (from ``elongation_at``).
+
+    Returns:
+        TithiInfo with index, paksha, start/end times.
+    """
+    out = ffi.new("DhruvTithiInfo *")
+    check(lib.dhruv_tithi_at(engine, jd_tdb, elongation_deg, out), "tithi_at")
+    return _tithi_from_c(out[0])
+
+
+def karana_at(engine, jd_tdb: float, elongation_deg: float) -> KaranaInfo:
+    """Compute karana from a pre-computed Sun-Moon elongation.
+
+    Args:
+        engine: DhruvEngineHandle pointer.
+        jd_tdb: Julian date in TDB.
+        elongation_deg: Pre-computed elongation (from ``elongation_at``).
+
+    Returns:
+        KaranaInfo with index, name index, start/end times.
+    """
+    out = ffi.new("DhruvKaranaInfo *")
+    check(
+        lib.dhruv_karana_at(engine, jd_tdb, elongation_deg, out), "karana_at"
+    )
+    return _karana_from_c(out[0])
+
+
+def yoga_at(engine, jd_tdb: float, sidereal_sum_deg: float,
+            config=None) -> YogaInfo:
+    """Compute yoga from a pre-computed sidereal sum (Sun + Moon).
+
+    Args:
+        engine: DhruvEngineHandle pointer.
+        jd_tdb: Julian date in TDB.
+        sidereal_sum_deg: Pre-computed sidereal sum (from
+            ``ayanamsha.sidereal_sum_at``).
+        config: Optional DhruvSankrantiConfig pointer. Uses default if None.
+
+    Returns:
+        YogaInfo with index, start/end times.
+    """
+    if config is None:
+        config = ffi.new(
+            "DhruvSankrantiConfig *", lib.dhruv_sankranti_config_default()
+        )
+    out = ffi.new("DhruvYogaInfo *")
+    check(
+        lib.dhruv_yoga_at(engine, jd_tdb, sidereal_sum_deg, config, out),
+        "yoga_at",
+    )
+    return _yoga_from_c(out[0])
+
+
+# ---------------------------------------------------------------------------
+# From-sunrises helpers (pre-computed sunrise pair)
+# ---------------------------------------------------------------------------
+
+
+def vaar_from_sunrises(lsk, sunrise_jd: float,
+                       next_sunrise_jd: float) -> VaarInfo:
+    """Compute vaar from a pre-computed sunrise pair.
+
+    Args:
+        lsk: DhruvLskHandle pointer.
+        sunrise_jd: JD of today's sunrise.
+        next_sunrise_jd: JD of tomorrow's sunrise.
+
+    Returns:
+        VaarInfo with weekday index, start/end times.
+    """
+    out = ffi.new("DhruvVaarInfo *")
+    check(
+        lib.dhruv_vaar_from_sunrises(lsk, sunrise_jd, next_sunrise_jd, out),
+        "vaar_from_sunrises",
+    )
+    return _vaar_from_c(out[0])
+
+
+def hora_from_sunrises(lsk, query_jd: float, sunrise_jd: float,
+                       next_sunrise_jd: float) -> HoraInfo:
+    """Compute hora from a pre-computed sunrise pair.
+
+    Args:
+        lsk: DhruvLskHandle pointer.
+        query_jd: JD of the query instant.
+        sunrise_jd: JD of today's sunrise.
+        next_sunrise_jd: JD of tomorrow's sunrise.
+
+    Returns:
+        HoraInfo with hora index, position, start/end times.
+    """
+    out = ffi.new("DhruvHoraInfo *")
+    check(
+        lib.dhruv_hora_from_sunrises(
+            lsk, query_jd, sunrise_jd, next_sunrise_jd, out
+        ),
+        "hora_from_sunrises",
+    )
+    return _hora_from_c(out[0])
+
+
+def ghatika_from_sunrises(lsk, query_jd: float, sunrise_jd: float,
+                          next_sunrise_jd: float) -> GhatikaInfo:
+    """Compute ghatika from a pre-computed sunrise pair.
+
+    Args:
+        lsk: DhruvLskHandle pointer.
+        query_jd: JD of the query instant.
+        sunrise_jd: JD of today's sunrise.
+        next_sunrise_jd: JD of tomorrow's sunrise.
+
+    Returns:
+        GhatikaInfo with value, start/end times.
+    """
+    out = ffi.new("DhruvGhatikaInfo *")
+    check(
+        lib.dhruv_ghatika_from_sunrises(
+            lsk, query_jd, sunrise_jd, next_sunrise_jd, out
+        ),
+        "ghatika_from_sunrises",
+    )
+    return _ghatika_from_c(out[0])

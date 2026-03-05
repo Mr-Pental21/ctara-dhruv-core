@@ -168,6 +168,163 @@ class TestTithiPureMath:
         assert 0 <= y.degrees_in_yoga < 13.34
 
 
+class TestSphutas:
+    """Test individual sphuta pure-math functions."""
+
+    def test_bhrigu_bindu(self):
+        from ctara_dhruv.vedic import bhrigu_bindu
+        result = bhrigu_bindu(120.0, 60.0)
+        assert 0 <= result < 360
+
+    def test_prana_sphuta(self):
+        from ctara_dhruv.vedic import prana_sphuta
+        result = prana_sphuta(100.0, 200.0)
+        assert 0 <= result < 360
+
+    def test_deha_sphuta(self):
+        from ctara_dhruv.vedic import deha_sphuta
+        result = deha_sphuta(200.0, 100.0)
+        assert 0 <= result < 360
+
+    def test_mrityu_sphuta(self):
+        from ctara_dhruv.vedic import mrityu_sphuta
+        result = mrityu_sphuta(150.0, 100.0)
+        assert 0 <= result < 360
+
+    def test_tithi_sphuta(self):
+        from ctara_dhruv.vedic import tithi_sphuta
+        result = tithi_sphuta(200.0, 100.0, 80.0)
+        assert 0 <= result < 360
+
+    def test_yoga_sphuta(self):
+        from ctara_dhruv.vedic import yoga_sphuta
+        result = yoga_sphuta(100.0, 200.0)
+        assert result == pytest.approx(300.0)
+
+    def test_yoga_sphuta_normalized(self):
+        from ctara_dhruv.vedic import yoga_sphuta_normalized
+        result = yoga_sphuta_normalized(200.0, 250.0)
+        assert 0 <= result < 360
+
+    def test_rahu_tithi_sphuta(self):
+        from ctara_dhruv.vedic import rahu_tithi_sphuta
+        result = rahu_tithi_sphuta(120.0, 100.0, 80.0)
+        assert 0 <= result < 360
+
+    def test_kshetra_sphuta(self):
+        from ctara_dhruv.vedic import kshetra_sphuta
+        result = kshetra_sphuta(200.0, 50.0, 120.0, 300.0, 100.0)
+        assert 0 <= result < 360
+
+    def test_beeja_sphuta(self):
+        from ctara_dhruv.vedic import beeja_sphuta
+        result = beeja_sphuta(100.0, 300.0, 120.0)
+        assert 0 <= result < 360
+
+    def test_trisphuta(self):
+        from ctara_dhruv.vedic import trisphuta
+        result = trisphuta(100.0, 200.0, 80.0)
+        assert 0 <= result < 360
+
+    def test_chatussphuta(self):
+        from ctara_dhruv.vedic import chatussphuta
+        result = chatussphuta(100.0, 200.0)
+        assert 0 <= result < 360
+
+    def test_panchasphuta(self):
+        from ctara_dhruv.vedic import panchasphuta
+        result = panchasphuta(100.0, 120.0)
+        assert 0 <= result < 360
+
+    def test_sookshma_trisphuta(self):
+        from ctara_dhruv.vedic import sookshma_trisphuta
+        result = sookshma_trisphuta(100.0, 200.0, 80.0, 150.0)
+        assert 0 <= result < 360
+
+    def test_avayoga_sphuta(self):
+        from ctara_dhruv.vedic import avayoga_sphuta
+        result = avayoga_sphuta(100.0, 200.0)
+        assert 0 <= result < 360
+
+    def test_kunda(self):
+        from ctara_dhruv.vedic import kunda
+        result = kunda(100.0, 200.0, 50.0)
+        assert 0 <= result < 360
+
+
+class TestSpecialLagnasMath:
+    """Test individual special lagna pure-math functions."""
+
+    def test_bhava_lagna(self):
+        from ctara_dhruv.vedic import bhava_lagna
+        result = bhava_lagna(100.0, 10.0)
+        assert 0 <= result < 360
+
+    def test_hora_lagna(self):
+        from ctara_dhruv.vedic import hora_lagna
+        result = hora_lagna(100.0, 10.0)
+        assert 0 <= result < 360
+
+    def test_ghati_lagna(self):
+        from ctara_dhruv.vedic import ghati_lagna
+        result = ghati_lagna(100.0, 10.0)
+        assert 0 <= result < 360
+
+    def test_vighati_lagna(self):
+        from ctara_dhruv.vedic import vighati_lagna
+        result = vighati_lagna(100.0, 100.0)
+        assert 0 <= result < 360
+
+    def test_varnada_lagna(self):
+        from ctara_dhruv.vedic import varnada_lagna
+        result = varnada_lagna(100.0, 200.0)
+        assert 0 <= result < 360
+
+    def test_sree_lagna(self):
+        from ctara_dhruv.vedic import sree_lagna
+        result = sree_lagna(200.0, 100.0)
+        assert 0 <= result < 360
+
+    def test_pranapada_lagna(self):
+        from ctara_dhruv.vedic import pranapada_lagna
+        result = pranapada_lagna(100.0, 10.0)
+        assert 0 <= result < 360
+
+    def test_indu_lagna(self):
+        from ctara_dhruv.vedic import indu_lagna
+        result = indu_lagna(200.0, 2, 5)  # Mars as lagna lord, Venus as moon 9th lord
+        assert 0 <= result < 360
+
+
+class TestLunarNodeHelpers:
+    """Test lunar node count and UTC helpers."""
+
+    def test_lunar_node_count(self):
+        from ctara_dhruv.vedic import lunar_node_count
+        assert lunar_node_count() == 2  # Rahu, Ketu
+
+
+@skip_no_kernels
+class TestLunarNodeUtc:
+    def test_lunar_node_deg_utc(self, engine_handles):
+        from ctara_dhruv.vedic import lunar_node_deg_utc
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import lsk
+        utc = UtcTime(2024, 1, 15, 12, 0, 0.0)
+        result = lunar_node_deg_utc(lsk(), 0, 0, utc)  # Rahu mean
+        assert 0 <= result < 360
+
+    def test_lunar_node_deg_utc_with_engine(self, engine_handles):
+        from ctara_dhruv.vedic import lunar_node_deg_utc_with_engine
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine, lsk
+        utc = UtcTime(2024, 1, 15, 12, 0, 0.0)
+        result = lunar_node_deg_utc_with_engine(
+            engine()._ptr, lsk(), 0, 1, utc
+        )  # Rahu true with engine
+        assert 0 <= result < 360
+
+
 @skip_no_kernels
 @skip_no_eop
 class TestSunrise:

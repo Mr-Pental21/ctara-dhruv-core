@@ -4912,6 +4912,7 @@ pub unsafe extern "C" fn dhruv_lunar_node_deg_utc(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dhruv_lunar_node_deg_utc_with_engine(
     engine: *const DhruvEngineHandle,
+    _lsk: *const DhruvLskHandle,
     node_code: i32,
     mode_code: i32,
     utc: *const DhruvUtcTime,

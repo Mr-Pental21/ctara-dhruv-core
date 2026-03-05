@@ -260,6 +260,22 @@ def approximate_local_noon_jd(jd_ut_midnight: float,
     return lib.dhruv_approximate_local_noon_jd(jd_ut_midnight, longitude_deg)
 
 
+def riseset_result_to_utc(lsk, result) -> UtcTime:
+    """Convert a DhruvRiseSetResult (JD-based) event time to UTC.
+
+    Args:
+        lsk: DhruvLskHandle pointer.
+        result: DhruvRiseSetResult pointer (from compute_rise_set).
+
+    Returns:
+        UtcTime of the event.
+    """
+    out = ffi.new("DhruvUtcTime *")
+    status = lib.dhruv_riseset_result_to_utc(lsk, result, out)
+    check(status, "dhruv_riseset_result_to_utc")
+    return _read_utc(out[0])
+
+
 # ---------------------------------------------------------------------------
 # 2. Bhava (House Systems)
 # ---------------------------------------------------------------------------
@@ -715,6 +731,48 @@ def lunar_node_compute_ex(engine, lsk, request) -> float:
     return out[0]
 
 
+def lunar_node_count() -> int:
+    """Return number of supported lunar node types (Rahu, Ketu)."""
+    return lib.dhruv_lunar_node_count()
+
+
+def lunar_node_deg_utc(lsk, node_code: int, mode_code: int,
+                       utc: UtcTime) -> float:
+    """Compute lunar node longitude from UTC (pure math, no engine).
+
+    Args:
+        lsk: DhruvLskHandle pointer.
+        node_code: 0=Rahu, 1=Ketu.
+        mode_code: 0=Mean, 1=True (50-term fitted series).
+        utc: UTC time.
+    """
+    t = _make_utc(utc)
+    out = ffi.new("double *")
+    status = lib.dhruv_lunar_node_deg_utc(lsk, node_code, mode_code, t, out)
+    check(status, "dhruv_lunar_node_deg_utc")
+    return out[0]
+
+
+def lunar_node_deg_utc_with_engine(engine, lsk, node_code: int,
+                                   mode_code: int, utc: UtcTime) -> float:
+    """Compute lunar node longitude from UTC using engine (osculating for true mode).
+
+    Args:
+        engine: DhruvEngineHandle pointer.
+        lsk: DhruvLskHandle pointer.
+        node_code: 0=Rahu, 1=Ketu.
+        mode_code: 0=Mean, 1=True (osculating).
+        utc: UTC time.
+    """
+    t = _make_utc(utc)
+    out = ffi.new("double *")
+    status = lib.dhruv_lunar_node_deg_utc_with_engine(
+        engine, lsk, node_code, mode_code, t, out
+    )
+    check(status, "dhruv_lunar_node_deg_utc_with_engine")
+    return out[0]
+
+
 # ---------------------------------------------------------------------------
 # 6. Sphutas
 # ---------------------------------------------------------------------------
@@ -741,6 +799,91 @@ def all_sphutas(sun: float, moon: float, mars: float, jupiter: float,
     status = lib.dhruv_all_sphutas(inp, out)
     check(status, "dhruv_all_sphutas")
     return SphutalResult(longitudes=[out.longitudes[i] for i in range(16)])
+
+
+# --- Individual sphuta functions (pure math) ---
+
+
+def bhrigu_bindu(rahu: float, moon: float) -> float:
+    """Bhrigu Bindu = midpoint of Rahu and Moon (pure math)."""
+    return lib.dhruv_bhrigu_bindu(rahu, moon)
+
+
+def prana_sphuta(lagna: float, moon: float) -> float:
+    """Prana Sphuta (pure math)."""
+    return lib.dhruv_prana_sphuta(lagna, moon)
+
+
+def deha_sphuta(moon: float, lagna: float) -> float:
+    """Deha Sphuta (pure math)."""
+    return lib.dhruv_deha_sphuta(moon, lagna)
+
+
+def mrityu_sphuta(eighth_lord: float, lagna: float) -> float:
+    """Mrityu Sphuta (pure math)."""
+    return lib.dhruv_mrityu_sphuta(eighth_lord, lagna)
+
+
+def tithi_sphuta(moon: float, sun: float, lagna: float) -> float:
+    """Tithi Sphuta (pure math)."""
+    return lib.dhruv_tithi_sphuta(moon, sun, lagna)
+
+
+def yoga_sphuta(sun: float, moon: float) -> float:
+    """Yoga Sphuta = Sun + Moon (raw, may exceed 360, pure math)."""
+    return lib.dhruv_yoga_sphuta(sun, moon)
+
+
+def yoga_sphuta_normalized(sun: float, moon: float) -> float:
+    """Yoga Sphuta normalized to [0, 360) (pure math)."""
+    return lib.dhruv_yoga_sphuta_normalized(sun, moon)
+
+
+def rahu_tithi_sphuta(rahu: float, sun: float, lagna: float) -> float:
+    """Rahu Tithi Sphuta (pure math)."""
+    return lib.dhruv_rahu_tithi_sphuta(rahu, sun, lagna)
+
+
+def kshetra_sphuta(moon: float, mars: float, jupiter: float,
+                   venus: float, lagna: float) -> float:
+    """Kshetra Sphuta (pure math)."""
+    return lib.dhruv_kshetra_sphuta(moon, mars, jupiter, venus, lagna)
+
+
+def beeja_sphuta(sun: float, venus: float, jupiter: float) -> float:
+    """Beeja Sphuta (pure math)."""
+    return lib.dhruv_beeja_sphuta(sun, venus, jupiter)
+
+
+def trisphuta(lagna: float, moon: float, gulika: float) -> float:
+    """Trisphuta (pure math)."""
+    return lib.dhruv_trisphuta(lagna, moon, gulika)
+
+
+def chatussphuta(trisphuta_val: float, sun: float) -> float:
+    """Chatussphuta (pure math)."""
+    return lib.dhruv_chatussphuta(trisphuta_val, sun)
+
+
+def panchasphuta(chatussphuta_val: float, rahu: float) -> float:
+    """Panchasphuta (pure math)."""
+    return lib.dhruv_panchasphuta(chatussphuta_val, rahu)
+
+
+def sookshma_trisphuta(lagna: float, moon: float,
+                       gulika: float, sun: float) -> float:
+    """Sookshma Trisphuta (pure math)."""
+    return lib.dhruv_sookshma_trisphuta(lagna, moon, gulika, sun)
+
+
+def avayoga_sphuta(sun: float, moon: float) -> float:
+    """Avayoga Sphuta (pure math)."""
+    return lib.dhruv_avayoga_sphuta(sun, moon)
+
+
+def kunda(lagna: float, moon: float, mars: float) -> float:
+    """Kunda Sphuta (pure math)."""
+    return lib.dhruv_kunda(lagna, moon, mars)
 
 
 # ---------------------------------------------------------------------------
@@ -772,6 +915,55 @@ def special_lagnas_for_date(engine, eop, utc: UtcTime,
         pranapada_lagna=out.pranapada_lagna,
         indu_lagna=out.indu_lagna,
     )
+
+
+# --- Individual special lagna functions (pure math) ---
+
+
+def bhava_lagna(sun_lon: float, ghatikas: float) -> float:
+    """Bhava Lagna from Sun longitude and ghatikas since sunrise (pure math)."""
+    return lib.dhruv_bhava_lagna(sun_lon, ghatikas)
+
+
+def hora_lagna(sun_lon: float, ghatikas: float) -> float:
+    """Hora Lagna from Sun longitude and ghatikas since sunrise (pure math)."""
+    return lib.dhruv_hora_lagna(sun_lon, ghatikas)
+
+
+def ghati_lagna(sun_lon: float, ghatikas: float) -> float:
+    """Ghati Lagna from Sun longitude and ghatikas since sunrise (pure math)."""
+    return lib.dhruv_ghati_lagna(sun_lon, ghatikas)
+
+
+def vighati_lagna(lagna_lon: float, vighatikas: float) -> float:
+    """Vighati Lagna from lagna longitude and vighatikas (pure math)."""
+    return lib.dhruv_vighati_lagna(lagna_lon, vighatikas)
+
+
+def varnada_lagna(lagna_lon: float, hora_lagna_lon: float) -> float:
+    """Varnada Lagna from lagna and hora lagna longitudes (pure math)."""
+    return lib.dhruv_varnada_lagna(lagna_lon, hora_lagna_lon)
+
+
+def sree_lagna(moon_lon: float, lagna_lon: float) -> float:
+    """Sree Lagna from Moon and lagna longitudes (pure math)."""
+    return lib.dhruv_sree_lagna(moon_lon, lagna_lon)
+
+
+def pranapada_lagna(sun_lon: float, ghatikas: float) -> float:
+    """Pranapada Lagna from Sun longitude and ghatikas (pure math)."""
+    return lib.dhruv_pranapada_lagna(sun_lon, ghatikas)
+
+
+def indu_lagna(moon_lon: float, lagna_lord: int, moon_9th_lord: int) -> float:
+    """Indu Lagna from Moon longitude and lord indices (pure math).
+
+    Args:
+        moon_lon: Moon's sidereal longitude in degrees.
+        lagna_lord: Graha index of the lagna lord.
+        moon_9th_lord: Graha index of the 9th-from-Moon lord.
+    """
+    return lib.dhruv_indu_lagna(moon_lon, lagna_lord, moon_9th_lord)
 
 
 # ---------------------------------------------------------------------------
