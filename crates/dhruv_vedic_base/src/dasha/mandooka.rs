@@ -7,11 +7,13 @@
 //! Sub-period method: ProportionalFromParent.
 
 use super::balance::rashi_birth_balance;
-use super::rashi_dasha::{rashi_hierarchy, rashi_snapshot};
+use super::query::find_active_period;
 use super::rashi_strength::{RashiDashaInputs, stronger_rashi};
 use super::rashi_util::{SignType, is_odd_sign, sign_type};
+use super::subperiod::{equal_children, proportional_children};
 use super::types::{
-    DAYS_PER_YEAR, DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot, DashaSystem,
+    DAYS_PER_YEAR, DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot,
+    DashaSystem, MAX_DASHA_LEVEL, MAX_PERIODS_PER_LEVEL,
 };
 use super::variation::{DashaVariationConfig, SubPeriodMethod};
 use crate::error::VedicError;
@@ -33,21 +35,106 @@ pub fn mandooka_period_years(rashi_index: u8) -> f64 {
 
 /// Generate the 12-rashi sequence for Mandooka (frog jump: ±3 signs).
 ///
-/// Odd starting sign: jumps forward by 3 (0→3→6→9→0+1→4→7→10→2→5→8→11).
-/// Even starting sign: jumps backward by 3.
+/// The full traversal covers three sign-type groups of four signs each.
+/// Odd starting sign: jumps forward by 3 within each group, then advances to
+/// the next group by +2. Even starting sign mirrors this in reverse.
 fn mandooka_sequence(start: u8) -> Vec<u8> {
     let forward = is_odd_sign(start);
     let jump: i8 = if forward { 3 } else { -3 };
+    let group_shift: i8 = if forward { 2 } else { -2 };
 
     let mut seq = Vec::with_capacity(12);
-    let mut current = start;
-
-    for _ in 0..12 {
-        seq.push(current);
-        current = ((current as i16 + jump as i16).rem_euclid(12)) as u8;
+    for group in 0..3u8 {
+        let seed = super::rashi_util::jump_rashi(start, group_shift * group as i8);
+        let mut current = seed;
+        for _ in 0..4 {
+            seq.push(current);
+            current = super::rashi_util::jump_rashi(current, jump);
+        }
     }
 
     seq
+}
+
+fn mandooka_entity_sequence(parent_rashi: u8, method: SubPeriodMethod) -> Vec<DashaEntity> {
+    let mut seq: Vec<DashaEntity> = mandooka_sequence(parent_rashi)
+        .into_iter()
+        .map(DashaEntity::Rashi)
+        .collect();
+
+    if matches!(
+        method,
+        SubPeriodMethod::ProportionalFromNext | SubPeriodMethod::EqualFromNext
+    ) {
+        seq.rotate_left(1);
+    }
+
+    seq
+}
+
+fn mandooka_period_sequence(parent_rashi: u8, method: SubPeriodMethod) -> Vec<(DashaEntity, f64)> {
+    mandooka_entity_sequence(parent_rashi, method)
+        .into_iter()
+        .map(|entity| {
+            let DashaEntity::Rashi(rashi) = entity else {
+                unreachable!("mandooka sequences only contain rashis");
+            };
+            (entity, mandooka_period_years(rashi) * DAYS_PER_YEAR)
+        })
+        .collect()
+}
+
+fn mandooka_children(parent: &DashaPeriod, method: SubPeriodMethod) -> Vec<DashaPeriod> {
+    let child_level = match parent.level.child_level() {
+        Some(level) => level,
+        None => return Vec::new(),
+    };
+
+    let DashaEntity::Rashi(parent_rashi) = parent.entity else {
+        return Vec::new();
+    };
+
+    match method {
+        SubPeriodMethod::ProportionalFromParent | SubPeriodMethod::ProportionalFromNext => {
+            let seq = mandooka_period_sequence(parent_rashi, method);
+            proportional_children(
+                parent,
+                &seq,
+                MANDOOKA_TOTAL_YEARS * DAYS_PER_YEAR,
+                child_level,
+                0,
+            )
+        }
+        SubPeriodMethod::EqualFromSame | SubPeriodMethod::EqualFromNext => {
+            let seq = mandooka_entity_sequence(parent_rashi, method);
+            equal_children(parent, &seq, child_level, 0)
+        }
+    }
+}
+
+fn mandooka_complete_level(
+    parent_level: &[DashaPeriod],
+    child_level: DashaLevel,
+    method: SubPeriodMethod,
+) -> Result<Vec<DashaPeriod>, VedicError> {
+    let estimated = parent_level.len() * 12;
+    if estimated > MAX_PERIODS_PER_LEVEL {
+        return Err(VedicError::InvalidInput(
+            "dasha level would exceed MAX_PERIODS_PER_LEVEL",
+        ));
+    }
+
+    let mut result = Vec::with_capacity(estimated);
+    for (pidx, parent) in parent_level.iter().enumerate() {
+        let mut children = mandooka_children(parent, method);
+        for child in &mut children {
+            child.parent_idx = pidx as u32;
+            child.level = child_level;
+        }
+        result.extend(children);
+    }
+
+    Ok(result)
 }
 
 /// Generate level-0 periods for Mandooka dasha.
@@ -98,16 +185,24 @@ pub fn mandooka_hierarchy(
     variation: &DashaVariationConfig,
 ) -> Result<DashaHierarchy, VedicError> {
     let level0 = mandooka_level0(birth_jd, inputs);
-    rashi_hierarchy(
-        DashaSystem::Mandooka,
+    let max_level = max_level.min(MAX_DASHA_LEVEL);
+    let mut levels: Vec<Vec<DashaPeriod>> = vec![level0];
+
+    for depth in 1..=max_level {
+        let child_level = match DashaLevel::from_u8(depth) {
+            Some(level) => level,
+            None => break,
+        };
+        let method = variation.method_for_level(depth - 1, MANDOOKA_DEFAULT_METHOD);
+        let children = mandooka_complete_level(&levels[(depth - 1) as usize], child_level, method)?;
+        levels.push(children);
+    }
+
+    Ok(DashaHierarchy {
+        system: DashaSystem::Mandooka,
         birth_jd,
-        level0,
-        &mandooka_period_years,
-        MANDOOKA_TOTAL_YEARS,
-        MANDOOKA_DEFAULT_METHOD,
-        max_level,
-        variation,
-    )
+        levels,
+    })
 }
 
 /// Snapshot for Mandooka dasha.
@@ -119,16 +214,39 @@ pub fn mandooka_snapshot(
     variation: &DashaVariationConfig,
 ) -> DashaSnapshot {
     let level0 = mandooka_level0(birth_jd, inputs);
-    rashi_snapshot(
-        DashaSystem::Mandooka,
-        level0,
-        &mandooka_period_years,
-        MANDOOKA_TOTAL_YEARS,
-        MANDOOKA_DEFAULT_METHOD,
+    let max_level = max_level.min(MAX_DASHA_LEVEL);
+    let mut active_periods: Vec<DashaPeriod> = Vec::with_capacity((max_level + 1) as usize);
+
+    let active_idx = match find_active_period(&level0, query_jd) {
+        Some(idx) => idx,
+        None => {
+            return DashaSnapshot {
+                system: DashaSystem::Mandooka,
+                query_jd,
+                periods: active_periods,
+            };
+        }
+    };
+    active_periods.push(level0[active_idx]);
+
+    let mut current_parent = level0[active_idx];
+    for depth in 1..=max_level {
+        let method = variation.method_for_level(depth - 1, MANDOOKA_DEFAULT_METHOD);
+        let children = mandooka_children(&current_parent, method);
+        match find_active_period(&children, query_jd) {
+            Some(idx) => {
+                active_periods.push(children[idx]);
+                current_parent = children[idx];
+            }
+            None => break,
+        }
+    }
+
+    DashaSnapshot {
+        system: DashaSystem::Mandooka,
         query_jd,
-        max_level,
-        variation,
-    )
+        periods: active_periods,
+    }
 }
 
 #[cfg(test)]
@@ -143,24 +261,17 @@ mod tests {
 
     #[test]
     fn mandooka_sequence_from_mesha() {
-        // Mesha(0) is odd, jumps +3: 0,3,6,9,0,3,6,9 → wraps to cover all 12
+        // Mesha(0) is odd, jumps +3 and wraps through all 12 rashis.
         let seq = mandooka_sequence(0);
         assert_eq!(seq.len(), 12);
-        assert_eq!(seq[0], 0);
-        assert_eq!(seq[1], 3);
-        assert_eq!(seq[2], 6);
-        assert_eq!(seq[3], 9);
-        assert_eq!(seq[4], 0); // wraps back
+        assert_eq!(seq, vec![0, 3, 6, 9, 2, 5, 8, 11, 4, 7, 10, 1]);
     }
 
     #[test]
     fn mandooka_sequence_from_vrishabha() {
-        // Vrishabha(1) is even, jumps -3: 1,10,7,4,1,10,7,4...
+        // Vrishabha(1) is even, so the same frog pattern runs in reverse.
         let seq = mandooka_sequence(1);
-        assert_eq!(seq[0], 1);
-        assert_eq!(seq[1], 10);
-        assert_eq!(seq[2], 7);
-        assert_eq!(seq[3], 4);
+        assert_eq!(seq, vec![1, 10, 7, 4, 11, 8, 5, 2, 9, 6, 3, 0]);
     }
 
     #[test]
@@ -197,5 +308,40 @@ mod tests {
         let h = mandooka_hierarchy(2451545.0, &inputs, 1, &var).unwrap();
         assert_eq!(h.levels.len(), 2);
         assert_eq!(h.levels[0].len(), 12);
+    }
+
+    #[test]
+    fn mandooka_children_start_from_parent_and_wrap() {
+        let parent = DashaPeriod {
+            entity: DashaEntity::Rashi(0),
+            start_jd: 2451545.0,
+            end_jd: 2451545.0 + 365.0,
+            level: DashaLevel::Mahadasha,
+            order: 1,
+            parent_idx: 0,
+        };
+
+        let children = mandooka_children(&parent, MANDOOKA_DEFAULT_METHOD);
+        let entities: Vec<_> = children.iter().map(|child| child.entity).collect();
+
+        assert_eq!(
+            entities,
+            vec![
+                DashaEntity::Rashi(0),
+                DashaEntity::Rashi(3),
+                DashaEntity::Rashi(6),
+                DashaEntity::Rashi(9),
+                DashaEntity::Rashi(2),
+                DashaEntity::Rashi(5),
+                DashaEntity::Rashi(8),
+                DashaEntity::Rashi(11),
+                DashaEntity::Rashi(4),
+                DashaEntity::Rashi(7),
+                DashaEntity::Rashi(10),
+                DashaEntity::Rashi(1),
+            ]
+        );
+        assert!((children[0].start_jd - parent.start_jd).abs() < 1e-10);
+        assert!((children.last().unwrap().end_jd - parent.end_jd).abs() < 1e-10);
     }
 }

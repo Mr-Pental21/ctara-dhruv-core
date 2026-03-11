@@ -324,4 +324,24 @@ mod tests {
         assert!((children.last().unwrap().end_jd - parent.end_jd).abs() < 1e-10);
         assert!((children[0].start_jd - parent.start_jd).abs() < 1e-10);
     }
+
+    #[test]
+    fn yogini_children_start_from_parent_and_wrap() {
+        let cfg = yogini_config();
+        let parent = DashaPeriod {
+            entity: DashaEntity::Yogini(7),
+            start_jd: 2451545.0,
+            end_jd: 2451545.0 + 320.0,
+            level: DashaLevel::Mahadasha,
+            order: 1,
+            parent_idx: 0,
+        };
+        let children = yogini_children(&parent, &cfg, SubPeriodMethod::ProportionalFromParent);
+
+        assert_eq!(children.len(), 8);
+        assert_eq!(children[0].entity, DashaEntity::Yogini(7));
+        assert_eq!(children[1].entity, DashaEntity::Yogini(0));
+        assert_eq!(children[2].entity, DashaEntity::Yogini(1));
+        assert_eq!(children[7].entity, DashaEntity::Yogini(6));
+    }
 }

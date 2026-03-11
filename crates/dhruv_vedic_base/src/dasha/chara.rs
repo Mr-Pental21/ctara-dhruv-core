@@ -6,7 +6,7 @@
 //! Special handling for Scorpio co-lordship (Mars/Ketu).
 //!
 //! Starting rashi: lagna rashi. Direction: odd=forward, even=reverse.
-//! Sub-period method: EqualFromNext (÷12).
+//! Sub-period method: EqualFromSame (÷12).
 
 use super::balance::rashi_birth_balance;
 use super::rashi_dasha::{rashi_hierarchy, rashi_snapshot};
@@ -19,7 +19,7 @@ use super::variation::{DashaVariationConfig, SubPeriodMethod};
 use crate::error::VedicError;
 
 /// Default sub-period method for Chara dasha.
-pub const CHARA_DEFAULT_METHOD: SubPeriodMethod = SubPeriodMethod::EqualFromNext;
+pub const CHARA_DEFAULT_METHOD: SubPeriodMethod = SubPeriodMethod::EqualFromSame;
 
 /// Total Chara dasha cycle years (sum of all 12 rashi periods).
 /// Variable per chart — computed dynamically.
@@ -155,6 +155,7 @@ pub fn chara_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dasha::rashi_dasha::rashi_children;
     use crate::dasha::rashi_strength::RashiDashaInputs;
 
     /// Helper: create inputs with grahas placed at specific rashis.
@@ -221,6 +222,34 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn chara_children_start_from_parent_and_wrap() {
+        let inputs = make_test_inputs();
+        let parent = DashaPeriod {
+            entity: DashaEntity::Rashi(1),
+            start_jd: 2451545.0,
+            end_jd: 2451545.0 + 360.0,
+            level: DashaLevel::Mahadasha,
+            order: 1,
+            parent_idx: 0,
+        };
+
+        let total = chara_total_years(&inputs);
+        let children = rashi_children(
+            &parent,
+            &|r| chara_period_years(r, &inputs),
+            total,
+            CHARA_DEFAULT_METHOD,
+            CHARA_DEFAULT_METHOD,
+        );
+
+        assert_eq!(children.len(), 12);
+        assert_eq!(children[0].entity, DashaEntity::Rashi(1));
+        assert_eq!(children[1].entity, DashaEntity::Rashi(0));
+        assert_eq!(children[2].entity, DashaEntity::Rashi(11));
+        assert_eq!(children[11].entity, DashaEntity::Rashi(2));
     }
 
     #[test]

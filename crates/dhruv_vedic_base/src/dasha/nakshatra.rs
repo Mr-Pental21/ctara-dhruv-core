@@ -328,6 +328,26 @@ mod tests {
     }
 
     #[test]
+    fn vimshottari_rahu_children_start_from_rahu_and_wrap() {
+        let cfg = vimshottari_config();
+        let parent = DashaPeriod {
+            entity: DashaEntity::Graha(Graha::Rahu),
+            start_jd: 2451545.0,
+            end_jd: 2451545.0 + 360.0,
+            level: DashaLevel::Mahadasha,
+            order: 1,
+            parent_idx: 0,
+        };
+        let children = nakshatra_children(&parent, &cfg, SubPeriodMethod::ProportionalFromParent);
+
+        assert_eq!(children.len(), 9);
+        assert_eq!(children[0].entity, DashaEntity::Graha(Graha::Rahu));
+        assert_eq!(children[1].entity, DashaEntity::Graha(Graha::Guru));
+        assert_eq!(children[2].entity, DashaEntity::Graha(Graha::Shani));
+        assert_eq!(children[8].entity, DashaEntity::Graha(Graha::Mangal));
+    }
+
+    #[test]
     fn vimshottari_hierarchy_level_counts() {
         let cfg = vimshottari_config();
         let var = DashaVariationConfig::default();

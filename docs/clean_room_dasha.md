@@ -251,7 +251,7 @@ If result = 0: period = 12 years (lord in own sign)
 
 - **Starting rashi**: Lagna rashi
 - **Direction**: Odd lagna → forward, even lagna → reverse
-- **Sub-period**: EqualFromNext (12 equal sub-periods starting from next rashi)
+- **Sub-period**: EqualFromSame (12 equal sub-periods starting from the parent rashi)
 - **Total cycle**: Variable, depends on chart
 
 #### Sthira Dasha
