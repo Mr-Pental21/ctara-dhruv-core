@@ -35,18 +35,44 @@ function firstExisting(paths) {
 function findNodeIncludeDir() {
   const candidates = [
     process.env.NODE_INCLUDE_DIR,
+    process.env.npm_config_nodedir && path.join(process.env.npm_config_nodedir, 'include', 'node'),
+    process.env.LOCALAPPDATA &&
+      path.join(process.env.LOCALAPPDATA, 'node-gyp', 'Cache', process.versions.node, 'include', 'node'),
     process.config?.variables?.nodedir && path.join(process.config.variables.nodedir, 'include', 'node'),
     process.config?.variables?.node_prefix && path.join(process.config.variables.node_prefix, 'include', 'node'),
+    path.join(path.dirname(process.execPath), 'include', 'node'),
+    path.join(path.dirname(path.dirname(process.execPath)), 'include', 'node'),
     '/usr/include/node',
     '/opt/homebrew/include/node',
     '/usr/local/include/node',
   ];
 
-  const include = firstExisting(candidates);
+  const include = firstExisting(candidates.filter((candidate) =>
+    candidate && fs.existsSync(path.join(candidate, 'node_api.h'))
+  ));
   if (!include) {
     throw new Error('Unable to locate Node headers. Set NODE_INCLUDE_DIR to a directory containing node_api.h');
   }
   return include;
+}
+
+function findNodeLibDir() {
+  const execDir = path.dirname(process.execPath);
+  const candidates = [
+    process.env.NODE_LIB_DIR,
+    process.config?.variables?.node_prefix,
+    process.config?.variables?.nodedir,
+    execDir,
+    path.dirname(execDir),
+  ];
+
+  const libDir = firstExisting(candidates.filter((candidate) =>
+    candidate && fs.existsSync(path.join(candidate, 'node.lib'))
+  ));
+  if (!libDir) {
+    throw new Error('Unable to locate node.lib directory on Windows. Set NODE_LIB_DIR to a directory containing node.lib');
+  }
+  return libDir;
 }
 
 function copyRuntimeLib() {
@@ -95,11 +121,7 @@ function buildUnix() {
 
 function buildWindows() {
   const includeNode = findNodeIncludeDir();
-  const nodePrefix = process.config?.variables?.node_prefix;
-  const nodeLibDir = nodePrefix || '';
-  if (!nodeLibDir) {
-    throw new Error('Unable to locate node.lib directory on Windows (node_prefix missing).');
-  }
+  const nodeLibDir = findNodeLibDir();
 
   const args = [
     '/nologo',

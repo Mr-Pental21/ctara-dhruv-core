@@ -5,6 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 ALLOWED_NODE_LICENSES="MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;Zlib"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
+
+if [[ -z "${PYTHON_BIN}" ]]; then
+  echo "ERROR: python3/python is required for license scanning." >&2
+  exit 1
+fi
 
 scan_rust() {
   if [[ -f "Cargo.toml" ]]; then
@@ -54,21 +60,22 @@ scan_python_wrapper() {
 
   echo "==> Scanning Python wrapper licenses in ${wrapper_dir}"
   local venv_dir
+  local venv_python
+  local venv_pip_licenses
   venv_dir="$(mktemp -d)"
-  trap 'rm -rf "$venv_dir"' RETURN
 
-  python3 -m venv "${venv_dir}"
-  # shellcheck source=/dev/null
-  source "${venv_dir}/bin/activate"
-  python -m pip install --upgrade pip >/dev/null
-  python -m pip install pip-licenses >/dev/null
-  python -m pip install -r "${requirements_file}" >/dev/null
+  "${PYTHON_BIN}" -m venv "${venv_dir}"
+  venv_python="${venv_dir}/bin/python"
+  venv_pip_licenses="${venv_dir}/bin/pip-licenses"
+  "${venv_python}" -m pip install --upgrade pip >/dev/null
+  "${venv_python}" -m pip install pip-licenses >/dev/null
+  "${venv_python}" -m pip install -r "${requirements_file}" >/dev/null
 
   local license_json
   license_json="$(mktemp)"
-  pip-licenses --format=json --with-license-file --with-system=false > "${license_json}"
+  "${venv_pip_licenses}" --format=json --with-license-file > "${license_json}"
 
-  python3 - "${license_json}" <<'PY'
+  "${venv_python}" - "${license_json}" <<'PY'
 import json
 import re
 import sys
@@ -105,10 +112,8 @@ if violations:
     sys.exit(1)
 PY
 
-  deactivate
   rm -f "${license_json}"
   rm -rf "${venv_dir}"
-  trap - RETURN
 }
 
 scan_go_wrapper() {

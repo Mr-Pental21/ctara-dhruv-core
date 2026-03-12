@@ -11825,8 +11825,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_43() {
-        assert_eq!(dhruv_api_version(), 43);
+    fn ffi_api_version_is_45() {
+        assert_eq!(dhruv_api_version(), 45);
     }
 
     #[test]

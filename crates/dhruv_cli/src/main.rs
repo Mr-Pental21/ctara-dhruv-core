@@ -8293,7 +8293,7 @@ mod tests {
         //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            false, false,
+            true, false,
         );
         assert!(f.include_panchang);
         assert!(!f.include_graha);
@@ -8344,7 +8344,7 @@ mod tests {
         //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            false, false,
+            true, false,
         );
         let cfg = build_kundali_config(
             &resolved,

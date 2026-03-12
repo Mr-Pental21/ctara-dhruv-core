@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 44`
+**ABI version:** `DHRUV_API_VERSION = 45`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -1880,7 +1880,7 @@ no proper motion). Equivalent to requesting ecliptic output for
 
 ## Changelog
 
-**v44**: Extended `DhruvBhinnaAshtakavarga` with contributor attribution matrix
+**v45**: Extended `DhruvBhinnaAshtakavarga` with contributor attribution matrix
 `contributors[12][8]` (0/1 flags per rashi and contributor). Affects all APIs
 that produce/consume BAV values: `dhruv_calculate_bav`,
 `dhruv_calculate_all_bav`, `dhruv_calculate_ashtakavarga`,

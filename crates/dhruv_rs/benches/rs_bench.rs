@@ -2,11 +2,11 @@ use std::path::PathBuf;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use dhruv_core::Query;
-use dhruv_time::UtcTime;
 use dhruv_rs::{
     Body, DhruvContext, EngineConfig, Frame, LunarPhaseKind, LunarPhaseRequest,
     LunarPhaseRequestQuery, LunarPhaseResult, Observer, TimeInput, UtcDate, lunar_phase,
 };
+use dhruv_time::UtcTime;
 
 fn make_context() -> Option<DhruvContext> {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../kernels/data");

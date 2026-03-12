@@ -2,9 +2,6 @@ package cabi
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../../crates/dhruv_ffi_c/include
-#cgo linux LDFLAGS: -L${SRCDIR}/../../../../target/release -ldhruv_ffi_c -Wl,-rpath,${SRCDIR}/../../../../target/release
-#cgo darwin LDFLAGS: -L${SRCDIR}/../../../../target/release -ldhruv_ffi_c -Wl,-rpath,${SRCDIR}/../../../../target/release
-#cgo windows LDFLAGS: -L${SRCDIR}/../../../../target/release -ldhruv_ffi_c
 #include "dhruv.h"
 */
 import "C"
