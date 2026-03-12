@@ -30,5 +30,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Setup BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.0"
+          otp-version: "28.0"
+
       - name: Run License Gate
         run: ./scripts/ci/license_gate.sh

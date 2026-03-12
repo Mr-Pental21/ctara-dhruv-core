@@ -1,0 +1,90 @@
+defmodule CtaraDhruvTest do
+  use ExUnit.Case
+
+  alias CtaraDhruv.{Dasha, Engine, Ephemeris, Jyotish, Panchang, Search, Tara, Time, Vedic}
+
+  @repo_root Path.expand("../..", __DIR__)
+  @kernel_dir Path.join(@repo_root, "kernels/data")
+  @spk Path.join(@kernel_dir, "de442s.bsp")
+  @lsk Path.join(@kernel_dir, "naif0012.tls")
+  @eop Path.join(@kernel_dir, "finals2000A.all")
+  @tara Path.join(@kernel_dir, "hgca_tara.json")
+
+  defp with_engine do
+    if File.exists?(@spk) and File.exists?(@lsk) do
+      {:ok, engine} =
+        Engine.new(%{
+          spk_paths: [@spk],
+          lsk_path: @lsk,
+          cache_capacity: 64,
+          strict_validation: false
+        })
+
+      on_exit(fn -> Engine.close(engine) end)
+      {:ok, engine}
+    else
+      :skip
+    end
+  end
+
+  test "engine lifecycle and native families smoke" do
+    case with_engine() do
+      :skip ->
+        assert true
+
+      {:ok, engine} ->
+        assert {:ok, _} = Engine.set_time_policy(engine, %{mode: :hybrid_delta_t})
+        assert {:ok, _} = Ephemeris.cartesian_to_spherical(%{x: 1.0, y: 0.0, z: 0.0})
+        assert {:ok, _} = Time.nutation(%{jd_tdb: 2_451_545.0})
+
+        assert {:ok, _} =
+                 Ephemeris.query(engine, %{
+                   target: 499,
+                   observer: 0,
+                   frame: 1,
+                   epoch_tdb_jd: 2_451_545.0
+                 })
+
+        assert {:ok, _} =
+                 Time.utc_to_jd_tdb(engine, %{
+                   utc: %{year: 2024, month: 1, day: 1, hour: 12, minute: 0, second: 0.0}
+                 })
+
+        if File.exists?(@eop) do
+          assert {:ok, _} = Engine.load_eop(engine, @eop)
+          location = %{latitude_deg: 28.6139, longitude_deg: 77.2090, altitude_m: 0.0}
+          utc = %{year: 2024, month: 1, day: 15, hour: 6, minute: 0, second: 0.0}
+
+          assert {:ok, _} =
+                   Vedic.ayanamsha(engine, %{
+                     jd_tdb: 2_460_311.0,
+                     system: :lahiri,
+                     use_nutation: false
+                   })
+
+          assert {:ok, _} =
+                   Vedic.rise_set(engine, %{utc: utc, location: location, event: :sunrise})
+
+          assert {:ok, _} = Panchang.tithi(engine, %{utc: utc})
+          assert {:ok, _} = Search.sankranti(engine, %{mode: :next, at_jd_tdb: 2_451_545.0})
+          assert {:ok, _} = Jyotish.graha_positions(engine, %{utc: utc, location: location})
+          assert {:ok, _} = Jyotish.bindus(engine, %{utc: utc, location: location})
+
+          assert {:ok, _} =
+                   Dasha.hierarchy(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     max_level: 1
+                   })
+        end
+
+        if File.exists?(@tara) do
+          assert {:ok, _} = Engine.load_tara_catalog(engine, @tara)
+          assert {:ok, _} = Tara.catalog_info(engine)
+        else
+          assert {:ok, _} = Tara.catalog_info(engine)
+        end
+    end
+  end
+end

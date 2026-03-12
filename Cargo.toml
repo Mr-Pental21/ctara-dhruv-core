@@ -14,6 +14,7 @@ members = [
   "crates/dhruv_rs",
   "crates/dhruv_search",
   "crates/dhruv_tara",
+  "bindings/elixir-open/native/dhruv_elixir_nif",
 ]
 resolver = "2"
 

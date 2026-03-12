@@ -1,0 +1,9 @@
+/_build/
+/cover/
+/deps/
+/doc/
+/tmp/
+/priv/native/
+erl_crash.dump
+*.ez
+ctara_dhruv-*.tar

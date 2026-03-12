@@ -1,0 +1,24 @@
+[package]
+name = "dhruv_elixir_nif"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dhruv_config = { path = "../../../../crates/dhruv_config" }
+dhruv_core = { path = "../../../../crates/dhruv_core" }
+dhruv_frames = { path = "../../../../crates/dhruv_frames" }
+dhruv_search = { path = "../../../../crates/dhruv_search" }
+dhruv_tara = { path = "../../../../crates/dhruv_tara" }
+dhruv_time = { path = "../../../../crates/dhruv_time" }
+dhruv_vedic_base = { path = "../../../../crates/dhruv_vedic_base" }
+rustler = { version = "0.37", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

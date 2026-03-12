@@ -53,6 +53,20 @@ The Node wrapper (`bindings/node-open/`) currently uses only Node.js built-in
 modules and an in-repo native Node-API addon implementation. It does not
 introduce third-party npm runtime dependencies.
 
+## Elixir Bindings Dependencies
+
+The Elixir wrapper (`bindings/elixir-open/`) pins Hex dependencies in
+`mix.lock` and currently resolves to:
+
+| Package | Version | License | Purpose |
+|---------|---------|---------|---------|
+| rustler | 0.37.3  | MIT OR Apache-2.0 | Rustler NIF compile/load integration |
+| jason   | 1.4.4   | Apache-2.0 | Rustler Hex dependency |
+
+Both licenses are on the project allowlist. The native Rust crate
+`dhruv_elixir_nif` is part of the root Cargo workspace, so its Rust dependency
+licenses are tracked through the shared `Cargo.lock` and `cargo deny` policy.
+
 ## Bundled Data
 
 Kernel/data files in `kernels/` are sourced from public NAIF/JPL resources and
