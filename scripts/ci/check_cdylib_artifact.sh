@@ -48,20 +48,26 @@ elif [[ "$artifact" == *.dylib ]] && command -v nm >/dev/null 2>&1; then
   fi
   echo "Verified exported symbol '$symbol' in $artifact"
 elif [[ "$artifact" == *.dll ]]; then
-  if command -v llvm-nm >/dev/null 2>&1; then
-    if ! llvm-nm --defined-only --extern-only "$artifact" | grep -E -q "$symbol_regex"; then
-      echo "Expected exported symbol '$symbol' not found in $artifact" >&2
-      exit 1
-    fi
-    echo "Verified exported symbol '$symbol' in $artifact"
-  elif command -v dumpbin >/dev/null 2>&1; then
+  if command -v dumpbin >/dev/null 2>&1; then
     if ! dumpbin /exports "$artifact" | grep -E -q "\\<${symbol}\\>"; then
       echo "Expected exported symbol '$symbol' not found in $artifact" >&2
       exit 1
     fi
     echo "Verified exported symbol '$symbol' in $artifact"
+  elif command -v llvm-objdump >/dev/null 2>&1; then
+    if ! llvm-objdump -p "$artifact" | grep -E -q "\\<${symbol}\\>"; then
+      echo "Expected exported symbol '$symbol' not found in $artifact" >&2
+      exit 1
+    fi
+    echo "Verified exported symbol '$symbol' in $artifact"
+  elif command -v objdump >/dev/null 2>&1; then
+    if ! objdump -p "$artifact" | grep -E -q "\\<${symbol}\\>"; then
+      echo "Expected exported symbol '$symbol' not found in $artifact" >&2
+      exit 1
+    fi
+    echo "Verified exported symbol '$symbol' in $artifact"
   else
-    echo "Symbol export check skipped for Windows artifact (no llvm-nm or dumpbin in PATH)."
+    echo "Symbol export check skipped for Windows artifact (no dumpbin/llvm-objdump/objdump in PATH)."
   fi
 else
   echo "Symbol export check skipped (nm not available)."

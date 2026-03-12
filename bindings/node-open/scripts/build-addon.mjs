@@ -33,9 +33,13 @@ function firstExisting(paths) {
 }
 
 function findNodeIncludeDir() {
+  const runnerToolCacheNode =
+    process.env.RUNNER_TOOL_CACHE &&
+    path.join(process.env.RUNNER_TOOL_CACHE, 'node', process.versions.node, 'x64');
   const candidates = [
     process.env.NODE_INCLUDE_DIR,
     process.env.npm_config_nodedir && path.join(process.env.npm_config_nodedir, 'include', 'node'),
+    runnerToolCacheNode && path.join(runnerToolCacheNode, 'include', 'node'),
     process.env.LOCALAPPDATA &&
       path.join(process.env.LOCALAPPDATA, 'node-gyp', 'Cache', process.versions.node, 'include', 'node'),
     process.config?.variables?.nodedir && path.join(process.config.variables.nodedir, 'include', 'node'),
@@ -58,8 +62,12 @@ function findNodeIncludeDir() {
 
 function findNodeLibDir() {
   const execDir = path.dirname(process.execPath);
+  const runnerToolCacheNode =
+    process.env.RUNNER_TOOL_CACHE &&
+    path.join(process.env.RUNNER_TOOL_CACHE, 'node', process.versions.node, 'x64');
   const candidates = [
     process.env.NODE_LIB_DIR,
+    runnerToolCacheNode,
     process.config?.variables?.node_prefix,
     process.config?.variables?.nodedir,
     execDir,
