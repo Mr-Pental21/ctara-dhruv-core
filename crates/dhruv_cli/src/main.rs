@@ -8212,11 +8212,15 @@ fn print_kundali(
 mod tests {
     use super::*;
 
+    fn default_charakaraka_scheme() -> dhruv_vedic_base::CharakarakaScheme {
+        dhruv_vedic_base::CharakarakaScheme::default()
+    }
+
     #[test]
     fn test_resolve_kundali_flags_default() {
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
         assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
@@ -8237,7 +8241,7 @@ mod tests {
     fn test_resolve_kundali_flags_all() {
         let f = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
         assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
@@ -8254,7 +8258,7 @@ mod tests {
     fn test_resolve_kundali_flags_graha_only() {
         let f = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
         assert!(
             f.include_bhava_cusps,
@@ -8271,7 +8275,7 @@ mod tests {
     fn test_resolve_kundali_flags_calendar_implies_panchang() {
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            true,
+            false, true,
         );
         assert!(f.include_panchang);
         assert!(f.include_calendar);
@@ -8289,7 +8293,7 @@ mod tests {
         //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            false,
+            false, false,
         );
         assert!(f.include_panchang);
         assert!(!f.include_graha);
@@ -8311,7 +8315,7 @@ mod tests {
     fn test_build_kundali_config_defaults_with_dasha() {
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8319,6 +8323,7 @@ mod tests {
             2,
             None,
             NodeDignityPolicy::default(),
+            default_charakaraka_scheme(),
         );
         assert!(cfg.include_bhava_cusps);
         assert!(cfg.include_graha_positions);
@@ -8339,9 +8344,16 @@ mod tests {
         //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            false,
+            false, false,
         );
-        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::default());
+        let cfg = build_kundali_config(
+            &resolved,
+            None,
+            2,
+            None,
+            NodeDignityPolicy::default(),
+            default_charakaraka_scheme(),
+        );
         assert!(!cfg.include_bhava_cusps);
         assert!(cfg.include_panchang);
         assert!(!cfg.include_graha_positions);
@@ -8351,7 +8363,7 @@ mod tests {
     fn test_build_kundali_config_graha_with_dasha() {
         let resolved = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8359,6 +8371,7 @@ mod tests {
             2,
             None,
             NodeDignityPolicy::default(),
+            default_charakaraka_scheme(),
         );
         assert!(cfg.include_graha_positions);
         assert!(!cfg.include_bindus);
@@ -8369,7 +8382,7 @@ mod tests {
     fn test_build_kundali_config_all_with_dasha() {
         let resolved = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8377,6 +8390,7 @@ mod tests {
             2,
             None,
             NodeDignityPolicy::default(),
+            default_charakaraka_scheme(),
         );
         assert!(cfg.include_graha_positions);
         assert!(cfg.include_panchang);
@@ -8390,9 +8404,16 @@ mod tests {
     fn test_build_kundali_config_no_dasha_without_systems() {
         let resolved = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
-        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::default());
+        let cfg = build_kundali_config(
+            &resolved,
+            None,
+            2,
+            None,
+            NodeDignityPolicy::default(),
+            default_charakaraka_scheme(),
+        );
         assert!(!cfg.include_dasha);
         assert_eq!(cfg.dasha_config.count, 0);
         assert!(cfg.include_graha_positions);
@@ -8404,9 +8425,16 @@ mod tests {
         // --include-amshas alone (no --include-graha)
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, true, false, false, false, false,
-            false,
+            false, false,
         );
-        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::default());
+        let cfg = build_kundali_config(
+            &resolved,
+            None,
+            2,
+            None,
+            NodeDignityPolicy::default(),
+            default_charakaraka_scheme(),
+        );
         // Graha must be force-computed for amshas
         assert!(cfg.include_graha_positions);
         assert!(cfg.graha_positions_config.include_lagna);
@@ -8418,9 +8446,16 @@ mod tests {
     fn test_build_kundali_config_node_policy() {
         let resolved = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false,
+            false, false,
         );
-        let cfg = build_kundali_config(&resolved, None, 2, None, NodeDignityPolicy::AlwaysSama);
+        let cfg = build_kundali_config(
+            &resolved,
+            None,
+            2,
+            None,
+            NodeDignityPolicy::AlwaysSama,
+            default_charakaraka_scheme(),
+        );
         assert_eq!(cfg.node_dignity_policy, NodeDignityPolicy::AlwaysSama);
     }
 
@@ -8463,6 +8498,7 @@ mod tests {
             shadbala: None,
             vimsopaka: None,
             avastha: None,
+            charakaraka: None,
             panchang: None,
             dasha: None,
             dasha_snapshots: None,
@@ -8509,6 +8545,7 @@ mod tests {
             include_shadbala: false,
             include_vimsopaka: false,
             include_avastha: false,
+            include_charakaraka: false,
             include_panchang: false,
             include_calendar: false,
         };
@@ -8575,6 +8612,7 @@ mod tests {
             include_shadbala: false,
             include_vimsopaka: false,
             include_avastha: false,
+            include_charakaraka: false,
             include_panchang: false,
             include_calendar: false,
         };
@@ -8602,6 +8640,7 @@ mod tests {
             include_shadbala: false,
             include_vimsopaka: false,
             include_avastha: false,
+            include_charakaraka: false,
             include_panchang: false,
             include_calendar: false,
         };
