@@ -46,11 +46,26 @@ jobs:
         shell: pwsh
         run: |
           cd bindings/node-open
+          $vswhere = "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) {
+            throw "Unable to locate a Visual Studio installation with C++ tools"
+          }
+          $vsDevCmd = Join-Path $vsPath "Common7\\Tools\\VsDevCmd.bat"
+          if (-not (Test-Path $vsDevCmd)) {
+            throw "Unable to locate VsDevCmd.bat at $vsDevCmd"
+          }
+          cmd /c "`"$vsDevCmd`" -arch=x64 -host_arch=x64 >nul && set" | ForEach-Object {
+            if ($_ -match '^(.*?)=(.*)$') {
+              Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+            }
+          }
           $env:npm_config_devdir = "$env:LOCALAPPDATA\\node-gyp\\Cache"
           $nodeVersion = node -p "process.versions.node"
           $nodeArch = node -p "process.arch"
           npx --yes node-gyp install --target $nodeVersion --devdir "$env:npm_config_devdir"
           $env:NODE_INCLUDE_DIR = "$env:npm_config_devdir\\$nodeVersion\\include\\node"
           $env:NODE_LIB_DIR = "$env:npm_config_devdir\\$nodeVersion\\$nodeArch"
+          cl /Bv
           npm run build
           npm test
