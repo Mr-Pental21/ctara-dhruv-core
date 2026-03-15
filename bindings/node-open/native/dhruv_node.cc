@@ -386,6 +386,8 @@ bool ReadFullKundaliConfig(napi_env env, napi_value obj, DhruvFullKundaliConfig*
     out->include_amshas = b ? 1 : 0;
     if (!GetNamedProperty(env, obj, "includeShadbala", &v) || !GetBool(env, v, &b)) return false;
     out->include_shadbala = b ? 1 : 0;
+    if (!GetNamedProperty(env, obj, "includeBhavaBala", &v) || !GetBool(env, v, &b)) return false;
+    out->include_bhavabala = b ? 1 : 0;
     if (!GetNamedProperty(env, obj, "includeVimsopaka", &v) || !GetBool(env, v, &b)) return false;
     out->include_vimsopaka = b ? 1 : 0;
     if (!GetNamedProperty(env, obj, "includeAvastha", &v) || !GetBool(env, v, &b)) return false;
@@ -453,6 +455,25 @@ bool ReadBhinnaAshtakavarga(napi_env env, napi_value obj, DhruvBhinnaAshtakavarg
             out->contributors[i][j] = static_cast<uint8_t>(val);
         }
     }
+    return true;
+}
+
+bool ReadBhavaBalaInputs(napi_env env, napi_value obj, DhruvBhavaBalaInputs* out) {
+    napi_value v;
+    uint32_t u32 = 0;
+    if (!GetNamedProperty(env, obj, "cuspSiderealLons", &v) || !ReadDoubleArrayFixed(env, v, out->cusp_sidereal_lons, 12)) return false;
+    if (!GetNamedProperty(env, obj, "ascendantSiderealLon", &v) || !GetDouble(env, v, &out->ascendant_sidereal_lon)) return false;
+    if (!GetNamedProperty(env, obj, "meridianSiderealLon", &v) || !GetDouble(env, v, &out->meridian_sidereal_lon)) return false;
+    if (!GetNamedProperty(env, obj, "grahaBhavaNumbers", &v) || !ReadUint8ArrayFixed(env, v, out->graha_bhava_numbers, DHRUV_GRAHA_COUNT)) return false;
+    if (!GetNamedProperty(env, obj, "houseLordStrengths", &v) || !ReadDoubleArrayFixed(env, v, out->house_lord_strengths, 12)) return false;
+    if (!GetNamedProperty(env, obj, "aspectVirupas", &v)) return false;
+    for (uint32_t i = 0; i < DHRUV_GRAHA_COUNT; ++i) {
+        napi_value row;
+        if (napi_get_element(env, v, i, &row) != napi_ok) return false;
+        if (!ReadDoubleArrayFixed(env, row, out->aspect_virupas[i], 12)) return false;
+    }
+    if (!GetNamedProperty(env, obj, "birthPeriod", &v) || !GetUint32(env, v, &u32)) return false;
+    out->birth_period = u32;
     return true;
 }
 
@@ -857,6 +878,32 @@ napi_value WriteShadbalaResult(napi_env env, const DhruvShadbalaResult& s) {
     }
     SetNamed(env, obj, "entries", entries);
     SetNamed(env, obj, "totalRupas", totals);
+    return obj;
+}
+
+napi_value WriteBhavaBalaResult(napi_env env, const DhruvBhavaBalaResult& b) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_value entries;
+    napi_create_array_with_length(env, 12, &entries);
+    for (uint32_t i = 0; i < 12; ++i) {
+        const DhruvBhavaBalaEntry& e = b.entries[i];
+        napi_value eo;
+        napi_create_object(env, &eo);
+        SetNamed(env, eo, "bhavaNumber", MakeUint32(env, e.bhava_number));
+        SetNamed(env, eo, "cuspSiderealLon", MakeDouble(env, e.cusp_sidereal_lon));
+        SetNamed(env, eo, "rashiIndex", MakeUint32(env, e.rashi_index));
+        SetNamed(env, eo, "lordGrahaIndex", MakeUint32(env, e.lord_graha_index));
+        SetNamed(env, eo, "bhavadhipati", MakeDouble(env, e.bhavadhipati));
+        SetNamed(env, eo, "dig", MakeDouble(env, e.dig));
+        SetNamed(env, eo, "drishti", MakeDouble(env, e.drishti));
+        SetNamed(env, eo, "occupationBonus", MakeDouble(env, e.occupation_bonus));
+        SetNamed(env, eo, "risingBonus", MakeDouble(env, e.rising_bonus));
+        SetNamed(env, eo, "totalVirupas", MakeDouble(env, e.total_virupas));
+        SetNamed(env, eo, "totalRupas", MakeDouble(env, e.total_rupas));
+        napi_set_element(env, entries, i, eo);
+    }
+    SetNamed(env, obj, "entries", entries);
     return obj;
 }
 
@@ -4498,6 +4545,68 @@ napi_value ShadbalaForDate(napi_env env, napi_callback_info info) {
     return out;
 }
 
+napi_value CalculateBhavaBala(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    DhruvBhavaBalaInputs inputs{};
+    if (!ReadBhavaBalaInputs(env, args[0], &inputs)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    DhruvBhavaBalaResult out_result{};
+    int32_t status = dhruv_calculate_bhavabala(&inputs, &out_result);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "result", WriteBhavaBalaResult(env, out_result));
+    return out;
+}
+
+napi_value BhavaBalaForDate(napi_env env, napi_callback_info info) {
+    size_t argc = 8;
+    napi_value args[8];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 6) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    DhruvUtcTime utc{};
+    DhruvGeoLocation loc{};
+    if (!ReadUtcTime(env, args[2], &utc) || !ReadGeoLocation(env, args[3], &loc)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    uint32_t ayanamsha = 0;
+    bool use_nutation = false;
+    if (!GetUint32(env, args[4], &ayanamsha) || !GetBool(env, args[5], &use_nutation)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    DhruvBhavaConfig bhava_cfg = dhruv_bhava_config_default();
+    DhruvRiseSetConfig rise_cfg = dhruv_riseset_config_default();
+    if (argc >= 7 && !ReadBhavaConfig(env, args[6], &bhava_cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (argc >= 8 && !ReadRiseSetConfig(env, args[7], &rise_cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    DhruvBhavaBalaResult out_result{};
+    int32_t status = dhruv_bhavabala_for_date(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &utc,
+        &loc,
+        &bhava_cfg,
+        &rise_cfg,
+        ayanamsha,
+        use_nutation ? 1 : 0,
+        &out_result);
+
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "result", WriteBhavaBalaResult(env, out_result));
+    return out;
+}
+
 napi_value VimsopakaForDate(napi_env env, napi_callback_info info) {
     size_t argc = 7;
     napi_value args[7];
@@ -4532,6 +4641,57 @@ napi_value VimsopakaForDate(napi_env env, napi_callback_info info) {
 
     napi_value out = MakeStatusResult(env, status);
     if (status == STATUS_OK) SetNamed(env, out, "result", WriteVimsopakaResult(env, out_result));
+    return out;
+}
+
+napi_value BalasForDate(napi_env env, napi_callback_info info) {
+    size_t argc = 9;
+    napi_value args[9];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 9) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    DhruvUtcTime utc{};
+    DhruvGeoLocation loc{};
+    DhruvBhavaConfig bhava_cfg{};
+    DhruvRiseSetConfig rise_cfg{};
+    if (!ReadUtcTime(env, args[2], &utc) || !ReadGeoLocation(env, args[3], &loc) || !ReadBhavaConfig(env, args[4], &bhava_cfg) || !ReadRiseSetConfig(env, args[5], &rise_cfg)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    uint32_t ayanamsha = 0;
+    bool use_nutation = false;
+    uint32_t node_policy = 0;
+    if (!GetUint32(env, args[6], &ayanamsha) || !GetBool(env, args[7], &use_nutation) || !GetUint32(env, args[8], &node_policy)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    DhruvBalaBundleResult out_result{};
+    int32_t status = dhruv_balas_for_date(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &utc,
+        &loc,
+        &bhava_cfg,
+        &rise_cfg,
+        ayanamsha,
+        use_nutation ? 1 : 0,
+        node_policy,
+        &out_result);
+
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) {
+        napi_value result;
+        napi_create_object(env, &result);
+        SetNamed(env, result, "shadbala", WriteShadbalaResult(env, out_result.shadbala));
+        SetNamed(env, result, "vimsopaka", WriteVimsopakaResult(env, out_result.vimsopaka));
+        SetNamed(env, result, "ashtakavarga", WriteAshtakavargaResult(env, out_result.ashtakavarga));
+        SetNamed(env, result, "bhavabala", WriteBhavaBalaResult(env, out_result.bhavabala));
+        SetNamed(env, out, "result", result);
+    }
     return out;
 }
 
@@ -4687,6 +4847,7 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, obj, "includeSpecialLagnas", MakeBool(env, cfg.include_special_lagnas != 0));
     SetNamed(env, obj, "includeAmshas", MakeBool(env, cfg.include_amshas != 0));
     SetNamed(env, obj, "includeShadbala", MakeBool(env, cfg.include_shadbala != 0));
+    SetNamed(env, obj, "includeBhavaBala", MakeBool(env, cfg.include_bhavabala != 0));
     SetNamed(env, obj, "includeVimsopaka", MakeBool(env, cfg.include_vimsopaka != 0));
     SetNamed(env, obj, "includeAvastha", MakeBool(env, cfg.include_avastha != 0));
     SetNamed(env, obj, "includeCharakaraka", MakeBool(env, cfg.include_charakaraka != 0));
@@ -4881,6 +5042,7 @@ napi_value FullKundaliForDate(napi_env env, napi_callback_info info) {
         SetNamed(env, obj, "amshas", amshas);
     }
     if (result.shadbala_valid != 0) SetNamed(env, obj, "shadbala", WriteShadbalaResult(env, result.shadbala));
+    if (result.bhavabala_valid != 0) SetNamed(env, obj, "bhavabala", WriteBhavaBalaResult(env, result.bhavabala));
     if (result.vimsopaka_valid != 0) SetNamed(env, obj, "vimsopaka", WriteVimsopakaResult(env, result.vimsopaka));
     if (result.avastha_valid != 0) SetNamed(env, obj, "avastha", WriteAllGrahaAvasthas(env, result.avastha));
     if (result.charakaraka_valid != 0) SetNamed(env, obj, "charakaraka", WriteCharakarakaResult(env, result.charakaraka));
@@ -5830,6 +5992,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"timeUpagrahaJd", nullptr, TimeUpagrahaJd, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"timeUpagrahaJdUtc", nullptr, TimeUpagrahaJdUtc, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"calculateAshtakavarga", nullptr, CalculateAshtakavarga, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"calculateBhavaBala", nullptr, CalculateBhavaBala, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"calculateBav", nullptr, CalculateBav, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"calculateAllBav", nullptr, CalculateAllBav, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"calculateSav", nullptr, CalculateSav, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -5850,7 +6013,9 @@ napi_value Init(napi_env env, napi_value exports) {
         {"arudhaPadasForDate", nullptr, ArudhaPadasForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"allUpagrahasForDate", nullptr, AllUpagrahasForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"shadbalaForDate", nullptr, ShadbalaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"bhavaBalaForDate", nullptr, BhavaBalaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"vimsopakaForDate", nullptr, VimsopakaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"balasForDate", nullptr, BalasForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"avasthaForDate", nullptr, AvasthaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"charakarakaForDate", nullptr, CharakarakaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"fullKundaliSummaryForDate", nullptr, FullKundaliSummaryForDate, nullptr, nullptr, nullptr, napi_default, nullptr},

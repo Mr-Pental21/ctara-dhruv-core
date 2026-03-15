@@ -17,6 +17,8 @@ from .types import (
     AllUpagrahas,
     AyanaInfo,
     BhavaEntry,
+    BhavaBalaEntry,
+    BhavaBalaResult,
     BhavaResult,
     BhinnaAshtakavarga,
     BindusResult,
@@ -823,6 +825,28 @@ def full_kundali(
                 entries=[_extract_shadbala_entry(out.shadbala.entries[i]) for i in range(7)]
             )
 
+        # Bhava Bala
+        bhavabala = None
+        if out.bhavabala_valid:
+            bhavabala = BhavaBalaResult(
+                entries=[
+                    BhavaBalaEntry(
+                        bhava_number=out.bhavabala.entries[i].bhava_number,
+                        cusp_sidereal_lon=out.bhavabala.entries[i].cusp_sidereal_lon,
+                        rashi_index=out.bhavabala.entries[i].rashi_index,
+                        lord_graha_index=out.bhavabala.entries[i].lord_graha_index,
+                        bhavadhipati=out.bhavabala.entries[i].bhavadhipati,
+                        dig=out.bhavabala.entries[i].dig,
+                        drishti=out.bhavabala.entries[i].drishti,
+                        occupation_bonus=out.bhavabala.entries[i].occupation_bonus,
+                        rising_bonus=out.bhavabala.entries[i].rising_bonus,
+                        total_virupas=out.bhavabala.entries[i].total_virupas,
+                        total_rupas=out.bhavabala.entries[i].total_rupas,
+                    )
+                    for i in range(12)
+                ]
+            )
+
         # Vimsopaka
         vimsopaka = None
         if out.vimsopaka_valid:
@@ -879,6 +903,7 @@ def full_kundali(
             special_lagnas=special_lagnas,
             amshas=amshas,
             shadbala=shadbala,
+            bhavabala=bhavabala,
             vimsopaka=vimsopaka,
             avastha=avastha,
             charakaraka=charakaraka,

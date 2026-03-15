@@ -1139,6 +1139,7 @@ func FullKundaliConfigDefault() FullKundaliConfig {
 		IncludeSpecialLagnas:  cfg.include_special_lagnas != 0,
 		IncludeAmshas:         cfg.include_amshas != 0,
 		IncludeShadbala:       cfg.include_shadbala != 0,
+		IncludeBhavaBala:      cfg.include_bhavabala != 0,
 		IncludeVimsopaka:      cfg.include_vimsopaka != 0,
 		IncludeAvastha:        cfg.include_avastha != 0,
 		IncludeCharakaraka:    cfg.include_charakaraka != 0,
@@ -1186,6 +1187,7 @@ func cFullKundaliConfig(cfg FullKundaliConfig) C.DhruvFullKundaliConfig {
 	out.include_special_lagnas = boolU8(cfg.IncludeSpecialLagnas)
 	out.include_amshas = boolU8(cfg.IncludeAmshas)
 	out.include_shadbala = boolU8(cfg.IncludeShadbala)
+	out.include_bhavabala = boolU8(cfg.IncludeBhavaBala)
 	out.include_vimsopaka = boolU8(cfg.IncludeVimsopaka)
 	out.include_avastha = boolU8(cfg.IncludeAvastha)
 	out.include_charakaraka = boolU8(cfg.IncludeCharakaraka)
@@ -1400,21 +1402,28 @@ func TaraGalacticCenterEcliptic(h TaraCatalogHandle, jdTdb float64) (SphericalCo
 	return goSphericalCoords(out), st
 }
 
-func ShadbalaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (ShadbalaResult, Status) {
-	cutc, cloc := cUTC(utc), cGeo(loc)
-	cbhava, crise := cBhavaConfig(bhavaCfg), cRiseSetConfig(riseCfg)
-	var out C.DhruvShadbalaResult
-	st := Status(C.dhruv_shadbala_for_date(
-		engine.ptr,
-		eop.ptr,
-		&cutc,
-		&cloc,
-		&cbhava,
-		&crise,
-		C.uint32_t(ayanamshaSystem),
-		boolU8(useNutation),
-		&out,
-	))
+func goBhavaBala(out C.DhruvBhavaBalaResult) BhavaBalaResult {
+	var res BhavaBalaResult
+	for i := 0; i < 12; i++ {
+		e := out.entries[i]
+		res.Entries[i] = BhavaBalaEntry{
+			BhavaNumber:     uint8(e.bhava_number),
+			CuspSiderealLon: float64(e.cusp_sidereal_lon),
+			RashiIndex:      uint8(e.rashi_index),
+			LordGrahaIndex:  uint8(e.lord_graha_index),
+			Bhavadhipati:    float64(e.bhavadhipati),
+			Dig:             float64(e.dig),
+			Drishti:         float64(e.drishti),
+			OccupationBonus: float64(e.occupation_bonus),
+			RisingBonus:     float64(e.rising_bonus),
+			TotalVirupas:    float64(e.total_virupas),
+			TotalRupas:      float64(e.total_rupas),
+		}
+	}
+	return res
+}
+
+func goShadbala(out C.DhruvShadbalaResult) ShadbalaResult {
 	var res ShadbalaResult
 	for i := 0; i < SaptaGrahaCount; i++ {
 		e := out.entries[i]
@@ -1450,7 +1459,79 @@ func ShadbalaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLoc
 			IsStrong:          e.is_strong != 0,
 		}
 	}
-	return res, st
+	return res
+}
+
+func goVimsopaka(out C.DhruvVimsopakaResult) VimsopakaResult {
+	var res VimsopakaResult
+	for i := 0; i < GrahaCount; i++ {
+		e := out.entries[i]
+		res.Entries[i] = VimsopakaEntry{
+			GrahaIndex:   uint8(e.graha_index),
+			Shadvarga:    float64(e.shadvarga),
+			Saptavarga:   float64(e.saptavarga),
+			Dashavarga:   float64(e.dashavarga),
+			Shodasavarga: float64(e.shodasavarga),
+		}
+	}
+	return res
+}
+
+func ShadbalaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (ShadbalaResult, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
+	cbhava, crise := cBhavaConfig(bhavaCfg), cRiseSetConfig(riseCfg)
+	var out C.DhruvShadbalaResult
+	st := Status(C.dhruv_shadbala_for_date(
+		engine.ptr,
+		eop.ptr,
+		&cutc,
+		&cloc,
+		&cbhava,
+		&crise,
+		C.uint32_t(ayanamshaSystem),
+		boolU8(useNutation),
+		&out,
+	))
+	return goShadbala(out), st
+}
+
+func CalculateBhavaBala(inputs BhavaBalaInputs) (BhavaBalaResult, Status) {
+	cin := C.DhruvBhavaBalaInputs{
+		ascendant_sidereal_lon: C.double(inputs.AscendantSiderealLon),
+		meridian_sidereal_lon:  C.double(inputs.MeridianSiderealLon),
+		birth_period:           C.uint32_t(inputs.BirthPeriod),
+	}
+	for i := 0; i < 12; i++ {
+		cin.cusp_sidereal_lons[i] = C.double(inputs.CuspSiderealLons[i])
+		cin.house_lord_strengths[i] = C.double(inputs.HouseLordStrengths[i])
+		for j := 0; j < GrahaCount; j++ {
+			cin.aspect_virupas[j][i] = C.double(inputs.AspectVirupas[j][i])
+		}
+	}
+	for i := 0; i < GrahaCount; i++ {
+		cin.graha_bhava_numbers[i] = C.uint8_t(inputs.GrahaBhavaNumbers[i])
+	}
+	var out C.DhruvBhavaBalaResult
+	st := Status(C.dhruv_calculate_bhavabala(&cin, &out))
+	return goBhavaBala(out), st
+}
+
+func BhavaBalaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (BhavaBalaResult, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
+	cbhava, crise := cBhavaConfig(bhavaCfg), cRiseSetConfig(riseCfg)
+	var out C.DhruvBhavaBalaResult
+	st := Status(C.dhruv_bhavabala_for_date(
+		engine.ptr,
+		eop.ptr,
+		&cutc,
+		&cloc,
+		&cbhava,
+		&crise,
+		C.uint32_t(ayanamshaSystem),
+		boolU8(useNutation),
+		&out,
+	))
+	return goBhavaBala(out), st
 }
 
 func VimsopakaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, ayanamshaSystem uint32, useNutation bool, nodeDignityPolicy uint32) (VimsopakaResult, Status) {
@@ -1466,18 +1547,31 @@ func VimsopakaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLo
 		C.uint32_t(nodeDignityPolicy),
 		&out,
 	))
-	var res VimsopakaResult
-	for i := 0; i < GrahaCount; i++ {
-		e := out.entries[i]
-		res.Entries[i] = VimsopakaEntry{
-			GrahaIndex:   uint8(e.graha_index),
-			Shadvarga:    float64(e.shadvarga),
-			Saptavarga:   float64(e.saptavarga),
-			Dashavarga:   float64(e.dashavarga),
-			Shodasavarga: float64(e.shodasavarga),
-		}
-	}
-	return res, st
+	return goVimsopaka(out), st
+}
+
+func BalasForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool, nodeDignityPolicy uint32) (BalaBundleResult, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
+	cbhava, crise := cBhavaConfig(bhavaCfg), cRiseSetConfig(riseCfg)
+	var out C.DhruvBalaBundleResult
+	st := Status(C.dhruv_balas_for_date(
+		engine.ptr,
+		eop.ptr,
+		&cutc,
+		&cloc,
+		&cbhava,
+		&crise,
+		C.uint32_t(ayanamshaSystem),
+		boolU8(useNutation),
+		C.uint32_t(nodeDignityPolicy),
+		&out,
+	))
+	return BalaBundleResult{
+		Shadbala:     goShadbala(out.shadbala),
+		Vimsopaka:    goVimsopaka(out.vimsopaka),
+		Ashtakavarga: goAshtakavarga(out.ashtakavarga),
+		BhavaBala:    goBhavaBala(out.bhavabala),
+	}, st
 }
 
 func AvasthaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool, nodeDignityPolicy uint32) (AllGrahaAvasthas, Status) {
@@ -1580,6 +1674,7 @@ func FullKundaliForDateSummary(engine EngineHandle, eop EopHandle, utc UtcTime, 
 		AmshasValid:         out.amshas_valid != 0,
 		AmshasCount:         uint8(out.amshas_count),
 		ShadbalaValid:       out.shadbala_valid != 0,
+		BhavaBalaValid:      out.bhavabala_valid != 0,
 		VimsopakaValid:      out.vimsopaka_valid != 0,
 		AvasthaValid:        out.avastha_valid != 0,
 		CharakarakaValid:    out.charakaraka_valid != 0,
@@ -1806,37 +1901,15 @@ func FullKundaliForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc Geo
 		}
 	}
 	if out.shadbala_valid != 0 {
-		var v ShadbalaResult
-		for i := 0; i < SaptaGrahaCount; i++ {
-			e := out.shadbala.entries[i]
-			v.Entries[i] = ShadbalaEntry{
-				GrahaIndex: uint8(e.graha_index),
-				Sthana: SthanaBalaBreakdown{
-					Uchcha: float64(e.sthana.uchcha), Saptavargaja: float64(e.sthana.saptavargaja), Ojhayugma: float64(e.sthana.ojhayugma),
-					Kendradi: float64(e.sthana.kendradi), Drekkana: float64(e.sthana.drekkana), Total: float64(e.sthana.total),
-				},
-				Dig: float64(e.dig),
-				Kala: KalaBalaBreakdown{
-					Nathonnatha: float64(e.kala.nathonnatha), Paksha: float64(e.kala.paksha), Tribhaga: float64(e.kala.tribhaga),
-					Abda: float64(e.kala.abda), Masa: float64(e.kala.masa), Vara: float64(e.kala.vara), Hora: float64(e.kala.hora),
-					Ayana: float64(e.kala.ayana), Yuddha: float64(e.kala.yuddha), Total: float64(e.kala.total),
-				},
-				Cheshta: float64(e.cheshta), Naisargika: float64(e.naisargika), Drik: float64(e.drik),
-				TotalShashtiamsas: float64(e.total_shashtiamsas), TotalRupas: float64(e.total_rupas), RequiredStrength: float64(e.required_strength),
-				IsStrong: e.is_strong != 0,
-			}
-		}
+		v := goShadbala(out.shadbala)
 		res.Shadbala = &v
 	}
+	if out.bhavabala_valid != 0 {
+		v := goBhavaBala(out.bhavabala)
+		res.BhavaBala = &v
+	}
 	if out.vimsopaka_valid != 0 {
-		var v VimsopakaResult
-		for i := 0; i < GrahaCount; i++ {
-			e := out.vimsopaka.entries[i]
-			v.Entries[i] = VimsopakaEntry{
-				GrahaIndex: uint8(e.graha_index), Shadvarga: float64(e.shadvarga), Saptavarga: float64(e.saptavarga),
-				Dashavarga: float64(e.dashavarga), Shodasavarga: float64(e.shodasavarga),
-			}
-		}
+		v := goVimsopaka(out.vimsopaka)
 		res.Vimsopaka = &v
 	}
 	if out.avastha_valid != 0 {

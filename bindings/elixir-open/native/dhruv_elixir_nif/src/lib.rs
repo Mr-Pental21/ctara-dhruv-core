@@ -21,9 +21,9 @@ use dhruv_search::{
 };
 use dhruv_search::{
     all_upagrahas_for_date, amsha_charts_for_date, arudha_padas_for_date, ashtakavarga_for_date,
-    avastha_for_date, charakaraka_for_date, core_bindus, drishti_for_date,
-    graha_positions as graha_positions_fn, shadbala_for_date, special_lagnas_for_date,
-    vimsopaka_for_date,
+    avastha_for_date, balas_for_date, bhavabala_for_date, charakaraka_for_date, core_bindus,
+    drishti_for_date, graha_positions as graha_positions_fn, shadbala_for_date,
+    special_lagnas_for_date, vimsopaka_for_date,
 };
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
@@ -323,6 +323,7 @@ struct FullKundaliConfigInput {
     include_special_lagnas: Option<bool>,
     include_amshas: Option<bool>,
     include_shadbala: Option<bool>,
+    include_bhavabala: Option<bool>,
     include_vimsopaka: Option<bool>,
     include_avastha: Option<bool>,
     include_charakaraka: Option<bool>,
@@ -438,7 +439,8 @@ fn load(env: Env, _info: Term) -> bool {
 }
 
 fn decode_term<T: for<'de> Deserialize<'de>>(term: Term<'_>) -> Result<T, rustler::Error> {
-    rustler::serde::from_term(term).map_err(Into::into)
+    let value: Value = rustler::serde::from_term(term).map_err(rustler::Error::from)?;
+    serde_json::from_value(value).map_err(|_| rustler::Error::BadArg)
 }
 
 fn encode_json<'a>(env: Env<'a>, result: JsonResult) -> Result<Term<'a>, rustler::Error> {
@@ -499,6 +501,13 @@ fn camel_to_snake(input: &str) -> String {
 
 fn debug_name<T: Debug>(value: T) -> String {
     camel_to_snake(&format!("{value:?}"))
+}
+
+fn time_policy_name(policy: TimeConversionPolicy) -> &'static str {
+    match policy {
+        TimeConversionPolicy::StrictLsk => "strict_lsk",
+        TimeConversionPolicy::HybridDeltaT(_) => "hybrid_delta_t",
+    }
 }
 
 fn parse_named<T: Copy + Debug>(value: &str, variants: &[T]) -> Option<T> {
@@ -1068,6 +1077,9 @@ fn to_full_kundali_config(
         }
         if let Some(value) = input.include_shadbala {
             config.include_shadbala = value;
+        }
+        if let Some(value) = input.include_bhavabala {
+            config.include_bhavabala = value;
         }
         if let Some(value) = input.include_vimsopaka {
             config.include_vimsopaka = value;
@@ -1657,6 +1669,25 @@ fn shadbala_json(result: dhruv_search::ShadbalaResult) -> Value {
     })
 }
 
+fn bhavabala_json(result: dhruv_vedic_base::BhavaBalaResult) -> Value {
+    json!({
+        "entries": result.entries.into_iter().map(|entry| json!({
+            "bhava_number": entry.bhava_number,
+            "cusp_sidereal_lon": entry.cusp_sidereal_lon,
+            "rashi_index": entry.rashi_index,
+            "rashi": debug_name(dhruv_vedic_base::ALL_RASHIS[entry.rashi_index as usize]),
+            "lord": debug_name(entry.lord),
+            "bhavadhipati": entry.bhavadhipati,
+            "dig": entry.dig,
+            "drishti": entry.drishti,
+            "occupation_bonus": entry.occupation_bonus,
+            "rising_bonus": entry.rising_bonus,
+            "total_virupas": entry.total_virupas,
+            "total_rupas": entry.total_rupas
+        })).collect::<Vec<_>>()
+    })
+}
+
 fn vimsopaka_json(result: dhruv_search::VimsopakaResult) -> Value {
     json!({
         "entries": result.entries.into_iter().map(|entry| json!({
@@ -1736,6 +1767,7 @@ fn full_kundali_json(result: dhruv_search::FullKundaliResult) -> Value {
         "special_lagnas": result.special_lagnas.map(special_lagnas_json),
         "amshas": result.amshas.map(amsha_result_json),
         "shadbala": result.shadbala.map(shadbala_json),
+        "bhavabala": result.bhavabala.map(bhavabala_json),
         "vimsopaka": result.vimsopaka.map(vimsopaka_json),
         "avastha": result.avastha.map(avastha_json),
         "charakaraka": result.charakaraka.map(charakaraka_json),
@@ -2517,6 +2549,18 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
             )
             .map(shadbala_json)
             .map_err(|err| map_error("search_error", err)),
+            "bhavabala" => bhavabala_for_date(
+                engine,
+                eop,
+                &utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?,
+                &location
+                    .ok_or_else(|| error_payload("invalid_request", "location is required"))?,
+                &bhava_config,
+                &to_riseset_config(state, request.riseset_config.as_ref())?,
+                &sankranti_config,
+            )
+            .map(bhavabala_json)
+            .map_err(|err| map_error("search_error", err)),
             "vimsopaka" => vimsopaka_for_date(
                 engine,
                 eop,
@@ -2527,6 +2571,24 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
                 parse_node_dignity_policy(request.node_dignity_policy.as_ref())?,
             )
             .map(vimsopaka_json)
+            .map_err(|err| map_error("search_error", err)),
+            "balas" => balas_for_date(
+                engine,
+                eop,
+                &utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?,
+                &location
+                    .ok_or_else(|| error_payload("invalid_request", "location is required"))?,
+                &bhava_config,
+                &to_riseset_config(state, request.riseset_config.as_ref())?,
+                &sankranti_config,
+                parse_node_dignity_policy(request.node_dignity_policy.as_ref())?,
+            )
+            .map(|result| json!({
+                "shadbala": shadbala_json(result.shadbala),
+                "vimsopaka": vimsopaka_json(result.vimsopaka),
+                "ashtakavarga": ashtakavarga_json(result.ashtakavarga),
+                "bhavabala": bhavabala_json(result.bhavabala)
+            }))
             .map_err(|err| map_error("search_error", err)),
             "avastha" => avastha_for_date(
                 engine,
@@ -2802,7 +2864,7 @@ fn engine_set_time_policy<'a>(
             }
         };
         apply_time_policy(state);
-        Ok(json!({ "mode": debug_name(state.time_policy) }))
+        Ok(json!({ "mode": time_policy_name(state.time_policy) }))
     });
     encode_json(env, response)
 }

@@ -18,13 +18,14 @@ use dhruv_vedic_base::upagraha::TIME_BASED_UPAGRAHAS;
 use dhruv_vedic_base::vaar::vaar_from_jd;
 use dhruv_vedic_base::{
     ALL_GRAHAS, AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaRequest,
-    AmshaVariation, ArudhaResult, AshtakavargaResult, AvasthaInputs, AyanamshaSystem, BhavaConfig,
-    BhavaResult, CharakarakaResult, CharakarakaScheme, Dignity, DrishtiEntry, Graha, GrahaAvasthas,
-    KalaBalaInputs, LajjitadiInputs, LunarNode, NodeDignityPolicy, NodeMode, SAPTA_GRAHAS,
-    SayanadiInputs, ShadbalaInputs, Upagraha, all_avasthas, all_combustion_status,
-    all_dashavarga_vimsopaka, all_saptavarga_vimsopaka, all_shadbalas_from_inputs,
-    all_shadvarga_vimsopaka, all_shodasavarga_vimsopaka, all_sphutas, amsha_longitude,
-    bhrigu_bindu, calculate_ashtakavarga, charakarakas_from_longitudes, compute_bhavas,
+    AmshaVariation, ArudhaResult, AshtakavargaResult, AvasthaInputs, AyanamshaSystem, BhavaBalaBirthPeriod,
+    BhavaBalaInputs, BhavaBalaResult, BhavaConfig, BhavaResult, CharakarakaResult,
+    CharakarakaScheme, Dignity, DrishtiEntry, Graha, GrahaAvasthas, KalaBalaInputs,
+    LajjitadiInputs, LunarNode, NodeDignityPolicy, NodeMode, SAPTA_GRAHAS, SayanadiInputs,
+    ShadbalaInputs, Upagraha, all_avasthas, all_combustion_status, all_dashavarga_vimsopaka,
+    all_saptavarga_vimsopaka, all_shadbalas_from_inputs, all_shadvarga_vimsopaka,
+    all_shodasavarga_vimsopaka, all_sphutas, amsha_longitude, bhrigu_bindu,
+    calculate_ashtakavarga, calculate_bhava_bala, charakarakas_from_longitudes, compute_bhavas,
     dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise, graha_drishti,
     graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord, jd_tdb_to_centuries,
     lagna_longitude_rad, lost_planetary_war, lunar_node_deg_for_epoch_on_plane,
@@ -41,16 +42,18 @@ use crate::dasha::{
 };
 use crate::error::SearchError;
 use crate::jyotish_types::{
-    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
-    BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult, FullKundaliConfig,
-    FullKundaliResult, GrahaEntry, GrahaLongitudes, GrahaPositions, GrahaPositionsConfig,
-    GrahaTropicalLongitudes, MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, SphutalResult,
-    VimsopakaEntry, VimsopakaResult,
+    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BalaBundleResult,
+    BindusConfig, BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult,
+    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudes, GrahaPositions,
+    GrahaPositionsConfig, GrahaTropicalLongitudes, MAX_AMSHA_REQUESTS, ShadbalaEntry,
+    ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
 };
 use crate::panchang::{
     hora_from_sunrises, masa_for_date, panchang_for_date, varsha_for_date, vedic_day_sunrises,
 };
 use crate::sankranti_types::SankrantiConfig;
+
+const BHAVABALA_TWILIGHT_HALF_DAYS: f64 = 5.0 / 60.0;
 
 /// Map a Graha to its dhruv_core::Body for engine queries.
 fn graha_to_body(graha: Graha) -> Option<Body> {
@@ -1278,6 +1281,22 @@ pub fn full_kundali_for_date(
         None
     };
 
+    let bhavabala = if config.include_bhavabala {
+        Some(bhavabala_for_date_with_ctx(
+            engine,
+            eop,
+            utc,
+            location,
+            bhava_config,
+            riseset_config,
+            aya_config,
+            shadbala.as_ref(),
+            &mut ctx,
+        )?)
+    } else {
+        None
+    };
+
     let vimsopaka = if config.include_vimsopaka {
         Some(vimsopaka_for_date_with_ctx(
             engine,
@@ -1358,12 +1377,151 @@ pub fn full_kundali_for_date(
         special_lagnas,
         amshas,
         shadbala,
+        bhavabala,
         vimsopaka,
         avastha,
         charakaraka,
         panchang,
         dasha,
         dasha_snapshots,
+    })
+}
+
+/// Compute Bhava Bala for all 12 houses at a given date and location.
+pub fn bhavabala_for_date(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+) -> Result<BhavaBalaResult, SearchError> {
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
+    bhavabala_for_date_with_ctx(
+        engine,
+        eop,
+        utc,
+        location,
+        bhava_config,
+        riseset_config,
+        aya_config,
+        None,
+        &mut ctx,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn bhavabala_for_date_with_ctx(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    precomputed_shadbala: Option<&ShadbalaResult>,
+    ctx: &mut JyotishContext,
+) -> Result<BhavaBalaResult, SearchError> {
+    let owned_shadbala;
+    let shadbala = if let Some(result) = precomputed_shadbala {
+        result
+    } else {
+        owned_shadbala = shadbala_for_date_with_ctx(
+            engine,
+            eop,
+            utc,
+            location,
+            bhava_config,
+            riseset_config,
+            aya_config,
+            ctx,
+        )?;
+        &owned_shadbala
+    };
+
+    let inputs =
+        assemble_bhavabala_inputs(engine, eop, utc, location, bhava_config, riseset_config, aya_config, shadbala, ctx)?;
+    Ok(calculate_bhava_bala(&inputs))
+}
+
+/// Compute Bhava Bala for a single bhava (1-12).
+#[allow(clippy::too_many_arguments)]
+pub fn bhavabala_for_bhava(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    bhava_number: u8,
+) -> Result<dhruv_vedic_base::BhavaBalaEntry, SearchError> {
+    if bhava_number == 0 || bhava_number > 12 {
+        return Err(SearchError::InvalidConfig(
+            "bhavabala bhava_number must be in 1..=12",
+        ));
+    }
+    let result = bhavabala_for_date(
+        engine,
+        eop,
+        utc,
+        location,
+        bhava_config,
+        riseset_config,
+        aya_config,
+    )?;
+    Ok(result.entries[bhava_number as usize - 1])
+}
+
+/// Compute the bundled bala surfaces for one chart in a shared-context pass.
+#[allow(clippy::too_many_arguments)]
+pub fn balas_for_date(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    node_policy: NodeDignityPolicy,
+) -> Result<BalaBundleResult, SearchError> {
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
+    let shadbala = shadbala_for_date_with_ctx(
+        engine,
+        eop,
+        utc,
+        location,
+        bhava_config,
+        riseset_config,
+        aya_config,
+        &mut ctx,
+    )?;
+    let vimsopaka = vimsopaka_for_date_with_ctx(
+        engine,
+        eop,
+        location,
+        aya_config,
+        node_policy,
+        &mut ctx,
+    )?;
+    let ashtakavarga = ashtakavarga_with_ctx(engine, eop, location, aya_config, &mut ctx)?;
+    let bhavabala = bhavabala_for_date_with_ctx(
+        engine,
+        eop,
+        utc,
+        location,
+        bhava_config,
+        riseset_config,
+        aya_config,
+        Some(&shadbala),
+        &mut ctx,
+    )?;
+    Ok(BalaBundleResult {
+        shadbala,
+        vimsopaka,
+        ashtakavarga,
+        bhavabala,
     })
 }
 
@@ -1843,6 +2001,109 @@ fn assemble_shadbala_inputs(
         },
         varga_rashi_indices,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assemble_bhavabala_inputs(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    shadbala: &ShadbalaResult,
+    ctx: &mut JyotishContext,
+) -> Result<BhavaBalaInputs, SearchError> {
+    let aya = ctx.ayanamsha;
+    let plane = ctx.reference_plane;
+    let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+    let bhava_result = *ctx.bhava_result(engine, eop, location, bhava_config)?;
+    let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
+
+    let mut cusp_sidereal_lons = [0.0; 12];
+    let mut house_lord_strengths = [0.0; 12];
+    for i in 0..12 {
+        cusp_sidereal_lons[i] = ecliptic_to_sidereal(bhava_result.bhavas[i].cusp_deg, aya, plane);
+        let rashi_index = rashi_from_longitude(cusp_sidereal_lons[i]).rashi_index;
+        let lord = rashi_lord_by_index(rashi_index).ok_or(SearchError::InvalidConfig(
+            "invalid bhava rashi for bhavabala",
+        ))?;
+        if lord.index() >= 7 {
+            return Err(SearchError::InvalidConfig(
+                "bhava lord must be a sapta graha for bhavabala",
+            ));
+        }
+        house_lord_strengths[i] = shadbala.entries[lord.index() as usize].total_shashtiamsas;
+    }
+
+    let mut graha_bhava_numbers = [0u8; 9];
+    for graha in ALL_GRAHAS {
+        let idx = graha.index() as usize;
+        graha_bhava_numbers[idx] = find_bhava_number(
+            sidereal_to_ecliptic_tropical(graha_lons.longitudes[idx], aya, plane),
+            &bhava_result,
+        );
+    }
+
+    let mut aspect_virupas = [[0.0; 12]; 9];
+    for graha in ALL_GRAHAS {
+        let gi = graha.index() as usize;
+        for (bi, &cusp_sid) in cusp_sidereal_lons.iter().enumerate() {
+            aspect_virupas[gi][bi] =
+                graha_drishti(graha, graha_lons.longitudes[gi], cusp_sid).total_virupa;
+        }
+    }
+
+    let (vedic_sunrise, next_sunrise) =
+        ctx.sunrise_pair(engine, eop, utc, location, riseset_config)?;
+    let vedic_day_midpoint = (vedic_sunrise + next_sunrise) / 2.0;
+    let vedic_sunset = match compute_rise_set(
+        engine,
+        engine.lsk(),
+        eop,
+        location,
+        RiseSetEvent::Sunset,
+        vedic_day_midpoint,
+        riseset_config,
+    )
+    .map_err(SearchError::from)?
+    {
+        RiseSetResult::Event { jd_tdb, .. } => jd_tdb,
+        _ => return Err(SearchError::NoConvergence("sun never sets for bhavabala birth period")),
+    };
+
+    let birth_period = classify_bhavabala_birth_period(ctx.jd_tdb, vedic_sunrise, vedic_sunset);
+    Ok(BhavaBalaInputs {
+        cusp_sidereal_lons,
+        ascendant_sidereal_lon: lagna_sid,
+        meridian_sidereal_lon: ecliptic_to_sidereal(bhava_result.mc_deg, aya, plane),
+        graha_bhava_numbers,
+        house_lord_strengths,
+        aspect_virupas,
+        birth_period,
+    })
+}
+
+fn classify_bhavabala_birth_period(
+    jd_tdb: f64,
+    vedic_sunrise: f64,
+    vedic_sunset: f64,
+) -> BhavaBalaBirthPeriod {
+    let sunrise_start = vedic_sunrise - BHAVABALA_TWILIGHT_HALF_DAYS;
+    let sunrise_end = vedic_sunrise + BHAVABALA_TWILIGHT_HALF_DAYS;
+    let sunset_start = vedic_sunset - BHAVABALA_TWILIGHT_HALF_DAYS;
+    let sunset_end = vedic_sunset + BHAVABALA_TWILIGHT_HALF_DAYS;
+
+    if (jd_tdb >= sunrise_start && jd_tdb < sunrise_end)
+        || (jd_tdb >= sunset_start && jd_tdb < sunset_end)
+    {
+        BhavaBalaBirthPeriod::Twilight
+    } else if jd_tdb >= sunrise_end && jd_tdb < sunset_start {
+        BhavaBalaBirthPeriod::Day
+    } else {
+        BhavaBalaBirthPeriod::Night
+    }
 }
 
 /// Compute varga rashi indices for the 7 saptavargaja vargas × 7 sapta grahas.

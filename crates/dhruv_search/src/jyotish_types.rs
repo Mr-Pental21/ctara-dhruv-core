@@ -3,7 +3,7 @@
 use crate::panchang_types::PanchangInfo;
 use dhruv_vedic_base::{
     AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaVariation, AshtakavargaResult,
-    BhavaResult, CharakarakaResult, CharakarakaScheme, Dms, DrishtiEntry, Graha,
+    BhavaBalaResult, BhavaResult, CharakarakaResult, CharakarakaScheme, Dms, DrishtiEntry, Graha,
     GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra, NodeDignityPolicy, Rashi, ShadbalaBreakdown,
     SthanaBalaBreakdown,
 };
@@ -298,6 +298,15 @@ pub struct VimsopakaResult {
     pub entries: [VimsopakaEntry; 9],
 }
 
+/// Combined bala surfaces for one chart.
+#[derive(Debug, Clone, Copy)]
+pub struct BalaBundleResult {
+    pub shadbala: ShadbalaResult,
+    pub vimsopaka: VimsopakaResult,
+    pub ashtakavarga: AshtakavargaResult,
+    pub bhavabala: BhavaBalaResult,
+}
+
 // ---------------------------------------------------------------------------
 // Dasha selection config (for FullKundaliConfig)
 // ---------------------------------------------------------------------------
@@ -452,6 +461,8 @@ pub struct FullKundaliConfig {
     pub include_amshas: bool,
     /// Include shadbala section (sapta grahas only).
     pub include_shadbala: bool,
+    /// Include Bhava Bala section (12 houses).
+    pub include_bhavabala: bool,
     /// Include vimsopaka bala section (navagraha).
     pub include_vimsopaka: bool,
     /// Include avastha (planetary state) section.
@@ -495,6 +506,7 @@ impl Default for FullKundaliConfig {
             include_special_lagnas: true,
             include_amshas: false,
             include_shadbala: false,
+            include_bhavabala: false,
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
@@ -545,6 +557,8 @@ pub struct FullKundaliResult {
     pub amshas: Option<AmshaResult>,
     /// Present when `FullKundaliConfig::include_shadbala` is true.
     pub shadbala: Option<ShadbalaResult>,
+    /// Present when `FullKundaliConfig::include_bhavabala` is true.
+    pub bhavabala: Option<BhavaBalaResult>,
     /// Present when `FullKundaliConfig::include_vimsopaka` is true.
     pub vimsopaka: Option<VimsopakaResult>,
     /// Present when `FullKundaliConfig::include_avastha` is true.

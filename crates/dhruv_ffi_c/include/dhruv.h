@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       45
+#define DHRUV_API_VERSION       46
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 
@@ -1005,6 +1005,34 @@ typedef struct {
 } DhruvShadbalaResult;
 
 typedef struct {
+    uint8_t bhava_number;
+    double  cusp_sidereal_lon;
+    uint8_t rashi_index;
+    uint8_t lord_graha_index;
+    double  bhavadhipati;
+    double  dig;
+    double  drishti;
+    double  occupation_bonus;
+    double  rising_bonus;
+    double  total_virupas;
+    double  total_rupas;
+} DhruvBhavaBalaEntry;
+
+typedef struct {
+    DhruvBhavaBalaEntry entries[12];
+} DhruvBhavaBalaResult;
+
+typedef struct {
+    double   cusp_sidereal_lons[12];
+    double   ascendant_sidereal_lon;
+    double   meridian_sidereal_lon;
+    uint8_t  graha_bhava_numbers[9];
+    double   house_lord_strengths[12];
+    double   aspect_virupas[9][12];
+    uint32_t birth_period;
+} DhruvBhavaBalaInputs;
+
+typedef struct {
     uint8_t graha_index;
     double  shadvarga;
     double  saptavarga;
@@ -1015,6 +1043,13 @@ typedef struct {
 typedef struct {
     DhruvVimsopakaEntry entries[9];
 } DhruvVimsopakaResult;
+
+typedef struct {
+    DhruvShadbalaResult     shadbala;
+    DhruvVimsopakaResult    vimsopaka;
+    DhruvAshtakavargaResult ashtakavarga;
+    DhruvBhavaBalaResult    bhavabala;
+} DhruvBalaBundleResult;
 
 /* --- Avastha --- */
 
@@ -1085,6 +1120,7 @@ typedef struct {
     uint8_t  include_special_lagnas;
     uint8_t  include_amshas;
     uint8_t  include_shadbala;
+    uint8_t  include_bhavabala;
     uint8_t  include_vimsopaka;
     uint8_t  include_avastha;
     uint8_t  include_charakaraka;
@@ -1124,6 +1160,8 @@ typedef struct {
     DhruvAmshaChart           amshas[40];
     uint8_t                   shadbala_valid;
     DhruvShadbalaResult       shadbala;
+    uint8_t                   bhavabala_valid;
+    DhruvBhavaBalaResult      bhavabala;
     uint8_t                   vimsopaka_valid;
     DhruvVimsopakaResult      vimsopaka;
     uint8_t                   avastha_valid;
@@ -1861,6 +1899,21 @@ DhruvStatus dhruv_shadbala_for_date(
     uint8_t use_nutation,
     DhruvShadbalaResult *out);
 
+/* --- Bhava Bala --- */
+DhruvStatus dhruv_calculate_bhavabala(
+    const DhruvBhavaBalaInputs *inputs,
+    DhruvBhavaBalaResult *out);
+DhruvStatus dhruv_bhavabala_for_date(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *utc,
+    const DhruvGeoLocation *location,
+    const DhruvBhavaConfig *bhava_config,
+    const DhruvRiseSetConfig *riseset_config,
+    uint32_t ayanamsha_system,
+    uint8_t use_nutation,
+    DhruvBhavaBalaResult *out);
+
 /* --- Vimsopaka --- */
 DhruvStatus dhruv_vimsopaka_for_date(
     const DhruvEngineHandle *engine,
@@ -1871,6 +1924,19 @@ DhruvStatus dhruv_vimsopaka_for_date(
     uint8_t use_nutation,
     uint32_t node_dignity_policy,
     DhruvVimsopakaResult *out);
+
+/* --- Bala Bundle --- */
+DhruvStatus dhruv_balas_for_date(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *utc,
+    const DhruvGeoLocation *location,
+    const DhruvBhavaConfig *bhava_config,
+    const DhruvRiseSetConfig *riseset_config,
+    uint32_t ayanamsha_system,
+    uint8_t use_nutation,
+    uint32_t node_dignity_policy,
+    DhruvBalaBundleResult *out);
 
 /* --- Avastha --- */
 DhruvStatus dhruv_avastha_for_date(

@@ -27,6 +27,36 @@ function shadbalaForDate(
   return r.result;
 }
 
+function calculateBhavaBala(inputs) {
+  const r = addon.calculateBhavaBala(inputs);
+  checkStatus('calculate_bhavabala', r.status);
+  return r.result;
+}
+
+function bhavaBalaForDate(
+  engine,
+  eop,
+  utc,
+  location,
+  ayanamshaSystem = 0,
+  useNutation = true,
+  bhavaConfig = addon.bhavaConfigDefault(),
+  riseSetConfig = addon.riseSetConfigDefault(),
+) {
+  const r = addon.bhavaBalaForDate(
+    engine._handle,
+    eop._handle,
+    utc,
+    location,
+    ayanamshaSystem,
+    !!useNutation,
+    bhavaConfig,
+    riseSetConfig,
+  );
+  checkStatus('bhavabala_for_date', r.status);
+  return r.result;
+}
+
 function vimsopakaForDate(engine, eop, utc, location, ayanamshaSystem = 0, useNutation = true, nodeDignityPolicy = 0) {
   const r = addon.vimsopakaForDate(
     engine._handle,
@@ -38,6 +68,32 @@ function vimsopakaForDate(engine, eop, utc, location, ayanamshaSystem = 0, useNu
     nodeDignityPolicy,
   );
   checkStatus('vimsopaka_for_date', r.status);
+  return r.result;
+}
+
+function balasForDate(
+  engine,
+  eop,
+  utc,
+  location,
+  bhavaConfig = addon.bhavaConfigDefault(),
+  riseSetConfig = addon.riseSetConfigDefault(),
+  ayanamshaSystem = 0,
+  useNutation = true,
+  nodeDignityPolicy = 0,
+) {
+  const r = addon.balasForDate(
+    engine._handle,
+    eop._handle,
+    utc,
+    location,
+    bhavaConfig,
+    riseSetConfig,
+    ayanamshaSystem,
+    !!useNutation,
+    nodeDignityPolicy,
+  );
+  checkStatus('balas_for_date', r.status);
   return r.result;
 }
 
@@ -117,8 +173,11 @@ function fullKundaliForDate(
 }
 
 module.exports = {
+  calculateBhavaBala,
   shadbalaForDate,
+  bhavaBalaForDate,
   vimsopakaForDate,
+  balasForDate,
   avasthaForDate,
   fullKundaliConfigDefault,
   fullKundaliForDate,

@@ -34,8 +34,14 @@ defmodule CtaraDhruv.Jyotish do
   def shadbala(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :shadbala))
 
+  def bhavabala(engine, request),
+    do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :bhavabala))
+
   def vimsopaka(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :vimsopaka))
+
+  def balas(engine, request),
+    do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :balas))
 
   def avastha(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :avastha))

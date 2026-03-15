@@ -865,6 +865,30 @@ class ShadbalaResult:
     entries: list[ShadbalaEntry]
 
 
+@dataclass(frozen=True)
+class BhavaBalaEntry:
+    """Bhava Bala for a single house."""
+
+    bhava_number: int
+    cusp_sidereal_lon: float
+    rashi_index: int
+    lord_graha_index: int
+    bhavadhipati: float
+    dig: float
+    drishti: float
+    occupation_bonus: float
+    rising_bonus: float
+    total_virupas: float
+    total_rupas: float
+
+
+@dataclass(frozen=True)
+class BhavaBalaResult:
+    """Bhava Bala result for all 12 houses."""
+
+    entries: list[BhavaBalaEntry]
+
+
 # ---------------------------------------------------------------------------
 # Vimsopaka
 # ---------------------------------------------------------------------------
@@ -890,6 +914,16 @@ class VimsopakaResult:
     """Vimsopaka result for all 9 navagrahas."""
 
     entries: list[VimsopakaEntry]
+
+
+@dataclass(frozen=True)
+class BalaBundleResult:
+    """Combined bala surfaces for one chart."""
+
+    shadbala: ShadbalaResult
+    vimsopaka: VimsopakaResult
+    ashtakavarga: AshtakavargaResult
+    bhavabala: BhavaBalaResult
 
 
 # ---------------------------------------------------------------------------
@@ -1074,6 +1108,7 @@ class FullKundaliResult:
     special_lagnas: Optional[SpecialLagnas] = None
     amshas: Optional[list[AmshaChart]] = None
     shadbala: Optional[ShadbalaResult] = None
+    bhavabala: Optional[BhavaBalaResult] = None
     vimsopaka: Optional[VimsopakaResult] = None
     avastha: Optional[AllGrahaAvasthas] = None
     charakaraka: Optional[CharakarakaResult] = None

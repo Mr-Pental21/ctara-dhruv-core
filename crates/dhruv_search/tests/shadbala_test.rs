@@ -7,8 +7,9 @@ use std::path::Path;
 use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::{
-    FullKundaliConfig, GrahaPositionsConfig, shadbala_for_date, shadbala_for_graha,
-    vimsopaka_for_date, vimsopaka_for_graha,
+    FullKundaliConfig, GrahaPositionsConfig, balas_for_date, bhavabala_for_bhava,
+    bhavabala_for_date, shadbala_for_date, shadbala_for_graha, vimsopaka_for_date,
+    vimsopaka_for_graha,
 };
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
 use dhruv_vedic_base::{BhavaConfig, Graha, NodeDignityPolicy};
@@ -367,4 +368,134 @@ fn full_kundali_with_shadbala_vimsopaka() {
     for entry in &vimsopaka.entries {
         assert!(entry.shodasavarga >= 0.0 && entry.shodasavarga <= 20.0);
     }
+}
+
+#[test]
+fn bhavabala_all_twelve_valid() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+
+    let result = bhavabala_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+    )
+    .expect("bhavabala_for_date should succeed");
+
+    assert_eq!(result.entries.len(), 12);
+    for (index, entry) in result.entries.iter().enumerate() {
+        assert_eq!(entry.bhava_number as usize, index + 1);
+        assert!(entry.total_virupas.is_finite());
+        assert!(entry.total_rupas.is_finite());
+        assert!(entry.bhavadhipati > 0.0);
+        assert!(entry.dig >= 0.0);
+    }
+}
+
+#[test]
+fn bhavabala_single_bhava_matches_all() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+
+    let all = bhavabala_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+    )
+    .expect("bhavabala_for_date should succeed");
+    let single = bhavabala_for_bhava(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        1,
+    )
+    .expect("bhavabala_for_bhava should succeed");
+
+    assert!((single.total_virupas - all.entries[0].total_virupas).abs() < 0.01);
+}
+
+#[test]
+fn bala_bundle_includes_all_requested_surfaces() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+
+    let result = balas_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        NodeDignityPolicy::default(),
+    )
+    .expect("balas_for_date should succeed");
+
+    assert_eq!(result.shadbala.entries.len(), 7);
+    assert_eq!(result.vimsopaka.entries.len(), 9);
+    assert_eq!(result.bhavabala.entries.len(), 12);
+    assert!(result.ashtakavarga.sav.total_points.iter().any(|&v| v > 0));
+}
+
+#[test]
+fn full_kundali_with_bhavabala() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+
+    let config = FullKundaliConfig {
+        include_shadbala: true,
+        include_bhavabala: true,
+        include_vimsopaka: true,
+        graha_positions_config: GrahaPositionsConfig {
+            include_lagna: true,
+            ..GrahaPositionsConfig::default()
+        },
+        ..FullKundaliConfig::default()
+    };
+
+    let result = dhruv_search::full_kundali_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &config,
+    )
+    .expect("full_kundali_for_date should succeed");
+
+    assert_eq!(result.bhavabala.expect("bhavabala should be Some").entries.len(), 12);
 }

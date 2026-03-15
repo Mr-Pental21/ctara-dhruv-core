@@ -709,6 +709,9 @@ struct KundaliArgs {
     /// Include shadbala
     #[arg(long)]
     include_shadbala: bool,
+    /// Include bhava bala
+    #[arg(long)]
+    include_bhavabala: bool,
     /// Include vimsopaka bala
     #[arg(long)]
     include_vimsopaka: bool,
@@ -1427,6 +1430,40 @@ struct ShadbalaArgs {
 }
 
 #[derive(clap::Args)]
+struct BhavabalaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Optional house filter (1-12)
+    #[arg(long)]
+    bhava: Option<u8>,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct VimsopakaArgs {
     /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
@@ -1449,6 +1486,40 @@ struct VimsopakaArgs {
     /// Optional graha filter (Sun..Ketu)
     #[arg(long)]
     graha: Option<String>,
+    /// Node dignity policy: sign-lord (default) or sama
+    #[arg(long, default_value = "sign-lord")]
+    node_policy: String,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct BalasArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
     /// Node dignity policy: sign-lord (default) or sama
     #[arg(long, default_value = "sign-lord")]
     node_policy: String,
@@ -2166,6 +2237,10 @@ enum Commands {
     },
     /// Compute Shadbala (six-fold planetary strength) for a date and location
     Shadbala(ShadbalaArgs),
+    /// Compute Bhava Bala (house strength) for a date and location
+    Bhavabala(BhavabalaArgs),
+    /// Compute bundled balas for a date and location
+    Balas(BalasArgs),
     /// Compute Vimsopaka Bala (20-point varga dignity strength) for a date and location
     Vimsopaka(VimsopakaArgs),
     /// Compute Chara Karaka assignments for a date
@@ -4091,6 +4166,7 @@ fn main() {
                 args.include_special_lagnas,
                 args.include_amshas,
                 args.include_shadbala,
+                args.include_bhavabala,
                 args.include_vimsopaka,
                 args.include_avastha,
                 args.include_charakaraka,
@@ -6449,6 +6525,76 @@ fn main() {
                 }
             }
         }
+        Commands::Bhavabala(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let bhava_config = BhavaConfig::default();
+            let rs_config = RiseSetConfig::default();
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+
+            if let Some(bhava_number) = args.bhava {
+                let entry = dhruv_search::bhavabala_for_bhava(
+                    &engine,
+                    &eop_kernel,
+                    &utc,
+                    &location,
+                    &bhava_config,
+                    &rs_config,
+                    &aya_config,
+                    bhava_number,
+                )
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                });
+                println!("Bhava Bala for Bhava {} on {}\n", bhava_number, args.date);
+                print_bhavabala_entry(&entry);
+            } else {
+                let result = dhruv_search::bhavabala_for_date(
+                    &engine,
+                    &eop_kernel,
+                    &utc,
+                    &location,
+                    &bhava_config,
+                    &rs_config,
+                    &aya_config,
+                )
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                });
+
+                println!(
+                    "Bhava Bala for {} at {:.6}°N, {:.6}°E\n",
+                    args.date, args.lat, args.lon
+                );
+                println!(
+                    "{:<6} {:<10} {:<8} {:>11} {:>8} {:>8} {:>8} {:>8} {:>8}",
+                    "Bhava", "Rashi", "Lord", "Bhavadhip", "Dig", "Drishti", "Occup", "Rise", "Total"
+                );
+                println!("{}", "-".repeat(86));
+                for entry in &result.entries {
+                    println!(
+                        "{:<6} {:<10} {:<8} {:>11.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2}",
+                        entry.bhava_number,
+                        dhruv_vedic_base::ALL_RASHIS[entry.rashi_index as usize].name(),
+                        entry.lord.english_name(),
+                        entry.bhavadhipati,
+                        entry.dig,
+                        entry.drishti,
+                        entry.occupation_bonus,
+                        entry.rising_bonus,
+                        entry.total_virupas,
+                    );
+                }
+            }
+        }
         Commands::Charakaraka(args) => {
             let system = require_aya_system(args.ayanamsha);
             let utc = parse_utc(&args.date).unwrap_or_else(|e| {
@@ -6562,6 +6708,118 @@ fn main() {
                         entry.shodasavarga,
                     );
                 }
+            }
+        }
+        Commands::Balas(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let bhava_config = BhavaConfig::default();
+            let rs_config = RiseSetConfig::default();
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+            let policy = parse_node_policy(&args.node_policy);
+
+            let result = dhruv_search::balas_for_date(
+                &engine,
+                &eop_kernel,
+                &utc,
+                &location,
+                &bhava_config,
+                &rs_config,
+                &aya_config,
+                policy,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            println!(
+                "Balas for {} at {:.6}°N, {:.6}°E\n",
+                args.date, args.lat, args.lon
+            );
+            println!("Shadbala:");
+            println!(
+                "{:<8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>6}",
+                "Graha", "Sthana", "Dig", "Kala", "Cheshta", "Nais", "Drik", "Total", "Reqd", "Strong"
+            );
+            println!("{}", "-".repeat(88));
+            for entry in &result.shadbala.entries {
+                println!(
+                    "{:<8} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>6}",
+                    entry.graha.english_name(),
+                    entry.sthana.total,
+                    entry.dig,
+                    entry.kala.total,
+                    entry.cheshta,
+                    entry.naisargika,
+                    entry.drik,
+                    entry.total_shashtiamsas,
+                    entry.required_strength,
+                    if entry.is_strong { "Yes" } else { "No" },
+                );
+            }
+            println!();
+
+            println!("Vimsopaka Bala:");
+            println!(
+                "{:<8} {:>10} {:>10} {:>10} {:>12}",
+                "Graha", "Shadvarga", "Saptavarga", "Dashavarga", "Shodasavarga"
+            );
+            println!("{}", "-".repeat(58));
+            for entry in &result.vimsopaka.entries {
+                println!(
+                    "{:<8} {:>10.2} {:>10.2} {:>10.2} {:>12.2}",
+                    entry.graha.english_name(),
+                    entry.shadvarga,
+                    entry.saptavarga,
+                    entry.dashavarga,
+                    entry.shodasavarga,
+                );
+            }
+            println!();
+
+            println!("Sarva Ashtakavarga totals:");
+            print!("  Total      ");
+            for &p in &result.ashtakavarga.sav.total_points {
+                print!("{:>4}", p);
+            }
+            println!();
+            print!("  Trikona    ");
+            for &p in &result.ashtakavarga.sav.after_trikona {
+                print!("{:>4}", p);
+            }
+            println!();
+            print!("  Ekadhipatya");
+            for &p in &result.ashtakavarga.sav.after_ekadhipatya {
+                print!("{:>4}", p);
+            }
+            println!("\n");
+
+            println!("Bhava Bala:");
+            println!(
+                "{:<6} {:<10} {:<8} {:>11} {:>8} {:>8} {:>8} {:>8} {:>8}",
+                "Bhava", "Rashi", "Lord", "Bhavadhip", "Dig", "Drishti", "Occup", "Rise", "Total"
+            );
+            println!("{}", "-".repeat(86));
+            for entry in &result.bhavabala.entries {
+                println!(
+                    "{:<6} {:<10} {:<8} {:>11.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2}",
+                    entry.bhava_number,
+                    dhruv_vedic_base::ALL_RASHIS[entry.rashi_index as usize].name(),
+                    entry.lord.english_name(),
+                    entry.bhavadhipati,
+                    entry.dig,
+                    entry.drishti,
+                    entry.occupation_bonus,
+                    entry.rising_bonus,
+                    entry.total_virupas,
+                );
             }
         }
         Commands::Amsha { lon, amsha } => {
@@ -7474,6 +7732,21 @@ fn print_shadbala_entry(entry: &dhruv_search::ShadbalaEntry) {
     );
 }
 
+fn print_bhavabala_entry(entry: &dhruv_search::BhavaBalaEntry) {
+    println!("  Cusp:            {}", format_rashi_dms(entry.cusp_sidereal_lon));
+    println!("  House Lord:      {}", entry.lord.english_name());
+    println!("  Bhavadhipati:    {:>8.2}", entry.bhavadhipati);
+    println!("  Dig Bala:        {:>8.2}", entry.dig);
+    println!("  Drishti Bala:    {:>8.2}", entry.drishti);
+    println!("  Occupation:      {:>8.2}", entry.occupation_bonus);
+    println!("  Rising Bonus:    {:>8.2}", entry.rising_bonus);
+    println!("  ─────────────────────────");
+    println!(
+        "  Total:           {:>8.2} virupas ({:.2} rupas)",
+        entry.total_virupas, entry.total_rupas
+    );
+}
+
 fn print_graha_avastha(entry: &dhruv_vedic_base::GrahaAvasthas) {
     println!(
         "  Baladi:     {} (strength {:.2})",
@@ -7532,6 +7805,7 @@ struct ResolvedKundaliFlags {
     include_special_lagnas: bool,
     include_amshas: bool,
     include_shadbala: bool,
+    include_bhavabala: bool,
     include_vimsopaka: bool,
     include_avastha: bool,
     include_charakaraka: bool,
@@ -7550,6 +7824,7 @@ fn resolve_kundali_flags(
     include_special_lagnas: bool,
     include_amshas: bool,
     include_shadbala: bool,
+    include_bhavabala: bool,
     include_vimsopaka: bool,
     include_avastha: bool,
     include_charakaraka: bool,
@@ -7564,6 +7839,7 @@ fn resolve_kundali_flags(
         || include_special_lagnas
         || include_amshas
         || include_shadbala
+        || include_bhavabala
         || include_vimsopaka
         || include_avastha
         || include_charakaraka
@@ -7581,6 +7857,7 @@ fn resolve_kundali_flags(
             include_special_lagnas: true,
             include_amshas: true,
             include_shadbala: true,
+            include_bhavabala: true,
             include_vimsopaka: true,
             include_avastha: true,
             include_charakaraka: true,
@@ -7598,6 +7875,7 @@ fn resolve_kundali_flags(
             include_special_lagnas,
             include_amshas,
             include_shadbala,
+            include_bhavabala,
             include_vimsopaka,
             include_avastha,
             include_charakaraka,
@@ -7616,6 +7894,7 @@ fn resolve_kundali_flags(
             include_special_lagnas: true,
             include_amshas: false,
             include_shadbala: false,
+            include_bhavabala: false,
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
@@ -7690,6 +7969,7 @@ fn build_kundali_config(
         include_amshas: resolved.include_amshas,
         amsha_selection,
         include_shadbala: resolved.include_shadbala,
+        include_bhavabala: resolved.include_bhavabala,
         include_vimsopaka: resolved.include_vimsopaka,
         include_avastha: resolved.include_avastha,
         include_charakaraka: resolved.include_charakaraka,
@@ -7994,6 +8274,34 @@ fn print_kundali(
         writeln!(w)?;
     }
 
+    if flags.include_bhavabala
+        && let Some(ref bb) = result.bhavabala
+    {
+        writeln!(w, "Bhava Bala:")?;
+        writeln!(
+            w,
+            "  {:<6} {:<10} {:<8} {:>11} {:>8} {:>8} {:>8} {:>8} {:>8}",
+            "Bhava", "Rashi", "Lord", "Bhavadhip", "Dig", "Drishti", "Occup", "Rise", "Total"
+        )?;
+        writeln!(w, "  {}", "-".repeat(76))?;
+        for e in &bb.entries {
+            writeln!(
+                w,
+                "  {:<6} {:<10} {:<8} {:>11.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2}",
+                e.bhava_number,
+                dhruv_vedic_base::ALL_RASHIS[e.rashi_index as usize].name(),
+                e.lord.english_name(),
+                e.bhavadhipati,
+                e.dig,
+                e.drishti,
+                e.occupation_bonus,
+                e.rising_bonus,
+                e.total_virupas,
+            )?;
+        }
+        writeln!(w)?;
+    }
+
     if flags.include_vimsopaka
         && let Some(ref vm) = result.vimsopaka
     {
@@ -8220,7 +8528,7 @@ mod tests {
     fn test_resolve_kundali_flags_default() {
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
@@ -8241,7 +8549,7 @@ mod tests {
     fn test_resolve_kundali_flags_all() {
         let f = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
@@ -8258,7 +8566,7 @@ mod tests {
     fn test_resolve_kundali_flags_graha_only() {
         let f = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         assert!(
             f.include_bhava_cusps,
@@ -8275,7 +8583,7 @@ mod tests {
     fn test_resolve_kundali_flags_calendar_implies_panchang() {
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false, true,
+            false, false, true,
         );
         assert!(f.include_panchang);
         assert!(f.include_calendar);
@@ -8293,7 +8601,7 @@ mod tests {
         //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            true, false,
+            false, true, false,
         );
         assert!(f.include_panchang);
         assert!(!f.include_graha);
@@ -8315,7 +8623,7 @@ mod tests {
     fn test_build_kundali_config_defaults_with_dasha() {
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8344,7 +8652,7 @@ mod tests {
         //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            true, false,
+            false, true, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8363,7 +8671,7 @@ mod tests {
     fn test_build_kundali_config_graha_with_dasha() {
         let resolved = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8382,7 +8690,7 @@ mod tests {
     fn test_build_kundali_config_all_with_dasha() {
         let resolved = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8404,7 +8712,7 @@ mod tests {
     fn test_build_kundali_config_no_dasha_without_systems() {
         let resolved = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8425,7 +8733,7 @@ mod tests {
         // --include-amshas alone (no --include-graha)
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, true, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8446,7 +8754,7 @@ mod tests {
     fn test_build_kundali_config_node_policy() {
         let resolved = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false, false,
+            false, false, false,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -8496,6 +8804,7 @@ mod tests {
             special_lagnas: None,
             amshas: None,
             shadbala: None,
+            bhavabala: None,
             vimsopaka: None,
             avastha: None,
             charakaraka: None,
@@ -8543,6 +8852,7 @@ mod tests {
             include_special_lagnas: false,
             include_amshas: false,
             include_shadbala: false,
+            include_bhavabala: false,
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
@@ -8610,6 +8920,7 @@ mod tests {
             include_special_lagnas: false,
             include_amshas: false,
             include_shadbala: false,
+            include_bhavabala: false,
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
@@ -8638,6 +8949,7 @@ mod tests {
             include_special_lagnas: false,
             include_amshas: false,
             include_shadbala: false,
+            include_bhavabala: false,
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,

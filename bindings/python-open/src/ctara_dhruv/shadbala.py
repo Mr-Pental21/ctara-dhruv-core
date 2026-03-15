@@ -10,8 +10,14 @@ from ._ffi import ffi, lib
 from ._check import check
 from .types import (
     AllGrahaAvasthas,
+    AshtakavargaResult,
+    BalaBundleResult,
+    BhavaBalaEntry,
+    BhavaBalaResult,
+    BhinnaAshtakavarga,
     GrahaAvasthas,
     KalaBalaBreakdown,
+    SarvaAshtakavarga,
     SayanadiResult,
     ShadbalaEntry,
     ShadbalaResult,
@@ -64,6 +70,89 @@ def _make_riseset_config(riseset_config):
     cfg.sun_limb = riseset_config.get("sun_limb", 0)
     cfg.altitude_correction = riseset_config.get("altitude_correction", 0)
     return cfg
+
+
+def _extract_bhavabala_entry(e):
+    return BhavaBalaEntry(
+        bhava_number=e.bhava_number,
+        cusp_sidereal_lon=e.cusp_sidereal_lon,
+        rashi_index=e.rashi_index,
+        lord_graha_index=e.lord_graha_index,
+        bhavadhipati=e.bhavadhipati,
+        dig=e.dig,
+        drishti=e.drishti,
+        occupation_bonus=e.occupation_bonus,
+        rising_bonus=e.rising_bonus,
+        total_virupas=e.total_virupas,
+        total_rupas=e.total_rupas,
+    )
+
+
+def _extract_bhavabala_result(out):
+    return BhavaBalaResult(entries=[_extract_bhavabala_entry(out.entries[i]) for i in range(12)])
+
+
+def _extract_ashtakavarga_result(out):
+    bavs = []
+    for i in range(7):
+        b = out.bavs[i]
+        bavs.append(BhinnaAshtakavarga(
+            graha_index=b.graha_index,
+            points=[b.points[j] for j in range(12)],
+            contributors=[[b.contributors[r][c] for c in range(8)] for r in range(12)],
+        ))
+    sav = SarvaAshtakavarga(
+        total_points=[out.sav.total_points[j] for j in range(12)],
+        after_trikona=[out.sav.after_trikona[j] for j in range(12)],
+        after_ekadhipatya=[out.sav.after_ekadhipatya[j] for j in range(12)],
+    )
+    return AshtakavargaResult(bavs=bavs, sav=sav)
+
+
+def _extract_shadbala_entry(e):
+    sthana = SthanaBalaBreakdown(
+        uchcha=e.sthana.uchcha,
+        saptavargaja=e.sthana.saptavargaja,
+        ojhayugma=e.sthana.ojhayugma,
+        kendradi=e.sthana.kendradi,
+        drekkana=e.sthana.drekkana,
+        total=e.sthana.total,
+    )
+    kala = KalaBalaBreakdown(
+        nathonnatha=e.kala.nathonnatha,
+        paksha=e.kala.paksha,
+        tribhaga=e.kala.tribhaga,
+        abda=e.kala.abda,
+        masa=e.kala.masa,
+        vara=e.kala.vara,
+        hora=e.kala.hora,
+        ayana=e.kala.ayana,
+        yuddha=e.kala.yuddha,
+        total=e.kala.total,
+    )
+    return ShadbalaEntry(
+        graha_index=e.graha_index,
+        sthana=sthana,
+        dig=e.dig,
+        kala=kala,
+        cheshta=e.cheshta,
+        naisargika=e.naisargika,
+        drik=e.drik,
+        total_shashtiamsas=e.total_shashtiamsas,
+        total_rupas=e.total_rupas,
+        required_strength=e.required_strength,
+        is_strong=bool(e.is_strong),
+    )
+
+
+def _extract_vimsopaka_entry(e):
+    return VimsopakaEntry(
+        graha_index=e.graha_index,
+        shadvarga=e.shadvarga,
+        saptavarga=e.saptavarga,
+        dashavarga=e.dashavarga,
+        shodasavarga=e.shodasavarga,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +247,62 @@ def shadbala(
     return ShadbalaResult(entries=entries)
 
 
+def calculate_bhavabala(inputs):
+    """Compute Bhava Bala from low-level assembled inputs."""
+    cin = ffi.new("DhruvBhavaBalaInputs *")
+    for i, value in enumerate(inputs["cusp_sidereal_lons"]):
+        cin.cusp_sidereal_lons[i] = value
+    cin.ascendant_sidereal_lon = inputs["ascendant_sidereal_lon"]
+    cin.meridian_sidereal_lon = inputs["meridian_sidereal_lon"]
+    for i, value in enumerate(inputs["graha_bhava_numbers"]):
+        cin.graha_bhava_numbers[i] = value
+    for i, value in enumerate(inputs["house_lord_strengths"]):
+        cin.house_lord_strengths[i] = value
+    for gi, row in enumerate(inputs["aspect_virupas"]):
+        for bi, value in enumerate(row):
+            cin.aspect_virupas[gi][bi] = value
+    cin.birth_period = inputs["birth_period"]
+
+    out = ffi.new("DhruvBhavaBalaResult *")
+    check(lib.dhruv_calculate_bhavabala(cin, out), "calculate_bhavabala")
+    return _extract_bhavabala_result(out)
+
+
+def bhavabala(
+    engine,
+    lsk,
+    eop,
+    jd_utc,
+    location,
+    ayanamsha_system=0,
+    use_nutation=1,
+    bhava_config=None,
+    riseset_config=None,
+):
+    """Compute Bhava Bala for all 12 houses."""
+    utc = _make_utc(jd_utc)
+    loc = _make_location(location)
+    bhava_cfg = _make_bhava_config(bhava_config)
+    rs_cfg = _make_riseset_config(riseset_config)
+
+    out = ffi.new("DhruvBhavaBalaResult *")
+    check(
+        lib.dhruv_bhavabala_for_date(
+            engine._ptr,
+            eop,
+            utc,
+            loc,
+            bhava_cfg,
+            rs_cfg,
+            ayanamsha_system,
+            use_nutation,
+            out,
+        ),
+        "bhavabala_for_date",
+    )
+    return _extract_bhavabala_result(out)
+
+
 # ---------------------------------------------------------------------------
 # Vimsopaka
 # ---------------------------------------------------------------------------
@@ -217,6 +362,48 @@ def vimsopaka(
             shodasavarga=e.shodasavarga,
         ))
     return VimsopakaResult(entries=entries)
+
+
+def balas(
+    engine,
+    lsk,
+    eop,
+    jd_utc,
+    location,
+    ayanamsha_system=0,
+    use_nutation=1,
+    node_dignity_policy=0,
+    bhava_config=None,
+    riseset_config=None,
+):
+    """Compute the bundled bala surfaces for one chart."""
+    utc = _make_utc(jd_utc)
+    loc = _make_location(location)
+    bhava_cfg = _make_bhava_config(bhava_config)
+    rs_cfg = _make_riseset_config(riseset_config)
+
+    out = ffi.new("DhruvBalaBundleResult *")
+    check(
+        lib.dhruv_balas_for_date(
+            engine._ptr,
+            eop,
+            utc,
+            loc,
+            bhava_cfg,
+            rs_cfg,
+            ayanamsha_system,
+            use_nutation,
+            node_dignity_policy,
+            out,
+        ),
+        "balas_for_date",
+    )
+    return BalaBundleResult(
+        shadbala=ShadbalaResult(entries=[_extract_shadbala_entry(out.shadbala.entries[i]) for i in range(7)]),
+        vimsopaka=VimsopakaResult(entries=[_extract_vimsopaka_entry(out.vimsopaka.entries[i]) for i in range(9)]),
+        ashtakavarga=_extract_ashtakavarga_result(out.ashtakavarga),
+        bhavabala=_extract_bhavabala_result(out.bhavabala),
+    )
 
 
 # ---------------------------------------------------------------------------

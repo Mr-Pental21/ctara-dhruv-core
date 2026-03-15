@@ -11,20 +11,21 @@ use dhruv_search::{
     ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, GrahanConfig,
     LunarPhase, MaxSpeedEvent, MaxSpeedType, SankrantiConfig, SearchError, StationType,
     StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanType, amsha_charts_for_date,
-    avastha_for_date, ayana_for_date, body_ecliptic_lon_lat, charakaraka_for_date,
-    dasha_child_period_for_birth, dasha_children_for_birth, dasha_complete_level_for_birth,
-    dasha_hierarchy_for_birth, dasha_level0_entity_for_birth, dasha_level0_for_birth,
-    dasha_snapshot_at, elongation_at, full_kundali_for_date, ghatika_for_date,
-    ghatika_from_sunrises, graha_sidereal_longitudes, graha_tropical_longitudes, hora_for_date,
-    hora_from_sunrises, karana_at, karana_for_date, masa_for_date, nakshatra_at,
-    nakshatra_for_date, next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed,
-    next_purnima, next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan,
-    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
-    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
-    search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
-    search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date, sidereal_sum_at,
-    special_lagnas_for_date, tithi_at, tithi_for_date, vaar_for_date, vaar_from_sunrises,
-    varsha_for_date, vedic_day_sunrises, vimsopaka_for_date, yoga_at, yoga_for_date,
+    avastha_for_date, ayana_for_date, balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat,
+    charakaraka_for_date, dasha_child_period_for_birth, dasha_children_for_birth,
+    dasha_complete_level_for_birth, dasha_hierarchy_for_birth, dasha_level0_entity_for_birth,
+    dasha_level0_for_birth, dasha_snapshot_at, elongation_at, full_kundali_for_date,
+    ghatika_for_date, ghatika_from_sunrises, graha_sidereal_longitudes,
+    graha_tropical_longitudes, hora_for_date, hora_from_sunrises, karana_at, karana_for_date,
+    masa_for_date, nakshatra_at, nakshatra_for_date, next_amavasya, next_chandra_grahan,
+    next_conjunction, next_max_speed, next_purnima, next_sankranti, next_specific_sankranti,
+    next_stationary, next_surya_grahan, prev_amavasya, prev_chandra_grahan, prev_conjunction,
+    prev_max_speed, prev_purnima, prev_sankranti, prev_specific_sankranti, prev_stationary,
+    prev_surya_grahan, search_amavasyas, search_chandra_grahan, search_conjunctions,
+    search_max_speed, search_purnimas, search_sankrantis, search_stationary,
+    search_surya_grahan, shadbala_for_date, sidereal_sum_at, special_lagnas_for_date, tithi_at,
+    tithi_for_date, vaar_for_date, vaar_from_sunrises, varsha_for_date, vedic_day_sunrises,
+    vimsopaka_for_date, yoga_at, yoga_for_date,
 };
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraError, TaraId};
 use dhruv_time::UtcTime;
@@ -48,7 +49,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 45;
+pub const DHRUV_API_VERSION: u32 = 46;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -462,6 +463,7 @@ fn full_kundali_config_from_ffi(
         include_special_lagnas: cfg.include_special_lagnas != 0,
         include_amshas: cfg.include_amshas != 0,
         include_shadbala: cfg.include_shadbala != 0,
+        include_bhavabala: cfg.include_bhavabala != 0,
         include_vimsopaka: cfg.include_vimsopaka != 0,
         include_avastha: cfg.include_avastha != 0,
         include_charakaraka: cfg.include_charakaraka != 0,
@@ -8021,6 +8023,177 @@ fn drishti_entry_to_ffi(entry: &dhruv_vedic_base::DrishtiEntry) -> DhruvDrishtiE
     }
 }
 
+fn ashtakavarga_result_to_ffi(
+    result: &dhruv_vedic_base::AshtakavargaResult,
+) -> DhruvAshtakavargaResult {
+    let mut out = DhruvAshtakavargaResult {
+        bavs: [DhruvBhinnaAshtakavarga {
+            graha_index: 0,
+            points: [0; 12],
+            contributors: [[0; 8]; 12],
+        }; 7],
+        sav: DhruvSarvaAshtakavarga {
+            total_points: [0; 12],
+            after_trikona: [0; 12],
+            after_ekadhipatya: [0; 12],
+        },
+    };
+    for (i, bav) in result.bavs.iter().enumerate() {
+        out.bavs[i] = DhruvBhinnaAshtakavarga {
+            graha_index: bav.graha_index,
+            points: bav.points,
+            contributors: bav.contributors,
+        };
+    }
+    out.sav = DhruvSarvaAshtakavarga {
+        total_points: result.sav.total_points,
+        after_trikona: result.sav.after_trikona,
+        after_ekadhipatya: result.sav.after_ekadhipatya,
+    };
+    out
+}
+
+fn shadbala_result_to_ffi(result: &dhruv_search::ShadbalaResult) -> DhruvShadbalaResult {
+    let mut out = DhruvShadbalaResult {
+        entries: [DhruvShadbalaEntry {
+            graha_index: 0,
+            sthana: DhruvSthanaBalaBreakdown {
+                uchcha: 0.0,
+                saptavargaja: 0.0,
+                ojhayugma: 0.0,
+                kendradi: 0.0,
+                drekkana: 0.0,
+                total: 0.0,
+            },
+            dig: 0.0,
+            kala: DhruvKalaBalaBreakdown {
+                nathonnatha: 0.0,
+                paksha: 0.0,
+                tribhaga: 0.0,
+                abda: 0.0,
+                masa: 0.0,
+                vara: 0.0,
+                hora: 0.0,
+                ayana: 0.0,
+                yuddha: 0.0,
+                total: 0.0,
+            },
+            cheshta: 0.0,
+            naisargika: 0.0,
+            drik: 0.0,
+            total_shashtiamsas: 0.0,
+            total_rupas: 0.0,
+            required_strength: 0.0,
+            is_strong: 0,
+        }; 7],
+    };
+    for (i, e) in result.entries.iter().enumerate() {
+        out.entries[i] = DhruvShadbalaEntry {
+            graha_index: e.graha.index(),
+            sthana: DhruvSthanaBalaBreakdown {
+                uchcha: e.sthana.uchcha,
+                saptavargaja: e.sthana.saptavargaja,
+                ojhayugma: e.sthana.ojhayugma,
+                kendradi: e.sthana.kendradi,
+                drekkana: e.sthana.drekkana,
+                total: e.sthana.total,
+            },
+            dig: e.dig,
+            kala: DhruvKalaBalaBreakdown {
+                nathonnatha: e.kala.nathonnatha,
+                paksha: e.kala.paksha,
+                tribhaga: e.kala.tribhaga,
+                abda: e.kala.abda,
+                masa: e.kala.masa,
+                vara: e.kala.vara,
+                hora: e.kala.hora,
+                ayana: e.kala.ayana,
+                yuddha: e.kala.yuddha,
+                total: e.kala.total,
+            },
+            cheshta: e.cheshta,
+            naisargika: e.naisargika,
+            drik: e.drik,
+            total_shashtiamsas: e.total_shashtiamsas,
+            total_rupas: e.total_rupas,
+            required_strength: e.required_strength,
+            is_strong: e.is_strong as u8,
+        };
+    }
+    out
+}
+
+fn bhavabala_entry_to_ffi(entry: &dhruv_vedic_base::BhavaBalaEntry) -> DhruvBhavaBalaEntry {
+    DhruvBhavaBalaEntry {
+        bhava_number: entry.bhava_number,
+        cusp_sidereal_lon: entry.cusp_sidereal_lon,
+        rashi_index: entry.rashi_index,
+        lord_graha_index: entry.lord.index(),
+        bhavadhipati: entry.bhavadhipati,
+        dig: entry.dig,
+        drishti: entry.drishti,
+        occupation_bonus: entry.occupation_bonus,
+        rising_bonus: entry.rising_bonus,
+        total_virupas: entry.total_virupas,
+        total_rupas: entry.total_rupas,
+    }
+}
+
+fn bhavabala_result_to_ffi(result: &dhruv_vedic_base::BhavaBalaResult) -> DhruvBhavaBalaResult {
+    let mut out = DhruvBhavaBalaResult {
+        entries: [DhruvBhavaBalaEntry {
+            bhava_number: 0,
+            cusp_sidereal_lon: 0.0,
+            rashi_index: 0,
+            lord_graha_index: 0,
+            bhavadhipati: 0.0,
+            dig: 0.0,
+            drishti: 0.0,
+            occupation_bonus: 0.0,
+            rising_bonus: 0.0,
+            total_virupas: 0.0,
+            total_rupas: 0.0,
+        }; 12],
+    };
+    for (i, entry) in result.entries.iter().enumerate() {
+        out.entries[i] = bhavabala_entry_to_ffi(entry);
+    }
+    out
+}
+
+fn vimsopaka_result_to_ffi(result: &dhruv_search::VimsopakaResult) -> DhruvVimsopakaResult {
+    let mut out = DhruvVimsopakaResult {
+        entries: [DhruvVimsopakaEntry {
+            graha_index: 0,
+            shadvarga: 0.0,
+            saptavarga: 0.0,
+            dashavarga: 0.0,
+            shodasavarga: 0.0,
+        }; 9],
+    };
+    for (i, e) in result.entries.iter().enumerate() {
+        out.entries[i] = DhruvVimsopakaEntry {
+            graha_index: e.graha.index(),
+            shadvarga: e.shadvarga,
+            saptavarga: e.saptavarga,
+            dashavarga: e.dashavarga,
+            shodasavarga: e.shodasavarga,
+        };
+    }
+    out
+}
+
+fn bhava_bala_birth_period_from_code(
+    code: u32,
+) -> Result<dhruv_vedic_base::BhavaBalaBirthPeriod, DhruvStatus> {
+    match code {
+        0 => Ok(dhruv_vedic_base::BhavaBalaBirthPeriod::Day),
+        1 => Ok(dhruv_vedic_base::BhavaBalaBirthPeriod::Twilight),
+        2 => Ok(dhruv_vedic_base::BhavaBalaBirthPeriod::Night),
+        _ => Err(DhruvStatus::InvalidInput),
+    }
+}
+
 /// Compute graha drishti (planetary aspects) with optional extensions.
 ///
 /// # Safety
@@ -8404,6 +8577,50 @@ pub struct DhruvShadbalaResult {
     pub entries: [DhruvShadbalaEntry; 7],
 }
 
+/// C-compatible Bhava Bala entry for a single house.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvBhavaBalaEntry {
+    pub bhava_number: u8,
+    pub cusp_sidereal_lon: f64,
+    pub rashi_index: u8,
+    pub lord_graha_index: u8,
+    pub bhavadhipati: f64,
+    pub dig: f64,
+    pub drishti: f64,
+    pub occupation_bonus: f64,
+    pub rising_bonus: f64,
+    pub total_virupas: f64,
+    pub total_rupas: f64,
+}
+
+/// C-compatible Bhava Bala result for all 12 houses.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvBhavaBalaResult {
+    pub entries: [DhruvBhavaBalaEntry; 12],
+}
+
+/// C-compatible low-level inputs for Bhava Bala.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvBhavaBalaInputs {
+    /// Sidereal cusp longitudes for houses 1..12.
+    pub cusp_sidereal_lons: [f64; 12],
+    /// Sidereal ascendant longitude.
+    pub ascendant_sidereal_lon: f64,
+    /// Sidereal meridian (MC) longitude.
+    pub meridian_sidereal_lon: f64,
+    /// Bhava number (1-12, or 0 if unknown) for each graha in Sun..Ketu order.
+    pub graha_bhava_numbers: [u8; 9],
+    /// House-lord Shadbala totals in virupas for each house.
+    pub house_lord_strengths: [f64; 12],
+    /// Aspect virupas from each graha to each house cusp in Sun..Ketu x house order.
+    pub aspect_virupas: [[f64; 12]; 9],
+    /// Birth-period code: 0=Day, 1=Twilight, 2=Night.
+    pub birth_period: u32,
+}
+
 /// C-compatible Vimsopaka entry for a single graha.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -8420,6 +8637,16 @@ pub struct DhruvVimsopakaEntry {
 #[derive(Debug, Clone, Copy)]
 pub struct DhruvVimsopakaResult {
     pub entries: [DhruvVimsopakaEntry; 9],
+}
+
+/// C-compatible combined bala bundle result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvBalaBundleResult {
+    pub shadbala: DhruvShadbalaResult,
+    pub vimsopaka: DhruvVimsopakaResult,
+    pub ashtakavarga: DhruvAshtakavargaResult,
+    pub bhavabala: DhruvBhavaBalaResult,
 }
 
 // ---------------------------------------------------------------------------
@@ -8483,6 +8710,8 @@ pub struct DhruvFullKundaliConfig {
     pub include_amshas: u8,
     /// Include shadbala section (sapta grahas only).
     pub include_shadbala: u8,
+    /// Include Bhava Bala section (12 houses).
+    pub include_bhavabala: u8,
     /// Include vimsopaka bala section (navagraha).
     pub include_vimsopaka: u8,
     /// Include avastha (planetary state) section.
@@ -8557,6 +8786,8 @@ pub struct DhruvFullKundaliResult {
     pub amshas: [DhruvAmshaChart; DHRUV_MAX_AMSHA_REQUESTS],
     pub shadbala_valid: u8,
     pub shadbala: DhruvShadbalaResult,
+    pub bhavabala_valid: u8,
+    pub bhavabala: DhruvBhavaBalaResult,
     pub vimsopaka_valid: u8,
     pub vimsopaka: DhruvVimsopakaResult,
     pub avastha_valid: u8,
@@ -8633,6 +8864,7 @@ pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig 
         include_special_lagnas: 1,
         include_amshas: 0,
         include_shadbala: 0,
+        include_bhavabala: 0,
         include_vimsopaka: 0,
         include_avastha: 0,
         include_charakaraka: 0,
@@ -8716,7 +8948,7 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
         None => return DhruvStatus::InvalidQuery,
     };
 
-    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
+        let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
@@ -8864,54 +9096,17 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
 
             if let Some(ref sb) = result.shadbala {
                 out.shadbala_valid = 1;
-                for i in 0..7 {
-                    let e = &sb.entries[i];
-                    out.shadbala.entries[i] = DhruvShadbalaEntry {
-                        graha_index: e.graha.index(),
-                        sthana: DhruvSthanaBalaBreakdown {
-                            uchcha: e.sthana.uchcha,
-                            saptavargaja: e.sthana.saptavargaja,
-                            ojhayugma: e.sthana.ojhayugma,
-                            kendradi: e.sthana.kendradi,
-                            drekkana: e.sthana.drekkana,
-                            total: e.sthana.total,
-                        },
-                        dig: e.dig,
-                        kala: DhruvKalaBalaBreakdown {
-                            nathonnatha: e.kala.nathonnatha,
-                            paksha: e.kala.paksha,
-                            tribhaga: e.kala.tribhaga,
-                            abda: e.kala.abda,
-                            masa: e.kala.masa,
-                            vara: e.kala.vara,
-                            hora: e.kala.hora,
-                            ayana: e.kala.ayana,
-                            yuddha: e.kala.yuddha,
-                            total: e.kala.total,
-                        },
-                        cheshta: e.cheshta,
-                        naisargika: e.naisargika,
-                        drik: e.drik,
-                        total_shashtiamsas: e.total_shashtiamsas,
-                        total_rupas: e.total_rupas,
-                        required_strength: e.required_strength,
-                        is_strong: e.is_strong as u8,
-                    };
-                }
+                out.shadbala = shadbala_result_to_ffi(sb);
+            }
+
+            if let Some(ref bb) = result.bhavabala {
+                out.bhavabala_valid = 1;
+                out.bhavabala = bhavabala_result_to_ffi(bb);
             }
 
             if let Some(ref vm) = result.vimsopaka {
                 out.vimsopaka_valid = 1;
-                for i in 0..9 {
-                    let e = &vm.entries[i];
-                    out.vimsopaka.entries[i] = DhruvVimsopakaEntry {
-                        graha_index: e.graha.index(),
-                        shadvarga: e.shadvarga,
-                        saptavarga: e.saptavarga,
-                        dashavarga: e.dashavarga,
-                        shodasavarga: e.shodasavarga,
-                    };
-                }
+                out.vimsopaka = vimsopaka_result_to_ffi(vm);
             }
 
             if let Some(ref av) = result.avastha {
@@ -9340,40 +9535,107 @@ pub unsafe extern "C" fn dhruv_shadbala_for_date(
     ) {
         Ok(result) => {
             let out = unsafe { &mut *out };
-            for i in 0..7 {
-                let e = &result.entries[i];
-                out.entries[i] = DhruvShadbalaEntry {
-                    graha_index: e.graha.index(),
-                    sthana: DhruvSthanaBalaBreakdown {
-                        uchcha: e.sthana.uchcha,
-                        saptavargaja: e.sthana.saptavargaja,
-                        ojhayugma: e.sthana.ojhayugma,
-                        kendradi: e.sthana.kendradi,
-                        drekkana: e.sthana.drekkana,
-                        total: e.sthana.total,
-                    },
-                    dig: e.dig,
-                    kala: DhruvKalaBalaBreakdown {
-                        nathonnatha: e.kala.nathonnatha,
-                        paksha: e.kala.paksha,
-                        tribhaga: e.kala.tribhaga,
-                        abda: e.kala.abda,
-                        masa: e.kala.masa,
-                        vara: e.kala.vara,
-                        hora: e.kala.hora,
-                        ayana: e.kala.ayana,
-                        yuddha: e.kala.yuddha,
-                        total: e.kala.total,
-                    },
-                    cheshta: e.cheshta,
-                    naisargika: e.naisargika,
-                    drik: e.drik,
-                    total_shashtiamsas: e.total_shashtiamsas,
-                    total_rupas: e.total_rupas,
-                    required_strength: e.required_strength,
-                    is_strong: e.is_strong as u8,
-                };
-            }
+            *out = shadbala_result_to_ffi(&result);
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Compute Bhava Bala from low-level preassembled inputs (pure math).
+///
+/// # Safety
+/// `inputs` and `out` must be valid pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_calculate_bhavabala(
+    inputs: *const DhruvBhavaBalaInputs,
+    out: *mut DhruvBhavaBalaResult,
+) -> DhruvStatus {
+    if inputs.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+
+    let inputs = unsafe { &*inputs };
+    let birth_period = match bhava_bala_birth_period_from_code(inputs.birth_period) {
+        Ok(value) => value,
+        Err(status) => return status,
+    };
+    let rust_inputs = dhruv_vedic_base::BhavaBalaInputs {
+        cusp_sidereal_lons: inputs.cusp_sidereal_lons,
+        ascendant_sidereal_lon: inputs.ascendant_sidereal_lon,
+        meridian_sidereal_lon: inputs.meridian_sidereal_lon,
+        graha_bhava_numbers: inputs.graha_bhava_numbers,
+        house_lord_strengths: inputs.house_lord_strengths,
+        aspect_virupas: inputs.aspect_virupas,
+        birth_period,
+    };
+
+    let out = unsafe { &mut *out };
+    *out = bhavabala_result_to_ffi(&dhruv_vedic_base::calculate_bhava_bala(&rust_inputs));
+    DhruvStatus::Ok
+}
+
+/// Compute Bhava Bala for all 12 houses at a given date and location.
+///
+/// # Safety
+/// All pointers must be valid. `out` must point to a valid `DhruvBhavaBalaResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_bhavabala_for_date(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    bhava_config: *const DhruvBhavaConfig,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    out: *mut DhruvBhavaBalaResult,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*utc };
+    let loc_c = unsafe { &*location };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+
+    match bhavabala_for_date(
+        engine,
+        eop,
+        &utc_time,
+        &location,
+        &rust_bhava_config,
+        &rs_config,
+        &aya_config,
+    ) {
+        Ok(result) => {
+            let out = unsafe { &mut *out };
+            *out = bhavabala_result_to_ffi(&result);
             DhruvStatus::Ok
         }
         Err(e) => DhruvStatus::from(&e),
@@ -9430,16 +9692,86 @@ pub unsafe extern "C" fn dhruv_vimsopaka_for_date(
     match vimsopaka_for_date(engine, eop, &utc_time, &location, &aya_config, policy) {
         Ok(result) => {
             let out = unsafe { &mut *out };
-            for i in 0..9 {
-                let e = &result.entries[i];
-                out.entries[i] = DhruvVimsopakaEntry {
-                    graha_index: e.graha.index(),
-                    shadvarga: e.shadvarga,
-                    saptavarga: e.saptavarga,
-                    dashavarga: e.dashavarga,
-                    shodasavarga: e.shodasavarga,
-                };
-            }
+            *out = vimsopaka_result_to_ffi(&result);
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Compute the combined bala bundle for a given date and location.
+///
+/// The bundle includes Shadbala, Vimsopaka Bala, Ashtakavarga, and Bhava Bala.
+///
+/// # Safety
+/// All pointers must be valid. `out` must point to a valid `DhruvBalaBundleResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_balas_for_date(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    bhava_config: *const DhruvBhavaConfig,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    node_dignity_policy: u32,
+    out: *mut DhruvBalaBundleResult,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_c = unsafe { &*utc };
+    let loc_c = unsafe { &*location };
+
+    let utc_time = UtcTime {
+        year: utc_c.year,
+        month: utc_c.month,
+        day: utc_c.day,
+        hour: utc_c.hour,
+        minute: utc_c.minute,
+        second: utc_c.second,
+    };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let policy = match node_dignity_policy {
+        0 => dhruv_vedic_base::NodeDignityPolicy::SignLordBased,
+        1 => dhruv_vedic_base::NodeDignityPolicy::AlwaysSama,
+        _ => return DhruvStatus::InvalidSearchConfig,
+    };
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+
+    match balas_for_date(
+        engine,
+        eop,
+        &utc_time,
+        &location,
+        &rust_bhava_config,
+        &rs_config,
+        &aya_config,
+        policy,
+    ) {
+        Ok(result) => {
+            let out = unsafe { &mut *out };
+            out.shadbala = shadbala_result_to_ffi(&result.shadbala);
+            out.vimsopaka = vimsopaka_result_to_ffi(&result.vimsopaka);
+            out.ashtakavarga = ashtakavarga_result_to_ffi(&result.ashtakavarga);
+            out.bhavabala = bhavabala_result_to_ffi(&result.bhavabala);
             DhruvStatus::Ok
         }
         Err(e) => DhruvStatus::from(&e),
@@ -11825,8 +12157,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_45() {
-        assert_eq!(dhruv_api_version(), 45);
+    fn ffi_api_version_is_46() {
+        assert_eq!(dhruv_api_version(), 46);
     }
 
     #[test]
@@ -11841,6 +12173,7 @@ mod tests {
         assert_eq!(cfg.include_special_lagnas, 1);
         assert_eq!(cfg.include_amshas, 0);
         assert_eq!(cfg.include_shadbala, 0);
+        assert_eq!(cfg.include_bhavabala, 0);
         assert_eq!(cfg.include_vimsopaka, 0);
         assert_eq!(cfg.include_avastha, 0);
         assert_eq!(cfg.include_charakaraka, 0);

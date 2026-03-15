@@ -280,6 +280,7 @@ pub struct FullKundaliConfigPatch {
     pub include_special_lagnas: Option<bool>,
     pub include_amshas: Option<bool>,
     pub include_shadbala: Option<bool>,
+    pub include_bhavabala: Option<bool>,
     pub include_vimsopaka: Option<bool>,
     pub include_avastha: Option<bool>,
     pub include_charakaraka: Option<bool>,
@@ -1015,6 +1016,13 @@ impl ConfigResolver {
             "include_shadbala",
             &mut source,
         );
+        let include_bhavabala = layered_bool(
+            explicit.include_bhavabala,
+            op.include_bhavabala,
+            defaults.include_bhavabala,
+            "include_bhavabala",
+            &mut source,
+        );
         let include_vimsopaka = layered_bool(
             explicit.include_vimsopaka,
             op.include_vimsopaka,
@@ -1120,6 +1128,7 @@ impl ConfigResolver {
                 include_special_lagnas,
                 include_amshas,
                 include_shadbala,
+                include_bhavabala,
                 include_vimsopaka,
                 include_avastha,
                 include_charakaraka,

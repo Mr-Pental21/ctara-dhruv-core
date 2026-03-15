@@ -21,6 +21,9 @@ pub mod ayanamsha {
 pub mod bhava {
     pub use dhruv_vedic_engine::bhava::*;
 }
+pub mod bhavabala {
+    pub use dhruv_vedic_math::bhavabala::*;
+}
 pub mod bhava_types {
     pub use dhruv_vedic_engine::bhava_types::*;
 }

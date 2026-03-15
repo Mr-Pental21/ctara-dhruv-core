@@ -695,6 +695,34 @@ type ShadbalaResult struct {
 	Entries [SaptaGrahaCount]ShadbalaEntry
 }
 
+type BhavaBalaEntry struct {
+	BhavaNumber     uint8
+	CuspSiderealLon float64
+	RashiIndex      uint8
+	LordGrahaIndex  uint8
+	Bhavadhipati    float64
+	Dig             float64
+	Drishti         float64
+	OccupationBonus float64
+	RisingBonus     float64
+	TotalVirupas    float64
+	TotalRupas      float64
+}
+
+type BhavaBalaResult struct {
+	Entries [12]BhavaBalaEntry
+}
+
+type BhavaBalaInputs struct {
+	CuspSiderealLons     [12]float64
+	AscendantSiderealLon float64
+	MeridianSiderealLon  float64
+	GrahaBhavaNumbers    [GrahaCount]uint8
+	HouseLordStrengths   [12]float64
+	AspectVirupas        [GrahaCount][12]float64
+	BirthPeriod          uint32
+}
+
 type VimsopakaEntry struct {
 	GrahaIndex   uint8
 	Shadvarga    float64
@@ -705,6 +733,13 @@ type VimsopakaEntry struct {
 
 type VimsopakaResult struct {
 	Entries [GrahaCount]VimsopakaEntry
+}
+
+type BalaBundleResult struct {
+	Shadbala     ShadbalaResult
+	Vimsopaka    VimsopakaResult
+	Ashtakavarga AshtakavargaResult
+	BhavaBala    BhavaBalaResult
 }
 
 type SayanadiResult struct {
@@ -752,6 +787,7 @@ type FullKundaliSummary struct {
 	AmshasValid         bool
 	AmshasCount         uint8
 	ShadbalaValid       bool
+	BhavaBalaValid      bool
 	VimsopakaValid      bool
 	AvasthaValid        bool
 	CharakarakaValid    bool
@@ -795,6 +831,7 @@ type FullKundaliConfig struct {
 	IncludeSpecialLagnas  bool
 	IncludeAmshas         bool
 	IncludeShadbala       bool
+	IncludeBhavaBala      bool
 	IncludeVimsopaka      bool
 	IncludeAvastha        bool
 	IncludeCharakaraka    bool
@@ -847,6 +884,7 @@ type FullKundaliResult struct {
 	SpecialLagnas  *SpecialLagnas
 	Amshas         []AmshaChart
 	Shadbala       *ShadbalaResult
+	BhavaBala      *BhavaBalaResult
 	Vimsopaka      *VimsopakaResult
 	Avastha        *AllGrahaAvasthas
 	Charakaraka    *CharakarakaResult

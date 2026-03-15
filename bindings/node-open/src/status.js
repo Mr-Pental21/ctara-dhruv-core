@@ -1,6 +1,6 @@
 'use strict';
 
-const EXPECTED_API_VERSION = 45;
+const EXPECTED_API_VERSION = 46;
 
 const STATUS = {
   OK: 0,

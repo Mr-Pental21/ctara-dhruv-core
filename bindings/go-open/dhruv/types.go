@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 45
+const ExpectedAPIVersion = 46
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -105,8 +105,12 @@ type (
 	KalaBalaBreakdown         = cabi.KalaBalaBreakdown
 	ShadbalaEntry             = cabi.ShadbalaEntry
 	ShadbalaResult            = cabi.ShadbalaResult
+	BhavaBalaEntry            = cabi.BhavaBalaEntry
+	BhavaBalaResult           = cabi.BhavaBalaResult
+	BhavaBalaInputs           = cabi.BhavaBalaInputs
 	VimsopakaEntry            = cabi.VimsopakaEntry
 	VimsopakaResult           = cabi.VimsopakaResult
+	BalaBundleResult          = cabi.BalaBundleResult
 	SayanadiResult            = cabi.SayanadiResult
 	GrahaAvasthas             = cabi.GrahaAvasthas
 	AllGrahaAvasthas          = cabi.AllGrahaAvasthas
