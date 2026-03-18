@@ -53,8 +53,8 @@ pub use avastha::{
 pub use ayana_type::{ALL_AYANAS, Ayana, ayana_from_sidereal_longitude};
 pub use bhavabala::{
     BhavaBalaBirthPeriod, BhavaBalaEntry, BhavaBalaInputs, BhavaBalaResult, BhavaDigAnchor,
-    bhava_bala_entry, bhava_dig_anchor, bhava_dig_bala, bhava_drishti_bala,
-    bhava_drishti_nature, bhava_occupation_bonus, bhava_rising_bonus, calculate_bhava_bala,
+    bhava_bala_entry, bhava_dig_anchor, bhava_dig_bala, bhava_drishti_bala, bhava_drishti_nature,
+    bhava_occupation_bonus, bhava_rising_bonus, calculate_bhava_bala,
 };
 pub use charakaraka::{
     CharakarakaEntry, CharakarakaResult, CharakarakaRole, CharakarakaScheme,

@@ -122,10 +122,7 @@ pub fn bhava_dig_bala(
 }
 
 /// Compute the BPHS sign-type bonus for one bhava cusp.
-pub fn bhava_rising_bonus(
-    cusp_sidereal_lon: f64,
-    birth_period: BhavaBalaBirthPeriod,
-) -> f64 {
+pub fn bhava_rising_bonus(cusp_sidereal_lon: f64, birth_period: BhavaBalaBirthPeriod) -> f64 {
     let rashi_index = rashi_from_longitude(cusp_sidereal_lon).rashi_index;
     let matches_bonus = match birth_period {
         BhavaBalaBirthPeriod::Day => is_shirshodaya(rashi_index),
