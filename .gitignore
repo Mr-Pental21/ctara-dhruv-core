@@ -34,3 +34,8 @@ docs/benchmarks/ffi_bench_*_sorted.tsv
 
 # Python build artifacts
 *.egg-info/
+**/__pycache__/
+*.py[cod]
+
+# Generated local benchmark reports
+docs/elixir_wrapper_benchmarks.md
