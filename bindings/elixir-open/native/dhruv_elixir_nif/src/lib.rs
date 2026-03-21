@@ -20,11 +20,11 @@ use dhruv_search::{
     panchang, set_time_conversion_policy, tara as tara_op,
 };
 use dhruv_search::{
-    all_upagrahas_for_date, amsha_charts_for_date, arudha_padas_for_date, ashtakavarga_for_date,
-    avastha_for_date, balas_for_date, bhavabala_for_date, charakaraka_for_date, core_bindus,
-    drishti_for_date, graha_positions as graha_positions_fn, shadbala_for_date,
-    sidereal_bhavas_for_date, sidereal_lagna_for_date, sidereal_mc_for_date,
-    special_lagnas_for_date, vimsopaka_for_date,
+    all_upagrahas_for_date, all_upagrahas_for_date_with_config, amsha_charts_for_date,
+    arudha_padas_for_date, ashtakavarga_for_date, avastha_for_date, balas_for_date,
+    bhavabala_for_date, charakaraka_for_date, core_bindus, drishti_for_date,
+    graha_positions as graha_positions_fn, shadbala_for_date, sidereal_bhavas_for_date,
+    sidereal_lagna_for_date, sidereal_mc_for_date, special_lagnas_for_date, vimsopaka_for_date,
 };
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
@@ -42,8 +42,9 @@ use dhruv_vedic_base::riseset_types::{
 };
 use dhruv_vedic_base::{
     ALL_GRAHAS, AyanamshaSystem, BhavaConfig, BhavaReferenceMode, BhavaResult, BhavaStartingPoint,
-    BhavaSystem, CharakarakaResult, CharakarakaScheme, Graha, LunarNode, NodeDignityPolicy,
-    NodeMode, compute_bhavas, lagna_longitude_rad, mc_longitude_rad, ramc_rad,
+    BhavaSystem, CharakarakaResult, CharakarakaScheme, Graha, GulikaMaandiPlanet, LunarNode,
+    NodeDignityPolicy, NodeMode, TimeUpagrahaConfig, TimeUpagrahaPoint, compute_bhavas,
+    lagna_longitude_rad, mc_longitude_rad, ramc_rad,
 };
 use rustler::{Encoder, Env, ResourceArc, Term};
 use serde::Deserialize;
@@ -223,6 +224,7 @@ struct JyotishRequest {
     system: Option<EnumInput>,
     scheme: Option<EnumInput>,
     node_dignity_policy: Option<EnumInput>,
+    upagraha_config: Option<TimeUpagrahaConfigInput>,
     graha_positions_config: Option<GrahaPositionsConfigInput>,
     bindus_config: Option<BindusConfigInput>,
     drishti_config: Option<DrishtiConfigInput>,
@@ -304,6 +306,16 @@ struct GrahaPositionsConfigInput {
 struct BindusConfigInput {
     include_nakshatra: Option<bool>,
     include_bhava: Option<bool>,
+    upagraha_config: Option<TimeUpagrahaConfigInput>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TimeUpagrahaConfigInput {
+    gulika_point: Option<EnumInput>,
+    maandi_point: Option<EnumInput>,
+    other_point: Option<EnumInput>,
+    gulika_planet: Option<EnumInput>,
+    maandi_planet: Option<EnumInput>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -334,6 +346,7 @@ struct FullKundaliConfigInput {
     include_dasha: Option<bool>,
     charakaraka_scheme: Option<EnumInput>,
     node_dignity_policy: Option<EnumInput>,
+    upagraha_config: Option<TimeUpagrahaConfigInput>,
     graha_positions_config: Option<GrahaPositionsConfigInput>,
     bindus_config: Option<BindusConfigInput>,
     drishti_config: Option<DrishtiConfigInput>,
@@ -438,6 +451,13 @@ const NODE_DIGNITY_POLICY_VARIANTS: [NodeDignityPolicy; 2] = [
     NodeDignityPolicy::SignLordBased,
     NodeDignityPolicy::AlwaysSama,
 ];
+const TIME_UPAGRAHA_POINT_VARIANTS: [TimeUpagrahaPoint; 3] = [
+    TimeUpagrahaPoint::Start,
+    TimeUpagrahaPoint::Middle,
+    TimeUpagrahaPoint::End,
+];
+const GULIKA_MAANDI_PLANET_VARIANTS: [GulikaMaandiPlanet; 2] =
+    [GulikaMaandiPlanet::Rahu, GulikaMaandiPlanet::Saturn];
 const YOGINI_SCHEME_VARIANTS: [YoginiScheme; 2] =
     [YoginiScheme::Default, YoginiScheme::LaDeepanshuGiri];
 const SUB_PERIOD_METHOD_VARIANTS: [SubPeriodMethod; 4] = [
@@ -601,6 +621,55 @@ fn parse_node_dignity_policy(input: Option<&EnumInput>) -> Result<NodeDignityPol
         Some(EnumInput::Str(value)) => parse_named(value, &NODE_DIGNITY_POLICY_VARIANTS)
             .ok_or_else(|| error_payload("invalid_request", "unknown node dignity policy")),
     }
+}
+
+fn parse_time_upagraha_point(
+    input: Option<&EnumInput>,
+    default: TimeUpagrahaPoint,
+) -> Result<TimeUpagrahaPoint, Value> {
+    match input {
+        None => Ok(default),
+        Some(EnumInput::Int(value)) => TIME_UPAGRAHA_POINT_VARIANTS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown time upagraha point")),
+        Some(EnumInput::Str(value)) => parse_named(value, &TIME_UPAGRAHA_POINT_VARIANTS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown time upagraha point")),
+    }
+}
+
+fn parse_gulika_maandi_planet(
+    input: Option<&EnumInput>,
+    default: GulikaMaandiPlanet,
+) -> Result<GulikaMaandiPlanet, Value> {
+    match input {
+        None => Ok(default),
+        Some(EnumInput::Int(value)) => GULIKA_MAANDI_PLANET_VARIANTS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown Gulika/Maandi planet")),
+        Some(EnumInput::Str(value)) => parse_named(value, &GULIKA_MAANDI_PLANET_VARIANTS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown Gulika/Maandi planet")),
+    }
+}
+
+fn apply_time_upagraha_config(
+    config: &mut TimeUpagrahaConfig,
+    input: Option<&TimeUpagrahaConfigInput>,
+) -> Result<(), Value> {
+    let Some(input) = input else {
+        return Ok(());
+    };
+    config.gulika_point =
+        parse_time_upagraha_point(input.gulika_point.as_ref(), config.gulika_point)?;
+    config.maandi_point =
+        parse_time_upagraha_point(input.maandi_point.as_ref(), config.maandi_point)?;
+    config.other_point = parse_time_upagraha_point(input.other_point.as_ref(), config.other_point)?;
+    config.gulika_planet =
+        parse_gulika_maandi_planet(input.gulika_planet.as_ref(), config.gulika_planet)?;
+    config.maandi_planet =
+        parse_gulika_maandi_planet(input.maandi_planet.as_ref(), config.maandi_planet)?;
+    Ok(())
 }
 
 fn parse_lunar_node(input: &EnumInput) -> Result<LunarNode, Value> {
@@ -996,7 +1065,7 @@ fn to_graha_positions_config(
 fn to_bindus_config(
     state: &EngineState,
     input: Option<&BindusConfigInput>,
-) -> dhruv_search::BindusConfig {
+) -> Result<dhruv_search::BindusConfig, Value> {
     let mut config = state
         .resolver
         .as_ref()
@@ -1014,8 +1083,9 @@ fn to_bindus_config(
         if let Some(include_bhava) = input.include_bhava {
             config.include_bhava = include_bhava;
         }
+        apply_time_upagraha_config(&mut config.upagraha_config, input.upagraha_config.as_ref())?;
     }
-    config
+    Ok(config)
 }
 
 fn to_drishti_config(
@@ -1184,7 +1254,13 @@ fn to_full_kundali_config(
                 to_graha_positions_config(state, Some(graha_positions_config))?;
         }
         if let Some(bindus_config) = input.bindus_config.as_ref() {
-            config.bindus_config = to_bindus_config(state, Some(bindus_config));
+            config.bindus_config = to_bindus_config(state, Some(bindus_config))?;
+        }
+        // Apply upagraha_config AFTER bindus_config so the copy to
+        // bindus_config.upagraha_config is not overwritten.
+        if let Some(upagraha_config) = input.upagraha_config.as_ref() {
+            apply_time_upagraha_config(&mut config.upagraha_config, Some(upagraha_config))?;
+            config.bindus_config.upagraha_config = config.upagraha_config;
         }
         if let Some(drishti_config) = input.drishti_config.as_ref() {
             config.drishti_config = to_drishti_config(state, Some(drishti_config));
@@ -2633,17 +2709,37 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
             )
             .map(arudha_json)
             .map_err(|err| map_error("search_error", err)),
-            "upagrahas" => all_upagrahas_for_date(
-                engine,
-                eop,
-                &utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?,
-                &location
-                    .ok_or_else(|| error_payload("invalid_request", "location is required"))?,
-                &to_riseset_config(state, request.riseset_config.as_ref())?,
-                &sankranti_config,
-            )
-            .map(upagrahas_json)
-            .map_err(|err| map_error("search_error", err)),
+            "upagrahas" => {
+                let utc = utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                let location = location
+                    .ok_or_else(|| error_payload("invalid_request", "location is required"))?;
+                let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
+                let result = if let Some(input) = request.upagraha_config.as_ref() {
+                    let mut upagraha_config = TimeUpagrahaConfig::default();
+                    apply_time_upagraha_config(&mut upagraha_config, Some(input))?;
+                    all_upagrahas_for_date_with_config(
+                        engine,
+                        eop,
+                        &utc,
+                        &location,
+                        &riseset_config,
+                        &sankranti_config,
+                        &upagraha_config,
+                    )
+                } else {
+                    all_upagrahas_for_date(
+                        engine,
+                        eop,
+                        &utc,
+                        &location,
+                        &riseset_config,
+                        &sankranti_config,
+                    )
+                };
+                result
+                    .map(upagrahas_json)
+                    .map_err(|err| map_error("search_error", err))
+            }
             "bindus" => core_bindus(
                 engine,
                 eop,
@@ -2653,7 +2749,7 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
                 &bhava_config,
                 &to_riseset_config(state, request.riseset_config.as_ref())?,
                 &sankranti_config,
-                &to_bindus_config(state, request.bindus_config.as_ref()),
+                &to_bindus_config(state, request.bindus_config.as_ref())?,
             )
             .map(bindus_json)
             .map_err(|err| map_error("search_error", err)),
