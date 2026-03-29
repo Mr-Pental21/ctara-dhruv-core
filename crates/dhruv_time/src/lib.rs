@@ -20,10 +20,9 @@ use std::path::Path;
 
 pub use delta_t::{
     DeltaTModel, DeltaTSegment, Smh2016Reconstruction, SmhFutureParabolaFamily, delta_t_seconds,
-    delta_t_seconds_with_model, install_smh2016_reconstruction, parse_smh2016_reconstruction,
-    smh_asymptotic_delta_t_seconds, smh_asymptotic_delta_t_seconds_for_jd,
-    smh_asymptotic_delta_t_seconds_for_jd_with_family, smh_asymptotic_delta_t_seconds_with_family,
-    smh_future_parabola_c_for_year, smh2016_reconstruction_installed,
+    delta_t_seconds_with_model, smh_asymptotic_delta_t_seconds,
+    smh_asymptotic_delta_t_seconds_for_jd, smh_asymptotic_delta_t_seconds_for_jd_with_family,
+    smh_asymptotic_delta_t_seconds_with_family, smh_future_parabola_c_for_year,
 };
 pub use diagnostics::{TimeDiagnostics, TimeWarning, TtUtcSource};
 pub use eop::{Dut1LookupResult, EopData, EopKernel, EopLookupOptions, EopSource};

@@ -117,6 +117,8 @@ impl Smh2016Reconstruction {
 }
 
 static SMH2016_RECONSTRUCTION: OnceLock<Smh2016Reconstruction> = OnceLock::new();
+const SMH2016_RECONSTRUCTION_BUNDLED: &str =
+    include_str!("../../../kernels/data/time/smh2016_reconstruction.tsv");
 
 /// Parse a plain-text SMH2016 table.
 ///
@@ -124,7 +126,7 @@ static SMH2016_RECONSTRUCTION: OnceLock<Smh2016Reconstruction> = OnceLock::new()
 /// - points: `year delta_t_seconds`
 /// - cubic segments: `Ki Ki+1 a0 a1 a2 a3`
 /// - cubic segments with row index prefix: `row Ki Ki+1 a0 a1 a2 a3`
-pub fn parse_smh2016_reconstruction(content: &str) -> Result<Smh2016Reconstruction, String> {
+fn parse_smh2016_reconstruction(content: &str) -> Result<Smh2016Reconstruction, String> {
     let mut points = Vec::new();
     let mut segments = Vec::new();
     for (line_no, raw) in content.lines().enumerate() {
@@ -189,16 +191,11 @@ pub fn parse_smh2016_reconstruction(content: &str) -> Result<Smh2016Reconstructi
     }
 }
 
-/// Install SMH2016 reconstruction points for runtime model dispatch.
-///
-/// Returns `true` if installed now, `false` if already installed.
-pub fn install_smh2016_reconstruction(reconstruction: Smh2016Reconstruction) -> bool {
-    SMH2016_RECONSTRUCTION.set(reconstruction).is_ok()
-}
-
-/// Whether SMH2016 reconstruction points are installed.
-pub fn smh2016_reconstruction_installed() -> bool {
-    SMH2016_RECONSTRUCTION.get().is_some()
+fn bundled_smh2016_reconstruction() -> &'static Smh2016Reconstruction {
+    SMH2016_RECONSTRUCTION.get_or_init(|| {
+        parse_smh2016_reconstruction(SMH2016_RECONSTRUCTION_BUNDLED)
+            .expect("bundled smh2016 reconstruction asset must parse")
+    })
 }
 
 /// Piecewise segment used by the Delta-T model.
@@ -293,7 +290,7 @@ pub fn delta_t_seconds_with_model(jd_ut1: f64, model: DeltaTModel) -> (f64, Delt
     match model {
         DeltaTModel::LegacyEspenakMeeus2006 => delta_t_seconds_legacy(jd_ut1),
         DeltaTModel::Smh2016WithPre720Quadratic => {
-            delta_t_seconds_smh_model(jd_ut1, SMH2016_RECONSTRUCTION.get())
+            delta_t_seconds_smh_model(jd_ut1, Some(bundled_smh2016_reconstruction()))
         }
     }
 }
@@ -566,17 +563,10 @@ mod tests {
     }
 
     #[test]
-    fn smh_placeholder_keeps_legacy_output_for_phase_a() {
+    fn smh_model_uses_bundled_reconstruction_for_historical_range() {
         let jd = calendar_to_jd(1600, 6, 15.25);
-        let legacy = delta_t_seconds_with_model(jd, DeltaTModel::LegacyEspenakMeeus2006);
         let smh = delta_t_seconds_with_model(jd, DeltaTModel::Smh2016WithPre720Quadratic);
-        assert_eq!(legacy.1, smh.1);
-        assert!(
-            (legacy.0 - smh.0).abs() < 1e-12,
-            "legacy/smh placeholder mismatch: legacy={} smh={}",
-            legacy.0,
-            smh.0
-        );
+        assert_eq!(smh.1, DeltaTSegment::Smh2016Reconstruction);
     }
 
     #[test]

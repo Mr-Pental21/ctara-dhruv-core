@@ -24,8 +24,7 @@ use dhruv_tara::{EarthState, TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
     DeltaTModel, EopKernel, FutureDeltaTTransition, LeapSecondKernel, SmhFutureParabolaFamily,
     TimeConversionOptions, TimeConversionPolicy, TimeWarning, UtcTime, calendar_to_jd,
-    install_smh2016_reconstruction, jd_to_calendar, jd_to_tdb_seconds,
-    parse_smh2016_reconstruction, smh2016_reconstruction_installed, tdb_seconds_to_jd,
+    jd_to_calendar, jd_to_tdb_seconds, tdb_seconds_to_jd,
 };
 use dhruv_vedic_base::BhavaConfig;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetResult};
@@ -69,11 +68,6 @@ struct Cli {
     /// stephenson2016
     #[arg(long, global = true, default_value = "addendum2020")]
     smh_future_family: String,
-    /// Optional path to SMH2016 reconstruction table.
-    /// Accepted formats: `year delta_t_seconds` points or
-    /// cubic segments `Ki Ki+1 a0 a1 a2 a3`.
-    #[arg(long, global = true)]
-    delta_t_smh_table: Option<PathBuf>,
     /// Future Delta-T transition strategy for UTC beyond LSK coverage.
     /// Values: legacy-tt-utc-blend, bridge-modern-endpoint.
     #[arg(long, global = true, default_value = "legacy-tt-utc-blend")]
@@ -2783,64 +2777,6 @@ fn parse_smh_future_family(s: &str) -> SmhFutureParabolaFamily {
     }
 }
 
-fn find_default_smh2016_table() -> Option<PathBuf> {
-    let candidates = [
-        "kernels/data/time/smh2016_reconstruction.tsv",
-        "kernels/data/time/smh2016_reconstruction.txt",
-        "kernels/data/time/smh2016_reconstruction.csv",
-    ];
-    candidates
-        .iter()
-        .map(PathBuf::from)
-        .find(|p| p.exists() && p.is_file())
-}
-
-fn maybe_warn_smh_manifest_pending() {
-    let manifest = Path::new("kernels/data/time/time_assets_manifest.json");
-    let Ok(content) = std::fs::read_to_string(manifest) else {
-        return;
-    };
-    if content.contains("\"id\": \"smh2016_reconstruction\"")
-        && content.contains("\"status\": \"pending_import\"")
-    {
-        eprintln!(
-            "Warning: SMH2016 manifest status is pending_import; provide --delta-t-smh-table or import the canonical table under kernels/data/time."
-        );
-    }
-}
-
-fn maybe_install_smh2016_table(path: Option<&Path>) {
-    let selected = path
-        .map(|p| p.to_path_buf())
-        .or_else(find_default_smh2016_table);
-    let Some(path) = selected else {
-        maybe_warn_smh_manifest_pending();
-        return;
-    };
-
-    let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-        eprintln!(
-            "Failed to read SMH2016 reconstruction table '{}': {e}",
-            path.display()
-        );
-        std::process::exit(1);
-    });
-    let table = parse_smh2016_reconstruction(&content).unwrap_or_else(|e| {
-        eprintln!(
-            "Failed to parse SMH2016 reconstruction table '{}': {e}",
-            path.display()
-        );
-        std::process::exit(1);
-    });
-    if !install_smh2016_reconstruction(table) {
-        eprintln!(
-            "Warning: SMH2016 reconstruction table was already installed; keeping first-loaded table."
-        );
-    } else {
-        eprintln!("Loaded SMH2016 reconstruction table: {}", path.display());
-    }
-}
-
 fn emit_cli_time_warning_once(warning: &TimeWarning) {
     match warning {
         TimeWarning::LskPreRangeFallback { .. } => {
@@ -3002,18 +2938,9 @@ fn main() {
     let resolver = loaded_config.map(|loaded| ConfigResolver::new(loaded.file, defaults_mode));
     let _ = CLI_CONFIG_RESOLVER.set(resolver);
 
-    maybe_install_smh2016_table(cli.delta_t_smh_table.as_deref());
     let delta_t_model = parse_delta_t_model(&cli.delta_t_model);
     let smh_future_family = parse_smh_future_family(&cli.smh_future_family);
     let future_delta_t_transition = parse_future_delta_t_transition(&cli.future_delta_t_transition);
-    if delta_t_model == DeltaTModel::Smh2016WithPre720Quadratic
-        && !smh2016_reconstruction_installed()
-    {
-        eprintln!(
-            "Warning: delta-t model 'smh2016' selected but no reconstruction table is installed; \
-             years -720..1961 currently fall back to legacy piecewise segments."
-        );
-    }
     let time_policy = parse_time_policy(
         &cli.time_policy,
         delta_t_model,
