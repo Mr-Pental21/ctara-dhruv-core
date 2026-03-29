@@ -38,8 +38,6 @@ pub use dasha::{
     dasha_level0_entity_for_birth, dasha_level0_for_birth, dasha_snapshot_at,
     dasha_snapshot_with_inputs,
 };
-#[allow(deprecated)]
-pub use dasha::{dasha_hierarchy_with_moon, dasha_snapshot_with_moon};
 pub use dhruv_vedic_base::{
     BhavaBalaBirthPeriod, BhavaBalaEntry, BhavaBalaInputs, BhavaBalaResult, CharakarakaEntry,
     CharakarakaResult, CharakarakaRole, CharakarakaScheme,

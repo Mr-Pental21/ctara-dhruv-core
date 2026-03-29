@@ -15,8 +15,6 @@ pub use dasha::{
     dasha_level0_entity_for_birth, dasha_level0_for_birth, dasha_snapshot_at,
     dasha_snapshot_with_inputs,
 };
-#[allow(deprecated)]
-pub use dasha::{dasha_hierarchy_with_moon, dasha_snapshot_with_moon};
 pub use error::SearchError;
 pub use jyotish::{
     all_upagrahas_for_date, amsha_charts_for_date, amsha_charts_from_kundali,

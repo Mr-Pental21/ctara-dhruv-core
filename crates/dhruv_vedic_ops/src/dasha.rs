@@ -1255,52 +1255,6 @@ pub fn dasha_snapshot_with_inputs(
     )
 }
 
-/// Context-sharing variant for full_kundali_for_date integration.
-///
-/// Takes a pre-computed Moon sidereal longitude to avoid redundant queries.
-/// For rashi-based systems, also accepts optional RashiDashaInputs.
-/// For Kala dasha, requires sunrise/sunset JD UTC values.
-#[deprecated(since = "0.2.0", note = "Use dasha_hierarchy_with_inputs instead")]
-pub fn dasha_hierarchy_with_moon(
-    birth_jd: f64,
-    moon_sid_lon: f64,
-    rashi_inputs: Option<&RashiDashaInputs>,
-    sunrise_sunset: Option<(f64, f64)>,
-    system: DashaSystem,
-    max_level: u8,
-    variation: &DashaVariationConfig,
-) -> Result<DashaHierarchy, SearchError> {
-    let inputs = DashaInputs {
-        moon_sid_lon: Some(moon_sid_lon),
-        rashi_inputs,
-        sunrise_sunset,
-    };
-    dasha_hierarchy_with_inputs(birth_jd, system, max_level, variation, &inputs)
-}
-
-/// Context-sharing snapshot variant.
-///
-/// For Kala dasha, requires sunrise/sunset JD UTC values.
-#[deprecated(since = "0.2.0", note = "Use dasha_snapshot_with_inputs instead")]
-#[allow(clippy::too_many_arguments)]
-pub fn dasha_snapshot_with_moon(
-    birth_jd: f64,
-    moon_sid_lon: f64,
-    rashi_inputs: Option<&RashiDashaInputs>,
-    sunrise_sunset: Option<(f64, f64)>,
-    query_jd: f64,
-    system: DashaSystem,
-    max_level: u8,
-    variation: &DashaVariationConfig,
-) -> Result<DashaSnapshot, SearchError> {
-    let inputs = DashaInputs {
-        moon_sid_lon: Some(moon_sid_lon),
-        rashi_inputs,
-        sunrise_sunset,
-    };
-    dasha_snapshot_with_inputs(birth_jd, query_jd, system, max_level, variation, &inputs)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

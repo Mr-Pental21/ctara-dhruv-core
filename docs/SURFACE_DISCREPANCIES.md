@@ -183,7 +183,6 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
 - Missing or wrong:
   The dasha-input gap has several parts:
   - Rust has explicit raw-input entrypoints such as `dasha_hierarchy_with_inputs` and `dasha_snapshot_with_inputs`,
-  - Rust still carries legacy named variants such as `*_with_moon`,
   - the base birth/query entrypoints still recompute derived inputs internally,
   - `DashaVariationConfig` and `DashaSelectionConfig` do not replace the separate `DashaInputs` transport,
   - non-Rust surfaces expose only UTC/location-driven entrypoints.
