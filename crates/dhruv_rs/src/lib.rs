@@ -66,8 +66,9 @@ pub use dhruv_vedic_base::riseset_types::{
 pub use dhruv_vedic_base::{
     AshtakavargaResult, AyanamshaSystem, BhavaBalaBirthPeriod, BhavaBalaEntry, BhavaBalaInputs,
     BhavaBalaResult, BhavaConfig, BhinnaAshtakavarga, CharakarakaEntry, CharakarakaResult,
-    CharakarakaRole, CharakarakaScheme, LunarNode, NodeDignityPolicy, NodeMode, SarvaAshtakavarga,
-    calculate_all_bav, calculate_ashtakavarga, calculate_bav, calculate_bhava_bala, calculate_sav,
+    CharakarakaRole, CharakarakaScheme, GulikaMaandiPlanet, LunarNode, NodeDignityPolicy, NodeMode,
+    SarvaAshtakavarga, TimeUpagrahaConfig, TimeUpagrahaPoint, calculate_all_bav,
+    calculate_ashtakavarga, calculate_bav, calculate_bhava_bala, calculate_sav,
 };
 pub use dhruv_vedic_ops::{
     NodeBackend, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_ALL_CORE,

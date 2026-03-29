@@ -4,11 +4,11 @@
 //! - Sun-based (5): Dhooma, Vyatipata, Parivesha, Indra Chapa, Upaketu
 //!   Chain calculation from Sun's longitude.
 //! - Time-based (6): Gulika, Maandi, Kaala, Mrityu, Artha Prahara, Yama Ghantaka
-//!   Lagna at the start/end of a planet's portion of the day or night.
+//!   Lagna at a configurable point within a planet's portion of the day or night.
 //!
 //! Day/night is divided into 8 equal portions, each ruled by a planet in
 //! weekday-specific order. The upagraha longitude is the ascendant (lagna)
-//! at the start (or end for Maandi) of the relevant planet's portion.
+//! at a configurable point within the relevant planet's portion.
 //!
 //! Clean-room implementation from BPHS (Brihat Parashara Hora Shastra).
 //! See `docs/clean_room_upagraha.md`.
@@ -145,7 +145,52 @@ const PLANET_SUN: u8 = 0;
 const PLANET_MARS: u8 = 2;
 const PLANET_MERCURY: u8 = 3;
 const PLANET_JUPITER: u8 = 4;
+const PLANET_SATURN: u8 = 6;
 const PLANET_RAHU: u8 = 7;
+
+/// Which point of the selected period should be used for the upagraha.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum TimeUpagrahaPoint {
+    #[default]
+    Start,
+    Middle,
+    End,
+}
+
+/// Which planet's period should be used for Gulika or Maandi.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum GulikaMaandiPlanet {
+    Saturn,
+    #[default]
+    Rahu,
+}
+
+/// Configuration for time-based upagraha period selection.
+///
+/// Defaults preserve the current behavior:
+/// - Gulika = start of Rahu's portion
+/// - Maandi = end of Rahu's portion
+/// - Kaala/Mrityu/Artha Prahara/Yama Ghantaka = start of their respective portions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TimeUpagrahaConfig {
+    pub gulika_point: TimeUpagrahaPoint,
+    pub maandi_point: TimeUpagrahaPoint,
+    pub other_point: TimeUpagrahaPoint,
+    pub gulika_planet: GulikaMaandiPlanet,
+    pub maandi_planet: GulikaMaandiPlanet,
+}
+
+impl Default for TimeUpagrahaConfig {
+    fn default() -> Self {
+        Self {
+            gulika_point: TimeUpagrahaPoint::Start,
+            maandi_point: TimeUpagrahaPoint::End,
+            other_point: TimeUpagrahaPoint::Start,
+            gulika_planet: GulikaMaandiPlanet::Rahu,
+            maandi_planet: GulikaMaandiPlanet::Rahu,
+        }
+    }
+}
 
 /// Night-start planet index for each weekday (0=Sunday through 6=Saturday).
 ///
@@ -189,6 +234,15 @@ pub fn portion_jd_range(portion_index: u8, base_jd: f64, end_jd: f64) -> (f64, f
     (start, start + portion)
 }
 
+/// Evaluate a single portion at the requested point.
+pub fn portion_jd_value(point: TimeUpagrahaPoint, start_jd: f64, end_jd: f64) -> f64 {
+    match point {
+        TimeUpagrahaPoint::Start => start_jd,
+        TimeUpagrahaPoint::Middle => (start_jd + end_jd) * 0.5,
+        TimeUpagrahaPoint::End => end_jd,
+    }
+}
+
 /// Upagraha-to-planet mapping for time-based upagrahas.
 ///
 /// Returns (planet_index, use_end) where:
@@ -204,6 +258,43 @@ pub const fn time_upagraha_planet(upagraha: Upagraha) -> (u8, bool) {
         Upagraha::YamaGhantaka => (PLANET_JUPITER, false), // start of Jupiter's portion
         // Sun-based upagrahas don't use portions
         _ => (0, false),
+    }
+}
+
+/// Resolve the selected planet for a time-based upagraha under the provided config.
+pub const fn time_upagraha_planet_with_config(
+    upagraha: Upagraha,
+    config: &TimeUpagrahaConfig,
+) -> u8 {
+    match upagraha {
+        Upagraha::Gulika => match config.gulika_planet {
+            GulikaMaandiPlanet::Saturn => PLANET_SATURN,
+            GulikaMaandiPlanet::Rahu => PLANET_RAHU,
+        },
+        Upagraha::Maandi => match config.maandi_planet {
+            GulikaMaandiPlanet::Saturn => PLANET_SATURN,
+            GulikaMaandiPlanet::Rahu => PLANET_RAHU,
+        },
+        Upagraha::Kaala => PLANET_SUN,
+        Upagraha::Mrityu => PLANET_MARS,
+        Upagraha::ArthaPrahara => PLANET_MERCURY,
+        Upagraha::YamaGhantaka => PLANET_JUPITER,
+        _ => 0,
+    }
+}
+
+/// Resolve the selected period point for a time-based upagraha under the provided config.
+pub const fn time_upagraha_point_with_config(
+    upagraha: Upagraha,
+    config: &TimeUpagrahaConfig,
+) -> TimeUpagrahaPoint {
+    match upagraha {
+        Upagraha::Gulika => config.gulika_point,
+        Upagraha::Maandi => config.maandi_point,
+        Upagraha::Kaala | Upagraha::Mrityu | Upagraha::ArthaPrahara | Upagraha::YamaGhantaka => {
+            config.other_point
+        }
+        _ => TimeUpagrahaPoint::Start,
     }
 }
 
@@ -279,7 +370,30 @@ pub fn time_upagraha_jd(
     day_end_jd: f64,
     night_end_jd: f64,
 ) -> f64 {
-    let (planet, use_end) = time_upagraha_planet(upagraha);
+    time_upagraha_jd_with_config(
+        upagraha,
+        weekday,
+        is_day,
+        day_start_jd,
+        day_end_jd,
+        night_end_jd,
+        &TimeUpagrahaConfig::default(),
+    )
+}
+
+/// Compute the JD at which to evaluate the lagna for a time-based upagraha,
+/// using caller-provided period selection rules.
+pub fn time_upagraha_jd_with_config(
+    upagraha: Upagraha,
+    weekday: u8,
+    is_day: bool,
+    day_start_jd: f64,
+    day_end_jd: f64,
+    night_end_jd: f64,
+    config: &TimeUpagrahaConfig,
+) -> f64 {
+    let planet = time_upagraha_planet_with_config(upagraha, config);
+    let point = time_upagraha_point_with_config(upagraha, config);
 
     let index = if is_day {
         day_portion_index(weekday, planet)
@@ -294,7 +408,7 @@ pub fn time_upagraha_jd(
     };
 
     let (start, end) = portion_jd_range(index, base_jd, end_jd);
-    if use_end { end } else { start }
+    portion_jd_value(point, start, end)
 }
 
 #[cfg(test)]
@@ -330,6 +444,53 @@ mod tests {
         assert!(Upagraha::YamaGhantaka.is_time_based());
         assert!(!Upagraha::Dhooma.is_time_based());
         assert!(!Upagraha::Upaketu.is_time_based());
+    }
+
+    #[test]
+    fn default_time_upagraha_config_preserves_existing_behavior() {
+        let cfg = TimeUpagrahaConfig::default();
+        assert_eq!(
+            time_upagraha_planet_with_config(Upagraha::Gulika, &cfg),
+            PLANET_RAHU
+        );
+        assert_eq!(
+            time_upagraha_point_with_config(Upagraha::Gulika, &cfg),
+            TimeUpagrahaPoint::Start
+        );
+        assert_eq!(
+            time_upagraha_planet_with_config(Upagraha::Maandi, &cfg),
+            PLANET_RAHU
+        );
+        assert_eq!(
+            time_upagraha_point_with_config(Upagraha::Maandi, &cfg),
+            TimeUpagrahaPoint::End
+        );
+        assert_eq!(
+            time_upagraha_point_with_config(Upagraha::Kaala, &cfg),
+            TimeUpagrahaPoint::Start
+        );
+    }
+
+    #[test]
+    fn portion_jd_value_supports_middle() {
+        assert_eq!(portion_jd_value(TimeUpagrahaPoint::Start, 10.0, 14.0), 10.0);
+        assert_eq!(
+            portion_jd_value(TimeUpagrahaPoint::Middle, 10.0, 14.0),
+            12.0
+        );
+        assert_eq!(portion_jd_value(TimeUpagrahaPoint::End, 10.0, 14.0), 14.0);
+    }
+
+    #[test]
+    fn time_upagraha_jd_with_config_supports_saturn_middle_selection() {
+        let cfg = TimeUpagrahaConfig {
+            gulika_point: TimeUpagrahaPoint::Middle,
+            gulika_planet: GulikaMaandiPlanet::Saturn,
+            ..TimeUpagrahaConfig::default()
+        };
+
+        let jd = time_upagraha_jd_with_config(Upagraha::Gulika, 0, true, 100.0, 108.0, 112.0, &cfg);
+        assert!((jd - 106.5).abs() < 1e-10);
     }
 
     // --- Sun-based upagrahas ---

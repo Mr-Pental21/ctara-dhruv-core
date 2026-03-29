@@ -61,6 +61,7 @@ fn base_all_flags_off() {
     let config = BindusConfig {
         include_nakshatra: false,
         include_bhava: false,
+        upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),
     };
 
     let result = core_bindus(
@@ -138,6 +139,7 @@ fn include_nakshatra() {
     let config = BindusConfig {
         include_nakshatra: true,
         include_bhava: false,
+        upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),
     };
 
     let result = core_bindus(
@@ -198,6 +200,7 @@ fn include_bhava() {
     let config = BindusConfig {
         include_nakshatra: false,
         include_bhava: true,
+        upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),
     };
 
     let result = core_bindus(
@@ -265,6 +268,7 @@ fn all_flags_on() {
     let config = BindusConfig {
         include_nakshatra: true,
         include_bhava: true,
+        upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),
     };
 
     let result = core_bindus(

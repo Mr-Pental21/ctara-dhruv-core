@@ -5,7 +5,7 @@ use dhruv_vedic_base::{
     AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaVariation, AshtakavargaResult,
     BhavaResult, CharakarakaResult, CharakarakaScheme, Dms, DrishtiEntry, Graha,
     GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra, NodeDignityPolicy, Rashi, ShadbalaBreakdown,
-    SthanaBalaBreakdown,
+    SthanaBalaBreakdown, TimeUpagrahaConfig,
 };
 
 /// Sidereal longitudes of all 9 grahas.
@@ -116,6 +116,8 @@ pub struct BindusConfig {
     pub include_nakshatra: bool,
     /// Compute bhava placement for each bindu point.
     pub include_bhava: bool,
+    /// Configuration for time-based Gulika/Maandi computation.
+    pub upagraha_config: TimeUpagrahaConfig,
 }
 
 /// Curated sensitive points (bindus) with optional nakshatra/bhava enrichment.
@@ -468,6 +470,8 @@ pub struct FullKundaliConfig {
     pub include_dasha: bool,
     /// Node dignity policy for vimsopaka and avastha.
     pub node_dignity_policy: NodeDignityPolicy,
+    /// Configuration for time-based upagraha period selection.
+    pub upagraha_config: TimeUpagrahaConfig,
     /// Config passed to graha positions computation.
     pub graha_positions_config: GrahaPositionsConfig,
     /// Config passed to bindus computation.
@@ -503,6 +507,7 @@ impl Default for FullKundaliConfig {
             include_calendar: false,
             include_dasha: false,
             node_dignity_policy: NodeDignityPolicy::default(),
+            upagraha_config: TimeUpagrahaConfig::default(),
             graha_positions_config: GrahaPositionsConfig::default(),
             bindus_config: BindusConfig::default(),
             drishti_config: DrishtiConfig::default(),

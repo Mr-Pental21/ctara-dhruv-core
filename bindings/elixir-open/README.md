@@ -10,6 +10,11 @@ NIF that calls the in-repo Rust crates directly.
 - Package root: `bindings/elixir-open`
 - Build mode: local source build only, no precompiled NIFs
 
+## End-User Docs
+
+Usage-first documentation for this wrapper lives in
+[`../../docs/end_user/elixir/README.md`](../../docs/end_user/elixir/README.md).
+
 ## Prerequisites
 
 - Elixir 1.19+
@@ -176,6 +181,24 @@ Public modules included in this wrapper:
 Each module returns `{:ok, value}` or
 `{:error, %CtaraDhruv.Error{kind, message, details}}`. The only long-lived
 wrapper-owned struct is `%CtaraDhruv.Engine{}`.
+
+## Time-Based Upagraha Config
+
+The Elixir wrapper accepts `:upagraha_config` maps for:
+
+- `CtaraDhruv.Jyotish.upagrahas/2`
+- `CtaraDhruv.Jyotish.bindus/2`
+- `CtaraDhruv.Jyotish.full_kundali/2`
+
+Supported keys are:
+
+- `:gulika_point`, `:maandi_point`, `:other_point`
+- `:gulika_planet`, `:maandi_planet`
+
+Accepted values are strings or atoms matching:
+
+- points: `start`, `middle`, `end`
+- planets: `rahu`, `saturn`
 
 ## Notes
 

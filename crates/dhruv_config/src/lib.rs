@@ -887,6 +887,7 @@ impl ConfigResolver {
             value: BindusConfig {
                 include_nakshatra,
                 include_bhava,
+                upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),
             },
             source_by_field: source,
         })
@@ -1150,6 +1151,7 @@ impl ConfigResolver {
                 include_calendar,
                 include_dasha,
                 node_dignity_policy,
+                upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),
                 graha_positions_config: graha_positions_cfg,
                 bindus_config: bindus_cfg,
                 drishti_config: drishti_cfg,

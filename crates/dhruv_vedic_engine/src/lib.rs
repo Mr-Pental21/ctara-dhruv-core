@@ -32,6 +32,8 @@ pub use lunar_nodes::{
     lunar_node_deg_for_epoch_on_plane, lunar_node_deg_for_epoch_with_model, mean_ketu_deg,
     mean_rahu_deg, true_ketu_deg, true_rahu_deg,
 };
-pub use riseset::{approximate_local_noon_jd, compute_all_events, compute_rise_set};
+pub use riseset::{
+    approximate_local_noon_jd, compute_all_events, compute_rise_set, utc_day_start_jd,
+};
 pub use riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb};
 pub use time_policy::{set_time_conversion_policy, time_conversion_policy};

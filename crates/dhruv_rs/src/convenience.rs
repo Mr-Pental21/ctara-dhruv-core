@@ -1053,12 +1053,38 @@ pub fn upagrahas(
     system: AyanamshaSystem,
     use_nutation: bool,
 ) -> Result<dhruv_vedic_base::AllUpagrahas, DhruvError> {
+    upagrahas_with_config(
+        date,
+        eop,
+        location,
+        system,
+        use_nutation,
+        &dhruv_vedic_base::TimeUpagrahaConfig::default(),
+    )
+}
+
+/// Compute all 11 upagrahas for a given date and location with configurable
+/// Gulika/Maandi period selection.
+pub fn upagrahas_with_config(
+    date: UtcDate,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    system: AyanamshaSystem,
+    use_nutation: bool,
+    upagraha_config: &dhruv_vedic_base::TimeUpagrahaConfig,
+) -> Result<dhruv_vedic_base::AllUpagrahas, DhruvError> {
     let eng = engine()?;
     let utc: UtcTime = date.into();
     let rs_config = RiseSetConfig::default();
     let config = SankrantiConfig::new(system, use_nutation);
-    Ok(dhruv_search::all_upagrahas_for_date(
-        eng, eop, &utc, location, &rs_config, &config,
+    Ok(dhruv_search::all_upagrahas_for_date_with_config(
+        eng,
+        eop,
+        &utc,
+        location,
+        &rs_config,
+        &config,
+        upagraha_config,
     )?)
 }
 

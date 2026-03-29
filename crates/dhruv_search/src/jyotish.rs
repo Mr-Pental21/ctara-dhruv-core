@@ -9,7 +9,7 @@ use dhruv_frames::{
     DEFAULT_PRECESSION_MODEL, PrecessionModel, ReferencePlane, ecliptic_lon_to_invariable_lon,
     invariable_lon_to_ecliptic_lon, mean_obliquity_of_date_rad,
 };
-use dhruv_time::{EopKernel, UtcTime};
+use dhruv_time::{EopKernel, UtcTime, jd_to_tdb_seconds, tdb_seconds_to_jd};
 use dhruv_vedic_base::arudha::all_arudha_padas;
 use dhruv_vedic_base::riseset::compute_rise_set;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult};
@@ -22,17 +22,17 @@ use dhruv_vedic_base::{
     BhavaBalaBirthPeriod, BhavaBalaInputs, BhavaBalaResult, BhavaConfig, BhavaResult,
     CharakarakaResult, CharakarakaScheme, Dignity, DrishtiEntry, Graha, GrahaAvasthas,
     KalaBalaInputs, LajjitadiInputs, LunarNode, NodeDignityPolicy, NodeMode, SAPTA_GRAHAS,
-    SayanadiInputs, ShadbalaInputs, Upagraha, all_avasthas, all_combustion_status,
-    all_dashavarga_vimsopaka, all_saptavarga_vimsopaka, all_shadbalas_from_inputs,
-    all_shadvarga_vimsopaka, all_shodasavarga_vimsopaka, all_sphutas, amsha_longitude,
-    bhrigu_bindu, calculate_ashtakavarga, calculate_bhava_bala, charakarakas_from_longitudes,
-    compute_bhavas, dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise,
-    graha_drishti, graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord,
-    jd_tdb_to_centuries, lagna_longitude_rad, lost_planetary_war,
+    SayanadiInputs, ShadbalaInputs, TimeUpagrahaConfig, Upagraha, all_avasthas,
+    all_combustion_status, all_dashavarga_vimsopaka, all_saptavarga_vimsopaka,
+    all_shadbalas_from_inputs, all_shadvarga_vimsopaka, all_shodasavarga_vimsopaka, all_sphutas,
+    amsha_longitude, bhrigu_bindu, calculate_ashtakavarga, calculate_bhava_bala,
+    charakarakas_from_longitudes, compute_bhavas, dignity_in_rashi_with_positions, ghati_lagna,
+    ghatikas_since_sunrise, graha_drishti, graha_drishti_matrix, hora_lagna,
+    hora_lord as graha_hora_lord, jd_tdb_to_centuries, lagna_longitude_rad, lost_planetary_war,
     lunar_node_deg_for_epoch_on_plane, masa_lord as graha_masa_lord, nakshatra_from_longitude,
     navamsa_number, node_dignity_in_rashi, normalize_360, nth_rashi_from, pranapada_lagna,
     rashi_from_longitude, rashi_lord_by_index, samvatsara_lord as graha_samvatsara_lord,
-    sree_lagna, sun_based_upagrahas, time_upagraha_jd, vaar_lord as graha_vaar_lord,
+    sree_lagna, sun_based_upagrahas, time_upagraha_jd_with_config, vaar_lord as graha_vaar_lord,
 };
 
 use crate::conjunction::{body_ecliptic_lon_lat, body_ecliptic_state, body_lon_lat_on_plane};
@@ -77,6 +77,12 @@ fn ecliptic_to_sidereal(ecl_lon_deg: f64, aya: f64, plane: ReferencePlane) -> f6
         ReferencePlane::Invariable => ecliptic_lon_to_invariable_lon(ecl_lon_deg),
     };
     normalize(on_plane - aya)
+}
+
+fn jd_tdb_to_jd_utc(engine: &Engine, jd_tdb: f64) -> f64 {
+    let tdb_s = jd_to_tdb_seconds(jd_tdb);
+    let utc_s = engine.lsk().tdb_to_utc(tdb_s);
+    tdb_seconds_to_jd(utc_s)
 }
 
 /// Project a tropical ecliptic longitude onto the configured sidereal zodiac.
@@ -255,7 +261,7 @@ impl JyotishContext {
             return Ok(jd);
         }
         let noon_jd = dhruv_vedic_base::approximate_local_noon_jd(
-            self.jd_utc.floor() + 0.5,
+            dhruv_vedic_base::utc_day_start_jd(self.jd_utc),
             location.longitude_deg,
         );
         let sunset_result = compute_rise_set(
@@ -634,6 +640,28 @@ pub fn all_upagrahas_for_date(
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
 ) -> Result<AllUpagrahas, SearchError> {
+    all_upagrahas_for_date_with_config(
+        engine,
+        eop,
+        utc,
+        location,
+        riseset_config,
+        aya_config,
+        &TimeUpagrahaConfig::default(),
+    )
+}
+
+/// Compute all 11 upagrahas for a given date and location using a custom
+/// time-based upagraha period configuration.
+pub fn all_upagrahas_for_date_with_config(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    riseset_config: &RiseSetConfig,
+    aya_config: &SankrantiConfig,
+    upagraha_config: &TimeUpagrahaConfig,
+) -> Result<AllUpagrahas, SearchError> {
     let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
     all_upagrahas_for_date_with_ctx(
         engine,
@@ -642,6 +670,7 @@ pub fn all_upagrahas_for_date(
         location,
         riseset_config,
         aya_config,
+        upagraha_config,
         &mut ctx,
     )
 }
@@ -653,6 +682,7 @@ fn all_upagrahas_for_date_with_ctx(
     location: &GeoLocation,
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
+    upagraha_config: &TimeUpagrahaConfig,
     ctx: &mut JyotishContext,
 ) -> Result<AllUpagrahas, SearchError> {
     let jd_tdb = ctx.jd_tdb;
@@ -669,9 +699,21 @@ fn all_upagrahas_for_date_with_ctx(
     // Compute time-based upagrahas (lagna at portion start/end).
     let mut time_lons = [0.0f64; 6]; // Gulika, Maandi, Kaala, Mrityu, ArthaPrahara, YamaGhantaka
     for (i, &upa) in TIME_BASED_UPAGRAHAS.iter().enumerate() {
-        let target_jd =
-            time_upagraha_jd(upa, weekday, is_day, jd_sunrise, jd_sunset, jd_next_sunrise);
-        let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, target_jd)?;
+        let target_jd = time_upagraha_jd_with_config(
+            upa,
+            weekday,
+            is_day,
+            jd_sunrise,
+            jd_sunset,
+            jd_next_sunrise,
+            upagraha_config,
+        );
+        let lagna_rad = lagna_longitude_rad(
+            engine.lsk(),
+            eop,
+            location,
+            jd_tdb_to_jd_utc(engine, target_jd),
+        )?;
         let lagna_ecl = lagna_rad.to_degrees();
         let lagna_on_plane = match ctx.reference_plane {
             ReferencePlane::Ecliptic => lagna_ecl,
@@ -978,26 +1020,38 @@ fn core_bindus_with_ctx(
     let is_day = ctx.jd_tdb >= jd_sunrise && ctx.jd_tdb < jd_sunset;
     let weekday = vaar_from_jd(jd_sunrise).index();
 
-    let gulika_jd = time_upagraha_jd(
+    let gulika_jd = time_upagraha_jd_with_config(
         Upagraha::Gulika,
         weekday,
         is_day,
         jd_sunrise,
         jd_sunset,
         jd_next_sunrise,
+        &config.upagraha_config,
     );
-    let gulika_rad = lagna_longitude_rad(engine.lsk(), eop, location, gulika_jd)?;
+    let gulika_rad = lagna_longitude_rad(
+        engine.lsk(),
+        eop,
+        location,
+        jd_tdb_to_jd_utc(engine, gulika_jd),
+    )?;
     let gulika_sid = ecliptic_to_sidereal(gulika_rad.to_degrees(), aya, plane);
 
-    let maandi_jd = time_upagraha_jd(
+    let maandi_jd = time_upagraha_jd_with_config(
         Upagraha::Maandi,
         weekday,
         is_day,
         jd_sunrise,
         jd_sunset,
         jd_next_sunrise,
+        &config.upagraha_config,
     );
-    let maandi_rad = lagna_longitude_rad(engine.lsk(), eop, location, maandi_jd)?;
+    let maandi_rad = lagna_longitude_rad(
+        engine.lsk(),
+        eop,
+        location,
+        jd_tdb_to_jd_utc(engine, maandi_jd),
+    )?;
     let maandi_sid = ecliptic_to_sidereal(maandi_rad.to_degrees(), aya, plane);
 
     let bb_lon = bhrigu_bindu(rahu_sid, moon_sid);
@@ -1300,6 +1354,7 @@ pub fn full_kundali_for_date(
             location,
             riseset_config,
             aya_config,
+            &config.upagraha_config,
             &mut ctx,
         )?)
     } else {
@@ -1315,6 +1370,7 @@ pub fn full_kundali_for_date(
                 location,
                 riseset_config,
                 aya_config,
+                &config.upagraha_config,
                 &mut ctx,
             )?,
         })
@@ -1677,6 +1733,7 @@ fn all_sphuta_lons_with_ctx(
     location: &GeoLocation,
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
+    upagraha_config: &TimeUpagrahaConfig,
     ctx: &mut JyotishContext,
 ) -> Result<[f64; 16], SearchError> {
     let gl = *ctx.graha_lons(engine, aya_config)?;
@@ -1696,15 +1753,21 @@ fn all_sphuta_lons_with_ctx(
     let is_day = ctx.jd_tdb >= jd_sunrise && ctx.jd_tdb < jd_sunset;
     let weekday = vaar_from_jd(jd_sunrise).index();
 
-    let gulika_jd = time_upagraha_jd(
+    let gulika_jd = time_upagraha_jd_with_config(
         Upagraha::Gulika,
         weekday,
         is_day,
         jd_sunrise,
         jd_sunset,
         jd_next_sunrise,
+        upagraha_config,
     );
-    let gulika_rad = lagna_longitude_rad(engine.lsk(), eop, location, gulika_jd)?;
+    let gulika_rad = lagna_longitude_rad(
+        engine.lsk(),
+        eop,
+        location,
+        jd_tdb_to_jd_utc(engine, gulika_jd),
+    )?;
     let gulika_sid = ecliptic_to_sidereal(gulika_rad.to_degrees(), aya, plane);
 
     let eighth_cusp_sid = normalize(lagna_sid + 210.0);
@@ -2691,6 +2754,7 @@ pub fn amsha_charts_for_date(
             location,
             riseset_config,
             aya_config,
+            &TimeUpagrahaConfig::default(),
             &mut ctx,
         )?;
         Some(all_upagraha_lons(&upa))
@@ -2707,6 +2771,7 @@ pub fn amsha_charts_for_date(
             location,
             riseset_config,
             aya_config,
+            &TimeUpagrahaConfig::default(),
             &mut ctx,
         )?)
     } else {

@@ -122,9 +122,11 @@ pub use tithi::{
     ALL_TITHIS, Paksha, TITHI_SEGMENT_DEG, Tithi, TithiPosition, tithi_from_elongation,
 };
 pub use upagraha::{
-    ALL_UPAGRAHAS, AllUpagrahas, SunBasedUpagrahas, TIME_BASED_UPAGRAHAS, Upagraha,
-    day_portion_index, night_portion_index, portion_jd_range, sun_based_upagrahas,
-    time_upagraha_jd, time_upagraha_planet,
+    ALL_UPAGRAHAS, AllUpagrahas, GulikaMaandiPlanet, SunBasedUpagrahas, TIME_BASED_UPAGRAHAS,
+    TimeUpagrahaConfig, TimeUpagrahaPoint, Upagraha, day_portion_index, night_portion_index,
+    portion_jd_range, portion_jd_value, sun_based_upagrahas, time_upagraha_jd,
+    time_upagraha_jd_with_config, time_upagraha_planet, time_upagraha_planet_with_config,
+    time_upagraha_point_with_config,
 };
 pub use util::normalize_360;
 pub use vaar::{ALL_VAARS, Vaar, vaar_from_jd};

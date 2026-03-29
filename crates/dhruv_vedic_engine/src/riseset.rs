@@ -39,6 +39,15 @@ pub fn approximate_local_noon_jd(jd_ut_midnight: f64, longitude_deg: f64) -> f64
     jd_ut_midnight + 0.5 - longitude_deg / 360.0
 }
 
+/// Return the 0h UTC JD for the civil day containing `jd_utc`.
+///
+/// Julian Dates roll over at 12:00 UTC, so deriving midnight via
+/// `jd_utc.floor() + 0.5` shifts to the next civil day for post-noon UTC
+/// moments. This helper is safe for any UTC instant.
+pub fn utc_day_start_jd(jd_utc: f64) -> f64 {
+    (jd_utc + 0.5).floor() - 0.5
+}
+
 /// Compute the Sun's geocentric equatorial RA, Dec, and distance at a given JD TDB.
 ///
 /// Queries the ephemeris engine for the Sun's position relative to Earth
@@ -308,6 +317,18 @@ mod tests {
         let noon = approximate_local_noon_jd(jd_0h, -90.0);
         // 90 deg west → noon is 6 hours later in UT
         assert!((noon - (jd_0h + 0.75)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn utc_day_start_before_noon() {
+        let jd_utc = 2_461_116.75;
+        assert!((utc_day_start_jd(jd_utc) - 2_461_116.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn utc_day_start_after_noon() {
+        let jd_utc = 2_461_117.12939;
+        assert!((utc_day_start_jd(jd_utc) - 2_461_116.5).abs() < 1e-10);
     }
 
     #[test]

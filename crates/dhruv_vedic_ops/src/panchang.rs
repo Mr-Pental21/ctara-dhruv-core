@@ -13,7 +13,8 @@ use dhruv_vedic_base::{
     RiseSetEvent, RiseSetResult, TITHI_SEGMENT_DEG, YOGA_SEGMENT_DEG, approximate_local_noon_jd,
     ayana_from_sidereal_longitude, compute_rise_set, ghatika_from_elapsed, hora_at,
     jd_tdb_to_centuries, karana_from_elongation, masa_from_rashi_index, nakshatra_from_longitude,
-    rashi_from_longitude, samvatsara_from_year, tithi_from_elongation, vaar_from_jd, yoga_from_sum,
+    rashi_from_longitude, samvatsara_from_year, tithi_from_elongation, utc_day_start_jd,
+    vaar_from_jd, yoga_from_sum,
 };
 
 use crate::error::SearchError;
@@ -530,7 +531,7 @@ pub fn vedic_day_sunrises(
     let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
 
     // Approximate local noon for today
-    let jd_midnight = jd_utc.floor() + 0.5; // 0h UT
+    let jd_midnight = utc_day_start_jd(jd_utc);
     let jd_noon = approximate_local_noon_jd(jd_midnight, location.longitude_deg);
 
     // Today's sunrise

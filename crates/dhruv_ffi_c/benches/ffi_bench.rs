@@ -2257,10 +2257,12 @@ fn ffi_orchestrators_bench(c: &mut Criterion) {
     let bind_cfg_rust = dhruv_search::BindusConfig {
         include_nakshatra: false,
         include_bhava: false,
+        upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),
     };
     let bind_cfg_ffi = dhruv_ffi_c::DhruvBindusConfig {
         include_nakshatra: 0,
         include_bhava: 0,
+        upagraha_config: dhruv_ffi_c::dhruv_time_upagraha_config_default(),
     };
     let mut bind_out: dhruv_ffi_c::DhruvBindusResult = zeroed();
     bench_pair(
@@ -2465,7 +2467,7 @@ fn ffi_orchestrators_bench(c: &mut Criterion) {
             .expect("sunrises for time_upagraha_jd_utc");
             let jd_utc = ffi_utc_to_jd_utc(&utc);
             let noon_jd = dhruv_vedic_base::approximate_local_noon_jd(
-                jd_utc.floor() + 0.5,
+                dhruv_vedic_base::utc_day_start_jd(jd_utc),
                 loc_rust.longitude_deg,
             );
             let sunset_jd = match dhruv_vedic_base::compute_rise_set(

@@ -135,22 +135,34 @@ function sunBasedUpagrahas(engineOrSunSiderealLongitude, jdTdb, ayanamshaSystem 
   return r.result;
 }
 
-function timeUpagrahaJd(upagrahaIndex, weekday, isDay, sunriseJd, sunsetJd, nextSunriseJd) {
-  const r = addon.timeUpagrahaJd(upagrahaIndex, weekday, !!isDay, sunriseJd, sunsetJd, nextSunriseJd);
-  checkStatus('time_upagraha_jd', r.status);
+function timeUpagrahaJd(upagrahaIndex, weekday, isDay, sunriseJd, sunsetJd, nextSunriseJd, upagrahaConfig = undefined) {
+  const r = upagrahaConfig === undefined
+    ? addon.timeUpagrahaJd(upagrahaIndex, weekday, !!isDay, sunriseJd, sunsetJd, nextSunriseJd)
+    : addon.timeUpagrahaJd(upagrahaIndex, weekday, !!isDay, sunriseJd, sunsetJd, nextSunriseJd, upagrahaConfig);
+  checkStatus(upagrahaConfig === undefined ? 'time_upagraha_jd' : 'time_upagraha_jd_with_config', r.status);
   return r.jdTdb;
 }
 
-function timeUpagrahaJdUtc(engine, eop, utc, location, riseSetConfig, upagrahaIndex) {
-  const r = addon.timeUpagrahaJdUtc(
-    engine._handle,
-    eop._handle,
-    utc,
-    location,
-    riseSetConfig,
-    upagrahaIndex,
-  );
-  checkStatus('time_upagraha_jd_utc', r.status);
+function timeUpagrahaJdUtc(engine, eop, utc, location, riseSetConfig, upagrahaIndex, upagrahaConfig = undefined) {
+  const r = upagrahaConfig === undefined
+    ? addon.timeUpagrahaJdUtc(
+      engine._handle,
+      eop._handle,
+      utc,
+      location,
+      riseSetConfig,
+      upagrahaIndex,
+    )
+    : addon.timeUpagrahaJdUtc(
+      engine._handle,
+      eop._handle,
+      utc,
+      location,
+      riseSetConfig,
+      upagrahaIndex,
+      upagrahaConfig,
+    );
+  checkStatus(upagrahaConfig === undefined ? 'time_upagraha_jd_utc' : 'time_upagraha_jd_utc_with_config', r.status);
   return r.jdTdb;
 }
 
