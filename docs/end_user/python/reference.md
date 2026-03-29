@@ -10,7 +10,7 @@ This page summarizes the public Python wrapper by module, using
 - engine lifecycle: `Engine`, `init`, `engine`, `lsk`, `eop`
 - selected enums from `enums`
 - selected dataclasses from `types`
-- ephemeris helpers: `query_state`, `query_utc_spherical`, `body_ecliptic_lon_lat`, `cartesian_to_spherical`
+- ephemeris helpers: `query`, `body_ecliptic_lon_lat`, `cartesian_to_spherical`
 - time helpers: `utc_to_jd_tdb`, `jd_tdb_to_utc`, `nutation`
 - ayanamsha helpers: `ayanamsha`, `system_count`, `reference_plane_default`
 - tara: `TaraCatalog`
@@ -46,10 +46,8 @@ The fuller public surface is module-based.
 
 `ephemeris`:
 
-- `query_state`
+- `query`
 - `query_once`
-- `query_utc`
-- `query_utc_spherical`
 - `body_ecliptic_lon_lat`
 - `cartesian_to_spherical`
 

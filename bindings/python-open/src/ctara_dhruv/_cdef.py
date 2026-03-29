@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       48
+#define DHRUV_API_VERSION       49
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 
@@ -68,6 +68,15 @@ typedef int32_t DhruvStatus;
 /* DhruvReferencePlane (repr(i32)) */
 #define DHRUV_REFERENCE_PLANE_ECLIPTIC   0
 #define DHRUV_REFERENCE_PLANE_INVARIABLE 1
+
+/* Query time selectors */
+#define DHRUV_QUERY_TIME_JD_TDB 0
+#define DHRUV_QUERY_TIME_UTC    1
+
+/* Query output selectors */
+#define DHRUV_QUERY_OUTPUT_CARTESIAN 0
+#define DHRUV_QUERY_OUTPUT_SPHERICAL 1
+#define DHRUV_QUERY_OUTPUT_BOTH      2
 
 /* Sun limb */
 #define DHRUV_SUN_LIMB_UPPER     0
@@ -318,6 +327,11 @@ typedef struct {
 } DhruvSphericalState;
 
 typedef struct {
+    DhruvStateVector    state_vector;
+    DhruvSphericalState spherical_state;
+} DhruvQueryResult;
+
+typedef struct {
     int32_t  year;
     uint32_t month;
     uint32_t day;
@@ -325,6 +339,16 @@ typedef struct {
     uint32_t minute;
     double   second;
 } DhruvUtcTime;
+
+typedef struct {
+    int32_t      target;
+    int32_t      observer;
+    int32_t      frame;
+    int32_t      time_kind;
+    double       epoch_tdb_jd;
+    DhruvUtcTime utc;
+    int32_t      output_mode;
+} DhruvQueryRequest;
 
 typedef struct {
     double latitude_deg;
@@ -1278,6 +1302,10 @@ DhruvStatus dhruv_engine_query(
     const DhruvEngineHandle *engine,
     const DhruvQuery *query,
     DhruvStateVector *out);
+DhruvStatus dhruv_engine_query_request(
+    const DhruvEngineHandle *engine,
+    const DhruvQueryRequest *request,
+    DhruvQueryResult *out);
 DhruvStatus dhruv_engine_free(DhruvEngineHandle *engine);
 DhruvStatus dhruv_query_once(
     const DhruvEngineConfig *config,
@@ -1299,14 +1327,6 @@ DhruvStatus dhruv_utc_to_tdb_jd(
 DhruvStatus dhruv_cartesian_to_spherical(
     const double *position_km,
     DhruvSphericalCoords *out);
-
-/* --- UTC spherical query --- */
-DhruvStatus dhruv_query_utc_spherical(
-    const DhruvEngineHandle *engine,
-    int32_t target, int32_t observer, int32_t frame,
-    int32_t year, uint32_t month, uint32_t day,
-    uint32_t hour, uint32_t minute, double second,
-    DhruvSphericalState *out);
 
 /* --- EOP --- */
 DhruvStatus dhruv_eop_load(const char *path, DhruvEopHandle **out);
@@ -1610,12 +1630,6 @@ DhruvStatus dhruv_nakshatra28_from_tropical_utc(
     double tropical_lon, uint32_t ayanamsha_system,
     const DhruvUtcTime *utc, uint8_t use_nutation,
     DhruvNakshatra28Info *out);
-DhruvStatus dhruv_query_utc(
-    const DhruvEngineHandle *engine,
-    int32_t target, int32_t observer, int32_t frame,
-    const DhruvUtcTime *utc,
-    DhruvSphericalState *out);
-
 /* --- Panchang for-date functions --- */
 DhruvStatus dhruv_tithi_for_date(
     const DhruvEngineHandle *engine,

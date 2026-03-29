@@ -4,7 +4,9 @@ use std::sync::{Arc, RwLock};
 
 use dhruv_config::{ConfigResolver, DefaultsMode, load_from_path};
 use dhruv_core::{Body, Engine, EngineConfig, Frame, Observer, Query, StateVector};
-use dhruv_frames::{ReferencePlane, cartesian_to_spherical, nutation_iau2000b};
+use dhruv_frames::{
+    ReferencePlane, cartesian_state_to_spherical_state, cartesian_to_spherical, nutation_iau2000b,
+};
 use dhruv_search::ConjunctionConfig;
 use dhruv_search::operations::{
     AyanamshaMode, AyanamshaOperation, ConjunctionOperation, ConjunctionQuery, ConjunctionResult,
@@ -128,16 +130,10 @@ struct GeoLocationInput {
 struct QueryInput {
     target: EnumInput,
     observer: EnumInput,
-    frame: EnumInput,
-    epoch_tdb_jd: f64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct QueryUtcInput {
-    target: EnumInput,
-    observer: EnumInput,
     frame: Option<EnumInput>,
-    utc: UtcInput,
+    epoch_tdb_jd: Option<f64>,
+    utc: Option<UtcInput>,
+    output: Option<EnumInput>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1413,6 +1409,88 @@ fn spherical_json(coords: dhruv_frames::SphericalCoords) -> Value {
     })
 }
 
+fn spherical_state_json(state: dhruv_frames::SphericalState) -> Value {
+    json!({
+        "lon_deg": state.lon_deg,
+        "lat_deg": state.lat_deg,
+        "distance_km": state.distance_km,
+        "lon_speed": state.lon_speed,
+        "lat_speed": state.lat_speed,
+        "distance_speed": state.distance_speed
+    })
+}
+
+fn parse_query_output(input: Option<&EnumInput>) -> Result<i32, Value> {
+    match input {
+        None => Ok(0),
+        Some(EnumInput::Int(0)) => Ok(0),
+        Some(EnumInput::Int(1)) => Ok(1),
+        Some(EnumInput::Int(2)) => Ok(2),
+        Some(EnumInput::Str(value)) => match value.as_str() {
+            "cartesian" => Ok(0),
+            "spherical" => Ok(1),
+            "both" => Ok(2),
+            _ => Err(error_payload("invalid_request", "unknown query output")),
+        },
+        _ => Err(error_payload("invalid_request", "unknown query output")),
+    }
+}
+
+fn query_epoch_tdb_jd(state: &EngineState, request: &QueryInput) -> Result<f64, Value> {
+    match (request.epoch_tdb_jd, request.utc.as_ref()) {
+        (Some(epoch_tdb_jd), None) => Ok(epoch_tdb_jd),
+        (None, Some(utc_input)) => {
+            let utc = parse_utc(utc_input.clone())?;
+            let jd_utc = dhruv_time::calendar_to_jd(
+                utc.year,
+                utc.month,
+                utc.day as f64
+                    + utc.hour as f64 / 24.0
+                    + utc.minute as f64 / 1440.0
+                    + utc.second / 86_400.0,
+            );
+            let utc_seconds = jd_to_tdb_seconds(jd_utc);
+            let tdb_seconds = state
+                .engine
+                .as_ref()
+                .ok_or_else(|| error_payload("engine_error", "engine not initialized"))?
+                .lsk()
+                .utc_to_tdb_with_policy_and_eop(utc_seconds, state.eop.as_ref(), state.time_policy)
+                .tdb_seconds;
+            Ok(tdb_seconds_to_jd(tdb_seconds))
+        }
+        _ => Err(error_payload(
+            "invalid_request",
+            "provide exactly one of epoch_tdb_jd or utc",
+        )),
+    }
+}
+
+fn ephemeris_query_result_json(state_vector: StateVector, output_mode: i32) -> Value {
+    let spherical_state =
+        cartesian_state_to_spherical_state(&state_vector.position_km, &state_vector.velocity_km_s);
+    let output_name = match output_mode {
+        1 => "spherical",
+        2 => "both",
+        _ => "cartesian",
+    };
+    let state_value = if output_mode == 1 {
+        Value::Null
+    } else {
+        state_vector_json(state_vector)
+    };
+    let spherical_value = if output_mode == 0 {
+        Value::Null
+    } else {
+        spherical_state_json(spherical_state)
+    };
+    json!({
+        "state": state_value,
+        "spherical_state": spherical_value,
+        "output": output_name
+    })
+}
+
 fn rise_set_result_json(result: RiseSetResult) -> Value {
     match result {
         RiseSetResult::Event { jd_tdb, event } => json!({
@@ -2058,84 +2136,17 @@ fn tara_result_json(result: TaraResult) -> Value {
 fn handle_ephemeris(resource: &ResourceArc<EngineResource>, request: QueryInput) -> JsonResult {
     read_state(resource, |state| {
         let engine = require_engine(state)?;
-        let query = Query {
-            target: parse_body(&request.target)?,
-            observer: parse_observer(&request.observer)?,
-            frame: parse_frame(&request.frame)?,
-            epoch_tdb_jd: request.epoch_tdb_jd,
-        };
-        engine
-            .query(query)
-            .map(state_vector_json)
-            .map_err(|err| map_error("engine_error", err))
-    })
-}
-
-fn handle_ephemeris_utc(
-    resource: &ResourceArc<EngineResource>,
-    request: QueryUtcInput,
-) -> JsonResult {
-    read_state(resource, |state| {
-        let engine = require_engine(state)?;
-        let utc = parse_utc(request.utc)?;
-        let jd_utc = dhruv_time::calendar_to_jd(
-            utc.year,
-            utc.month,
-            utc.day as f64
-                + utc.hour as f64 / 24.0
-                + utc.minute as f64 / 1440.0
-                + utc.second / 86_400.0,
-        );
-        let utc_seconds = jd_to_tdb_seconds(jd_utc);
-        let tdb_seconds = engine
-            .lsk()
-            .utc_to_tdb_with_policy_and_eop(utc_seconds, state.eop.as_ref(), state.time_policy)
-            .tdb_seconds;
+        let output_mode = parse_query_output(request.output.as_ref())?;
         let query = Query {
             target: parse_body(&request.target)?,
             observer: parse_observer(&request.observer)?,
             frame: parse_frame(request.frame.as_ref().unwrap_or(&EnumInput::Int(0)))?,
-            epoch_tdb_jd: tdb_seconds_to_jd(tdb_seconds),
+            epoch_tdb_jd: query_epoch_tdb_jd(state, &request)?,
         };
         engine
             .query(query)
-            .map(state_vector_json)
+            .map(|state_vector| ephemeris_query_result_json(state_vector, output_mode))
             .map_err(|err| map_error("engine_error", err))
-    })
-}
-
-fn handle_ephemeris_utc_spherical(
-    resource: &ResourceArc<EngineResource>,
-    request: QueryUtcInput,
-) -> JsonResult {
-    read_state(resource, |state| {
-        let engine = require_engine(state)?;
-        let utc = parse_utc(request.utc)?;
-        let jd_utc = dhruv_time::calendar_to_jd(
-            utc.year,
-            utc.month,
-            utc.day as f64
-                + utc.hour as f64 / 24.0
-                + utc.minute as f64 / 1440.0
-                + utc.second / 86_400.0,
-        );
-        let utc_seconds = jd_to_tdb_seconds(jd_utc);
-        let tdb_seconds = engine
-            .lsk()
-            .utc_to_tdb_with_policy_and_eop(utc_seconds, state.eop.as_ref(), state.time_policy)
-            .tdb_seconds;
-        let query = Query {
-            target: parse_body(&request.target)?,
-            observer: parse_observer(&request.observer)?,
-            frame: parse_frame(request.frame.as_ref().unwrap_or(&EnumInput::Int(0)))?,
-            epoch_tdb_jd: tdb_seconds_to_jd(tdb_seconds),
-        };
-        let state_vector = engine
-            .query(query)
-            .map_err(|err| map_error("engine_error", err))?;
-        Ok(spherical_json(cartesian_to_spherical(
-            &state_vector.position_km,
-        )))
     })
 }
 
@@ -3171,14 +3182,6 @@ fn ephemeris_run<'a>(
         .ok_or(rustler::Error::BadArg)?;
     let response = match op {
         "query" => handle_ephemeris(
-            &resource,
-            serde_json::from_value(raw).map_err(|_| rustler::Error::BadArg)?,
-        ),
-        "query_utc" => handle_ephemeris_utc(
-            &resource,
-            serde_json::from_value(raw).map_err(|_| rustler::Error::BadArg)?,
-        ),
-        "query_utc_spherical" => handle_ephemeris_utc_spherical(
             &resource,
             serde_json::from_value(raw).map_err(|_| rustler::Error::BadArg)?,
         ),

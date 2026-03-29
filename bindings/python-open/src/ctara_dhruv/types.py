@@ -20,6 +20,14 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+QUERY_TIME_JD_TDB = 0
+QUERY_TIME_UTC = 1
+
+QUERY_OUTPUT_CARTESIAN = 0
+QUERY_OUTPUT_SPHERICAL = 1
+QUERY_OUTPUT_BOTH = 2
+
+
 @dataclass(frozen=True)
 class StateVector:
     """Cartesian state vector (km and km/s)."""
@@ -55,6 +63,32 @@ class SphericalState:
     lon_speed: float
     lat_speed: float
     distance_speed: float
+
+
+@dataclass(frozen=True)
+class QueryRequest:
+    """Unified ephemeris query request.
+
+    Use ``epoch_tdb_jd`` for JD(TDB) queries or ``utc_time`` for UTC queries.
+    ``time_kind`` is optional and inferred when exactly one input form is set.
+    """
+
+    target: int
+    observer: int
+    frame: int = 0
+    epoch_tdb_jd: Optional[float] = None
+    utc_time: Optional["UtcTime"] = None
+    time_kind: Optional[int] = None
+    output_mode: int = QUERY_OUTPUT_CARTESIAN
+
+
+@dataclass(frozen=True)
+class QueryResult:
+    """Unified ephemeris query result."""
+
+    state: Optional[StateVector]
+    spherical_state: Optional[SphericalState]
+    output_mode: int
 
 
 @dataclass(frozen=True)

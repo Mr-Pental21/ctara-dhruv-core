@@ -143,9 +143,9 @@ defmodule CtaraDhruv.Bench.AllFunctions do
           })
         )
       end),
-      case_spec("CtaraDhruv.Ephemeris.query_utc/2", [:shared_engine], fn ctx ->
+      case_spec("CtaraDhruv.Ephemeris.query/2 (UTC cartesian)", [:shared_engine], fn ctx ->
         assert_ok!(
-          Ephemeris.query_utc(ctx.shared_engine, %{
+          Ephemeris.query(ctx.shared_engine, %{
             target: :mars,
             observer: :solar_system_barycenter,
             frame: 1,
@@ -153,13 +153,14 @@ defmodule CtaraDhruv.Bench.AllFunctions do
           })
         )
       end),
-      case_spec("CtaraDhruv.Ephemeris.query_utc_spherical/2", [:shared_engine], fn ctx ->
+      case_spec("CtaraDhruv.Ephemeris.query/2 (UTC spherical)", [:shared_engine], fn ctx ->
         assert_ok!(
-          Ephemeris.query_utc_spherical(ctx.shared_engine, %{
+          Ephemeris.query(ctx.shared_engine, %{
             target: :mars,
             observer: :solar_system_barycenter,
             frame: 1,
-            utc: common_utc
+            utc: common_utc,
+            output: :spherical
           })
         )
       end),

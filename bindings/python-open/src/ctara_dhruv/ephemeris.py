@@ -4,7 +4,18 @@ from __future__ import annotations
 
 from ._ffi import ffi, lib
 from ._check import check
-from .types import SphericalCoords, SphericalState, StateVector, UtcTime
+from .types import (
+    QUERY_OUTPUT_CARTESIAN,
+    QUERY_OUTPUT_SPHERICAL,
+    QUERY_TIME_JD_TDB,
+    QUERY_TIME_UTC,
+    QueryRequest,
+    QueryResult,
+    SphericalCoords,
+    SphericalState,
+    StateVector,
+    UtcTime,
+)
 
 _DHRUV_PATH_CAPACITY = 512
 _DHRUV_MAX_SPK_PATHS = 8
@@ -59,34 +70,58 @@ def _read_spherical_state(ss) -> SphericalState:
     )
 
 
-def query_state(
-    engine_handle,
-    target: int,
-    observer: int,
-    jd_tdb: float,
-    frame: int = 0,
-) -> StateVector:
-    """Query the engine for a Cartesian state vector at a given epoch.
+def _query_request_struct(request: QueryRequest):
+    q = ffi.new("DhruvQueryRequest *")
+    q.target = request.target
+    q.observer = request.observer
+    q.frame = request.frame
+    q.output_mode = request.output_mode
 
-    Args:
-        engine_handle: DhruvEngineHandle pointer (from Engine._ptr).
-        target: NAIF body code of the target.
-        observer: NAIF body code of the observer.
-        jd_tdb: Julian Date in TDB.
-        frame: Frame code (0=J2000/ICRF, 1=ecliptic J2000).
+    time_kind = request.time_kind
+    if time_kind is None:
+        has_jd = request.epoch_tdb_jd is not None
+        has_utc = request.utc_time is not None
+        if has_jd == has_utc:
+            raise ValueError(
+                "QueryRequest must provide exactly one of epoch_tdb_jd or utc_time when time_kind is omitted"
+            )
+        time_kind = QUERY_TIME_UTC if has_utc else QUERY_TIME_JD_TDB
 
-    Returns:
-        StateVector with position (km) and velocity (km/s).
-    """
-    q = ffi.new("DhruvQuery *")
-    q.target = target
-    q.observer = observer
-    q.frame = frame
-    q.epoch_tdb_jd = jd_tdb
+    q.time_kind = time_kind
+    if time_kind == QUERY_TIME_JD_TDB:
+        if request.epoch_tdb_jd is None:
+            raise ValueError("epoch_tdb_jd is required for JD(TDB) queries")
+        q.epoch_tdb_jd = request.epoch_tdb_jd
+    elif time_kind == QUERY_TIME_UTC:
+        if request.utc_time is None:
+            raise ValueError("utc_time is required for UTC queries")
+        q.utc = _utc_struct(request.utc_time)[0]
+    else:
+        q.time_kind = time_kind
+    return q
 
-    out = ffi.new("DhruvStateVector *")
-    check(lib.dhruv_engine_query(engine_handle, q, out), "engine_query")
-    return _read_state_vector(out)
+
+def _read_query_result(result, output_mode: int) -> QueryResult:
+    state = None
+    spherical_state = None
+    if output_mode != QUERY_OUTPUT_SPHERICAL:
+        state = _read_state_vector(result.state_vector)
+    if output_mode != QUERY_OUTPUT_CARTESIAN:
+        spherical_state = _read_spherical_state(result.spherical_state)
+    return QueryResult(
+        state=state,
+        spherical_state=spherical_state,
+        output_mode=output_mode,
+    )
+
+
+def query(engine_handle, request: QueryRequest) -> QueryResult:
+    """Unified ephemeris query with JD-vs-UTC input and output-mode selection."""
+
+    q = _query_request_struct(request)
+    out = ffi.new("DhruvQueryResult *")
+    check(lib.dhruv_engine_query_request(engine_handle, q, out), "engine_query")
+    return _read_query_result(out, request.output_mode)
 
 
 def query_once(
@@ -120,69 +155,6 @@ def query_once(
     out = ffi.new("DhruvStateVector *")
     check(lib.dhruv_query_once(cfg, q, out), "query_once")
     return _read_state_vector(out)
-
-
-def query_utc(
-    engine_handle,
-    target: int,
-    observer: int,
-    utc_time: UtcTime,
-    frame: int = 0,
-) -> SphericalState:
-    """Query from a UtcTime dataclass, returns spherical state.
-
-    Args:
-        engine_handle: DhruvEngineHandle pointer.
-        target: NAIF body code of the target.
-        observer: NAIF body code of the observer.
-        utc_time: UtcTime dataclass with calendar components.
-        frame: Frame code (0=J2000/ICRF, 1=ecliptic J2000).
-
-    Returns:
-        SphericalState with lon/lat (deg), distance (km), and rates.
-    """
-    utc = _utc_struct(utc_time)
-    out = ffi.new("DhruvSphericalState *")
-    check(
-        lib.dhruv_query_utc(engine_handle, target, observer, frame, utc, out),
-        "query_utc",
-    )
-    return _read_spherical_state(out)
-
-
-def query_utc_spherical(
-    engine_handle,
-    target: int,
-    observer: int,
-    frame: int,
-    year: int,
-    month: int,
-    day: int,
-    hour: int = 0,
-    minute: int = 0,
-    sec: float = 0.0,
-) -> SphericalState:
-    """Query from UTC calendar components, returns spherical state.
-
-    Args:
-        engine_handle: DhruvEngineHandle pointer.
-        target: NAIF body code of the target.
-        observer: NAIF body code of the observer.
-        frame: Frame code.
-        year, month, day, hour, minute, sec: UTC calendar components.
-
-    Returns:
-        SphericalState with lon/lat (deg), distance (km), and rates.
-    """
-    out = ffi.new("DhruvSphericalState *")
-    check(
-        lib.dhruv_query_utc_spherical(
-            engine_handle, target, observer, frame,
-            year, month, day, hour, minute, sec, out,
-        ),
-        "query_utc_spherical",
-    )
-    return _read_spherical_state(out)
 
 
 def body_ecliptic_lon_lat(

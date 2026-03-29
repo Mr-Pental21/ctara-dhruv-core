@@ -5,8 +5,16 @@ Usage::
     import ctara_dhruv as cd
 
     with cd.Engine(["de442s.bsp"], "naif0012.tls") as eng:
-        state = cd.query_state(eng._ptr, target=cd.Body.MARS, observer=cd.Body.SSB, jd_tdb=2451545.0)
-        print(state.x, state.y, state.z)
+        result = cd.query(
+            eng._ptr,
+            cd.QueryRequest(
+                target=cd.Body.MARS,
+                observer=cd.Body.SSB,
+                epoch_tdb_jd=2451545.0,
+                output_mode=cd.QUERY_OUTPUT_CARTESIAN,
+            ),
+        )
+        print(result.state.x, result.state.y, result.state.z)
 """
 
 # Engine lifecycle
@@ -41,6 +49,13 @@ from ctara_dhruv.enums import (
 
 # Core types
 from ctara_dhruv.types import (
+    QUERY_OUTPUT_BOTH,
+    QUERY_OUTPUT_CARTESIAN,
+    QUERY_OUTPUT_SPHERICAL,
+    QUERY_TIME_JD_TDB,
+    QUERY_TIME_UTC,
+    QueryRequest,
+    QueryResult,
     StateVector,
     SphericalCoords,
     SphericalState,
@@ -72,8 +87,7 @@ from ctara_dhruv._check import DhruvError
 
 # Ephemeris
 from ctara_dhruv.ephemeris import (
-    query_state,
-    query_utc_spherical,
+    query,
     body_ecliptic_lon_lat,
     cartesian_to_spherical,
 )
@@ -113,7 +127,10 @@ __all__ = [
     "SearchQueryMode", "GrahanKind", "MotionKind", "LunarPhaseKind",
     "SankrantiTargetKind", "ChandraGrahanType", "SuryaGrahanType",
     "CharakarakaScheme", "CharakarakaRole", "TaraOutputKind",
+    "QUERY_TIME_JD_TDB", "QUERY_TIME_UTC",
+    "QUERY_OUTPUT_CARTESIAN", "QUERY_OUTPUT_SPHERICAL", "QUERY_OUTPUT_BOTH",
     # Types
+    "QueryRequest", "QueryResult",
     "StateVector", "SphericalCoords", "SphericalState", "UtcTime",
     "GeoLocation", "Dms", "RashiInfo", "NakshatraInfo", "Nakshatra28Info",
     "BhavaEntry", "BhavaResult", "ConjunctionEvent",
@@ -125,7 +142,7 @@ __all__ = [
     # Errors
     "DhruvError",
     # Functions
-    "query_state", "query_utc_spherical", "body_ecliptic_lon_lat",
+    "query", "body_ecliptic_lon_lat",
     "cartesian_to_spherical",
     "utc_to_jd_tdb", "jd_tdb_to_utc", "nutation",
     "ayanamsha", "system_count", "reference_plane_default",

@@ -6,17 +6,6 @@ defmodule CtaraDhruv.Ephemeris do
   def query(engine, request),
     do: Native.call_engine(&Native.ephemeris_run/2, engine, Map.put(request, :op, :query))
 
-  def query_utc(engine, request),
-    do: Native.call_engine(&Native.ephemeris_run/2, engine, Map.put(request, :op, :query_utc))
-
-  def query_utc_spherical(engine, request),
-    do:
-      Native.call_engine(
-        &Native.ephemeris_run/2,
-        engine,
-        Map.put(request, :op, :query_utc_spherical)
-      )
-
   def body_ecliptic_lon_lat(engine, request),
     do:
       Native.call_engine(

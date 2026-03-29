@@ -37,8 +37,6 @@ using `bindings/elixir-open/lib/` as the source of truth.
 `CtaraDhruv.Ephemeris`:
 
 - `query/2`
-- `query_utc/2`
-- `query_utc_spherical/2`
 - `body_ecliptic_lon_lat/2`
 - `cartesian_to_spherical/1`
 
