@@ -49,6 +49,11 @@ const (
 )
 
 const (
+	DefaultsModeRecommended = cabi.DefaultsModeRecommended
+	DefaultsModeNone        = cabi.DefaultsModeNone
+)
+
+const (
 	DashaTimeJDUTC = cabi.DashaTimeJDUTC
 	DashaTimeUTC   = cabi.DashaTimeUTC
 )
@@ -111,6 +116,7 @@ const (
 
 type (
 	EngineConfig            = cabi.EngineConfig
+	ConfigLoadOptions       = cabi.ConfigLoadOptions
 	Query                   = cabi.Query
 	QueryRequest            = cabi.QueryRequest
 	QueryResult             = cabi.QueryResult

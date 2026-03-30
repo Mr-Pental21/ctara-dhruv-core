@@ -58,6 +58,23 @@ func TestKshetraSphutaMatchesAllSphutas(t *testing.T) {
 	}
 }
 
+func TestLoadConfigSupportsDiscoveryOptions(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("version = 1\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Setenv("DHRUV_CONFIG_FILE", configPath)
+	cfg, err := LoadConfig(ConfigLoadOptionsDefault())
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	defer cfg.Close()
+	if err := ClearActiveConfig(); err != nil {
+		t.Fatalf("ClearActiveConfig: %v", err)
+	}
+}
+
 func TestEngineQueryAndTimeRoundTrip(t *testing.T) {
 	spk, lskPath, _, ok := kernelPaths(t)
 	if !ok {

@@ -34,8 +34,14 @@ func VerifyABI() error {
 	return nil
 }
 
-func LoadConfig(path string) (*Config, error) {
-	h, st := cabi.LoadConfig(path)
+func ConfigLoadOptionsDefault() ConfigLoadOptions {
+	return ConfigLoadOptions{
+		DefaultsMode: DefaultsModeRecommended,
+	}
+}
+
+func LoadConfig(options ConfigLoadOptions) (*Config, error) {
+	h, st := cabi.LoadConfig(options)
 	if err := statusErr("config_load", st); err != nil {
 		return nil, err
 	}

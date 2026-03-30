@@ -1759,19 +1759,17 @@ napi_value ConfigLoad(napi_env env, napi_callback_info info) {
         return MakeStatusResult(env, STATUS_INVALID_INPUT);
     }
 
-    const uint8_t* path_ptr = nullptr;
+    const char* path_ptr = nullptr;
     std::string path;
-    uint32_t path_len = 0;
     if (!is_null) {
         if (!GetString(env, args[0], &path)) {
             return MakeStatusResult(env, STATUS_INVALID_INPUT);
         }
-        path_ptr = reinterpret_cast<const uint8_t*>(path.data());
-        path_len = static_cast<uint32_t>(path.size());
+        path_ptr = path.c_str();
     }
 
     DhruvConfigHandle* handle = nullptr;
-    int32_t status = dhruv_config_load(path_ptr, path_len, &handle);
+    int32_t status = dhruv_config_load(path_ptr, static_cast<int32_t>(defaults_mode), &handle);
 
     napi_value out = MakeStatusResult(env, status);
     if (status == STATUS_OK && handle != nullptr) {

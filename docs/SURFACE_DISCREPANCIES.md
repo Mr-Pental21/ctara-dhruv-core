@@ -300,14 +300,14 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
 
 ### 21. Go config loading cannot use discovery mode or choose `DefaultsMode`
 
-- Missing or wrong:
-  The C ABI accepts a nullable path and an explicit `defaults_mode`. Go wraps this as `LoadConfig(path string)` only.
+- Status:
+  Resolved for the current Go bindings.
 - Affected surfaces:
   Go bindings.
-- Correct behavior:
-  Carry discovery-vs-explicit path and `DefaultsMode` selection through one Go config-loading request/options shape instead of leaving them trapped behind a narrower `LoadConfig(path string)` wrapper.
+- Current behavior:
+  Go now exposes a typed `ConfigLoadOptions` request with nullable `Path` and explicit `DefaultsMode`, matching the main C ABI config-loading contract instead of trapping discovery/defaults selection behind a path-only helper.
 - Evidence:
-  `crates/dhruv_ffi_c/include/dhruv.h`, `bindings/go-open/dhruv/engine.go`.
+  `crates/dhruv_ffi_c/include/dhruv.h`, `bindings/go-open/dhruv/engine.go`, `bindings/go-open/internal/cabi/cabi.go`.
 
 ### 22. The Go wrapper has no time-policy or diagnostics surface
 

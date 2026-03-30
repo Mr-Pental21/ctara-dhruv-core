@@ -388,11 +388,14 @@ func CartesianToSpherical(position [3]float64) (SphericalCoords, Status) {
 	return goSphericalCoords(out), st
 }
 
-func LoadConfig(path string) (ConfigHandle, Status) {
-	cPath := C.CBytes([]byte(path))
-	defer C.free(cPath)
+func LoadConfig(opts ConfigLoadOptions) (ConfigHandle, Status) {
+	var cPath *C.char
+	if opts.Path != nil {
+		cPath = C.CString(*opts.Path)
+		defer C.free(unsafe.Pointer(cPath))
+	}
 	var out *C.DhruvConfigHandle
-	st := Status(C.dhruv_config_load((*C.uint8_t)(cPath), C.uint32_t(len(path)), &out))
+	st := Status(C.dhruv_config_load(cPath, C.int32_t(opts.DefaultsMode), &out))
 	return ConfigHandle{ptr: out}, st
 }
 

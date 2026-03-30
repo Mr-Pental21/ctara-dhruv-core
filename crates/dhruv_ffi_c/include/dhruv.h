@@ -1471,7 +1471,8 @@ uint32_t dhruv_api_version(void);
 
 /* --- Config --- */
 DhruvStatus dhruv_config_load(
-    const uint8_t *path_utf8, uint32_t path_len,
+    const char *path_utf8,
+    int32_t defaults_mode,
     DhruvConfigHandle **out_handle);
 DhruvStatus dhruv_config_free(DhruvConfigHandle *handle);
 DhruvStatus dhruv_config_clear_active(void);

@@ -47,6 +47,11 @@ const (
 )
 
 const (
+	DefaultsModeRecommended int32 = 0
+	DefaultsModeNone        int32 = 1
+)
+
+const (
 	DashaTimeJDUTC int32 = 0
 	DashaTimeUTC   int32 = 1
 )
@@ -133,6 +138,11 @@ type EngineConfig struct {
 	LskPath          string
 	CacheCapacity    uint64
 	StrictValidation bool
+}
+
+type ConfigLoadOptions struct {
+	Path         *string
+	DefaultsMode int32
 }
 
 type Query struct {

@@ -16,6 +16,7 @@ Lifecycle and handles:
 Core inputs and configs:
 
 - `EngineConfig`
+- `ConfigLoadOptions`
 - `Query`
 - `QueryRequest`
 - `QueryResult`
@@ -61,6 +62,7 @@ Lifecycle and runtime:
 - `APIVersion`
 - `VerifyABI`
 - `LoadConfig`
+- `ConfigLoadOptionsDefault`
 - `ClearActiveConfig`
 - `NewEngine`
 - `LoadLSK`
@@ -81,6 +83,13 @@ Default-config helpers:
 - `DashaVariationConfigDefault`
 - `FullKundaliConfigDefault`
 - `TimeUpagrahaConfigDefault`
+
+Go config loading uses the same main request shape as the C ABI:
+
+- `LoadConfig(ConfigLoadOptions)`
+- `ConfigLoadOptions.Path` is nullable for discovery mode
+- `ConfigLoadOptions.DefaultsMode` selects recommended defaults vs none
+- `ConfigLoadOptionsDefault()` returns discovery mode with recommended defaults
 
 Time and ayanamsha:
 

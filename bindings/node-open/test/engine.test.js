@@ -2,6 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
@@ -9,6 +12,27 @@ const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 test('api version matches expected ABI', () => {
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
+});
+
+test('config loading supports discovery defaults', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dhruv-config-'));
+  const configPath = path.join(dir, 'config.toml');
+  const prior = process.env.DHRUV_CONFIG_FILE;
+  fs.writeFileSync(configPath, 'version = 1\n');
+  process.env.DHRUV_CONFIG_FILE = configPath;
+  try {
+    const cfg = dhruv.Config.load(null, 0);
+    assert.ok(cfg instanceof dhruv.Config);
+    assert.doesNotThrow(() => dhruv.clearActiveConfig());
+    cfg.close();
+  } finally {
+    if (prior === undefined) {
+      delete process.env.DHRUV_CONFIG_FILE;
+    } else {
+      process.env.DHRUV_CONFIG_FILE = prior;
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('engine query and UTC roundtrip', { skip: !hasKernels() }, () => {
