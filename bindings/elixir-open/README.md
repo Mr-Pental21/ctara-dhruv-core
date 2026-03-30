@@ -173,6 +173,7 @@ Public modules included in this wrapper:
 - `CtaraDhruv.Engine`
 - `CtaraDhruv.Ephemeris`
 - `CtaraDhruv.Time`
+- `CtaraDhruv.Math`
 - `CtaraDhruv.Vedic`
 - `CtaraDhruv.Panchang`
 - `CtaraDhruv.Search`
@@ -183,6 +184,13 @@ Public modules included in this wrapper:
 Each module returns `{:ok, value}` or
 `{:error, %CtaraDhruv.Error{kind, message, details}}`. The only long-lived
 wrapper-owned struct is `%CtaraDhruv.Engine{}`.
+
+`CtaraDhruv.Time` now includes the intended helper subset
+(`nutation_utc/2`, `approximate_local_noon/1`, `ayanamsha_system_count/0`,
+`reference_plane_default/1`), `CtaraDhruv.Panchang` includes the composable
+intermediate helpers, `CtaraDhruv.Math` covers the pure helper surface, and
+`CtaraDhruv.Tara` exposes the low-level propagation/correction primitives in
+addition to the main request/config compute API.
 
 ## Time-Based Upagraha Config
 

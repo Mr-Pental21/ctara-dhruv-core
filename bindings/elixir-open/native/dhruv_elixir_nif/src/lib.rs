@@ -26,14 +26,19 @@ use dhruv_search::{
 };
 use dhruv_search::{
     PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_VARSHA,
-    SankrantiConfig, StationaryConfig, ayanamsha, conjunction, dasha_child_period_for_birth,
-    dasha_child_period_with_inputs, dasha_children_for_birth, dasha_children_with_inputs,
-    dasha_complete_level_for_birth, dasha_complete_level_with_inputs, dasha_hierarchy_for_birth,
-    dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth, dasha_level0_entity_with_inputs,
-    dasha_level0_for_birth, dasha_level0_with_inputs, dasha_snapshot_at,
-    dasha_snapshot_with_inputs, full_kundali_for_date, graha_longitudes, lunar_node, motion,
-    panchang, set_time_conversion_policy, tara as tara_op,
+    SankrantiConfig, StationaryConfig, ayanamsha, body_ecliptic_lon_lat, conjunction,
+    dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
+    dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
+    dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth,
+    dasha_level0_entity_with_inputs, dasha_level0_for_birth, dasha_level0_with_inputs,
+    dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
+    ghatika_from_sunrises, graha_longitudes, hora_from_sunrises, karana_at, lunar_node, motion,
+    nakshatra_at, panchang, set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at,
+    vaar_from_sunrises, vedic_day_sunrises, yoga_at,
 };
+use dhruv_tara::apparent::{apply_aberration, apply_light_deflection};
+use dhruv_tara::galactic::galactic_anticenter_icrs;
+use dhruv_tara::propagation::{EquatorialPosition, propagate_position};
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
     DeltaTModel, EopKernel, FutureDeltaTTransition, SmhFutureParabolaFamily, TimeConversionOptions,
@@ -41,19 +46,44 @@ use dhruv_time::{
     tdb_seconds_to_jd,
 };
 use dhruv_vedic_base::bhava_types::ALL_BHAVA_SYSTEMS;
+use dhruv_vedic_base::combustion::{
+    all_combustion_status as all_combustion_status_fn,
+    combustion_threshold as combustion_threshold_fn, is_combust as is_combust_fn,
+};
+use dhruv_vedic_base::dasha::yogini_name;
 use dhruv_vedic_base::dasha::{
     ALL_DASHA_SYSTEMS, DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot,
     DashaSystem, DashaVariationConfig, RashiDashaInputs, SubPeriodMethod, YoginiScheme,
+};
+use dhruv_vedic_base::drishti::{
+    DrishtiEntry, GrahaDrishtiMatrix, graha_drishti, graha_drishti_matrix,
+};
+use dhruv_vedic_base::ghatika::ghatika_from_elapsed;
+use dhruv_vedic_base::graha_relationships::{
+    BeneficNature, NaisargikaMaitri, TatkalikaMaitri, debilitation_degree, dignity_in_rashi,
+    dignity_in_rashi_with_positions, exaltation_degree, graha_gender, hora_lord, masa_lord,
+    moolatrikone_range, moon_benefic_nature, naisargika_maitri, natural_benefic_malefic,
+    node_dignity_in_rashi, panchadha_maitri, samvatsara_lord, tatkalika_maitri,
 };
 use dhruv_vedic_base::riseset::{approximate_local_noon_jd, compute_all_events, compute_rise_set};
 use dhruv_vedic_base::riseset_types::{
     GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult, SunLimb,
 };
+use dhruv_vedic_base::special_lagna::ghatikas_since_sunrise;
+use dhruv_vedic_base::sphuta::{ALL_SPHUTAS, SphutalInputs, all_sphutas};
 use dhruv_vedic_base::{
-    ALL_GRAHAS, AyanamshaSystem, BhavaConfig, BhavaReferenceMode, BhavaResult, BhavaStartingPoint,
-    BhavaSystem, CharakarakaResult, CharakarakaScheme, Graha, GulikaMaandiPlanet, LunarNode,
-    NodeDignityPolicy, NodeMode, TimeUpagrahaConfig, TimeUpagrahaPoint, compute_bhavas,
-    lagna_longitude_rad, mc_longitude_rad, ramc_rad,
+    ALL_GRAHAS, ALL_MASAS, ALL_NAKSHATRAS_27, ALL_NAKSHATRAS_28, ALL_RASHIS, ALL_SAMVATSARAS,
+    ALL_UPAGRAHAS, ALL_VAARS, AyanamshaSystem, BhavaConfig, BhavaReferenceMode, BhavaResult,
+    BhavaStartingPoint, BhavaSystem, CharakarakaResult, CharakarakaScheme, Graha,
+    GulikaMaandiPlanet, LunarNode, Nakshatra28Info, NodeDignityPolicy, NodeMode, RashiInfo,
+    SunBasedUpagrahas, TimeUpagrahaConfig, TimeUpagrahaPoint, Upagraha, compute_bhavas,
+    lagna_longitude_rad, mc_longitude_rad, nakshatra_from_longitude, nakshatra_from_tropical,
+    nakshatra28_from_longitude, nakshatra28_from_tropical, ramc_rad, rashi_from_longitude,
+    rashi_from_tropical, sun_based_upagrahas, time_upagraha_jd,
+};
+use dhruv_vedic_base::{
+    calculate_all_bav, calculate_ashtakavarga, calculate_bav, calculate_sav, ekadhipatya_sodhana,
+    trikona_sodhana,
 };
 use rustler::{Encoder, Env, ResourceArc, Term};
 use serde::Deserialize;
@@ -206,7 +236,13 @@ struct VedicRequest {
 #[derive(Debug, Clone, Deserialize)]
 struct PanchangRequest {
     op: String,
-    utc: UtcInput,
+    utc: Option<UtcInput>,
+    jd_tdb: Option<f64>,
+    query_jd: Option<f64>,
+    sunrise_jd: Option<f64>,
+    next_sunrise_jd: Option<f64>,
+    moon_sidereal_deg: Option<f64>,
+    body: Option<EnumInput>,
     location: Option<GeoLocationInput>,
     include_calendar: Option<bool>,
     riseset_config: Option<RiseSetConfigInput>,
@@ -613,6 +649,87 @@ fn parse_named<T: Copy + Debug>(value: &str, variants: &[T]) -> Option<T> {
         .find(|variant| debug_name(*variant) == normalized)
 }
 
+fn raw_required_enum(raw: &Value, key: &str) -> Result<EnumInput, rustler::Error> {
+    raw.get(key)
+        .cloned()
+        .ok_or(rustler::Error::BadArg)
+        .and_then(|value| serde_json::from_value(value).map_err(|_| rustler::Error::BadArg))
+}
+
+fn raw_optional_enum(raw: &Value, key: &str) -> Result<Option<EnumInput>, rustler::Error> {
+    raw.get(key)
+        .cloned()
+        .map(|value| serde_json::from_value(value).map_err(|_| rustler::Error::BadArg))
+        .transpose()
+}
+
+fn raw_required_f64(raw: &Value, key: &str) -> Result<f64, rustler::Error> {
+    raw.get(key)
+        .and_then(Value::as_f64)
+        .ok_or(rustler::Error::BadArg)
+}
+
+fn raw_required_bool(raw: &Value, key: &str) -> Result<bool, rustler::Error> {
+    raw.get(key)
+        .and_then(Value::as_bool)
+        .ok_or(rustler::Error::BadArg)
+}
+
+fn raw_required_u8(raw: &Value, key: &str) -> Result<u8, rustler::Error> {
+    raw.get(key)
+        .and_then(Value::as_u64)
+        .and_then(|value| u8::try_from(value).ok())
+        .ok_or(rustler::Error::BadArg)
+}
+
+fn raw_f64_array<const N: usize>(raw: &Value, key: &str) -> Result<[f64; N], rustler::Error> {
+    let values = raw
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or(rustler::Error::BadArg)?;
+    if values.len() != N {
+        return Err(rustler::Error::BadArg);
+    }
+    let mut out = [0.0; N];
+    for (idx, value) in values.iter().enumerate() {
+        out[idx] = value.as_f64().ok_or(rustler::Error::BadArg)?;
+    }
+    Ok(out)
+}
+
+fn raw_bool_array<const N: usize>(raw: &Value, key: &str) -> Result<[bool; N], rustler::Error> {
+    let values = raw
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or(rustler::Error::BadArg)?;
+    if values.len() != N {
+        return Err(rustler::Error::BadArg);
+    }
+    let mut out = [false; N];
+    for (idx, value) in values.iter().enumerate() {
+        out[idx] = value.as_bool().ok_or(rustler::Error::BadArg)?;
+    }
+    Ok(out)
+}
+
+fn raw_u8_array<const N: usize>(raw: &Value, key: &str) -> Result<[u8; N], rustler::Error> {
+    let values = raw
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or(rustler::Error::BadArg)?;
+    if values.len() != N {
+        return Err(rustler::Error::BadArg);
+    }
+    let mut out = [0u8; N];
+    for (idx, value) in values.iter().enumerate() {
+        out[idx] = value
+            .as_u64()
+            .and_then(|entry| u8::try_from(entry).ok())
+            .ok_or(rustler::Error::BadArg)?;
+    }
+    Ok(out)
+}
+
 fn parse_delta_t_model(input: &EnumInput) -> Result<DeltaTModel, Value> {
     match input {
         EnumInput::Int(index) => DELTA_T_MODEL_VARIANTS
@@ -753,6 +870,83 @@ fn time_diagnostics_json(diagnostics: &TimeDiagnostics) -> Value {
         },
         "tt_minus_utc_s": diagnostics.tt_minus_utc_s,
         "warnings": diagnostics.warnings.iter().map(time_warning_json).collect::<Vec<_>>()
+    })
+}
+
+fn dms_json(dms: dhruv_vedic_base::Dms) -> Value {
+    json!({
+        "degrees": dms.degrees,
+        "minutes": dms.minutes,
+        "seconds": dms.seconds
+    })
+}
+
+fn rashi_info_json(info: RashiInfo) -> Value {
+    json!({
+        "rashi": debug_name(info.rashi),
+        "rashi_index": info.rashi_index,
+        "dms": dms_json(info.dms),
+        "degrees_in_rashi": info.degrees_in_rashi
+    })
+}
+
+fn nakshatra_info_json(info: dhruv_vedic_base::NakshatraInfo) -> Value {
+    json!({
+        "nakshatra": debug_name(info.nakshatra),
+        "nakshatra_index": info.nakshatra_index,
+        "pada": info.pada,
+        "degrees_in_nakshatra": info.degrees_in_nakshatra,
+        "degrees_in_pada": info.degrees_in_pada
+    })
+}
+
+fn nakshatra28_info_json(info: Nakshatra28Info) -> Value {
+    json!({
+        "nakshatra": debug_name(info.nakshatra),
+        "nakshatra_index": info.nakshatra_index,
+        "pada": info.pada,
+        "degrees_in_nakshatra": info.degrees_in_nakshatra
+    })
+}
+
+fn drishti_entry_json(entry: DrishtiEntry) -> Value {
+    json!({
+        "angular_distance": entry.angular_distance,
+        "base_virupa": entry.base_virupa,
+        "special_virupa": entry.special_virupa,
+        "total_virupa": entry.total_virupa
+    })
+}
+
+fn graha_drishti_matrix_json(matrix: GrahaDrishtiMatrix) -> Value {
+    json!({
+        "entries": matrix
+            .entries
+            .iter()
+            .map(|row| row.iter().map(|entry| drishti_entry_json(*entry)).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    })
+}
+
+fn sun_based_upagrahas_value_json(result: SunBasedUpagrahas) -> Value {
+    json!({
+        "dhooma": result.dhooma,
+        "vyatipata": result.vyatipata,
+        "parivesha": result.parivesha,
+        "indra_chapa": result.indra_chapa,
+        "upaketu": result.upaketu
+    })
+}
+
+fn benefic_nature_json(value: BeneficNature) -> Value {
+    json!(debug_name(value))
+}
+
+fn equatorial_position_json(position: EquatorialPosition) -> Value {
+    json!({
+        "ra_deg": position.ra_deg,
+        "dec_deg": position.dec_deg,
+        "distance_au": position.distance_au
     })
 }
 
@@ -924,6 +1118,61 @@ fn parse_lunar_node(input: &EnumInput) -> Result<LunarNode, Value> {
         EnumInput::Int(_) => Err(error_payload("invalid_request", "unknown lunar node")),
         EnumInput::Str(value) => parse_named(value, &LUNAR_NODE_VARIANTS)
             .ok_or_else(|| error_payload("invalid_request", "unknown lunar node")),
+    }
+}
+
+fn parse_graha(input: &EnumInput) -> Result<Graha, Value> {
+    match input {
+        EnumInput::Int(value) => ALL_GRAHAS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown graha")),
+        EnumInput::Str(value) => parse_named(value, &ALL_GRAHAS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown graha")),
+    }
+}
+
+fn parse_vaar(input: &EnumInput) -> Result<dhruv_vedic_base::Vaar, Value> {
+    match input {
+        EnumInput::Int(value) => ALL_VAARS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown vaar")),
+        EnumInput::Str(value) => parse_named(value, &ALL_VAARS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown vaar")),
+    }
+}
+
+fn parse_masa(input: &EnumInput) -> Result<dhruv_vedic_base::Masa, Value> {
+    match input {
+        EnumInput::Int(value) => ALL_MASAS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown masa")),
+        EnumInput::Str(value) => parse_named(value, &ALL_MASAS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown masa")),
+    }
+}
+
+fn parse_samvatsara(input: &EnumInput) -> Result<dhruv_vedic_base::Samvatsara, Value> {
+    match input {
+        EnumInput::Int(value) => ALL_SAMVATSARAS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown samvatsara")),
+        EnumInput::Str(value) => parse_named(value, &ALL_SAMVATSARAS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown samvatsara")),
+    }
+}
+
+fn parse_upagraha(input: &EnumInput) -> Result<Upagraha, Value> {
+    match input {
+        EnumInput::Int(value) => ALL_UPAGRAHAS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown upagraha")),
+        EnumInput::Str(value) => parse_named(value, &ALL_UPAGRAHAS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown upagraha")),
     }
 }
 
@@ -2613,6 +2862,17 @@ fn handle_time(resource: &ResourceArc<EngineResource>, request: TimeRunInput) ->
                     .ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?;
                 Ok(utc_json(UtcTime::from_jd_tdb(jd_tdb, engine.lsk())))
             }
+            "nutation_utc" => {
+                let utc = parse_utc(
+                    request
+                        .utc
+                        .ok_or_else(|| error_payload("invalid_request", "utc is required"))?,
+                )?;
+                let jd_tdb = utc.to_jd_tdb(engine.lsk());
+                let t = dhruv_vedic_base::jd_tdb_to_centuries(jd_tdb);
+                let (dpsi_arcsec, deps_arcsec) = nutation_iau2000b(t);
+                Ok(json!({ "dpsi_arcsec": dpsi_arcsec, "deps_arcsec": deps_arcsec }))
+            }
             _ => Err(error_payload("invalid_request", "unknown time operation")),
         }
     })
@@ -2824,7 +3084,7 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
             .as_ref()
             .ok_or_else(|| error_payload("missing_eop", "panchang requires loaded EOP data"))?;
         apply_time_policy(state);
-        let utc = parse_utc(request.utc)?;
+        let utc = request.utc.clone().map(parse_utc).transpose()?;
         let location = parse_location(request.location.unwrap_or(GeoLocationInput {
             latitude_deg: 0.0,
             longitude_deg: 0.0,
@@ -2834,36 +3094,69 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
         let sankranti_config = to_sankranti_config(state, request.sankranti_config.as_ref())?;
         let result = match request.op.as_str() {
             "tithi" => {
-                json!({ "tithi": tithi_json(dhruv_search::tithi_for_date(engine, &utc).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "tithi": tithi_json(dhruv_search::tithi_for_date(engine, utc).map_err(|err| map_error("search_error", err))?) })
             }
             "karana" => {
-                json!({ "karana": karana_json(dhruv_search::karana_for_date(engine, &utc).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "karana": karana_json(dhruv_search::karana_for_date(engine, utc).map_err(|err| map_error("search_error", err))?) })
             }
             "yoga" => {
-                json!({ "yoga": yoga_json(dhruv_search::yoga_for_date(engine, &utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "yoga": yoga_json(dhruv_search::yoga_for_date(engine, utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
             }
             "nakshatra" => {
-                json!({ "nakshatra": nakshatra_json(dhruv_search::nakshatra_for_date(engine, &utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "nakshatra": nakshatra_json(dhruv_search::nakshatra_for_date(engine, utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
             }
             "vaar" => {
-                json!({ "vaar": vaar_json(dhruv_search::vaar_for_date(engine, eop, &utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "vaar": vaar_json(dhruv_search::vaar_for_date(engine, eop, utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
             }
             "hora" => {
-                json!({ "hora": hora_json(dhruv_search::hora_for_date(engine, eop, &utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "hora": hora_json(dhruv_search::hora_for_date(engine, eop, utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
             }
             "ghatika" => {
-                json!({ "ghatika": ghatika_json(dhruv_search::ghatika_for_date(engine, eop, &utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "ghatika": ghatika_json(dhruv_search::ghatika_for_date(engine, eop, utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
             }
             "masa" => {
-                json!({ "masa": masa_json(dhruv_search::masa_for_date(engine, &utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "masa": masa_json(dhruv_search::masa_for_date(engine, utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
             }
             "ayana" => {
-                json!({ "ayana": ayana_json(dhruv_search::ayana_for_date(engine, &utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "ayana": ayana_json(dhruv_search::ayana_for_date(engine, utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
             }
             "varsha" => {
-                json!({ "varsha": varsha_json(dhruv_search::varsha_for_date(engine, &utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                json!({ "varsha": varsha_json(dhruv_search::varsha_for_date(engine, utc, &sankranti_config).map_err(|err| map_error("search_error", err))?) })
             }
             "daily" => {
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
                 let include_mask = PANCHANG_INCLUDE_ALL
                     - if request.include_calendar.unwrap_or(false) {
                         0
@@ -2871,7 +3164,7 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                         PANCHANG_INCLUDE_MASA | PANCHANG_INCLUDE_AYANA | PANCHANG_INCLUDE_VARSHA
                     };
                 let op = PanchangOperation {
-                    at_utc: utc,
+                    at_utc: *utc,
                     location,
                     riseset_config,
                     sankranti_config,
@@ -2881,6 +3174,107 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                     panchang(engine, eop, &op).map_err(|err| map_error("search_error", err))?;
                 panchang_value_json(&result)
             }
+            "elongation_at" => json!({
+                "value": elongation_at(
+                    engine,
+                    request.jd_tdb.ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?,
+                )
+                .map_err(|err| map_error("search_error", err))?
+            }),
+            "sidereal_sum_at" => json!({
+                "value": sidereal_sum_at(
+                    engine,
+                    request.jd_tdb.ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?,
+                    &sankranti_config,
+                )
+                .map_err(|err| map_error("search_error", err))?
+            }),
+            "vedic_day_sunrises" => {
+                let utc = utc
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                let (sunrise_jd, next_sunrise_jd) =
+                    vedic_day_sunrises(engine, eop, utc, &location, &riseset_config)
+                        .map_err(|err| map_error("search_error", err))?;
+                json!({
+                    "sunrise_jd": sunrise_jd,
+                    "next_sunrise_jd": next_sunrise_jd
+                })
+            }
+            "body_ecliptic_lon_lat" => {
+                let body = parse_body(
+                    request
+                        .body
+                        .as_ref()
+                        .ok_or_else(|| error_payload("invalid_request", "body is required"))?,
+                )?;
+                let (lon_deg, lat_deg) = body_ecliptic_lon_lat(
+                    engine,
+                    body,
+                    request
+                        .jd_tdb
+                        .ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?,
+                )
+                .map_err(|err| map_error("search_error", err))?;
+                json!({ "lon_deg": lon_deg, "lat_deg": lat_deg })
+            }
+            "tithi_at" => json!({
+                "tithi": tithi_json(tithi_at(
+                    engine,
+                    request.jd_tdb.ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?,
+                    request.sunrise_jd.ok_or_else(|| error_payload("invalid_request", "sunrise_jd is required"))?,
+                )
+                .map_err(|err| map_error("search_error", err))?)
+            }),
+            "karana_at" => json!({
+                "karana": karana_json(karana_at(
+                    engine,
+                    request.jd_tdb.ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?,
+                    request.sunrise_jd.ok_or_else(|| error_payload("invalid_request", "sunrise_jd is required"))?,
+                )
+                .map_err(|err| map_error("search_error", err))?)
+            }),
+            "yoga_at" => json!({
+                "yoga": yoga_json(yoga_at(
+                    engine,
+                    request.jd_tdb.ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?,
+                    request.sunrise_jd.ok_or_else(|| error_payload("invalid_request", "sunrise_jd is required"))?,
+                    &sankranti_config,
+                )
+                .map_err(|err| map_error("search_error", err))?)
+            }),
+            "nakshatra_at" => json!({
+                "nakshatra": nakshatra_json(nakshatra_at(
+                    engine,
+                    request.jd_tdb.ok_or_else(|| error_payload("invalid_request", "jd_tdb is required"))?,
+                    request.moon_sidereal_deg.ok_or_else(|| error_payload("invalid_request", "moon_sidereal_deg is required"))?,
+                    &sankranti_config,
+                )
+                .map_err(|err| map_error("search_error", err))?)
+            }),
+            "vaar_from_sunrises" => json!({
+                "vaar": vaar_json(vaar_from_sunrises(
+                    request.sunrise_jd.ok_or_else(|| error_payload("invalid_request", "sunrise_jd is required"))?,
+                    request.next_sunrise_jd.ok_or_else(|| error_payload("invalid_request", "next_sunrise_jd is required"))?,
+                    engine.lsk(),
+                ))
+            }),
+            "hora_from_sunrises" => json!({
+                "hora": hora_json(hora_from_sunrises(
+                    request.query_jd.ok_or_else(|| error_payload("invalid_request", "query_jd is required"))?,
+                    request.sunrise_jd.ok_or_else(|| error_payload("invalid_request", "sunrise_jd is required"))?,
+                    request.next_sunrise_jd.ok_or_else(|| error_payload("invalid_request", "next_sunrise_jd is required"))?,
+                    engine.lsk(),
+                ))
+            }),
+            "ghatika_from_sunrises" => json!({
+                "ghatika": ghatika_json(ghatika_from_sunrises(
+                    request.query_jd.ok_or_else(|| error_payload("invalid_request", "query_jd is required"))?,
+                    request.sunrise_jd.ok_or_else(|| error_payload("invalid_request", "sunrise_jd is required"))?,
+                    request.next_sunrise_jd.ok_or_else(|| error_payload("invalid_request", "next_sunrise_jd is required"))?,
+                    engine.lsk(),
+                ))
+            }),
             _ => {
                 return Err(error_payload(
                     "invalid_request",
@@ -3502,10 +3896,12 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                     let inputs = inputs.borrowed();
                     dasha_level0_with_inputs(birth_jd, system, &inputs)
                         .map(|periods| {
-                            periods
-                                .into_iter()
-                                .map(dasha_period_json)
-                                .collect::<Vec<_>>()
+                            json!(
+                                periods
+                                    .into_iter()
+                                    .map(dasha_period_json)
+                                    .collect::<Vec<_>>()
+                            )
                         })
                         .map_err(|err| map_error("search_error", err))
                 } else {
@@ -3531,10 +3927,12 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                         &sankranti_config,
                     )
                     .map(|periods| {
-                        periods
-                            .into_iter()
-                            .map(dasha_period_json)
-                            .collect::<Vec<_>>()
+                        json!(
+                            periods
+                                .into_iter()
+                                .map(dasha_period_json)
+                                .collect::<Vec<_>>()
+                        )
                     })
                     .map_err(|err| map_error("search_error", err))
                 }
@@ -3589,10 +3987,12 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                     let inputs = inputs.borrowed();
                     dasha_children_with_inputs(system, &parent, &variation, &inputs)
                         .map(|periods| {
-                            periods
-                                .into_iter()
-                                .map(dasha_period_json)
-                                .collect::<Vec<_>>()
+                            json!(
+                                periods
+                                    .into_iter()
+                                    .map(dasha_period_json)
+                                    .collect::<Vec<_>>()
+                            )
                         })
                         .map_err(|err| map_error("search_error", err))
                 } else {
@@ -3620,10 +4020,12 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                         &variation,
                     )
                     .map(|periods| {
-                        periods
-                            .into_iter()
-                            .map(dasha_period_json)
-                            .collect::<Vec<_>>()
+                        json!(
+                            periods
+                                .into_iter()
+                                .map(dasha_period_json)
+                                .collect::<Vec<_>>()
+                        )
                     })
                     .map_err(|err| map_error("search_error", err))
                 }
@@ -3701,10 +4103,12 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                         &inputs,
                     )
                     .map(|periods| {
-                        periods
-                            .into_iter()
-                            .map(dasha_period_json)
-                            .collect::<Vec<_>>()
+                        json!(
+                            periods
+                                .into_iter()
+                                .map(dasha_period_json)
+                                .collect::<Vec<_>>()
+                        )
                     })
                     .map_err(|err| map_error("search_error", err))
                 } else {
@@ -3733,10 +4137,12 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                         &variation,
                     )
                     .map(|periods| {
-                        periods
-                            .into_iter()
-                            .map(dasha_period_json)
-                            .collect::<Vec<_>>()
+                        json!(
+                            periods
+                                .into_iter()
+                                .map(dasha_period_json)
+                                .collect::<Vec<_>>()
+                        )
                     })
                     .map_err(|err| map_error("search_error", err))
                 }
@@ -3963,6 +4369,418 @@ fn util_run<'a>(env: Env<'a>, request: Term<'a>) -> Result<Term<'a>, rustler::Er
             let (dpsi_arcsec, deps_arcsec) = nutation_iau2000b(t);
             Ok(json!({ "dpsi_arcsec": dpsi_arcsec, "deps_arcsec": deps_arcsec }))
         }
+        "approximate_local_noon" => {
+            let jd_ut_midnight = raw
+                .get("jd_ut_midnight")
+                .and_then(Value::as_f64)
+                .ok_or(rustler::Error::BadArg)?;
+            let longitude_deg = raw
+                .get("longitude_deg")
+                .and_then(Value::as_f64)
+                .ok_or(rustler::Error::BadArg)?;
+            Ok(json!({
+                "jd_approx_local_noon": approximate_local_noon_jd(jd_ut_midnight, longitude_deg)
+            }))
+        }
+        "ayanamsha_system_count" => Ok(json!({
+            "count": AyanamshaSystem::all().len()
+        })),
+        "reference_plane_default" => {
+            let system = raw
+                .get("system")
+                .ok_or(rustler::Error::BadArg)
+                .and_then(|value| {
+                    serde_json::from_value::<EnumInput>(value.clone())
+                        .map_err(|_| rustler::Error::BadArg)
+                })
+                .and_then(|value| {
+                    parse_ayanamsha_system(Some(&value)).map_err(|_| rustler::Error::BadArg)
+                })?;
+            Ok(json!({
+                "reference_plane": match system.default_reference_plane() {
+                    dhruv_frames::ReferencePlane::Ecliptic => "ecliptic",
+                    dhruv_frames::ReferencePlane::Invariable => "invariable",
+                }
+            }))
+        }
+        "rashi_from_longitude" => Ok(rashi_info_json(rashi_from_longitude(raw_required_f64(
+            &raw,
+            "sidereal_lon_deg",
+        )?))),
+        "nakshatra_from_longitude" => Ok(nakshatra_info_json(nakshatra_from_longitude(
+            raw_required_f64(&raw, "sidereal_lon_deg")?,
+        ))),
+        "nakshatra28_from_longitude" => Ok(nakshatra28_info_json(nakshatra28_from_longitude(
+            raw_required_f64(&raw, "sidereal_lon_deg")?,
+        ))),
+        "rashi_from_tropical" => Ok(rashi_info_json(rashi_from_tropical(
+            raw_required_f64(&raw, "tropical_lon_deg")?,
+            parse_ayanamsha_system(raw_optional_enum(&raw, "system")?.as_ref())
+                .map_err(|_| rustler::Error::BadArg)?,
+            raw_required_f64(&raw, "jd_tdb")?,
+            raw.get("use_nutation")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        ))),
+        "nakshatra_from_tropical" => Ok(nakshatra_info_json(nakshatra_from_tropical(
+            raw_required_f64(&raw, "tropical_lon_deg")?,
+            parse_ayanamsha_system(raw_optional_enum(&raw, "system")?.as_ref())
+                .map_err(|_| rustler::Error::BadArg)?,
+            raw_required_f64(&raw, "jd_tdb")?,
+            raw.get("use_nutation")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        ))),
+        "nakshatra28_from_tropical" => Ok(nakshatra28_info_json(nakshatra28_from_tropical(
+            raw_required_f64(&raw, "tropical_lon_deg")?,
+            parse_ayanamsha_system(raw_optional_enum(&raw, "system")?.as_ref())
+                .map_err(|_| rustler::Error::BadArg)?,
+            raw_required_f64(&raw, "jd_tdb")?,
+            raw.get("use_nutation")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        ))),
+        "graha_name" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "name": graha.name() }))
+        }
+        "yogini_name" => Ok(json!({ "name": yogini_name(raw_required_u8(&raw, "index")?) })),
+        "rashi_name" => {
+            let idx = raw_required_u8(&raw, "index")?;
+            let rashi = ALL_RASHIS.get(idx as usize).ok_or(rustler::Error::BadArg)?;
+            Ok(json!({ "name": rashi.name() }))
+        }
+        "nakshatra_name" => {
+            let idx = raw_required_u8(&raw, "index")?;
+            let nakshatra = ALL_NAKSHATRAS_27
+                .get(idx as usize)
+                .ok_or(rustler::Error::BadArg)?;
+            Ok(json!({ "name": nakshatra.name() }))
+        }
+        "nakshatra28_name" => {
+            let idx = raw_required_u8(&raw, "index")?;
+            let nakshatra = ALL_NAKSHATRAS_28
+                .get(idx as usize)
+                .ok_or(rustler::Error::BadArg)?;
+            Ok(json!({ "name": nakshatra.name() }))
+        }
+        "sphuta_name" => {
+            let idx = raw_required_u8(&raw, "index")?;
+            let sphuta = ALL_SPHUTAS
+                .get(idx as usize)
+                .ok_or(rustler::Error::BadArg)?;
+            Ok(json!({ "name": sphuta.name() }))
+        }
+        "upagraha_name" => {
+            let idx = raw_required_u8(&raw, "index")?;
+            let upagraha = ALL_UPAGRAHAS
+                .get(idx as usize)
+                .ok_or(rustler::Error::BadArg)?;
+            Ok(json!({ "name": upagraha.name() }))
+        }
+        "hora_lord" => {
+            let vaar = parse_vaar(&raw_required_enum(&raw, "vaar")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(
+                json!({ "graha": debug_name(hora_lord(vaar, raw_required_u8(&raw, "hora_index")?)) }),
+            )
+        }
+        "masa_lord" => {
+            let masa = parse_masa(&raw_required_enum(&raw, "masa")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "graha": debug_name(masa_lord(masa)) }))
+        }
+        "samvatsara_lord" => {
+            let samvatsara = parse_samvatsara(&raw_required_enum(&raw, "samvatsara")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "graha": debug_name(samvatsara_lord(samvatsara)) }))
+        }
+        "exaltation_degree" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "degree": exaltation_degree(graha) }))
+        }
+        "debilitation_degree" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "degree": debilitation_degree(graha) }))
+        }
+        "moolatrikone_range" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(match moolatrikone_range(graha) {
+                Some((rashi_index, start_deg, end_deg)) => json!({
+                    "range": {
+                        "rashi_index": rashi_index,
+                        "rashi": debug_name(ALL_RASHIS[rashi_index as usize]),
+                        "start_deg": start_deg,
+                        "end_deg": end_deg
+                    }
+                }),
+                None => json!({ "range": Value::Null }),
+            })
+        }
+        "combustion_threshold" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({
+                "threshold_deg": combustion_threshold_fn(
+                    graha,
+                    raw.get("is_retrograde").and_then(Value::as_bool).unwrap_or(false),
+                )
+            }))
+        }
+        "is_combust" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({
+                "combust": is_combust_fn(
+                    graha,
+                    raw_required_f64(&raw, "graha_sid_lon")?,
+                    raw_required_f64(&raw, "sun_sid_lon")?,
+                    raw.get("is_retrograde").and_then(Value::as_bool).unwrap_or(false),
+                )
+            }))
+        }
+        "all_combustion_status" => Ok(json!({
+            "statuses": all_combustion_status_fn(
+                &raw_f64_array::<9>(&raw, "sidereal_lons_9")?,
+                &raw_bool_array::<9>(&raw, "retrograde_flags_9")?,
+            )
+        })),
+        "naisargika_maitri" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            let other = parse_graha(&raw_required_enum(&raw, "other")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "relationship": debug_name(naisargika_maitri(graha, other)) }))
+        }
+        "tatkalika_maitri" => Ok(json!({
+            "relationship": debug_name(tatkalika_maitri(
+                raw_required_u8(&raw, "graha_rashi_index")?,
+                raw_required_u8(&raw, "other_rashi_index")?,
+            ))
+        })),
+        "panchadha_maitri" => {
+            let naisargika = match raw_required_enum(&raw, "naisargika")? {
+                EnumInput::Int(0) => NaisargikaMaitri::Friend,
+                EnumInput::Int(1) => NaisargikaMaitri::Enemy,
+                EnumInput::Int(2) => NaisargikaMaitri::Neutral,
+                EnumInput::Int(_) => return Err(rustler::Error::BadArg),
+                EnumInput::Str(value) => match value.to_ascii_lowercase().as_str() {
+                    "friend" => NaisargikaMaitri::Friend,
+                    "enemy" => NaisargikaMaitri::Enemy,
+                    "neutral" => NaisargikaMaitri::Neutral,
+                    _ => return Err(rustler::Error::BadArg),
+                },
+            };
+            let tatkalika = match raw_required_enum(&raw, "tatkalika")? {
+                EnumInput::Int(0) => TatkalikaMaitri::Friend,
+                EnumInput::Int(1) => TatkalikaMaitri::Enemy,
+                EnumInput::Int(_) => return Err(rustler::Error::BadArg),
+                EnumInput::Str(value) => match value.to_ascii_lowercase().as_str() {
+                    "friend" => TatkalikaMaitri::Friend,
+                    "enemy" => TatkalikaMaitri::Enemy,
+                    _ => return Err(rustler::Error::BadArg),
+                },
+            };
+            Ok(json!({ "relationship": debug_name(panchadha_maitri(naisargika, tatkalika)) }))
+        }
+        "dignity_in_rashi" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({
+                "dignity": debug_name(dignity_in_rashi(
+                    graha,
+                    raw_required_f64(&raw, "sidereal_lon")?,
+                    raw_required_u8(&raw, "rashi_index")?,
+                ))
+            }))
+        }
+        "dignity_in_rashi_with_positions" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({
+                "dignity": debug_name(dignity_in_rashi_with_positions(
+                    graha,
+                    raw_required_f64(&raw, "sidereal_lon")?,
+                    raw_required_u8(&raw, "rashi_index")?,
+                    &raw_u8_array::<7>(&raw, "all_rashi_indices")?,
+                ))
+            }))
+        }
+        "node_dignity_in_rashi" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            let policy = parse_node_dignity_policy(raw_optional_enum(&raw, "policy")?.as_ref())
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({
+                "dignity": debug_name(node_dignity_in_rashi(
+                    graha,
+                    raw_required_u8(&raw, "rashi_index")?,
+                    &raw_u8_array::<9>(&raw, "all_rashi_indices_9")?,
+                    policy,
+                ))
+            }))
+        }
+        "natural_benefic_malefic" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "nature": benefic_nature_json(natural_benefic_malefic(graha)) }))
+        }
+        "moon_benefic_nature" => Ok(json!({
+            "nature": benefic_nature_json(moon_benefic_nature(raw_required_f64(
+                &raw,
+                "moon_sun_elongation",
+            )?))
+        })),
+        "graha_gender" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({ "gender": debug_name(graha_gender(graha)) }))
+        }
+        "graha_drishti" => {
+            let graha = parse_graha(&raw_required_enum(&raw, "graha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(drishti_entry_json(graha_drishti(
+                graha,
+                raw_required_f64(&raw, "source_lon")?,
+                raw_required_f64(&raw, "target_lon")?,
+            )))
+        }
+        "graha_drishti_matrix" => Ok(graha_drishti_matrix_json(graha_drishti_matrix(
+            &raw_f64_array::<9>(&raw, "longitudes")?,
+        ))),
+        "sun_based_upagrahas" => Ok(sun_based_upagrahas_value_json(sun_based_upagrahas(
+            raw_required_f64(&raw, "sun_sid_lon")?,
+        ))),
+        "time_upagraha_jd" => {
+            let upagraha = parse_upagraha(&raw_required_enum(&raw, "upagraha")?)
+                .map_err(|_| rustler::Error::BadArg)?;
+            Ok(json!({
+                "jd": time_upagraha_jd(
+                    upagraha,
+                    raw_required_u8(&raw, "weekday")?,
+                    raw_required_bool(&raw, "is_day")?,
+                    raw_required_f64(&raw, "day_start_jd")?,
+                    raw_required_f64(&raw, "day_end_jd")?,
+                    raw_required_f64(&raw, "night_end_jd")?,
+                )
+            }))
+        }
+        "all_sphutas" => {
+            let inputs = SphutalInputs {
+                sun: raw_required_f64(&raw, "sun")?,
+                moon: raw_required_f64(&raw, "moon")?,
+                mars: raw_required_f64(&raw, "mars")?,
+                jupiter: raw_required_f64(&raw, "jupiter")?,
+                venus: raw_required_f64(&raw, "venus")?,
+                rahu: raw_required_f64(&raw, "rahu")?,
+                lagna: raw_required_f64(&raw, "lagna")?,
+                eighth_lord: raw_required_f64(&raw, "eighth_lord")?,
+                gulika: raw_required_f64(&raw, "gulika")?,
+            };
+            Ok(json!({
+                "entries": all_sphutas(&inputs)
+                    .into_iter()
+                    .map(|(sphuta, longitude_deg)| json!({
+                        "sphuta": debug_name(sphuta),
+                        "longitude_deg": longitude_deg
+                    }))
+                    .collect::<Vec<_>>()
+            }))
+        }
+        "calculate_bav" => {
+            let bav = calculate_bav(
+                raw_required_u8(&raw, "graha_index")?,
+                &raw_u8_array::<7>(&raw, "graha_rashis")?,
+                raw_required_u8(&raw, "lagna_rashi")?,
+            );
+            Ok(json!({
+                "bav": {
+                    "graha_index": bav.graha_index,
+                    "points": bav.points,
+                    "contributors": bav.contributors
+                }
+            }))
+        }
+        "calculate_all_bav" => Ok(json!({
+            "bavs": calculate_all_bav(
+                &raw_u8_array::<7>(&raw, "graha_rashis")?,
+                raw_required_u8(&raw, "lagna_rashi")?,
+            )
+            .into_iter()
+            .map(|bav| json!({
+                "graha_index": bav.graha_index,
+                "points": bav.points,
+                "contributors": bav.contributors
+            }))
+            .collect::<Vec<_>>()
+        })),
+        "calculate_sav" => {
+            let bavs = calculate_all_bav(
+                &raw_u8_array::<7>(&raw, "graha_rashis")?,
+                raw_required_u8(&raw, "lagna_rashi")?,
+            );
+            let sav = calculate_sav(&bavs);
+            Ok(json!({
+                "sav": {
+                    "total_points": sav.total_points,
+                    "after_trikona": sav.after_trikona,
+                    "after_ekadhipatya": sav.after_ekadhipatya
+                }
+            }))
+        }
+        "calculate_ashtakavarga" => Ok(ashtakavarga_json(calculate_ashtakavarga(
+            &raw_u8_array::<7>(&raw, "graha_rashis")?,
+            raw_required_u8(&raw, "lagna_rashi")?,
+        ))),
+        "trikona_sodhana" => Ok(json!({
+            "totals": trikona_sodhana(&raw_u8_array::<12>(&raw, "totals")?)
+        })),
+        "ekadhipatya_sodhana" => Ok(json!({
+            "totals": ekadhipatya_sodhana(&raw_u8_array::<12>(&raw, "totals")?)
+        })),
+        "ghatika_from_elapsed" => {
+            let position = ghatika_from_elapsed(
+                raw_required_f64(&raw, "seconds_since_sunrise")?,
+                raw_required_f64(&raw, "vedic_day_duration_seconds")?,
+            );
+            Ok(json!({ "value": position.value, "index": position.index }))
+        }
+        "ghatikas_since_sunrise" => Ok(json!({
+            "ghatikas": ghatikas_since_sunrise(
+                raw_required_f64(&raw, "jd_moment")?,
+                raw_required_f64(&raw, "jd_sunrise")?,
+                raw_required_f64(&raw, "jd_next_sunrise")?,
+            )
+        })),
+        "tara_propagate_position" => Ok(equatorial_position_json(propagate_position(
+            raw_required_f64(&raw, "ra_deg")?,
+            raw_required_f64(&raw, "dec_deg")?,
+            raw_required_f64(&raw, "parallax_mas")?,
+            raw_required_f64(&raw, "pm_ra_mas_yr")?,
+            raw_required_f64(&raw, "pm_dec_mas_yr")?,
+            raw_required_f64(&raw, "rv_km_s")?,
+            raw_required_f64(&raw, "dt_years")?,
+        ))),
+        "tara_apply_aberration" => Ok(json!({
+            "direction": apply_aberration(
+                &raw_f64_array::<3>(&raw, "direction")?,
+                &raw_f64_array::<3>(&raw, "earth_vel_au_day")?,
+            )
+        })),
+        "tara_apply_light_deflection" => Ok(json!({
+            "direction": apply_light_deflection(
+                &raw_f64_array::<3>(&raw, "direction")?,
+                &raw_f64_array::<3>(&raw, "sun_to_observer")?,
+                raw_required_f64(&raw, "sun_observer_distance_au")?,
+            )
+        })),
+        "tara_galactic_anticenter_icrs" => Ok(json!({
+            "direction": galactic_anticenter_icrs()
+        })),
         _ => Err(error_payload(
             "invalid_request",
             "unknown utility operation",

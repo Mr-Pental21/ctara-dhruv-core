@@ -9,6 +9,7 @@ using `bindings/elixir-open/lib/` as the source of truth.
 - `CtaraDhruv.Engine`
 - `CtaraDhruv.Ephemeris`
 - `CtaraDhruv.Time`
+- `CtaraDhruv.Math`
 - `CtaraDhruv.Vedic`
 - `CtaraDhruv.Panchang`
 - `CtaraDhruv.Search`
@@ -56,6 +57,32 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
   Requests may include `time_policy`; results now include `diagnostics`.
 - `jd_tdb_to_utc/2`
 - `nutation/1`
+- `nutation_utc/2`
+- `approximate_local_noon/1`
+- `ayanamsha_system_count/0`
+- `reference_plane_default/1`
+
+`CtaraDhruv.Math`:
+
+- classifiers and canonical name lookups:
+  `rashi_from_longitude/1`, `nakshatra_from_longitude/1`,
+  `nakshatra28_from_longitude/1`, `rashi_from_tropical/1`,
+  `nakshatra_from_tropical/1`, `nakshatra28_from_tropical/1`,
+  `graha_name/1`, `yogini_name/1`, `rashi_name/1`, `nakshatra_name/1`,
+  `nakshatra28_name/1`, `sphuta_name/1`, `upagraha_name/1`
+- relationship, dignity, combustion, and lord helpers:
+  `hora_lord/1`, `masa_lord/1`, `samvatsara_lord/1`,
+  `exaltation_degree/1`, `debilitation_degree/1`, `moolatrikone_range/1`,
+  `combustion_threshold/1`, `combust?/1`, `all_combustion_status/1`,
+  `naisargika_maitri/1`, `tatkalika_maitri/1`, `panchadha_maitri/1`,
+  `dignity_in_rashi/1`, `dignity_in_rashi_with_positions/1`,
+  `node_dignity_in_rashi/1`, `natural_benefic_malefic/1`,
+  `moon_benefic_nature/1`, `graha_gender/1`
+- drishti, upagraha, sphuta, and ashtakavarga helpers:
+  `graha_drishti/1`, `graha_drishti_matrix/1`, `sun_based_upagrahas/1`,
+  `time_upagraha_jd/1`, `all_sphutas/1`, `calculate_ashtakavarga/1`,
+  `calculate_bav/1`, `calculate_all_bav/1`, `calculate_sav/1`,
+  `trikona_sodhana/1`, `ekadhipatya_sodhana/1`
 
 `CtaraDhruv.Vedic`:
 
@@ -84,6 +111,19 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
 - `ayana/2`
 - `varsha/2`
 - `daily/2`
+- `elongation_at/2`
+- `sidereal_sum_at/2`
+- `vedic_day_sunrises/2`
+- `body_ecliptic_lon_lat/2`
+- `tithi_at/2`
+- `karana_at/2`
+- `yoga_at/2`
+- `nakshatra_at/2`
+- `vaar_from_sunrises/2`
+- `hora_from_sunrises/2`
+- `ghatika_from_sunrises/2`
+- `ghatika_from_elapsed/1`
+- `ghatikas_since_sunrise/1`
 
 `CtaraDhruv.Jyotish`:
 
@@ -130,6 +170,10 @@ entity name.
 
 - `compute/2`
 - `catalog_info/1`
+- `propagate_position/1`
+- `apply_aberration/1`
+- `apply_light_deflection/1`
+- `galactic_anticenter_icrs/0`
 
 ## Request Config Maps
 

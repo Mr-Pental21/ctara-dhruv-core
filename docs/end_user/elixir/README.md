@@ -5,6 +5,7 @@ The Elixir wrapper organizes public features by module:
 - `CtaraDhruv.Engine`
 - `CtaraDhruv.Ephemeris`
 - `CtaraDhruv.Time`
+- `CtaraDhruv.Math`
 - `CtaraDhruv.Vedic`
 - `CtaraDhruv.Panchang`
 - `CtaraDhruv.Search`
