@@ -117,6 +117,11 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
 
 - `hierarchy/2`
 - `snapshot/2`
+- `level0/2`
+- `level0_entity/2`
+- `children/2`
+- `child_period/2`
+- `complete_level/2`
 
 Returned dasha entity maps include `:name` with the exact canonical Sanskrit
 entity name.
@@ -146,7 +151,7 @@ Chart-related config maps:
 - `amsha_scope`
 - `amsha_selection`
 - search request maps with `:op`-specific fields for conjunction, grahan, lunar phase, sankranti, and motion
-- dasha request maps for hierarchy and snapshot queries
+- dasha request maps for hierarchy, snapshot, `level0`, `level0_entity`, `children`, `child_period`, and `complete_level` queries
 
 Time-based upagraha config map:
 

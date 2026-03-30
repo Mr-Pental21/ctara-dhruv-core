@@ -422,14 +422,14 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
 
 ### 31. Elixir dasha coverage stops at hierarchy and snapshot
 
-- Missing or wrong:
-  Elixir exposes only `hierarchy/2` and `snapshot/2`. It does not expose `level0`, `level0_entity`, `children`, `child_period`, or `complete_level`, even though those are available in other wrappers and the C ABI.
+- Status:
+  Resolved for the current Elixir bindings.
 - Affected surfaces:
   Elixir bindings.
-- Correct behavior:
-  Add the low-tier dasha APIs so Elixir can inspect and paginate dasha trees incrementally instead of always materializing the full hierarchy.
+- Current behavior:
+  Elixir now exposes the same incremental dasha inspection surface as the other wrappers: `level0`, `level0_entity`, `children`, `child_period`, and `complete_level` in addition to `hierarchy` and `snapshot`.
 - Evidence:
-  `bindings/elixir-open/lib/ctara_dhruv/dasha.ex`, `crates/dhruv_ffi_c/include/dhruv.h`.
+  `bindings/elixir-open/lib/ctara_dhruv/dasha.ex`, `bindings/elixir-open/native/dhruv_elixir_nif/src/lib.rs`.
 
 ## Tara-specific wrapper discrepancies
 

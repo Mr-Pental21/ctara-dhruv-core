@@ -26,10 +26,13 @@ use dhruv_search::{
 };
 use dhruv_search::{
     PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_VARSHA,
-    SankrantiConfig, StationaryConfig, ayanamsha, conjunction, dasha_hierarchy_for_birth,
-    dasha_hierarchy_with_inputs, dasha_snapshot_at, dasha_snapshot_with_inputs,
-    full_kundali_for_date, graha_longitudes, lunar_node, motion, panchang,
-    set_time_conversion_policy, tara as tara_op,
+    SankrantiConfig, StationaryConfig, ayanamsha, conjunction, dasha_child_period_for_birth,
+    dasha_child_period_with_inputs, dasha_children_for_birth, dasha_children_with_inputs,
+    dasha_complete_level_for_birth, dasha_complete_level_with_inputs, dasha_hierarchy_for_birth,
+    dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth, dasha_level0_entity_with_inputs,
+    dasha_level0_for_birth, dasha_level0_with_inputs, dasha_snapshot_at,
+    dasha_snapshot_with_inputs, full_kundali_for_date, graha_longitudes, lunar_node, motion,
+    panchang, set_time_conversion_policy, tara as tara_op,
 };
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
@@ -263,6 +266,27 @@ struct DashaRequest {
     sankranti_config: Option<SankrantiConfigInput>,
     variation: Option<DashaVariationInput>,
     inputs: Option<DashaInputsInput>,
+    entity: Option<DashaEntityInput>,
+    parent: Option<DashaPeriodInput>,
+    child_entity: Option<DashaEntityInput>,
+    child_level: Option<EnumInput>,
+    parent_periods: Option<Vec<DashaPeriodInput>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DashaEntityInput {
+    kind: EnumInput,
+    index: u8,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DashaPeriodInput {
+    entity: DashaEntityInput,
+    start_jd: f64,
+    end_jd: f64,
+    level: EnumInput,
+    order: u16,
+    parent_idx: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1015,6 +1039,85 @@ fn parse_dasha_system(input: &EnumInput) -> Result<DashaSystem, Value> {
         EnumInput::Str(value) => parse_named(value, &ALL_DASHA_SYSTEMS)
             .ok_or_else(|| error_payload("invalid_request", "unknown dasha system")),
     }
+}
+
+fn parse_dasha_level(input: &EnumInput) -> Result<DashaLevel, Value> {
+    match input {
+        EnumInput::Int(value) => DashaLevel::from_u8(*value as u8)
+            .ok_or_else(|| error_payload("invalid_request", "unknown dasha level")),
+        EnumInput::Str(value) => match value.to_ascii_lowercase().as_str() {
+            "mahadasha" => Ok(DashaLevel::Mahadasha),
+            "antardasha" => Ok(DashaLevel::Antardasha),
+            "pratyantardasha" => Ok(DashaLevel::Pratyantardasha),
+            "sookshmadasha" => Ok(DashaLevel::Sookshmadasha),
+            "pranadasha" => Ok(DashaLevel::Pranadasha),
+            _ => Err(error_payload("invalid_request", "unknown dasha level")),
+        },
+    }
+}
+
+fn parse_dasha_entity(input: &DashaEntityInput) -> Result<DashaEntity, Value> {
+    match &input.kind {
+        EnumInput::Int(0) => ALL_GRAHAS
+            .get(input.index as usize)
+            .copied()
+            .map(DashaEntity::Graha)
+            .ok_or_else(|| error_payload("invalid_request", "unknown dasha graha")),
+        EnumInput::Int(1) => {
+            if input.index < 12 {
+                Ok(DashaEntity::Rashi(input.index))
+            } else {
+                Err(error_payload("invalid_request", "unknown dasha rashi"))
+            }
+        }
+        EnumInput::Int(2) => {
+            if input.index < 8 {
+                Ok(DashaEntity::Yogini(input.index))
+            } else {
+                Err(error_payload("invalid_request", "unknown dasha yogini"))
+            }
+        }
+        EnumInput::Str(value) => match value.to_ascii_lowercase().as_str() {
+            "graha" => ALL_GRAHAS
+                .get(input.index as usize)
+                .copied()
+                .map(DashaEntity::Graha)
+                .ok_or_else(|| error_payload("invalid_request", "unknown dasha graha")),
+            "rashi" => {
+                if input.index < 12 {
+                    Ok(DashaEntity::Rashi(input.index))
+                } else {
+                    Err(error_payload("invalid_request", "unknown dasha rashi"))
+                }
+            }
+            "yogini" => {
+                if input.index < 8 {
+                    Ok(DashaEntity::Yogini(input.index))
+                } else {
+                    Err(error_payload("invalid_request", "unknown dasha yogini"))
+                }
+            }
+            _ => Err(error_payload(
+                "invalid_request",
+                "unknown dasha entity kind",
+            )),
+        },
+        _ => Err(error_payload(
+            "invalid_request",
+            "unknown dasha entity kind",
+        )),
+    }
+}
+
+fn parse_dasha_period(input: &DashaPeriodInput) -> Result<DashaPeriod, Value> {
+    Ok(DashaPeriod {
+        entity: parse_dasha_entity(&input.entity)?,
+        start_jd: input.start_jd,
+        end_jd: input.end_jd,
+        level: parse_dasha_level(&input.level)?,
+        order: input.order,
+        parent_idx: input.parent_idx,
+    })
 }
 
 fn parse_tara_id(input: &EnumInput) -> Result<TaraId, Value> {
@@ -3391,6 +3494,250 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                         &variation,
                     )
                     .map(dasha_snapshot_json)
+                    .map_err(|err| map_error("search_error", err))
+                }
+            }
+            "level0" => {
+                if let Some(inputs) = raw_inputs.as_ref() {
+                    let inputs = inputs.borrowed();
+                    dasha_level0_with_inputs(birth_jd, system, &inputs)
+                        .map(|periods| {
+                            periods
+                                .into_iter()
+                                .map(dasha_period_json)
+                                .collect::<Vec<_>>()
+                        })
+                        .map_err(|err| map_error("search_error", err))
+                } else {
+                    let birth_utc = parse_utc(request.birth_utc.ok_or_else(|| {
+                        error_payload("invalid_request", "birth_utc is required")
+                    })?)?;
+                    let location =
+                        parse_location(request.location.ok_or_else(|| {
+                            error_payload("invalid_request", "location is required")
+                        })?);
+                    let bhava_config = to_bhava_config(state, request.bhava_config.as_ref())?;
+                    let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
+                    let sankranti_config =
+                        to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                    dasha_level0_for_birth(
+                        engine,
+                        eop,
+                        &birth_utc,
+                        &location,
+                        system,
+                        &bhava_config,
+                        &riseset_config,
+                        &sankranti_config,
+                    )
+                    .map(|periods| {
+                        periods
+                            .into_iter()
+                            .map(dasha_period_json)
+                            .collect::<Vec<_>>()
+                    })
+                    .map_err(|err| map_error("search_error", err))
+                }
+            }
+            "level0_entity" => {
+                let entity = parse_dasha_entity(
+                    request
+                        .entity
+                        .as_ref()
+                        .ok_or_else(|| error_payload("invalid_request", "entity is required"))?,
+                )?;
+                if let Some(inputs) = raw_inputs.as_ref() {
+                    let inputs = inputs.borrowed();
+                    dasha_level0_entity_with_inputs(birth_jd, system, entity, &inputs)
+                        .map(|period| period.map(dasha_period_json).unwrap_or(Value::Null))
+                        .map_err(|err| map_error("search_error", err))
+                } else {
+                    let birth_utc = parse_utc(request.birth_utc.ok_or_else(|| {
+                        error_payload("invalid_request", "birth_utc is required")
+                    })?)?;
+                    let location =
+                        parse_location(request.location.ok_or_else(|| {
+                            error_payload("invalid_request", "location is required")
+                        })?);
+                    let bhava_config = to_bhava_config(state, request.bhava_config.as_ref())?;
+                    let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
+                    let sankranti_config =
+                        to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                    dasha_level0_entity_for_birth(
+                        engine,
+                        eop,
+                        &birth_utc,
+                        &location,
+                        system,
+                        entity,
+                        &bhava_config,
+                        &riseset_config,
+                        &sankranti_config,
+                    )
+                    .map(|period| period.map(dasha_period_json).unwrap_or(Value::Null))
+                    .map_err(|err| map_error("search_error", err))
+                }
+            }
+            "children" => {
+                let parent = parse_dasha_period(
+                    request
+                        .parent
+                        .as_ref()
+                        .ok_or_else(|| error_payload("invalid_request", "parent is required"))?,
+                )?;
+                if let Some(inputs) = raw_inputs.as_ref() {
+                    let inputs = inputs.borrowed();
+                    dasha_children_with_inputs(system, &parent, &variation, &inputs)
+                        .map(|periods| {
+                            periods
+                                .into_iter()
+                                .map(dasha_period_json)
+                                .collect::<Vec<_>>()
+                        })
+                        .map_err(|err| map_error("search_error", err))
+                } else {
+                    let birth_utc = parse_utc(request.birth_utc.ok_or_else(|| {
+                        error_payload("invalid_request", "birth_utc is required")
+                    })?)?;
+                    let location =
+                        parse_location(request.location.ok_or_else(|| {
+                            error_payload("invalid_request", "location is required")
+                        })?);
+                    let bhava_config = to_bhava_config(state, request.bhava_config.as_ref())?;
+                    let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
+                    let sankranti_config =
+                        to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                    dasha_children_for_birth(
+                        engine,
+                        eop,
+                        &birth_utc,
+                        &location,
+                        system,
+                        &parent,
+                        &bhava_config,
+                        &riseset_config,
+                        &sankranti_config,
+                        &variation,
+                    )
+                    .map(|periods| {
+                        periods
+                            .into_iter()
+                            .map(dasha_period_json)
+                            .collect::<Vec<_>>()
+                    })
+                    .map_err(|err| map_error("search_error", err))
+                }
+            }
+            "child_period" => {
+                let parent = parse_dasha_period(
+                    request
+                        .parent
+                        .as_ref()
+                        .ok_or_else(|| error_payload("invalid_request", "parent is required"))?,
+                )?;
+                let child_entity =
+                    parse_dasha_entity(request.child_entity.as_ref().ok_or_else(|| {
+                        error_payload("invalid_request", "child_entity is required")
+                    })?)?;
+                if let Some(inputs) = raw_inputs.as_ref() {
+                    let inputs = inputs.borrowed();
+                    dasha_child_period_with_inputs(
+                        system,
+                        &parent,
+                        child_entity,
+                        &variation,
+                        &inputs,
+                    )
+                    .map(|period| period.map(dasha_period_json).unwrap_or(Value::Null))
+                    .map_err(|err| map_error("search_error", err))
+                } else {
+                    let birth_utc = parse_utc(request.birth_utc.ok_or_else(|| {
+                        error_payload("invalid_request", "birth_utc is required")
+                    })?)?;
+                    let location =
+                        parse_location(request.location.ok_or_else(|| {
+                            error_payload("invalid_request", "location is required")
+                        })?);
+                    let bhava_config = to_bhava_config(state, request.bhava_config.as_ref())?;
+                    let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
+                    let sankranti_config =
+                        to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                    dasha_child_period_for_birth(
+                        engine,
+                        eop,
+                        &birth_utc,
+                        &location,
+                        system,
+                        &parent,
+                        child_entity,
+                        &bhava_config,
+                        &riseset_config,
+                        &sankranti_config,
+                        &variation,
+                    )
+                    .map(|period| period.map(dasha_period_json).unwrap_or(Value::Null))
+                    .map_err(|err| map_error("search_error", err))
+                }
+            }
+            "complete_level" => {
+                let child_level =
+                    parse_dasha_level(request.child_level.as_ref().ok_or_else(|| {
+                        error_payload("invalid_request", "child_level is required")
+                    })?)?;
+                let parent_periods = request
+                    .parent_periods
+                    .as_ref()
+                    .ok_or_else(|| error_payload("invalid_request", "parent_periods is required"))?
+                    .iter()
+                    .map(parse_dasha_period)
+                    .collect::<Result<Vec<_>, _>>()?;
+                if let Some(inputs) = raw_inputs.as_ref() {
+                    let inputs = inputs.borrowed();
+                    dasha_complete_level_with_inputs(
+                        system,
+                        &parent_periods,
+                        child_level,
+                        &variation,
+                        &inputs,
+                    )
+                    .map(|periods| {
+                        periods
+                            .into_iter()
+                            .map(dasha_period_json)
+                            .collect::<Vec<_>>()
+                    })
+                    .map_err(|err| map_error("search_error", err))
+                } else {
+                    let birth_utc = parse_utc(request.birth_utc.ok_or_else(|| {
+                        error_payload("invalid_request", "birth_utc is required")
+                    })?)?;
+                    let location =
+                        parse_location(request.location.ok_or_else(|| {
+                            error_payload("invalid_request", "location is required")
+                        })?);
+                    let bhava_config = to_bhava_config(state, request.bhava_config.as_ref())?;
+                    let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
+                    let sankranti_config =
+                        to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                    dasha_complete_level_for_birth(
+                        engine,
+                        eop,
+                        &birth_utc,
+                        &location,
+                        system,
+                        &parent_periods,
+                        child_level,
+                        &bhava_config,
+                        &riseset_config,
+                        &sankranti_config,
+                        &variation,
+                    )
+                    .map(|periods| {
+                        periods
+                            .into_iter()
+                            .map(dasha_period_json)
+                            .collect::<Vec<_>>()
+                    })
                     .map_err(|err| map_error("search_error", err))
                 }
             }

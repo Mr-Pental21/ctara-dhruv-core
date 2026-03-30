@@ -79,6 +79,59 @@ defmodule CtaraDhruvTest do
                      system: :vimshottari,
                      max_level: 1
                    })
+
+          assert {:ok, level0} =
+                   Dasha.level0(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari
+                   })
+
+          assert length(level0) > 0
+          first = hd(level0)
+
+          assert {:ok, level0_entity} =
+                   Dasha.level0_entity(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     entity: first.entity
+                   })
+
+          assert level0_entity.entity.index == first.entity.index
+
+          assert {:ok, children} =
+                   Dasha.children(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     parent: first
+                   })
+
+          assert length(children) > 0
+          first_child = hd(children)
+
+          assert {:ok, child_period} =
+                   Dasha.child_period(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     parent: first,
+                     child_entity: first_child.entity
+                   })
+
+          assert child_period.entity.index == first_child.entity.index
+
+          assert {:ok, complete_level} =
+                   Dasha.complete_level(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     parent_periods: level0,
+                     child_level: :antardasha
+                   })
+
+          assert length(complete_level) >= length(children)
         end
 
         if File.exists?(@tara) do
