@@ -163,18 +163,12 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
 
 ### 10. Search range APIs can truncate outside Rust
 
-- Missing or wrong:
-  Range-search truncation happens through different transport choices on each surface:
-  - Rust returns full `Vec`s,
-  - the C ABI uses caller-supplied output buffers,
-  - Node defaults capacities to `8`,
-  - Python hard-codes defaults such as `max_results=100` or `50`,
-  - Go requires the caller to choose a capacity and does not signal truncation directly.
-  The shared problem is not just limited capacity, but the lack of a consistent truncation contract.
+- Status:
+  Resolved for the current public wrappers.
 - Affected surfaces:
   C ABI, Python, Node.js, Go.
-- Correct behavior:
-  Wrappers should either auto-page until exhaustion or explicitly report truncation whenever `out_count == out_capacity`.
+- Current behavior:
+  The C ABI remains a fixed-buffer transport, but Python, Node.js, and Go now auto-expand internal range buffers until the full result set fits. Small initial capacities no longer truncate the public wrapper result set.
 - Evidence:
   `crates/dhruv_search/src/lib.rs`, `crates/dhruv_ffi_c/include/dhruv.h`, `bindings/node-open/src/search.js`, `bindings/python-open/src/ctara_dhruv/search.py`, `bindings/go-open/dhruv/search.go`.
 
@@ -269,12 +263,12 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
 
 ### 18. Python range-search helpers can silently truncate results
 
-- Missing or wrong:
-  Helpers such as `search_conjunctions`, `search_lunar_eclipses`, `search_solar_eclipses`, `search_stationary`, `search_max_speeds`, `search_lunar_phases`, and `search_sankrantis` all stop at `max_results`.
+- Status:
+  Resolved for the current Python bindings.
 - Affected surfaces:
   Python bindings.
-- Correct behavior:
-  Keep fetching until the core result set is exhausted, or explicitly raise/report truncation when the requested range is larger than the buffer.
+- Current behavior:
+  Python range-search helpers auto-expand their internal buffers until the full result set is returned. `max_results` is now only the initial internal chunk size.
 - Evidence:
   `bindings/python-open/src/ctara_dhruv/search.py`, `crates/dhruv_search/src/lib.rs`.
 
@@ -293,12 +287,12 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
 
 ### 20. Node range-search defaults are too small and can truncate
 
-- Missing or wrong:
-  `conjunctionSearch`, `grahanSearch`, `motionSearch`, `lunarPhaseSearch`, and `sankrantiSearch` all default `capacity = 8`.
+- Status:
+  Resolved for the current Node.js bindings.
 - Affected surfaces:
   Node.js bindings.
-- Correct behavior:
-  Auto-page or at minimum warn/throw when `count == capacity`.
+- Current behavior:
+  Node range-search calls auto-expand internal buffers until the full result set is returned. The optional third argument is now only the initial internal chunk size.
 - Evidence:
   `bindings/node-open/src/search.js`, `crates/dhruv_search/src/lib.rs`.
 
@@ -328,12 +322,12 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
 
 ### 23. Go range-search wrappers can truncate without signaling it
 
-- Missing or wrong:
-  Search methods take an explicit `capacity` and return the filled slice, but there is no truncation signal if the caller undersizes the buffer.
+- Status:
+  Resolved for the current Go bindings.
 - Affected surfaces:
   Go bindings.
-- Correct behavior:
-  Return a truncation flag or internally loop until the result set is complete.
+- Current behavior:
+  Go range-search methods now auto-expand their internal buffers until the full result set is returned. The optional final argument is now only the initial internal chunk size.
 - Evidence:
   `bindings/go-open/dhruv/search.go`, `crates/dhruv_ffi_c/include/dhruv.h`.
 

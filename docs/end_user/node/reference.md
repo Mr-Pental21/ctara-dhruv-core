@@ -63,6 +63,10 @@ This page summarizes the public Node wrapper exported from
 - `lunarPhaseSearch`
 - `sankrantiSearch`
 
+For range searches (`queryMode: 2`), these functions auto-expand their
+internal buffers until the full result set is returned. The optional third
+argument is only the initial internal chunk size, not a public result limit.
+
 `panchang.js` exports:
 
 - `bhavaSystemCount`

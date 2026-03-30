@@ -26,6 +26,19 @@ from .types import (
 # ---------------------------------------------------------------------------
 
 
+def _normalize_search_capacity(capacity: int) -> int:
+    return max(1, int(capacity))
+
+
+def _collect_full_range(fetch, initial_capacity: int):
+    capacity = _normalize_search_capacity(initial_capacity)
+    while True:
+        items, count = fetch(capacity)
+        if count < capacity:
+            return items
+        capacity *= 2
+
+
 def _utc_from_c(u) -> UtcTime:
     """Convert a DhruvUtcTime C struct to a Python UtcTime."""
     return UtcTime(
@@ -212,17 +225,21 @@ def search_conjunctions(
     req.end_jd_tdb = end_jd
     req.config = config if config is not None else lib.dhruv_conjunction_config_default()
 
-    out_events = ffi.new("DhruvConjunctionEvent[]", max_results)
-    out_count = ffi.new("uint32_t *")
-    check(
-        lib.dhruv_conjunction_search_ex(
-            engine, req,
-            ffi.NULL, ffi.NULL,
-            out_events, max_results, out_count,
-        ),
-        "conjunction_search_ex(range)",
-    )
-    return [_conjunction_event(out_events[i]) for i in range(out_count[0])]
+    def fetch(capacity: int):
+        out_events = ffi.new("DhruvConjunctionEvent[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_conjunction_search_ex(
+                engine, req,
+                ffi.NULL, ffi.NULL,
+                out_events, capacity, out_count,
+            ),
+            "conjunction_search_ex(range)",
+        )
+        count = int(out_count[0])
+        return ([_conjunction_event(out_events[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)
 
 
 # ---------------------------------------------------------------------------
@@ -302,17 +319,21 @@ def search_lunar_eclipses(
     req.end_jd_tdb = end_jd
     req.config = config if config is not None else lib.dhruv_grahan_config_default()
 
-    out_chandra = ffi.new("DhruvChandraGrahanResult[]", max_results)
-    out_count = ffi.new("uint32_t *")
-    check(
-        lib.dhruv_grahan_search_ex(
-            engine, req,
-            ffi.NULL, ffi.NULL, ffi.NULL,
-            out_chandra, ffi.NULL, max_results, out_count,
-        ),
-        "grahan_search_ex(chandra_range)",
-    )
-    return [_chandra_grahan(out_chandra[i]) for i in range(out_count[0])]
+    def fetch(capacity: int):
+        out_chandra = ffi.new("DhruvChandraGrahanResult[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_grahan_search_ex(
+                engine, req,
+                ffi.NULL, ffi.NULL, ffi.NULL,
+                out_chandra, ffi.NULL, capacity, out_count,
+            ),
+            "grahan_search_ex(chandra_range)",
+        )
+        count = int(out_count[0])
+        return ([_chandra_grahan(out_chandra[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)
 
 
 def search_solar_eclipses(
@@ -330,17 +351,21 @@ def search_solar_eclipses(
     req.end_jd_tdb = end_jd
     req.config = config if config is not None else lib.dhruv_grahan_config_default()
 
-    out_surya = ffi.new("DhruvSuryaGrahanResult[]", max_results)
-    out_count = ffi.new("uint32_t *")
-    check(
-        lib.dhruv_grahan_search_ex(
-            engine, req,
-            ffi.NULL, ffi.NULL, ffi.NULL,
-            ffi.NULL, out_surya, max_results, out_count,
-        ),
-        "grahan_search_ex(surya_range)",
-    )
-    return [_surya_grahan(out_surya[i]) for i in range(out_count[0])]
+    def fetch(capacity: int):
+        out_surya = ffi.new("DhruvSuryaGrahanResult[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_grahan_search_ex(
+                engine, req,
+                ffi.NULL, ffi.NULL, ffi.NULL,
+                ffi.NULL, out_surya, capacity, out_count,
+            ),
+            "grahan_search_ex(surya_range)",
+        )
+        count = int(out_count[0])
+        return ([_surya_grahan(out_surya[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)
 
 
 # ---------------------------------------------------------------------------
@@ -438,17 +463,21 @@ def search_stationary(
     req.end_jd_tdb = end_jd
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
 
-    out_events = ffi.new("DhruvStationaryEvent[]", max_results)
-    out_count = ffi.new("uint32_t *")
-    check(
-        lib.dhruv_motion_search_ex(
-            engine, req,
-            ffi.NULL, ffi.NULL, ffi.NULL,
-            out_events, ffi.NULL, max_results, out_count,
-        ),
-        "motion_search_ex(stationary_range)",
-    )
-    return [_stationary_event(out_events[i]) for i in range(out_count[0])]
+    def fetch(capacity: int):
+        out_events = ffi.new("DhruvStationaryEvent[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_motion_search_ex(
+                engine, req,
+                ffi.NULL, ffi.NULL, ffi.NULL,
+                out_events, ffi.NULL, capacity, out_count,
+            ),
+            "motion_search_ex(stationary_range)",
+        )
+        count = int(out_count[0])
+        return ([_stationary_event(out_events[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)
 
 
 def next_max_speed(
@@ -482,17 +511,21 @@ def search_max_speeds(
     req.end_jd_tdb = end_jd
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
 
-    out_events = ffi.new("DhruvMaxSpeedEvent[]", max_results)
-    out_count = ffi.new("uint32_t *")
-    check(
-        lib.dhruv_motion_search_ex(
-            engine, req,
-            ffi.NULL, ffi.NULL, ffi.NULL,
-            ffi.NULL, out_events, max_results, out_count,
-        ),
-        "motion_search_ex(max_speed_range)",
-    )
-    return [_max_speed_event(out_events[i]) for i in range(out_count[0])]
+    def fetch(capacity: int):
+        out_events = ffi.new("DhruvMaxSpeedEvent[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_motion_search_ex(
+                engine, req,
+                ffi.NULL, ffi.NULL, ffi.NULL,
+                ffi.NULL, out_events, capacity, out_count,
+            ),
+            "motion_search_ex(max_speed_range)",
+        )
+        count = int(out_count[0])
+        return ([_max_speed_event(out_events[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)
 
 
 # ---------------------------------------------------------------------------
@@ -565,17 +598,21 @@ def search_lunar_phases(
     req.start_jd_tdb = start_jd
     req.end_jd_tdb = end_jd
 
-    out_events = ffi.new("DhruvLunarPhaseEvent[]", max_results)
-    out_count = ffi.new("uint32_t *")
-    check(
-        lib.dhruv_lunar_phase_search_ex(
-            engine, req,
-            ffi.NULL, ffi.NULL,
-            out_events, max_results, out_count,
-        ),
-        "lunar_phase_search_ex(range)",
-    )
-    return [_lunar_phase_event(out_events[i]) for i in range(out_count[0])]
+    def fetch(capacity: int):
+        out_events = ffi.new("DhruvLunarPhaseEvent[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_lunar_phase_search_ex(
+                engine, req,
+                ffi.NULL, ffi.NULL,
+                out_events, capacity, out_count,
+            ),
+            "lunar_phase_search_ex(range)",
+        )
+        count = int(out_count[0])
+        return ([_lunar_phase_event(out_events[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)
 
 
 # ---------------------------------------------------------------------------
@@ -688,14 +725,18 @@ def search_sankrantis(
     req.end_jd_tdb = end_jd
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
 
-    out_events = ffi.new("DhruvSankrantiEvent[]", max_results)
-    out_count = ffi.new("uint32_t *")
-    check(
-        lib.dhruv_sankranti_search_ex(
-            engine, req,
-            ffi.NULL, ffi.NULL,
-            out_events, max_results, out_count,
-        ),
-        "sankranti_search_ex(range)",
-    )
-    return [_sankranti_event(out_events[i]) for i in range(out_count[0])]
+    def fetch(capacity: int):
+        out_events = ffi.new("DhruvSankrantiEvent[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_sankranti_search_ex(
+                engine, req,
+                ffi.NULL, ffi.NULL,
+                out_events, capacity, out_count,
+            ),
+            "sankranti_search_ex(range)",
+        )
+        count = int(out_count[0])
+        return ([_sankranti_event(out_events[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)

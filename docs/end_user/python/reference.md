@@ -303,6 +303,10 @@ precomputed `inputs` on the same main functions.
 - `next_specific_sankranti`
 - `search_sankrantis`
 
+Python range-search helpers auto-expand their internal buffers until the full
+result set is returned. `max_results` is only the initial internal chunk size,
+not a public truncation cap.
+
 `tara`:
 
 - `TaraCatalog`

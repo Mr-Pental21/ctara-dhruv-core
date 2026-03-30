@@ -83,15 +83,15 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     engine,
     {
       phaseKind: 1,
-      queryMode: 0,
-      atJdTdb: 2460000.5,
-      startJdTdb: 0,
-      endJdTdb: 0,
+      queryMode: 2,
+      atJdTdb: 0,
+      startJdTdb: 2451545.0,
+      endJdTdb: 2451545.0 + 365.0,
     },
-    8,
+    1,
   );
 
-  assert.equal(search.found, true);
+  assert.ok(search.events.length >= 12);
 
   const conj = dhruv.conjunctionSearch(
     engine,

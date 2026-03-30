@@ -204,6 +204,10 @@ Ephemeris and node helpers:
 - `(*Engine).LunarNodeDegWithEngine`
 - `(*Engine).LunarNodeDegUTCWithEngine`
 
+Go range-search methods auto-expand their internal buffers until the full
+result set is returned. The optional final argument is only the initial
+internal chunk size, not a public truncation cap.
+
 Panchang and vedic basics:
 
 - `(*Engine).ComputeRiseSet`

@@ -40,6 +40,7 @@ class TestConjunction:
             engine_handles._ptr,
             body1_code=10, body2_code=301,
             start_jd=J2000, end_jd=J2000 + 365.0,
+            max_results=1,
         )
         # Should find ~12-13 new moons in a year
         assert 11 <= len(events) <= 14
@@ -109,6 +110,7 @@ class TestLunarPhase:
             engine_handles._ptr,
             phase_kind=1,  # Purnima
             start_jd=J2000, end_jd=J2000 + 365.0,
+            max_results=1,
         )
         assert 12 <= len(events) <= 14
 
@@ -137,5 +139,6 @@ class TestSankranti:
         events = search_sankrantis(
             engine_handles._ptr,
             start_jd=J2000, end_jd=J2000 + 365.25,
+            max_results=1,
         )
         assert len(events) == 12

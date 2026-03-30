@@ -3,6 +3,9 @@
 const { addon } = require('./native');
 const { checkStatus } = require('./errors');
 
+const RANGE_QUERY_MODE = 2;
+const DEFAULT_RANGE_CAPACITY = 8;
+
 function conjunctionConfigDefault() {
   return addon.conjunctionConfigDefault();
 }
@@ -15,63 +18,120 @@ function stationaryConfigDefault() {
   return addon.stationaryConfigDefault();
 }
 
-function lunarPhaseSearch(engine, request, capacity = 8) {
-  const r = addon.lunarPhaseSearch(engine._handle, request, capacity);
-  checkStatus('lunar_phase_search_ex', r.status);
+function normalizeRangeCapacity(capacity) {
+  if (!Number.isFinite(capacity) || capacity < 1) {
+    return DEFAULT_RANGE_CAPACITY;
+  }
+  return Math.max(1, Math.trunc(capacity));
+}
+
+function runSearch(statusName, searchFn, engine, request, capacity) {
+  const response = searchFn(engine._handle, request, capacity);
+  checkStatus(statusName, response.status);
+  return response;
+}
+
+function collectRangeSearch(statusName, searchFn, engine, request, capacity) {
+  let currentCapacity = normalizeRangeCapacity(capacity);
+  let response = runSearch(statusName, searchFn, engine, request, currentCapacity);
+  while ((response.count || 0) >= currentCapacity) {
+    currentCapacity *= 2;
+    response = runSearch(statusName, searchFn, engine, request, currentCapacity);
+  }
+  return response;
+}
+
+function formatSimpleSearch(response) {
   return {
-    found: !!r.found,
-    count: r.count || 0,
-    event: r.event || null,
-    events: r.events || [],
+    found: !!response.found,
+    count: response.count || 0,
+    event: response.event || null,
+    events: response.events || [],
   };
 }
 
-function conjunctionSearch(engine, request, capacity = 8) {
-  const r = addon.conjunctionSearch(engine._handle, request, capacity);
-  checkStatus('conjunction_search_ex', r.status);
+function formatGrahanSearch(response) {
   return {
-    found: !!r.found,
-    count: r.count || 0,
-    event: r.event || null,
-    events: r.events || [],
+    found: !!response.found,
+    count: response.count || 0,
+    chandra: response.chandra || null,
+    surya: response.surya || null,
+    chandraEvents: response.chandraEvents || [],
+    suryaEvents: response.suryaEvents || [],
   };
 }
 
-function grahanSearch(engine, request, capacity = 8) {
-  const r = addon.grahanSearch(engine._handle, request, capacity);
-  checkStatus('grahan_search_ex', r.status);
+function formatMotionSearch(response) {
   return {
-    found: !!r.found,
-    count: r.count || 0,
-    chandra: r.chandra || null,
-    surya: r.surya || null,
-    chandraEvents: r.chandraEvents || [],
-    suryaEvents: r.suryaEvents || [],
+    found: !!response.found,
+    count: response.count || 0,
+    stationary: response.stationary || null,
+    maxSpeed: response.maxSpeed || null,
+    stationaryEvents: response.stationaryEvents || [],
+    maxSpeedEvents: response.maxSpeedEvents || [],
   };
 }
 
-function motionSearch(engine, request, capacity = 8) {
-  const r = addon.motionSearch(engine._handle, request, capacity);
-  checkStatus('motion_search_ex', r.status);
-  return {
-    found: !!r.found,
-    count: r.count || 0,
-    stationary: r.stationary || null,
-    maxSpeed: r.maxSpeed || null,
-    stationaryEvents: r.stationaryEvents || [],
-    maxSpeedEvents: r.maxSpeedEvents || [],
-  };
+function searchResult(statusName, searchFn, engine, request, capacity, formatResponse) {
+  const response = request && request.queryMode === RANGE_QUERY_MODE
+    ? collectRangeSearch(statusName, searchFn, engine, request, capacity)
+    : runSearch(statusName, searchFn, engine, request, normalizeRangeCapacity(capacity));
+  return formatResponse(response);
 }
 
-function sankrantiSearch(engine, request, capacity = 8) {
-  const r = addon.sankrantiSearch(engine._handle, request, capacity);
-  checkStatus('sankranti_search_ex', r.status);
-  return {
-    found: !!r.found,
-    count: r.count || 0,
-    event: r.event || null,
-    events: r.events || [],
-  };
+function lunarPhaseSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
+  return searchResult(
+    'lunar_phase_search_ex',
+    addon.lunarPhaseSearch,
+    engine,
+    request,
+    capacity,
+    formatSimpleSearch,
+  );
+}
+
+function conjunctionSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
+  return searchResult(
+    'conjunction_search_ex',
+    addon.conjunctionSearch,
+    engine,
+    request,
+    capacity,
+    formatSimpleSearch,
+  );
+}
+
+function grahanSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
+  return searchResult(
+    'grahan_search_ex',
+    addon.grahanSearch,
+    engine,
+    request,
+    capacity,
+    formatGrahanSearch,
+  );
+}
+
+function motionSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
+  return searchResult(
+    'motion_search_ex',
+    addon.motionSearch,
+    engine,
+    request,
+    capacity,
+    formatMotionSearch,
+  );
+}
+
+function sankrantiSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
+  return searchResult(
+    'sankranti_search_ex',
+    addon.sankrantiSearch,
+    engine,
+    request,
+    capacity,
+    formatSimpleSearch,
+  );
 }
 
 module.exports = {

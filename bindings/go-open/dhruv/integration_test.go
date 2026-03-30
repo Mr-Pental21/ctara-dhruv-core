@@ -153,16 +153,20 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 	defer eop.Close()
 
 	req := LunarPhaseSearchRequest{
-		PhaseKind: 1,
-		QueryMode: 0,
-		AtJdTdb:   2460000.5,
+		PhaseKind:  1,
+		QueryMode:  2,
+		StartJdTdb: 2451545.0,
+		EndJdTdb:   2451545.0 + 365.0,
 	}
-	_, found, _, err := eng.LunarPhaseSearch(req, 8)
+	_, found, events, err := eng.LunarPhaseSearch(req, 1)
 	if err != nil {
 		t.Fatalf("LunarPhaseSearch: %v", err)
 	}
-	if !found {
-		t.Fatalf("LunarPhaseSearch returned no event")
+	if found {
+		t.Fatalf("range LunarPhaseSearch should not report single-event found=true")
+	}
+	if len(events) < 12 {
+		t.Fatalf("expected auto-expanded lunar phase range results, got %d", len(events))
 	}
 
 	utc := UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12, Minute: 0, Second: 0}
