@@ -1639,6 +1639,51 @@ func TaraGalacticCenterEcliptic(h TaraCatalogHandle, jdTdb float64) (SphericalCo
 	return goSphericalCoords(out), st
 }
 
+func TaraPropagatePosition(raDeg, decDeg, parallaxMas, pmRaMasYr, pmDecMasYr, rvKmS, dtYears float64) (EquatorialPosition, Status) {
+	var out C.DhruvEquatorialPosition
+	st := Status(C.dhruv_tara_propagate_position(
+		C.double(raDeg),
+		C.double(decDeg),
+		C.double(parallaxMas),
+		C.double(pmRaMasYr),
+		C.double(pmDecMasYr),
+		C.double(rvKmS),
+		C.double(dtYears),
+		&out,
+	))
+	return EquatorialPosition{RADeg: float64(out.ra_deg), DecDeg: float64(out.dec_deg), DistanceAU: float64(out.distance_au)}, st
+}
+
+func TaraApplyAberration(direction [3]float64, earthVelAUDay [3]float64) ([3]float64, Status) {
+	var cdir [3]C.double
+	var cvel [3]C.double
+	for i := 0; i < 3; i++ {
+		cdir[i] = C.double(direction[i])
+		cvel[i] = C.double(earthVelAUDay[i])
+	}
+	var out [3]C.double
+	st := Status(C.dhruv_tara_apply_aberration(&cdir[0], &cvel[0], &out[0]))
+	return [3]float64{float64(out[0]), float64(out[1]), float64(out[2])}, st
+}
+
+func TaraApplyLightDeflection(direction [3]float64, sunToObserver [3]float64, sunObserverDistanceAU float64) ([3]float64, Status) {
+	var cdir [3]C.double
+	var csun [3]C.double
+	for i := 0; i < 3; i++ {
+		cdir[i] = C.double(direction[i])
+		csun[i] = C.double(sunToObserver[i])
+	}
+	var out [3]C.double
+	st := Status(C.dhruv_tara_apply_light_deflection(&cdir[0], &csun[0], C.double(sunObserverDistanceAU), &out[0]))
+	return [3]float64{float64(out[0]), float64(out[1]), float64(out[2])}, st
+}
+
+func TaraGalacticAnticenterICRS() ([3]float64, Status) {
+	var out [3]C.double
+	st := Status(C.dhruv_tara_galactic_anticenter_icrs(&out[0]))
+	return [3]float64{float64(out[0]), float64(out[1]), float64(out[2])}, st
+}
+
 func goBhavaBala(out C.DhruvBhavaBalaResult) BhavaBalaResult {
 	var res BhavaBalaResult
 	for i := 0; i < 12; i++ {

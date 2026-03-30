@@ -283,6 +283,20 @@ bool ReadDoubleArrayFixed(napi_env env, napi_value arr, double* out, uint32_t co
     return true;
 }
 
+bool ReadBoolArrayFixed(napi_env env, napi_value arr, uint8_t* out, uint32_t count) {
+    bool is_array = false;
+    if (napi_is_array(env, arr, &is_array) != napi_ok || !is_array) return false;
+    uint32_t len = 0;
+    if (napi_get_array_length(env, arr, &len) != napi_ok || len < count) return false;
+    for (uint32_t i = 0; i < count; ++i) {
+        napi_value v;
+        bool x = false;
+        if (napi_get_element(env, arr, i, &v) != napi_ok || !GetBool(env, v, &x)) return false;
+        out[i] = x ? 1 : 0;
+    }
+    return true;
+}
+
 bool ReadRiseSetConfig(napi_env env, napi_value obj, DhruvRiseSetConfig* out) {
     napi_value v;
     bool b = false;
@@ -782,6 +796,24 @@ napi_value WriteSphericalState(napi_env env, const DhruvSphericalState& st) {
     SetNamed(env, obj, "lonSpeed", MakeDouble(env, st.lon_speed));
     SetNamed(env, obj, "latSpeed", MakeDouble(env, st.lat_speed));
     SetNamed(env, obj, "distanceSpeed", MakeDouble(env, st.distance_speed));
+    return obj;
+}
+
+napi_value WriteVec3(napi_env env, const double values[3]) {
+    napi_value arr;
+    napi_create_array_with_length(env, 3, &arr);
+    for (uint32_t i = 0; i < 3; ++i) {
+        napi_set_element(env, arr, i, MakeDouble(env, values[i]));
+    }
+    return arr;
+}
+
+napi_value WriteEquatorialPosition(napi_env env, const DhruvEquatorialPosition& pos) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "raDeg", MakeDouble(env, pos.ra_deg));
+    SetNamed(env, obj, "decDeg", MakeDouble(env, pos.dec_deg));
+    SetNamed(env, obj, "distanceAu", MakeDouble(env, pos.distance_au));
     return obj;
 }
 
@@ -2645,6 +2677,304 @@ napi_value SphutaName(napi_env env, napi_callback_info info) { return NameLookup
 napi_value SpecialLagnaName(napi_env env, napi_callback_info info) { return NameLookup(env, info, dhruv_special_lagna_name); }
 napi_value ArudhaPadaName(napi_env env, napi_callback_info info) { return NameLookup(env, info, dhruv_arudha_pada_name); }
 napi_value UpagrahaName(napi_env env, napi_callback_info info) { return NameLookup(env, info, dhruv_upagraha_name); }
+
+napi_value HoraLord(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t vaar = 0;
+    uint32_t hora = 0;
+    if (!GetUint32(env, args[0], &vaar) || !GetUint32(env, args[1], &hora)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    napi_value out = MakeStatusResult(env, STATUS_OK);
+    SetNamed(env, out, "grahaIndex", MakeInt32(env, dhruv_hora_lord(vaar, hora)));
+    return out;
+}
+
+napi_value MasaLord(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t masa = 0;
+    if (!GetUint32(env, args[0], &masa)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    napi_value out = MakeStatusResult(env, STATUS_OK);
+    SetNamed(env, out, "grahaIndex", MakeInt32(env, dhruv_masa_lord(masa)));
+    return out;
+}
+
+napi_value SamvatsaraLord(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t samvatsara = 0;
+    if (!GetUint32(env, args[0], &samvatsara)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    napi_value out = MakeStatusResult(env, STATUS_OK);
+    SetNamed(env, out, "grahaIndex", MakeInt32(env, dhruv_samvatsara_lord(samvatsara)));
+    return out;
+}
+
+napi_value ExaltationDegree(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    if (!GetUint32(env, args[0], &graha)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint8_t has_value = 0;
+    double value = 0.0;
+    int32_t status = dhruv_exaltation_degree(graha, &has_value, &value);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) {
+        SetNamed(env, out, "hasValue", MakeBool(env, has_value != 0));
+        if (has_value != 0) SetNamed(env, out, "value", MakeDouble(env, value));
+    }
+    return out;
+}
+
+napi_value DebilitationDegree(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    if (!GetUint32(env, args[0], &graha)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint8_t has_value = 0;
+    double value = 0.0;
+    int32_t status = dhruv_debilitation_degree(graha, &has_value, &value);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) {
+        SetNamed(env, out, "hasValue", MakeBool(env, has_value != 0));
+        if (has_value != 0) SetNamed(env, out, "value", MakeDouble(env, value));
+    }
+    return out;
+}
+
+napi_value MoolatrikoneRange(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    if (!GetUint32(env, args[0], &graha)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint8_t has_value = 0;
+    uint8_t rashi = 0;
+    double start = 0.0;
+    double end = 0.0;
+    int32_t status = dhruv_moolatrikone_range(graha, &has_value, &rashi, &start, &end);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) {
+        SetNamed(env, out, "hasValue", MakeBool(env, has_value != 0));
+        if (has_value != 0) {
+            SetNamed(env, out, "rashiIndex", MakeUint32(env, rashi));
+            SetNamed(env, out, "startDeg", MakeDouble(env, start));
+            SetNamed(env, out, "endDeg", MakeDouble(env, end));
+        }
+    }
+    return out;
+}
+
+napi_value CombustionThreshold(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    bool retrograde = false;
+    if (!GetUint32(env, args[0], &graha) || !GetBool(env, args[1], &retrograde)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint8_t has_value = 0;
+    double value = 0.0;
+    int32_t status = dhruv_combustion_threshold(graha, retrograde ? 1 : 0, &has_value, &value);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) {
+        SetNamed(env, out, "hasValue", MakeBool(env, has_value != 0));
+        if (has_value != 0) SetNamed(env, out, "value", MakeDouble(env, value));
+    }
+    return out;
+}
+
+napi_value IsCombust(napi_env env, napi_callback_info info) {
+    size_t argc = 4;
+    napi_value args[4];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 4) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    double graha_lon = 0.0;
+    double sun_lon = 0.0;
+    bool retrograde = false;
+    if (!GetUint32(env, args[0], &graha) || !GetDouble(env, args[1], &graha_lon) || !GetDouble(env, args[2], &sun_lon) || !GetBool(env, args[3], &retrograde)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    uint8_t result = 0;
+    int32_t status = dhruv_is_combust(graha, graha_lon, sun_lon, retrograde ? 1 : 0, &result);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "value", MakeBool(env, result != 0));
+    return out;
+}
+
+napi_value AllCombustionStatus(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    double longitudes[DHRUV_GRAHA_COUNT]{};
+    uint8_t retrograde[DHRUV_GRAHA_COUNT]{};
+    if (!ReadDoubleArrayFixed(env, args[0], longitudes, DHRUV_GRAHA_COUNT) || !ReadBoolArrayFixed(env, args[1], retrograde, DHRUV_GRAHA_COUNT)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    uint8_t result[DHRUV_GRAHA_COUNT]{};
+    int32_t status = dhruv_all_combustion_status(longitudes, retrograde, result);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) {
+        napi_value arr;
+        napi_create_array_with_length(env, DHRUV_GRAHA_COUNT, &arr);
+        for (uint32_t i = 0; i < DHRUV_GRAHA_COUNT; ++i) {
+            napi_set_element(env, arr, i, MakeBool(env, result[i] != 0));
+        }
+        SetNamed(env, out, "result", arr);
+    }
+    return out;
+}
+
+napi_value NaisargikaMaitri(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    uint32_t other = 0;
+    if (!GetUint32(env, args[0], &graha) || !GetUint32(env, args[1], &other)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_naisargika_maitri(graha, other, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value TatkalikaMaitri(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha_rashi = 0;
+    uint32_t other_rashi = 0;
+    if (!GetUint32(env, args[0], &graha_rashi) || !GetUint32(env, args[1], &other_rashi)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_tatkalika_maitri(graha_rashi, other_rashi, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value PanchadhaMaitri(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t naisargika = 0;
+    int32_t tatkalika = 0;
+    if (!GetInt32(env, args[0], &naisargika) || !GetInt32(env, args[1], &tatkalika)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_panchadha_maitri(naisargika, tatkalika, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value DignityInRashi(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 3) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    double sidereal_lon = 0.0;
+    uint32_t rashi = 0;
+    if (!GetUint32(env, args[0], &graha) || !GetDouble(env, args[1], &sidereal_lon) || !GetUint32(env, args[2], &rashi)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_dignity_in_rashi(graha, sidereal_lon, rashi, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value DignityInRashiWithPositions(napi_env env, napi_callback_info info) {
+    size_t argc = 4;
+    napi_value args[4];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 4) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    double sidereal_lon = 0.0;
+    uint32_t rashi = 0;
+    uint8_t sapta[DHRUV_SAPTA_GRAHA_COUNT]{};
+    if (!GetUint32(env, args[0], &graha) || !GetDouble(env, args[1], &sidereal_lon) || !GetUint32(env, args[2], &rashi) ||
+        !ReadUint8ArrayFixed(env, args[3], sapta, DHRUV_SAPTA_GRAHA_COUNT)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_dignity_in_rashi_with_positions(graha, sidereal_lon, rashi, sapta, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value NodeDignityInRashi(napi_env env, napi_callback_info info) {
+    size_t argc = 4;
+    napi_value args[4];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 4) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    uint32_t rashi = 0;
+    uint8_t all_rashis[DHRUV_GRAHA_COUNT]{};
+    int32_t policy = 0;
+    if (!GetUint32(env, args[0], &graha) || !GetUint32(env, args[1], &rashi) || !ReadUint8ArrayFixed(env, args[2], all_rashis, DHRUV_GRAHA_COUNT) ||
+        !GetInt32(env, args[3], &policy)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_node_dignity_in_rashi(graha, rashi, all_rashis, policy, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value NaturalBeneficMalefic(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    if (!GetUint32(env, args[0], &graha)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_natural_benefic_malefic(graha, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value MoonBeneficNature(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    double elongation = 0.0;
+    if (!GetDouble(env, args[0], &elongation)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_moon_benefic_nature(elongation, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
+
+napi_value GrahaGender(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t graha = 0;
+    if (!GetUint32(env, args[0], &graha)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    int32_t code = 0;
+    int32_t status = dhruv_graha_gender(graha, &code);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "code", MakeInt32(env, code));
+    return out;
+}
 
 napi_value DegToDms(napi_env env, napi_callback_info info) {
     size_t argc = 1;
@@ -6304,6 +6634,65 @@ napi_value TaraComputeEx(napi_env env, napi_callback_info info) {
     return out;
 }
 
+napi_value TaraPropagatePosition(napi_env env, napi_callback_info info) {
+    size_t argc = 7;
+    napi_value args[7];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 7) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    double ra = 0.0, dec = 0.0, parallax = 0.0, pm_ra = 0.0, pm_dec = 0.0, rv = 0.0, dt = 0.0;
+    if (!GetDouble(env, args[0], &ra) || !GetDouble(env, args[1], &dec) || !GetDouble(env, args[2], &parallax) ||
+        !GetDouble(env, args[3], &pm_ra) || !GetDouble(env, args[4], &pm_dec) || !GetDouble(env, args[5], &rv) ||
+        !GetDouble(env, args[6], &dt)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    DhruvEquatorialPosition pos{};
+    int32_t status = dhruv_tara_propagate_position(ra, dec, parallax, pm_ra, pm_dec, rv, dt, &pos);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "position", WriteEquatorialPosition(env, pos));
+    return out;
+}
+
+napi_value TaraApplyAberration(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    double direction[3]{};
+    double velocity[3]{};
+    if (!ReadDoubleArrayFixed(env, args[0], direction, 3) || !ReadDoubleArrayFixed(env, args[1], velocity, 3)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    double out_dir[3]{};
+    int32_t status = dhruv_tara_apply_aberration(direction, velocity, out_dir);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "direction", WriteVec3(env, out_dir));
+    return out;
+}
+
+napi_value TaraApplyLightDeflection(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 3) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    double direction[3]{};
+    double sun_to_observer[3]{};
+    double distance_au = 0.0;
+    if (!ReadDoubleArrayFixed(env, args[0], direction, 3) || !ReadDoubleArrayFixed(env, args[1], sun_to_observer, 3) ||
+        !GetDouble(env, args[2], &distance_au)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    double out_dir[3]{};
+    int32_t status = dhruv_tara_apply_light_deflection(direction, sun_to_observer, distance_au, out_dir);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "direction", WriteVec3(env, out_dir));
+    return out;
+}
+
+napi_value TaraGalacticAnticenterIcrs(napi_env env, napi_callback_info info) {
+    (void)info;
+    double direction[3]{};
+    int32_t status = dhruv_tara_galactic_anticenter_icrs(direction);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "direction", WriteVec3(env, direction));
+    return out;
+}
+
 napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
         {"apiVersion", nullptr, ApiVersion, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -6361,6 +6750,24 @@ napi_value Init(napi_env env, napi_value exports) {
         {"horaName", nullptr, HoraName, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"grahaName", nullptr, GrahaName, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"yoginiName", nullptr, YoginiName, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"horaLord", nullptr, HoraLord, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"masaLord", nullptr, MasaLord, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"samvatsaraLord", nullptr, SamvatsaraLord, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"exaltationDegree", nullptr, ExaltationDegree, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"debilitationDegree", nullptr, DebilitationDegree, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"moolatrikoneRange", nullptr, MoolatrikoneRange, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"combustionThreshold", nullptr, CombustionThreshold, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"isCombust", nullptr, IsCombust, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"allCombustionStatus", nullptr, AllCombustionStatus, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"naisargikaMaitri", nullptr, NaisargikaMaitri, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"tatkalikaMaitri", nullptr, TatkalikaMaitri, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"panchadhaMaitri", nullptr, PanchadhaMaitri, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"dignityInRashi", nullptr, DignityInRashi, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"dignityInRashiWithPositions", nullptr, DignityInRashiWithPositions, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nodeDignityInRashi", nullptr, NodeDignityInRashi, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"naturalBeneficMalefic", nullptr, NaturalBeneficMalefic, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"moonBeneficNature", nullptr, MoonBeneficNature, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"grahaGender", nullptr, GrahaGender, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sphutaName", nullptr, SphutaName, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"specialLagnaName", nullptr, SpecialLagnaName, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"arudhaPadaName", nullptr, ArudhaPadaName, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -6505,6 +6912,10 @@ napi_value Init(napi_env env, napi_value exports) {
         {"taraCatalogFree", nullptr, TaraCatalogFree, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"taraGalacticCenterEcliptic", nullptr, TaraGalacticCenterEcliptic, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"taraComputeEx", nullptr, TaraComputeEx, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"taraPropagatePosition", nullptr, TaraPropagatePosition, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"taraApplyAberration", nullptr, TaraApplyAberration, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"taraApplyLightDeflection", nullptr, TaraApplyLightDeflection, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"taraGalacticAnticenterIcrs", nullptr, TaraGalacticAnticenterIcrs, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
 
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);

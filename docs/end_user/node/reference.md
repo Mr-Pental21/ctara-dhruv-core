@@ -209,6 +209,25 @@ argument is only the initial internal chunk size, not a public result limit.
   - `amshaRashiInfo`
   - `amshaLongitudes`
   - `amshaChartForDate`
+- graha relationship, combustion, dignity, and classification helpers:
+  - `horaLord`
+  - `masaLord`
+  - `samvatsaraLord`
+  - `exaltationDegree`
+  - `debilitationDegree`
+  - `moolatrikoneRange`
+  - `combustionThreshold`
+  - `isCombust`
+  - `allCombustionStatus`
+  - `naisargikaMaitri`
+  - `tatkalikaMaitri`
+  - `panchadhaMaitri`
+  - `dignityInRashi`
+  - `dignityInRashiWithPositions`
+  - `nodeDignityInRashi`
+  - `naturalBeneficMalefic`
+  - `moonBeneficNature`
+  - `grahaGender`
 
 `shadbala.js` exports:
 
@@ -249,6 +268,10 @@ Sanskrit entity name.
 `tara.js` exports:
 
 - `TaraCatalog`
+- `propagatePosition`
+- `applyAberration`
+- `applyLightDeflection`
+- `galacticAnticenterIcrs`
 
 ## Public Config Objects
 

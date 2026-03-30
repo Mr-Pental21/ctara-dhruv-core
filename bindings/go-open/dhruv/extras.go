@@ -93,6 +93,84 @@ func AyanaFromSiderealLongitude(lon float64) int32 { return cabi.AyanaFromSidere
 func NthRashiFrom(rashi, offset uint32) int32      { return cabi.NthRashiFrom(rashi, offset) }
 func RashiLord(rashi uint32) int32                 { return cabi.RashiLord(rashi) }
 func HoraAt(vaarIndex, horaIndex uint32) int32     { return cabi.HoraAt(vaarIndex, horaIndex) }
+func HoraLord(vaarIndex, horaIndex uint32) int32   { return cabi.HoraLord(vaarIndex, horaIndex) }
+func MasaLord(masaIndex uint32) int32              { return cabi.MasaLord(masaIndex) }
+func SamvatsaraLord(index uint32) int32            { return cabi.SamvatsaraLord(index) }
+
+func ExaltationDegree(grahaIndex uint32) (bool, float64, error) {
+	has, value, st := cabi.ExaltationDegree(grahaIndex)
+	return has, value, statusErr("exaltation_degree", st)
+}
+
+func DebilitationDegree(grahaIndex uint32) (bool, float64, error) {
+	has, value, st := cabi.DebilitationDegree(grahaIndex)
+	return has, value, statusErr("debilitation_degree", st)
+}
+
+func MoolatrikoneRange(grahaIndex uint32) (bool, uint8, float64, float64, error) {
+	has, rashiIndex, startDeg, endDeg, st := cabi.MoolatrikoneRange(grahaIndex)
+	return has, rashiIndex, startDeg, endDeg, statusErr("moolatrikone_range", st)
+}
+
+func CombustionThreshold(grahaIndex uint32, isRetrograde bool) (bool, float64, error) {
+	has, value, st := cabi.CombustionThreshold(grahaIndex, isRetrograde)
+	return has, value, statusErr("combustion_threshold", st)
+}
+
+func IsCombust(grahaIndex uint32, grahaSidLon, sunSidLon float64, isRetrograde bool) (bool, error) {
+	out, st := cabi.IsCombust(grahaIndex, grahaSidLon, sunSidLon, isRetrograde)
+	return out, statusErr("is_combust", st)
+}
+
+func AllCombustionStatus(siderealLons [9]float64, retrogradeFlags [9]bool) ([9]bool, error) {
+	out, st := cabi.AllCombustionStatus(siderealLons, retrogradeFlags)
+	return out, statusErr("all_combustion_status", st)
+}
+
+func NaisargikaMaitri(grahaIndex, otherIndex uint32) (int32, error) {
+	out, st := cabi.NaisargikaMaitri(grahaIndex, otherIndex)
+	return out, statusErr("naisargika_maitri", st)
+}
+
+func TatkalikaMaitri(grahaRashiIndex, otherRashiIndex uint32) (int32, error) {
+	out, st := cabi.TatkalikaMaitri(grahaRashiIndex, otherRashiIndex)
+	return out, statusErr("tatkalika_maitri", st)
+}
+
+func PanchadhaMaitri(naisargikaCode, tatkalikaCode int32) (int32, error) {
+	out, st := cabi.PanchadhaMaitri(naisargikaCode, tatkalikaCode)
+	return out, statusErr("panchadha_maitri", st)
+}
+
+func DignityInRashi(grahaIndex uint32, siderealLon float64, rashiIndex uint32) (int32, error) {
+	out, st := cabi.DignityInRashi(grahaIndex, siderealLon, rashiIndex)
+	return out, statusErr("dignity_in_rashi", st)
+}
+
+func DignityInRashiWithPositions(grahaIndex uint32, siderealLon float64, rashiIndex uint32, saptaRashiIndices [7]uint8) (int32, error) {
+	out, st := cabi.DignityInRashiWithPositions(grahaIndex, siderealLon, rashiIndex, saptaRashiIndices)
+	return out, statusErr("dignity_in_rashi_with_positions", st)
+}
+
+func NodeDignityInRashi(grahaIndex uint32, rashiIndex uint32, grahaRashiIndices [9]uint8, policyCode int32) (int32, error) {
+	out, st := cabi.NodeDignityInRashi(grahaIndex, rashiIndex, grahaRashiIndices, policyCode)
+	return out, statusErr("node_dignity_in_rashi", st)
+}
+
+func NaturalBeneficMalefic(grahaIndex uint32) (int32, error) {
+	out, st := cabi.NaturalBeneficMalefic(grahaIndex)
+	return out, statusErr("natural_benefic_malefic", st)
+}
+
+func MoonBeneficNature(moonSunElongation float64) (int32, error) {
+	out, st := cabi.MoonBeneficNature(moonSunElongation)
+	return out, statusErr("moon_benefic_nature", st)
+}
+
+func GrahaGender(grahaIndex uint32) (int32, error) {
+	out, st := cabi.GrahaGender(grahaIndex)
+	return out, statusErr("graha_gender", st)
+}
 
 func SamvatsaraFromYear(year int32) (SamvatsaraResult, error) {
 	out, st := cabi.SamvatsaraFromYear(year)

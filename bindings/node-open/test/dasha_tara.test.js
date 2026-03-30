@@ -146,3 +146,17 @@ test('tara smoke', { skip: !hasTara() }, () => {
 
   cat.close();
 });
+
+test('helper and tara primitives', () => {
+  assert.equal(dhruv.horaLord(0, 0), 0);
+  assert.equal(dhruv.naisargikaMaitri(0, 1), dhruv.NAISARGIKA.FRIEND);
+  assert.equal(dhruv.exaltationDegree(0), 10.0);
+
+  const pos = dhruv.propagatePosition(10.0, 20.0, 10.0, 0.0, 0.0, 0.0, 0.0);
+  assert.ok(Math.abs(pos.raDeg - 10.0) < 1e-9);
+  assert.ok(Math.abs(pos.decDeg - 20.0) < 1e-9);
+
+  const dir = dhruv.galacticAnticenterIcrs();
+  const norm = Math.sqrt(dir[0] ** 2 + dir[1] ** 2 + dir[2] ** 2);
+  assert.ok(Math.abs(norm - 1.0) < 1e-9);
+});

@@ -1,6 +1,6 @@
 'use strict';
 
-const EXPECTED_API_VERSION = 49;
+const EXPECTED_API_VERSION = 50;
 
 const STATUS = {
   OK: 0,
@@ -72,18 +72,72 @@ const TIME_WARNING = {
   DELTA_T_MODEL_USED: 4,
 };
 
+const NAISARGIKA = {
+  FRIEND: 0,
+  ENEMY: 1,
+  NEUTRAL: 2,
+};
+
+const TATKALIKA = {
+  FRIEND: 0,
+  ENEMY: 1,
+};
+
+const PANCHADHA = {
+  ADHI_SHATRU: 0,
+  SHATRU: 1,
+  SAMA: 2,
+  MITRA: 3,
+  ADHI_MITRA: 4,
+};
+
+const DIGNITY = {
+  EXALTED: 0,
+  MOOLATRIKONE: 1,
+  OWN_SIGN: 2,
+  ADHI_MITRA: 3,
+  MITRA: 4,
+  SAMA: 5,
+  SHATRU: 6,
+  ADHI_SHATRU: 7,
+  DEBILITATED: 8,
+};
+
+const NODE_DIGNITY_POLICY = {
+  SIGN_LORD_BASED: 0,
+  ALWAYS_SAMA: 1,
+};
+
+const BENEFIC_NATURE = {
+  BENEFIC: 0,
+  MALEFIC: 1,
+};
+
+const GRAHA_GENDER = {
+  MALE: 0,
+  FEMALE: 1,
+  NEUTER: 2,
+};
+
 function statusName(code) {
   return STATUS_NAME.get(code) || `UNKNOWN_${code}`;
 }
 
 module.exports = {
   EXPECTED_API_VERSION,
+  BENEFIC_NATURE,
   DELTA_T_MODEL,
+  DIGNITY,
   FUTURE_DELTA_T_TRANSITION,
+  GRAHA_GENDER,
+  NAISARGIKA,
+  NODE_DIGNITY_POLICY,
+  PANCHADHA,
   QUERY_OUTPUT,
   QUERY_TIME,
   SMH_FUTURE_FAMILY,
   STATUS,
+  TATKALIKA,
   TIME_POLICY,
   TIME_WARNING,
   TT_UTC_SOURCE,

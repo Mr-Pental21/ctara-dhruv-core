@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=49`
+- ABI target: `DHRUV_API_VERSION=50`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 
@@ -73,9 +73,10 @@ Public modules included in this wrapper:
 - jyotish/rashi/nakshatra helpers (`grahaLongitudes`, longitude classifiers, special lagnas, arudha/upagraha date APIs)
 - charakaraka date API (`charakarakaForDate`) with selectable schemes (`8`, `7-no-pitri`, `7-pk-merged-mk`, `mixed-parashara`)
 - extras/composable APIs (panchang intermediates, sphuta/special-lagna scalar helpers, ashtakavarga, drishti, graha positions, bindus, amsha)
+- low-level graha relationship/combustion/dignity helpers in `extras`
 - shadbala/vimsopaka/avastha and full-kundali summary
 - dasha hierarchy and snapshot, with `entityName` on returned period objects for the exact canonical Sanskrit entity name
-- tara catalog load/compute helpers
+- tara catalog load/compute helpers plus low-level propagation/correction primitives
 
 ## Time-Based Upagraha Config
 

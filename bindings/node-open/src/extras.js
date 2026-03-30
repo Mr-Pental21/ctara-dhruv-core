@@ -250,6 +250,108 @@ function grahaPositionsForDate(engine, eop, utc, location, bhavaConfig, ayanamsh
   return r.result;
 }
 
+function horaLord(vaarIndex, horaIndex) {
+  return addon.horaLord(vaarIndex, horaIndex).grahaIndex;
+}
+
+function masaLord(masaIndex) {
+  return addon.masaLord(masaIndex).grahaIndex;
+}
+
+function samvatsaraLord(samvatsaraIndex) {
+  return addon.samvatsaraLord(samvatsaraIndex).grahaIndex;
+}
+
+function exaltationDegree(grahaIndex) {
+  const r = addon.exaltationDegree(grahaIndex);
+  checkStatus('exaltation_degree', r.status);
+  return r.hasValue ? r.value : null;
+}
+
+function debilitationDegree(grahaIndex) {
+  const r = addon.debilitationDegree(grahaIndex);
+  checkStatus('debilitation_degree', r.status);
+  return r.hasValue ? r.value : null;
+}
+
+function moolatrikoneRange(grahaIndex) {
+  const r = addon.moolatrikoneRange(grahaIndex);
+  checkStatus('moolatrikone_range', r.status);
+  return r.hasValue ? { rashiIndex: r.rashiIndex, startDeg: r.startDeg, endDeg: r.endDeg } : null;
+}
+
+function combustionThreshold(grahaIndex, isRetrograde = false) {
+  const r = addon.combustionThreshold(grahaIndex, !!isRetrograde);
+  checkStatus('combustion_threshold', r.status);
+  return r.hasValue ? r.value : null;
+}
+
+function isCombust(grahaIndex, grahaSidLon, sunSidLon, isRetrograde = false) {
+  const r = addon.isCombust(grahaIndex, grahaSidLon, sunSidLon, !!isRetrograde);
+  checkStatus('is_combust', r.status);
+  return r.value;
+}
+
+function allCombustionStatus(siderealLons9, retrogradeFlags9) {
+  const r = addon.allCombustionStatus(siderealLons9, retrogradeFlags9);
+  checkStatus('all_combustion_status', r.status);
+  return r.result;
+}
+
+function naisargikaMaitri(grahaIndex, otherIndex) {
+  const r = addon.naisargikaMaitri(grahaIndex, otherIndex);
+  checkStatus('naisargika_maitri', r.status);
+  return r.code;
+}
+
+function tatkalikaMaitri(grahaRashiIndex, otherRashiIndex) {
+  const r = addon.tatkalikaMaitri(grahaRashiIndex, otherRashiIndex);
+  checkStatus('tatkalika_maitri', r.status);
+  return r.code;
+}
+
+function panchadhaMaitri(naisargikaCode, tatkalikaCode) {
+  const r = addon.panchadhaMaitri(naisargikaCode, tatkalikaCode);
+  checkStatus('panchadha_maitri', r.status);
+  return r.code;
+}
+
+function dignityInRashi(grahaIndex, siderealLon, rashiIndex) {
+  const r = addon.dignityInRashi(grahaIndex, siderealLon, rashiIndex);
+  checkStatus('dignity_in_rashi', r.status);
+  return r.code;
+}
+
+function dignityInRashiWithPositions(grahaIndex, siderealLon, rashiIndex, saptaRashiIndices) {
+  const r = addon.dignityInRashiWithPositions(grahaIndex, siderealLon, rashiIndex, saptaRashiIndices);
+  checkStatus('dignity_in_rashi_with_positions', r.status);
+  return r.code;
+}
+
+function nodeDignityInRashi(grahaIndex, rashiIndex, grahaRashiIndices9, policyCode) {
+  const r = addon.nodeDignityInRashi(grahaIndex, rashiIndex, grahaRashiIndices9, policyCode);
+  checkStatus('node_dignity_in_rashi', r.status);
+  return r.code;
+}
+
+function naturalBeneficMalefic(grahaIndex) {
+  const r = addon.naturalBeneficMalefic(grahaIndex);
+  checkStatus('natural_benefic_malefic', r.status);
+  return r.code;
+}
+
+function moonBeneficNature(moonSunElongation) {
+  const r = addon.moonBeneficNature(moonSunElongation);
+  checkStatus('moon_benefic_nature', r.status);
+  return r.code;
+}
+
+function grahaGender(grahaIndex) {
+  const r = addon.grahaGender(grahaIndex);
+  checkStatus('graha_gender', r.status);
+  return r.code;
+}
+
 function coreBindusForDate(engine, eop, utc, location, bhavaConfig, riseSetConfig, ayanamshaSystem = 0, useNutation = true, config) {
   const r = addon.coreBindusForDate(
     engine._handle,
@@ -368,6 +470,24 @@ module.exports = {
   grahaDrishtiMatrixForLongitudes,
   drishtiForDate,
   grahaPositionsForDate,
+  horaLord,
+  masaLord,
+  samvatsaraLord,
+  exaltationDegree,
+  debilitationDegree,
+  moolatrikoneRange,
+  combustionThreshold,
+  isCombust,
+  allCombustionStatus,
+  naisargikaMaitri,
+  tatkalikaMaitri,
+  panchadhaMaitri,
+  dignityInRashi,
+  dignityInRashiWithPositions,
+  nodeDignityInRashi,
+  naturalBeneficMalefic,
+  moonBeneficNature,
+  grahaGender,
   coreBindusForDate,
   amshaLongitude,
   amshaRashiInfo,

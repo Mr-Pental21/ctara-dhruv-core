@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=49`
+- ABI target: `DHRUV_API_VERSION=50`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 
@@ -66,7 +66,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v48).
+symbols from `dhruv.h` (ABI v50).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -87,6 +87,8 @@ The public `dhruv` package includes wrappers for:
 - dasha hierarchy/snapshot APIs
 - full-kundali summary and full-result APIs, including root sphutas and dasha hierarchies
 - tara catalog and compute APIs
+- low-level graha relationship/combustion/dignity helpers
+- low-level tara propagation and correction primitives
 
 ## Time-Based Upagraha Config
 

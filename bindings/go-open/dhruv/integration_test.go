@@ -58,6 +58,45 @@ func TestKshetraSphutaMatchesAllSphutas(t *testing.T) {
 	}
 }
 
+func TestHelperAndTaraPrimitives(t *testing.T) {
+	if HoraLord(0, 0) != 0 {
+		t.Fatalf("HoraLord(sunday,0) = %d, want 0", HoraLord(0, 0))
+	}
+
+	has, exalt, err := ExaltationDegree(0)
+	if err != nil {
+		t.Fatalf("ExaltationDegree: %v", err)
+	}
+	if !has || math.Abs(exalt-10.0) > 1e-9 {
+		t.Fatalf("unexpected exaltation degree: has=%v value=%v", has, exalt)
+	}
+
+	relationship, err := NaisargikaMaitri(0, 1)
+	if err != nil {
+		t.Fatalf("NaisargikaMaitri: %v", err)
+	}
+	if relationship != NaisargikaFriend {
+		t.Fatalf("unexpected naisargika relationship: got=%d", relationship)
+	}
+
+	position, err := TaraPropagatePosition(10.0, 20.0, 10.0, 0.0, 0.0, 0.0, 0.0)
+	if err != nil {
+		t.Fatalf("TaraPropagatePosition: %v", err)
+	}
+	if math.Abs(position.RADeg-10.0) > 1e-9 || math.Abs(position.DecDeg-20.0) > 1e-9 {
+		t.Fatalf("unexpected propagated position: %+v", position)
+	}
+
+	dir, err := TaraGalacticAnticenterICRS()
+	if err != nil {
+		t.Fatalf("TaraGalacticAnticenterICRS: %v", err)
+	}
+	norm := math.Sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2])
+	if math.Abs(norm-1.0) > 1e-9 {
+		t.Fatalf("anticenter vector not normalized: %v", dir)
+	}
+}
+
 func TestLoadConfigSupportsDiscoveryOptions(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")

@@ -213,6 +213,129 @@ func RashiLord(rashi uint32) int32 { return int32(C.dhruv_rashi_lord(C.uint32_t(
 func HoraAt(vaarIndex, horaIndex uint32) int32 {
 	return int32(C.dhruv_hora_at(C.uint32_t(vaarIndex), C.uint32_t(horaIndex)))
 }
+func HoraLord(vaarIndex, horaIndex uint32) int32 {
+	return int32(C.dhruv_hora_lord(C.uint32_t(vaarIndex), C.uint32_t(horaIndex)))
+}
+func MasaLord(masaIndex uint32) int32 {
+	return int32(C.dhruv_masa_lord(C.uint32_t(masaIndex)))
+}
+func SamvatsaraLord(samvatsaraIndex uint32) int32 {
+	return int32(C.dhruv_samvatsara_lord(C.uint32_t(samvatsaraIndex)))
+}
+
+func ExaltationDegree(grahaIndex uint32) (bool, float64, Status) {
+	var has C.uint8_t
+	var out C.double
+	st := Status(C.dhruv_exaltation_degree(C.uint32_t(grahaIndex), &has, &out))
+	return has != 0, float64(out), st
+}
+
+func DebilitationDegree(grahaIndex uint32) (bool, float64, Status) {
+	var has C.uint8_t
+	var out C.double
+	st := Status(C.dhruv_debilitation_degree(C.uint32_t(grahaIndex), &has, &out))
+	return has != 0, float64(out), st
+}
+
+func MoolatrikoneRange(grahaIndex uint32) (bool, uint8, float64, float64, Status) {
+	var has C.uint8_t
+	var rashi C.uint8_t
+	var start C.double
+	var end C.double
+	st := Status(C.dhruv_moolatrikone_range(C.uint32_t(grahaIndex), &has, &rashi, &start, &end))
+	return has != 0, uint8(rashi), float64(start), float64(end), st
+}
+
+func CombustionThreshold(grahaIndex uint32, isRetrograde bool) (bool, float64, Status) {
+	var has C.uint8_t
+	var out C.double
+	st := Status(C.dhruv_combustion_threshold(C.uint32_t(grahaIndex), boolU8(isRetrograde), &has, &out))
+	return has != 0, float64(out), st
+}
+
+func IsCombust(grahaIndex uint32, grahaSidLon, sunSidLon float64, isRetrograde bool) (bool, Status) {
+	var out C.uint8_t
+	st := Status(C.dhruv_is_combust(C.uint32_t(grahaIndex), C.double(grahaSidLon), C.double(sunSidLon), boolU8(isRetrograde), &out))
+	return out != 0, st
+}
+
+func AllCombustionStatus(siderealLons [9]float64, retrogradeFlags [9]bool) ([9]bool, Status) {
+	var csidereal [9]C.double
+	var cretro [9]C.uint8_t
+	for i := 0; i < 9; i++ {
+		csidereal[i] = C.double(siderealLons[i])
+		cretro[i] = boolU8(retrogradeFlags[i])
+	}
+	var out [9]C.uint8_t
+	st := Status(C.dhruv_all_combustion_status(&csidereal[0], &cretro[0], &out[0]))
+	var result [9]bool
+	for i := 0; i < 9; i++ {
+		result[i] = out[i] != 0
+	}
+	return result, st
+}
+
+func NaisargikaMaitri(grahaIndex, otherIndex uint32) (int32, Status) {
+	var out C.int32_t
+	st := Status(C.dhruv_naisargika_maitri(C.uint32_t(grahaIndex), C.uint32_t(otherIndex), &out))
+	return int32(out), st
+}
+
+func TatkalikaMaitri(grahaRashiIndex, otherRashiIndex uint32) (int32, Status) {
+	var out C.int32_t
+	st := Status(C.dhruv_tatkalika_maitri(C.uint32_t(grahaRashiIndex), C.uint32_t(otherRashiIndex), &out))
+	return int32(out), st
+}
+
+func PanchadhaMaitri(naisargikaCode, tatkalikaCode int32) (int32, Status) {
+	var out C.int32_t
+	st := Status(C.dhruv_panchadha_maitri(C.int32_t(naisargikaCode), C.int32_t(tatkalikaCode), &out))
+	return int32(out), st
+}
+
+func DignityInRashi(grahaIndex uint32, siderealLon float64, rashiIndex uint32) (int32, Status) {
+	var out C.int32_t
+	st := Status(C.dhruv_dignity_in_rashi(C.uint32_t(grahaIndex), C.double(siderealLon), C.uint32_t(rashiIndex), &out))
+	return int32(out), st
+}
+
+func DignityInRashiWithPositions(grahaIndex uint32, siderealLon float64, rashiIndex uint32, saptaRashiIndices [7]uint8) (int32, Status) {
+	var csapta [7]C.uint8_t
+	for i := 0; i < 7; i++ {
+		csapta[i] = C.uint8_t(saptaRashiIndices[i])
+	}
+	var out C.int32_t
+	st := Status(C.dhruv_dignity_in_rashi_with_positions(C.uint32_t(grahaIndex), C.double(siderealLon), C.uint32_t(rashiIndex), &csapta[0], &out))
+	return int32(out), st
+}
+
+func NodeDignityInRashi(grahaIndex uint32, rashiIndex uint32, grahaRashiIndices [9]uint8, policyCode int32) (int32, Status) {
+	var call [9]C.uint8_t
+	for i := 0; i < 9; i++ {
+		call[i] = C.uint8_t(grahaRashiIndices[i])
+	}
+	var out C.int32_t
+	st := Status(C.dhruv_node_dignity_in_rashi(C.uint32_t(grahaIndex), C.uint32_t(rashiIndex), &call[0], C.int32_t(policyCode), &out))
+	return int32(out), st
+}
+
+func NaturalBeneficMalefic(grahaIndex uint32) (int32, Status) {
+	var out C.int32_t
+	st := Status(C.dhruv_natural_benefic_malefic(C.uint32_t(grahaIndex), &out))
+	return int32(out), st
+}
+
+func MoonBeneficNature(moonSunElongation float64) (int32, Status) {
+	var out C.int32_t
+	st := Status(C.dhruv_moon_benefic_nature(C.double(moonSunElongation), &out))
+	return int32(out), st
+}
+
+func GrahaGender(grahaIndex uint32) (int32, Status) {
+	var out C.int32_t
+	st := Status(C.dhruv_graha_gender(C.uint32_t(grahaIndex), &out))
+	return int32(out), st
+}
 
 func SamvatsaraFromYear(year int32) (SamvatsaraResult, Status) {
 	var out C.DhruvSamvatsaraResult

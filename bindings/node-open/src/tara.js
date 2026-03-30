@@ -35,6 +35,34 @@ class TaraCatalog {
   }
 }
 
+function propagatePosition(raDeg, decDeg, parallaxMas, pmRaMasYr, pmDecMasYr, rvKmS, dtYears) {
+  const r = addon.taraPropagatePosition(raDeg, decDeg, parallaxMas, pmRaMasYr, pmDecMasYr, rvKmS, dtYears);
+  checkStatus('tara_propagate_position', r.status);
+  return r.position;
+}
+
+function applyAberration(direction, earthVelAuDay) {
+  const r = addon.taraApplyAberration(direction, earthVelAuDay);
+  checkStatus('tara_apply_aberration', r.status);
+  return r.direction;
+}
+
+function applyLightDeflection(direction, sunToObserver, sunObserverDistanceAu) {
+  const r = addon.taraApplyLightDeflection(direction, sunToObserver, sunObserverDistanceAu);
+  checkStatus('tara_apply_light_deflection', r.status);
+  return r.direction;
+}
+
+function galacticAnticenterIcrs() {
+  const r = addon.taraGalacticAnticenterIcrs();
+  checkStatus('tara_galactic_anticenter_icrs', r.status);
+  return r.direction;
+}
+
 module.exports = {
   TaraCatalog,
+  applyAberration,
+  applyLightDeflection,
+  galacticAnticenterIcrs,
+  propagatePosition,
 };

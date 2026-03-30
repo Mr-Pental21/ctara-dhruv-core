@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 49
+const ExpectedAPIVersion = 50
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -36,6 +36,53 @@ const (
 	UpagrahaPointStart  = cabi.UpagrahaPointStart
 	UpagrahaPointMiddle = cabi.UpagrahaPointMiddle
 	UpagrahaPointEnd    = cabi.UpagrahaPointEnd
+)
+
+const (
+	NaisargikaFriend  = cabi.NaisargikaFriend
+	NaisargikaEnemy   = cabi.NaisargikaEnemy
+	NaisargikaNeutral = cabi.NaisargikaNeutral
+)
+
+const (
+	TatkalikaFriend = cabi.TatkalikaFriend
+	TatkalikaEnemy  = cabi.TatkalikaEnemy
+)
+
+const (
+	PanchadhaAdhiShatru = cabi.PanchadhaAdhiShatru
+	PanchadhaShatru     = cabi.PanchadhaShatru
+	PanchadhaSama       = cabi.PanchadhaSama
+	PanchadhaMitra      = cabi.PanchadhaMitra
+	PanchadhaAdhiMitra  = cabi.PanchadhaAdhiMitra
+)
+
+const (
+	DignityExalted      = cabi.DignityExalted
+	DignityMoolatrikone = cabi.DignityMoolatrikone
+	DignityOwnSign      = cabi.DignityOwnSign
+	DignityAdhiMitra    = cabi.DignityAdhiMitra
+	DignityMitra        = cabi.DignityMitra
+	DignitySama         = cabi.DignitySama
+	DignityShatru       = cabi.DignityShatru
+	DignityAdhiShatru   = cabi.DignityAdhiShatru
+	DignityDebilitated  = cabi.DignityDebilitated
+)
+
+const (
+	NodeDignitySignLordBased = cabi.NodeDignitySignLordBased
+	NodeDignityAlwaysSama    = cabi.NodeDignityAlwaysSama
+)
+
+const (
+	BeneficNatureBenefic = cabi.BeneficNatureBenefic
+	BeneficNatureMalefic = cabi.BeneficNatureMalefic
+)
+
+const (
+	GrahaGenderMale   = cabi.GrahaGenderMale
+	GrahaGenderFemale = cabi.GrahaGenderFemale
+	GrahaGenderNeuter = cabi.GrahaGenderNeuter
 )
 
 const (
@@ -198,6 +245,7 @@ type (
 
 	TaraConfig         = cabi.TaraConfig
 	EarthState         = cabi.EarthState
+	EquatorialPosition = cabi.EquatorialPosition
 	TaraComputeRequest = cabi.TaraComputeRequest
 	TaraComputeResult  = cabi.TaraComputeResult
 

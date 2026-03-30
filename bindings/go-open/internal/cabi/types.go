@@ -37,6 +37,53 @@ const (
 )
 
 const (
+	NaisargikaFriend  int32 = 0
+	NaisargikaEnemy   int32 = 1
+	NaisargikaNeutral int32 = 2
+)
+
+const (
+	TatkalikaFriend int32 = 0
+	TatkalikaEnemy  int32 = 1
+)
+
+const (
+	PanchadhaAdhiShatru int32 = 0
+	PanchadhaShatru     int32 = 1
+	PanchadhaSama       int32 = 2
+	PanchadhaMitra      int32 = 3
+	PanchadhaAdhiMitra  int32 = 4
+)
+
+const (
+	DignityExalted     int32 = 0
+	DignityMoolatrikone int32 = 1
+	DignityOwnSign     int32 = 2
+	DignityAdhiMitra   int32 = 3
+	DignityMitra       int32 = 4
+	DignitySama        int32 = 5
+	DignityShatru      int32 = 6
+	DignityAdhiShatru  int32 = 7
+	DignityDebilitated int32 = 8
+)
+
+const (
+	NodeDignitySignLordBased int32 = 0
+	NodeDignityAlwaysSama    int32 = 1
+)
+
+const (
+	BeneficNatureBenefic int32 = 0
+	BeneficNatureMalefic int32 = 1
+)
+
+const (
+	GrahaGenderMale   int32 = 0
+	GrahaGenderFemale int32 = 1
+	GrahaGenderNeuter int32 = 2
+)
+
+const (
 	GulikaMaandiPlanetRahu   uint8 = 0
 	GulikaMaandiPlanetSaturn uint8 = 1
 )

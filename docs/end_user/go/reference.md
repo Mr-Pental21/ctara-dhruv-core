@@ -154,6 +154,24 @@ Classifiers, names, and pure helpers:
 - `GhatikaFromSunrises`
 - `GhatikaFromElapsed`
 - `GhatikasSinceSunrise`
+- `HoraLord`
+- `MasaLord`
+- `SamvatsaraLord`
+- `ExaltationDegree`
+- `DebilitationDegree`
+- `MoolatrikoneRange`
+- `CombustionThreshold`
+- `IsCombust`
+- `AllCombustionStatus`
+- `NaisargikaMaitri`
+- `TatkalikaMaitri`
+- `PanchadhaMaitri`
+- `DignityInRashi`
+- `DignityInRashiWithPositions`
+- `NodeDignityInRashi`
+- `NaturalBeneficMalefic`
+- `MoonBeneficNature`
+- `GrahaGender`
 
 Pure sphuta, special-lagna, and upagraha helpers:
 
@@ -208,10 +226,12 @@ Amsha helpers:
 Ephemeris and node helpers:
 
 - `(*Engine).Query`
-- `(*Engine).QueryUTC`
-- `(*Engine).QueryUTCSpherical`
 - `(*Engine).LunarNodeDegWithEngine`
 - `(*Engine).LunarNodeDegUTCWithEngine`
+
+Go uses one main query request surface. `QueryRequest` carries JD-vs-UTC input
+and cartesian-vs-spherical output selection instead of separate `QueryUTC` or
+`QueryUTCSpherical` entrypoints.
 
 Go range-search methods auto-expand their internal buffers until the full
 result set is returned. The optional final argument is only the initial
@@ -290,6 +310,10 @@ Strength, dasha, amsha, and tara:
 - `(*Engine).AmshaChartForDate`
 - `(*TaraCatalog).Compute`
 - `(*TaraCatalog).GalacticCenterEcliptic`
+- `TaraPropagatePosition`
+- `TaraApplyAberration`
+- `TaraApplyLightDeflection`
+- `TaraGalacticAnticenterICRS`
 
 Go dasha period structs expose `EntityName` with the exact canonical Sanskrit
 entity name.
