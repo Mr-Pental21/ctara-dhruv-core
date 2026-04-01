@@ -648,10 +648,10 @@ defmodule CtaraDhruv.Bench.AllFunctions do
       "- Iterations per function: #{iterations}",
       "- Warmup runs per function: #{warmup}",
       "- Filter: `#{filter || "*"}`",
-      "- SPK: `#{context.spk}`",
-      "- LSK: `#{context.lsk}`",
-      "- EOP: `#{context.eop}`",
-      "- Tara catalog: `#{context.tara}`",
+      "- SPK: `#{display_repo_path(context, context.spk)}`",
+      "- LSK: `#{display_repo_path(context, context.lsk)}`",
+      "- EOP: `#{display_repo_path(context, context.eop)}`",
+      "- Tara catalog: `#{display_repo_path(context, context.tara)}`",
       "- Benchmark UTC fixture: `#{inspect(context.common_utc)}`",
       "- Benchmark JD fixture: `#{context.base_jd}`",
       "",
@@ -697,6 +697,13 @@ defmodule CtaraDhruv.Bench.AllFunctions do
     end
 
     File.rm(context.config_path)
+  end
+
+  defp display_repo_path(context, path) do
+    case Path.relative_to(path, context.repo_root) do
+      relative when relative != path -> relative
+      _ -> path
+    end
   end
 
   defp format_ms(value), do: :erlang.float_to_binary(value, decimals: 3) <> "ms"
