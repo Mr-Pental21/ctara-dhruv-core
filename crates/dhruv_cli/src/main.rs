@@ -2916,6 +2916,17 @@ fn jd_to_ymd_string(jd: f64) -> String {
     format!("{y:04}-{m:02}-{:02}", d.floor() as u32)
 }
 
+fn jd_utc_to_iso_string(jd: f64) -> String {
+    let (year, month, day_frac) = jd_to_calendar(jd);
+    let day = day_frac.floor() as u32;
+    let frac = day_frac.fract();
+    let total_seconds = frac * 86_400.0;
+    let hour = (total_seconds / 3600.0).floor() as u32;
+    let minute = ((total_seconds % 3600.0) / 60.0).floor() as u32;
+    let second = total_seconds % 60.0;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:09.6}Z")
+}
+
 fn maybe_warn_stale_lsk(lsk: &LeapSecondKernel) {
     let Some(Some(threshold_days)) = STALE_LSK_THRESHOLD_DAYS.get().copied() else {
         return;
@@ -9027,11 +9038,13 @@ fn print_dasha_periods(
     for period in &periods[..display_count] {
         let indent = "  ".repeat(base_indent + period.level as usize);
         println!(
-            "{}[{}] {} {} (JD {:.4} - {:.4}, {:.1} days)",
+            "{}[{}] {} {} (UTC {} - {}, JD {:.4} - {:.4}, {:.1} days)",
             indent,
             period.order,
             period.level.name(),
             format_dasha_entity(&period.entity),
+            jd_utc_to_iso_string(period.start_jd),
+            jd_utc_to_iso_string(period.end_jd),
             period.start_jd,
             period.end_jd,
             period.duration_days(),
@@ -9277,8 +9290,8 @@ fn has_amsha_scope(scope: &dhruv_search::AmshaChartScope) -> bool {
 
 fn print_conjunction_event(label: &str, ev: &ConjunctionEvent) {
     println!(
-        "{}: JD TDB {:.6}  sep: {:.6}°",
-        label, ev.jd_tdb, ev.actual_separation_deg
+        "{}: UTC {}  JD TDB {:.6}  sep: {:.6}°",
+        label, ev.utc, ev.jd_tdb, ev.actual_separation_deg
     );
     println!(
         "  Body1 lon: {:.6}°  Body2 lon: {:.6}°",
@@ -9291,37 +9304,55 @@ fn print_chandra_grahan(label: &str, ev: &dhruv_search::grahan_types::ChandraGra
         "{}: {:?}  mag: {:.4}  penumbral mag: {:.4}",
         label, ev.grahan_type, ev.magnitude, ev.penumbral_magnitude
     );
-    println!("  Greatest: JD TDB {:.6}", ev.greatest_grahan_jd);
-    println!("  P1: JD TDB {:.6}", ev.p1_jd);
+    println!(
+        "  Greatest: UTC {}  JD TDB {:.6}",
+        ev.greatest_grahan_utc, ev.greatest_grahan_jd
+    );
+    println!("  P1: UTC {}  JD TDB {:.6}", ev.p1_utc, ev.p1_jd);
     if let Some(u1) = ev.u1_jd {
-        println!("  U1: JD TDB {:.6}", u1);
+        if let Some(u1_utc) = ev.u1_utc {
+            println!("  U1: UTC {}  JD TDB {:.6}", u1_utc, u1);
+        }
     }
     if let Some(u2) = ev.u2_jd {
-        println!("  U2: JD TDB {:.6}", u2);
+        if let Some(u2_utc) = ev.u2_utc {
+            println!("  U2: UTC {}  JD TDB {:.6}", u2_utc, u2);
+        }
     }
 }
 
 fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan) {
     println!("{}: {:?}  mag: {:.4}", label, ev.grahan_type, ev.magnitude);
-    println!("  Greatest: JD TDB {:.6}", ev.greatest_grahan_jd);
+    println!(
+        "  Greatest: UTC {}  JD TDB {:.6}",
+        ev.greatest_grahan_utc, ev.greatest_grahan_jd
+    );
     if let Some(c1) = ev.c1_jd {
-        println!("  C1: JD TDB {:.6}", c1);
+        if let Some(c1_utc) = ev.c1_utc {
+            println!("  C1: UTC {}  JD TDB {:.6}", c1_utc, c1);
+        }
     }
     if let Some(c2) = ev.c2_jd {
-        println!("  C2: JD TDB {:.6}", c2);
+        if let Some(c2_utc) = ev.c2_utc {
+            println!("  C2: UTC {}  JD TDB {:.6}", c2_utc, c2);
+        }
     }
     if let Some(c3) = ev.c3_jd {
-        println!("  C3: JD TDB {:.6}", c3);
+        if let Some(c3_utc) = ev.c3_utc {
+            println!("  C3: UTC {}  JD TDB {:.6}", c3_utc, c3);
+        }
     }
     if let Some(c4) = ev.c4_jd {
-        println!("  C4: JD TDB {:.6}", c4);
+        if let Some(c4_utc) = ev.c4_utc {
+            println!("  C4: UTC {}  JD TDB {:.6}", c4_utc, c4);
+        }
     }
 }
 
 fn print_stationary_event(label: &str, ev: &dhruv_search::stationary_types::StationaryEvent) {
     println!(
-        "{}: {:?} {:?} at JD TDB {:.6}",
-        label, ev.body, ev.station_type, ev.jd_tdb
+        "{}: {:?} {:?} at UTC {} (JD TDB {:.6})",
+        label, ev.body, ev.station_type, ev.utc, ev.jd_tdb
     );
     println!(
         "  Longitude: {:.6}°  Latitude: {:.6}°",
@@ -9415,8 +9446,8 @@ fn print_graha_avastha(entry: &dhruv_vedic_base::GrahaAvasthas) {
 
 fn print_max_speed_event(label: &str, ev: &dhruv_search::stationary_types::MaxSpeedEvent) {
     println!(
-        "{}: {:?} {:?} at JD TDB {:.6}",
-        label, ev.body, ev.speed_type, ev.jd_tdb
+        "{}: {:?} {:?} at UTC {} (JD TDB {:.6})",
+        label, ev.body, ev.speed_type, ev.utc, ev.jd_tdb
     );
     println!(
         "  Longitude: {:.6}°  Speed: {:.6} deg/day",
@@ -10270,7 +10301,13 @@ fn print_kundali(
     if let Some(ref snap_vec) = result.dasha_snapshots {
         writeln!(w, "Dasha Snapshots:")?;
         for snap in snap_vec {
-            writeln!(w, "  {} at JD {:.4}:", snap.system.name(), snap.query_jd)?;
+            writeln!(
+                w,
+                "  {} at UTC {} (JD {:.4}):",
+                snap.system.name(),
+                jd_utc_to_iso_string(snap.query_jd),
+                snap.query_jd
+            )?;
             for period in &snap.periods {
                 let indent = "    ".to_string() + &"  ".repeat(period.level as usize);
                 writeln!(

@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       51
+#define DHRUV_API_VERSION       53
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 
@@ -556,6 +556,7 @@ typedef struct {
 
 typedef struct {
     double  jd_tdb;
+    DhruvUtcTime utc;
     double  actual_separation_deg;
     double  body1_longitude_deg;
     double  body2_longitude_deg;
@@ -586,12 +587,19 @@ typedef struct {
     double  magnitude;
     double  penumbral_magnitude;
     double  greatest_grahan_jd;
+    DhruvUtcTime greatest_grahan_utc;
     double  p1_jd;
+    DhruvUtcTime p1_utc;
     double  u1_jd;
+    DhruvUtcTime u1_utc;
     double  u2_jd;
+    DhruvUtcTime u2_utc;
     double  u3_jd;
+    DhruvUtcTime u3_utc;
     double  u4_jd;
+    DhruvUtcTime u4_utc;
     double  p4_jd;
+    DhruvUtcTime p4_utc;
     double  moon_ecliptic_lat_deg;
     double  angular_separation_deg;
 } DhruvChandraGrahanResult;
@@ -600,10 +608,15 @@ typedef struct {
     int32_t grahan_type;
     double  magnitude;
     double  greatest_grahan_jd;
+    DhruvUtcTime greatest_grahan_utc;
     double  c1_jd;
+    DhruvUtcTime c1_utc;
     double  c2_jd;
+    DhruvUtcTime c2_utc;
     double  c3_jd;
+    DhruvUtcTime c3_utc;
     double  c4_jd;
+    DhruvUtcTime c4_utc;
     double  moon_ecliptic_lat_deg;
     double  angular_separation_deg;
 } DhruvSuryaGrahanResult;
@@ -629,6 +642,7 @@ typedef struct {
 
 typedef struct {
     double  jd_tdb;
+    DhruvUtcTime utc;
     int32_t body_code;
     double  longitude_deg;
     double  latitude_deg;
@@ -637,6 +651,7 @@ typedef struct {
 
 typedef struct {
     double  jd_tdb;
+    DhruvUtcTime utc;
     int32_t body_code;
     double  longitude_deg;
     double  latitude_deg;
@@ -1247,6 +1262,8 @@ typedef struct {
     const char *entity_name;
     double   start_jd;
     double   end_jd;
+    DhruvUtcTime start_utc;
+    DhruvUtcTime end_utc;
     uint8_t  level;
     uint16_t order;
     uint32_t parent_idx;
@@ -1255,6 +1272,7 @@ typedef struct {
 typedef struct {
     uint8_t          system;
     double           query_jd;
+    DhruvUtcTime     query_utc;
     uint8_t          count;
     DhruvDashaPeriod periods[5];
 } DhruvDashaSnapshot;

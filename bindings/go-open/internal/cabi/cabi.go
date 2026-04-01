@@ -12,6 +12,7 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 )
 
@@ -70,6 +71,54 @@ func goUTC(utc C.DhruvUtcTime) UtcTime {
 		Hour:   uint32(utc.hour),
 		Minute: uint32(utc.minute),
 		Second: float64(utc.second),
+	}
+}
+
+func goOptionalUTC(valid bool, utc C.DhruvUtcTime) *UtcTime {
+	if !valid {
+		return nil
+	}
+	value := goUTC(utc)
+	return &value
+}
+
+func jdUTCToUTC(jd float64) UtcTime {
+	z := math.Floor(jd + 0.5)
+	f := jd + 0.5 - z
+	a := z
+	if z >= 2299161.0 {
+		alpha := math.Floor((z - 1867216.25) / 36524.25)
+		a = z + 1.0 + alpha - math.Floor(alpha/4.0)
+	}
+	b := a + 1524.0
+	c := math.Floor((b - 122.1) / 365.25)
+	d := math.Floor(365.25 * c)
+	e := math.Floor((b - d) / 30.6001)
+	dayFloat := b - d - math.Floor(30.6001*e) + f
+
+	month := int32(e - 1.0)
+	if e >= 14.0 {
+		month = int32(e - 13.0)
+	}
+	year := int32(c - 4716.0)
+	if month <= 2 {
+		year = int32(c - 4715.0)
+	}
+
+	day := math.Floor(dayFloat)
+	frac := dayFloat - day
+	totalSeconds := frac * 86400.0
+	hour := math.Floor(totalSeconds / 3600.0)
+	minute := math.Floor(math.Mod(totalSeconds, 3600.0) / 60.0)
+	second := totalSeconds - hour*3600.0 - minute*60.0
+
+	return UtcTime{
+		Year:   year,
+		Month:  uint32(month),
+		Day:    uint32(day),
+		Hour:   uint32(hour),
+		Minute: uint32(minute),
+		Second: second,
 	}
 }
 
@@ -739,6 +788,7 @@ func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capaci
 	}
 	st := Status(C.dhruv_conjunction_search_ex(engine.ptr, &creq, &outEvent, &found, arrPtr, C.uint32_t(capacity), &outCount))
 	goEvent := ConjunctionEvent{
+		UTC:                 goUTC(outEvent.utc),
 		JdTdb:               float64(outEvent.jd_tdb),
 		ActualSeparationDeg: float64(outEvent.actual_separation_deg),
 		Body1LongitudeDeg:   float64(outEvent.body1_longitude_deg),
@@ -755,6 +805,7 @@ func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capaci
 	events := make([]ConjunctionEvent, count)
 	for i := 0; i < count; i++ {
 		events[i] = ConjunctionEvent{
+			UTC:                 goUTC(arr[i].utc),
 			JdTdb:               float64(arr[i].jd_tdb),
 			ActualSeparationDeg: float64(arr[i].actual_separation_deg),
 			Body1LongitudeDeg:   float64(arr[i].body1_longitude_deg),
@@ -802,12 +853,19 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			GrahanType:           int32(v.grahan_type),
 			Magnitude:            float64(v.magnitude),
 			PenumbralMagnitude:   float64(v.penumbral_magnitude),
+			GreatestGrahanUTC:    goUTC(v.greatest_grahan_utc),
 			GreatestGrahanJd:     float64(v.greatest_grahan_jd),
+			P1UTC:                goUTC(v.p1_utc),
 			P1Jd:                 float64(v.p1_jd),
+			U1UTC:                goOptionalUTC(float64(v.u1_jd) != -1.0, v.u1_utc),
 			U1Jd:                 float64(v.u1_jd),
+			U2UTC:                goOptionalUTC(float64(v.u2_jd) != -1.0, v.u2_utc),
 			U2Jd:                 float64(v.u2_jd),
+			U3UTC:                goOptionalUTC(float64(v.u3_jd) != -1.0, v.u3_utc),
 			U3Jd:                 float64(v.u3_jd),
+			U4UTC:                goOptionalUTC(float64(v.u4_jd) != -1.0, v.u4_utc),
 			U4Jd:                 float64(v.u4_jd),
+			P4UTC:                goUTC(v.p4_utc),
 			P4Jd:                 float64(v.p4_jd),
 			MoonEclipticLatDeg:   float64(v.moon_ecliptic_lat_deg),
 			AngularSeparationDeg: float64(v.angular_separation_deg),
@@ -817,10 +875,15 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 		return SuryaGrahanResult{
 			GrahanType:           int32(v.grahan_type),
 			Magnitude:            float64(v.magnitude),
+			GreatestGrahanUTC:    goUTC(v.greatest_grahan_utc),
 			GreatestGrahanJd:     float64(v.greatest_grahan_jd),
+			C1UTC:                goOptionalUTC(float64(v.c1_jd) != -1.0, v.c1_utc),
 			C1Jd:                 float64(v.c1_jd),
+			C2UTC:                goOptionalUTC(float64(v.c2_jd) != -1.0, v.c2_utc),
 			C2Jd:                 float64(v.c2_jd),
+			C3UTC:                goOptionalUTC(float64(v.c3_jd) != -1.0, v.c3_utc),
 			C3Jd:                 float64(v.c3_jd),
+			C4UTC:                goOptionalUTC(float64(v.c4_jd) != -1.0, v.c4_utc),
 			C4Jd:                 float64(v.c4_jd),
 			MoonEclipticLatDeg:   float64(v.moon_ecliptic_lat_deg),
 			AngularSeparationDeg: float64(v.angular_separation_deg),
@@ -880,10 +943,10 @@ func SearchMotion(engine EngineHandle, req MotionSearchRequest, capacity uint32)
 	}
 	st := Status(C.dhruv_motion_search_ex(engine.ptr, &creq, &outSt, &outMs, &found, stPtr, msPtr, C.uint32_t(capacity), &outCount))
 	convSt := func(v C.DhruvStationaryEvent) StationaryEvent {
-		return StationaryEvent{JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), StationType: int32(v.station_type)}
+		return StationaryEvent{UTC: goUTC(v.utc), JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), StationType: int32(v.station_type)}
 	}
 	convMs := func(v C.DhruvMaxSpeedEvent) MaxSpeedEvent {
-		return MaxSpeedEvent{JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), SpeedDegPerDay: float64(v.speed_deg_per_day), SpeedType: int32(v.speed_type)}
+		return MaxSpeedEvent{UTC: goUTC(v.utc), JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), SpeedDegPerDay: float64(v.speed_deg_per_day), SpeedType: int32(v.speed_type)}
 	}
 	count := int(outCount)
 	if count > len(stArr) {
@@ -1196,6 +1259,8 @@ func goDashaPeriod(out C.DhruvDashaPeriod) DashaPeriod {
 		EntityName:  cString((*C.char)(unsafe.Pointer(out.entity_name))),
 		StartJD:     float64(out.start_jd),
 		EndJD:       float64(out.end_jd),
+		StartUTC:    jdUTCToUTC(float64(out.start_jd)),
+		EndUTC:      jdUTCToUTC(float64(out.end_jd)),
 		Level:       uint8(out.level),
 		Order:       uint16(out.order),
 		ParentIdx:   uint32(out.parent_idx),
@@ -1209,6 +1274,8 @@ func cDashaPeriod(period DashaPeriod) C.DhruvDashaPeriod {
 		entity_name:  nil,
 		start_jd:     C.double(period.StartJD),
 		end_jd:       C.double(period.EndJD),
+		start_utc:    cUTC(period.StartUTC),
+		end_utc:      cUTC(period.EndUTC),
 		level:        C.uint8_t(period.Level),
 		order:        C.uint16_t(period.Order),
 		parent_idx:   C.uint32_t(period.ParentIdx),
@@ -1479,7 +1546,7 @@ func RunDashaSnapshot(engine EngineHandle, eop EopHandle, request DashaSnapshotR
 	}
 	var out C.DhruvDashaSnapshot
 	st := Status(C.dhruv_dasha_snapshot(engine.ptr, eop.ptr, &crequest, &out))
-	res := DashaSnapshot{System: uint8(out.system), QueryJD: float64(out.query_jd), Count: uint8(out.count)}
+	res := DashaSnapshot{System: uint8(out.system), QueryJD: float64(out.query_jd), QueryUTC: jdUTCToUTC(float64(out.query_jd)), Count: uint8(out.count)}
 	for i := 0; i < len(res.Periods); i++ {
 		res.Periods[i] = goDashaPeriod(out.periods[i])
 	}
@@ -2259,12 +2326,12 @@ func FullKundaliForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc Geo
 		res.DashaSnapshots = make([]DashaSnapshot, int(out.dasha_snapshot_count))
 		for i := 0; i < int(out.dasha_snapshot_count); i++ {
 			s := out.dasha_snapshots[i]
-			snap := DashaSnapshot{System: uint8(s.system), QueryJD: float64(s.query_jd), Count: uint8(s.count)}
+			snap := DashaSnapshot{System: uint8(s.system), QueryJD: float64(s.query_jd), QueryUTC: jdUTCToUTC(float64(s.query_jd)), Count: uint8(s.count)}
 			for j := 0; j < len(snap.Periods); j++ {
 				p := s.periods[j]
 				snap.Periods[j] = DashaPeriod{
 					EntityType: uint8(p.entity_type), EntityIndex: uint8(p.entity_index), EntityName: cString((*C.char)(unsafe.Pointer(p.entity_name))), StartJD: float64(p.start_jd),
-					EndJD: float64(p.end_jd), Level: uint8(p.level), Order: uint16(p.order), ParentIdx: uint32(p.parent_idx),
+					EndJD: float64(p.end_jd), StartUTC: jdUTCToUTC(float64(p.start_jd)), EndUTC: jdUTCToUTC(float64(p.end_jd)), Level: uint8(p.level), Order: uint16(p.order), ParentIdx: uint32(p.parent_idx),
 				}
 			}
 			res.DashaSnapshots[i] = snap

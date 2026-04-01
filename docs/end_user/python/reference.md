@@ -287,7 +287,8 @@ The fuller public surface is intentionally module-based.
 - `dasha_complete_level`
 
 Dasha period objects expose `entity_name` with the exact canonical Sanskrit
-entity name.
+entity name, plus structured `start_utc` / `end_utc` alongside `start_jd` /
+`end_jd`. Dasha snapshots similarly expose `query_utc` alongside `query_jd`.
 Python dasha calls can use either UTC/location birth context or `birth_jd` plus
 precomputed `inputs` on the same main functions.
 
@@ -317,6 +318,11 @@ precomputed `inputs` on the same main functions.
 - `prev_amavasya`
 - `search_lunar_phases`
 - `sankranti_config_default`
+
+Python high-level search results expose structured Gregorian UTC wherever the
+result itself represents an event time. Conjunction, grahan, stationary, and
+max-speed results now carry UTC alongside the existing JD values; sankranti and
+lunar-phase results continue to expose UTC directly.
 - `next_sankranti`
 - `prev_sankranti`
 - `specific_sankranti`

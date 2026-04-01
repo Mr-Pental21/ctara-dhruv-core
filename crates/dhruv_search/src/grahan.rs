@@ -22,6 +22,7 @@
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
 use dhruv_frames::{cartesian_to_spherical, icrf_to_ecliptic, precess_ecliptic_j2000_to_date};
+use dhruv_time::UtcTime;
 
 use crate::conjunction::{next_conjunction, prev_conjunction, search_conjunctions};
 use crate::conjunction_types::ConjunctionConfig;
@@ -352,12 +353,19 @@ fn compute_chandra_grahan(
         magnitude: umbral_magnitude,
         penumbral_magnitude,
         greatest_grahan_jd: full_moon_jd,
+        greatest_grahan_utc: UtcTime::from_jd_tdb(full_moon_jd, engine.lsk()),
         p1_jd,
+        p1_utc: UtcTime::from_jd_tdb(p1_jd, engine.lsk()),
         u1_jd,
+        u1_utc: u1_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         u2_jd,
+        u2_utc: u2_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         u3_jd,
+        u3_utc: u3_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         u4_jd,
+        u4_utc: u4_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         p4_jd,
+        p4_utc: UtcTime::from_jd_tdb(p4_jd, engine.lsk()),
         moon_ecliptic_lat_deg: moon_lat,
         angular_separation_deg: angular_sep,
     }))
@@ -569,10 +577,15 @@ fn compute_surya_grahan(
         grahan_type,
         magnitude,
         greatest_grahan_jd: new_moon_jd,
+        greatest_grahan_utc: UtcTime::from_jd_tdb(new_moon_jd, engine.lsk()),
         c1_jd,
+        c1_utc: c1_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         c2_jd,
+        c2_utc: c2_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         c3_jd,
+        c3_utc: c3_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         c4_jd,
+        c4_utc: c4_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         moon_ecliptic_lat_deg: moon_lat,
         angular_separation_deg: min_sep,
     }))

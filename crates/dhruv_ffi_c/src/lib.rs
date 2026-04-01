@@ -55,7 +55,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 51;
+pub const DHRUV_API_VERSION: u32 = 53;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -2913,6 +2913,8 @@ pub struct DhruvConjunctionSearchRequest {
 pub struct DhruvConjunctionEvent {
     /// Event time as Julian Date (TDB).
     pub jd_tdb: f64,
+    /// Event time as structured Gregorian UTC.
+    pub utc: DhruvUtcTime,
     /// Actual ecliptic longitude separation at peak, in degrees.
     pub actual_separation_deg: f64,
     /// Body 1 ecliptic longitude in degrees.
@@ -2933,6 +2935,7 @@ impl From<&ConjunctionEvent> for DhruvConjunctionEvent {
     fn from(e: &ConjunctionEvent) -> Self {
         Self {
             jd_tdb: e.jd_tdb,
+            utc: utc_time_to_ffi(&e.utc),
             actual_separation_deg: e.actual_separation_deg,
             body1_longitude_deg: e.body1_longitude_deg,
             body2_longitude_deg: e.body2_longitude_deg,
@@ -3186,18 +3189,32 @@ pub struct DhruvChandraGrahanResult {
     pub penumbral_magnitude: f64,
     /// Time of greatest grahan (JD TDB).
     pub greatest_grahan_jd: f64,
+    /// Time of greatest grahan as structured Gregorian UTC.
+    pub greatest_grahan_utc: DhruvUtcTime,
     /// P1: First penumbral contact (JD TDB).
     pub p1_jd: f64,
+    /// P1 as structured Gregorian UTC.
+    pub p1_utc: DhruvUtcTime,
     /// U1: First umbral contact (JD TDB). -1.0 if absent.
     pub u1_jd: f64,
+    /// U1 as structured Gregorian UTC. Zeroed if absent.
+    pub u1_utc: DhruvUtcTime,
     /// U2: Start of totality (JD TDB). -1.0 if absent.
     pub u2_jd: f64,
+    /// U2 as structured Gregorian UTC. Zeroed if absent.
+    pub u2_utc: DhruvUtcTime,
     /// U3: End of totality (JD TDB). -1.0 if absent.
     pub u3_jd: f64,
+    /// U3 as structured Gregorian UTC. Zeroed if absent.
+    pub u3_utc: DhruvUtcTime,
     /// U4: Last umbral contact (JD TDB). -1.0 if absent.
     pub u4_jd: f64,
+    /// U4 as structured Gregorian UTC. Zeroed if absent.
+    pub u4_utc: DhruvUtcTime,
     /// P4: Last penumbral contact (JD TDB).
     pub p4_jd: f64,
+    /// P4 as structured Gregorian UTC.
+    pub p4_utc: DhruvUtcTime,
     /// Moon's ecliptic latitude at greatest grahan, in degrees.
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation at greatest grahan, in degrees.
@@ -3211,12 +3228,31 @@ impl From<&ChandraGrahan> for DhruvChandraGrahanResult {
             magnitude: e.magnitude,
             penumbral_magnitude: e.penumbral_magnitude,
             greatest_grahan_jd: e.greatest_grahan_jd,
+            greatest_grahan_utc: utc_time_to_ffi(&e.greatest_grahan_utc),
             p1_jd: e.p1_jd,
+            p1_utc: utc_time_to_ffi(&e.p1_utc),
             u1_jd: option_jd(e.u1_jd),
+            u1_utc: e
+                .u1_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             u2_jd: option_jd(e.u2_jd),
+            u2_utc: e
+                .u2_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             u3_jd: option_jd(e.u3_jd),
+            u3_utc: e
+                .u3_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             u4_jd: option_jd(e.u4_jd),
+            u4_utc: e
+                .u4_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             p4_jd: e.p4_jd,
+            p4_utc: utc_time_to_ffi(&e.p4_utc),
             moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
             angular_separation_deg: e.angular_separation_deg,
         }
@@ -3233,14 +3269,24 @@ pub struct DhruvSuryaGrahanResult {
     pub magnitude: f64,
     /// Time of greatest grahan (JD TDB).
     pub greatest_grahan_jd: f64,
+    /// Time of greatest grahan as structured Gregorian UTC.
+    pub greatest_grahan_utc: DhruvUtcTime,
     /// C1: First external contact (JD TDB). -1.0 if absent.
     pub c1_jd: f64,
+    /// C1 as structured Gregorian UTC. Zeroed if absent.
+    pub c1_utc: DhruvUtcTime,
     /// C2: First internal contact (JD TDB). -1.0 if absent.
     pub c2_jd: f64,
+    /// C2 as structured Gregorian UTC. Zeroed if absent.
+    pub c2_utc: DhruvUtcTime,
     /// C3: Last internal contact (JD TDB). -1.0 if absent.
     pub c3_jd: f64,
+    /// C3 as structured Gregorian UTC. Zeroed if absent.
+    pub c3_utc: DhruvUtcTime,
     /// C4: Last external contact (JD TDB). -1.0 if absent.
     pub c4_jd: f64,
+    /// C4 as structured Gregorian UTC. Zeroed if absent.
+    pub c4_utc: DhruvUtcTime,
     /// Moon's ecliptic latitude at greatest grahan, in degrees.
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation at greatest grahan, in degrees.
@@ -3253,10 +3299,27 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
             grahan_type: surya_grahan_type_to_code(e.grahan_type),
             magnitude: e.magnitude,
             greatest_grahan_jd: e.greatest_grahan_jd,
+            greatest_grahan_utc: utc_time_to_ffi(&e.greatest_grahan_utc),
             c1_jd: option_jd(e.c1_jd),
+            c1_utc: e
+                .c1_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             c2_jd: option_jd(e.c2_jd),
+            c2_utc: e
+                .c2_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             c3_jd: option_jd(e.c3_jd),
+            c3_utc: e
+                .c3_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             c4_jd: option_jd(e.c4_jd),
+            c4_utc: e
+                .c4_utc
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
             moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
             angular_separation_deg: e.angular_separation_deg,
         }
@@ -3495,6 +3558,8 @@ pub struct DhruvMotionSearchRequest {
 pub struct DhruvStationaryEvent {
     /// Event time as Julian Date (TDB).
     pub jd_tdb: f64,
+    /// Event time as structured Gregorian UTC.
+    pub utc: DhruvUtcTime,
     /// NAIF body code.
     pub body_code: i32,
     /// Ecliptic longitude at station in degrees.
@@ -3511,6 +3576,8 @@ pub struct DhruvStationaryEvent {
 pub struct DhruvMaxSpeedEvent {
     /// Event time as Julian Date (TDB).
     pub jd_tdb: f64,
+    /// Event time as structured Gregorian UTC.
+    pub utc: DhruvUtcTime,
     /// NAIF body code.
     pub body_code: i32,
     /// Ecliptic longitude at peak speed in degrees.
@@ -3550,6 +3617,7 @@ impl From<&StationaryEvent> for DhruvStationaryEvent {
     fn from(e: &StationaryEvent) -> Self {
         Self {
             jd_tdb: e.jd_tdb,
+            utc: utc_time_to_ffi(&e.utc),
             body_code: e.body.code(),
             longitude_deg: e.longitude_deg,
             latitude_deg: e.latitude_deg,
@@ -3562,6 +3630,7 @@ impl From<&MaxSpeedEvent> for DhruvMaxSpeedEvent {
     fn from(e: &MaxSpeedEvent) -> Self {
         Self {
             jd_tdb: e.jd_tdb,
+            utc: utc_time_to_ffi(&e.utc),
             body_code: e.body.code(),
             longitude_deg: e.longitude_deg,
             latitude_deg: e.latitude_deg,
@@ -5341,6 +5410,24 @@ const ZEROED_UTC: DhruvUtcTime = DhruvUtcTime {
 
 fn jd_tdb_to_utc_time(jd_tdb: f64, lsk: &dhruv_time::LeapSecondKernel) -> DhruvUtcTime {
     utc_time_to_ffi(&UtcTime::from_jd_tdb(jd_tdb, lsk))
+}
+
+fn jd_utc_to_utc_time(jd_utc: f64) -> DhruvUtcTime {
+    let (year, month, day_frac) = dhruv_time::jd_to_calendar(jd_utc);
+    let day = day_frac.floor() as u32;
+    let frac = day_frac.fract();
+    let total_seconds = frac * 86_400.0;
+    let hour = (total_seconds / 3600.0).floor() as u32;
+    let minute = ((total_seconds % 3600.0) / 60.0).floor() as u32;
+    let second = total_seconds % 60.0;
+    DhruvUtcTime {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+    }
 }
 
 fn riseset_result_to_utc(
@@ -11619,6 +11706,10 @@ pub struct DhruvDashaPeriod {
     pub start_jd: f64,
     /// JD UTC, exclusive.
     pub end_jd: f64,
+    /// Gregorian UTC start instant, inclusive.
+    pub start_utc: DhruvUtcTime,
+    /// Gregorian UTC end instant, exclusive.
+    pub end_utc: DhruvUtcTime,
     /// Hierarchical level (0-4).
     pub level: u8,
     /// 1-indexed position among siblings.
@@ -11635,6 +11726,8 @@ pub struct DhruvDashaSnapshot {
     pub system: u8,
     /// Query JD UTC.
     pub query_jd: f64,
+    /// Query Gregorian UTC.
+    pub query_utc: DhruvUtcTime,
     /// Number of valid periods (0-5).
     pub count: u8,
     /// One period per level.
@@ -11653,6 +11746,8 @@ fn dasha_period_to_ffi(p: &dhruv_vedic_base::dasha::DashaPeriod) -> DhruvDashaPe
         entity_name: dasha_entity_name_ptr(p.entity),
         start_jd: p.start_jd,
         end_jd: p.end_jd,
+        start_utc: jd_utc_to_utc_time(p.start_jd),
+        end_utc: jd_utc_to_utc_time(p.end_jd),
         level: p.level as u8,
         order: p.order,
         parent_idx: p.parent_idx,
@@ -12263,6 +12358,7 @@ pub unsafe extern "C" fn dhruv_dasha_snapshot(
             let out = unsafe { &mut *out };
             out.system = request.system;
             out.query_jd = snapshot.query_jd;
+            out.query_utc = jd_utc_to_utc_time(snapshot.query_jd);
             let count = snapshot.periods.len().min(5);
             out.count = count as u8;
             out.periods = [DhruvDashaPeriod {
@@ -12271,6 +12367,8 @@ pub unsafe extern "C" fn dhruv_dasha_snapshot(
                 entity_name: ptr::null(),
                 start_jd: 0.0,
                 end_jd: 0.0,
+                start_utc: ZEROED_UTC,
+                end_utc: ZEROED_UTC,
                 level: 0,
                 order: 0,
                 parent_idx: 0,
@@ -13839,8 +13937,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_51() {
-        assert_eq!(dhruv_api_version(), 51);
+    fn ffi_api_version_is_53() {
+        assert_eq!(dhruv_api_version(), 53);
     }
 
     #[test]
@@ -15907,6 +16005,46 @@ mod tests {
         let cfg = dhruv_graha_longitudes_config_default();
         let s = unsafe { dhruv_graha_longitudes(ptr::null(), 2451545.0, &cfg, out.as_mut_ptr()) };
         assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn dasha_ffi_periods_and_snapshots_include_utc() {
+        let period = dhruv_vedic_base::dasha::DashaPeriod {
+            entity: dhruv_vedic_base::dasha::DashaEntity::Graha(dhruv_vedic_base::Graha::Surya),
+            start_jd: 2_451_545.0,
+            end_jd: 2_451_546.25,
+            level: dhruv_vedic_base::dasha::DashaLevel::Mahadasha,
+            order: 1,
+            parent_idx: 0,
+        };
+        let ffi_period = dasha_period_to_ffi(&period);
+        assert_eq!(ffi_period.start_utc.year, 2000);
+        assert_eq!(ffi_period.start_utc.month, 1);
+        assert_eq!(ffi_period.start_utc.day, 1);
+        assert_eq!(ffi_period.end_utc.hour, 18);
+
+        let snapshot = DhruvDashaSnapshot {
+            system: dhruv_vedic_base::dasha::DashaSystem::Vimshottari as u8,
+            query_jd: 2_451_545.5,
+            query_utc: jd_utc_to_utc_time(2_451_545.5),
+            count: 1,
+            periods: [DhruvDashaPeriod {
+                entity_type: 0,
+                entity_index: 0,
+                entity_name: ptr::null(),
+                start_jd: 0.0,
+                end_jd: 0.0,
+                start_utc: ZEROED_UTC,
+                end_utc: ZEROED_UTC,
+                level: 0,
+                order: 0,
+                parent_idx: 0,
+            }; 5],
+        };
+        assert_eq!(snapshot.query_utc.year, 2000);
+        assert_eq!(snapshot.query_utc.month, 1);
+        assert_eq!(snapshot.query_utc.day, 2);
+        assert_eq!(snapshot.query_utc.hour, 0);
     }
 
     #[test]

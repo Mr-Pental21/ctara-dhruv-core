@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 51`
+**ABI version:** `DHRUV_API_VERSION = 53`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -390,6 +390,7 @@ typedef struct {
 ```c
 typedef struct {
     double  jd_tdb;                // Event time (JD TDB)
+    DhruvUtcTime utc;              // Structured Gregorian UTC alongside JD
     double  actual_separation_deg; // Actual separation at peak
     double  body1_longitude_deg;   // Body 1 ecliptic longitude
     double  body2_longitude_deg;   // Body 2 ecliptic longitude
@@ -417,12 +418,19 @@ typedef struct {
     double  magnitude;              // Umbral magnitude
     double  penumbral_magnitude;
     double  greatest_grahan_jd;     // JD TDB
+    DhruvUtcTime greatest_grahan_utc;
     double  p1_jd;                  // First penumbral contact
+    DhruvUtcTime p1_utc;
     double  u1_jd;                  // First umbral contact (-1.0 if absent)
+    DhruvUtcTime u1_utc;            // Zeroed when corresponding JD is absent
     double  u2_jd;                  // Start of totality (-1.0 if absent)
+    DhruvUtcTime u2_utc;            // Zeroed when corresponding JD is absent
     double  u3_jd;                  // End of totality (-1.0 if absent)
+    DhruvUtcTime u3_utc;            // Zeroed when corresponding JD is absent
     double  u4_jd;                  // Last umbral contact (-1.0 if absent)
+    DhruvUtcTime u4_utc;            // Zeroed when corresponding JD is absent
     double  p4_jd;                  // Last penumbral contact
+    DhruvUtcTime p4_utc;
     double  moon_ecliptic_lat_deg;  // Moon lat at greatest grahan
     double  angular_separation_deg; // Separation at greatest grahan
 } DhruvChandraGrahanResult;
@@ -435,10 +443,15 @@ typedef struct {
     int32_t grahan_type;            // DHRUV_SURYA_GRAHAN_* constant
     double  magnitude;              // Moon/Sun apparent diameter ratio
     double  greatest_grahan_jd;     // JD TDB
+    DhruvUtcTime greatest_grahan_utc;
     double  c1_jd;                  // First external contact (-1.0 if absent)
+    DhruvUtcTime c1_utc;            // Zeroed when corresponding JD is absent
     double  c2_jd;                  // First internal contact (-1.0 if absent)
+    DhruvUtcTime c2_utc;            // Zeroed when corresponding JD is absent
     double  c3_jd;                  // Last internal contact (-1.0 if absent)
+    DhruvUtcTime c3_utc;            // Zeroed when corresponding JD is absent
     double  c4_jd;                  // Last external contact (-1.0 if absent)
+    DhruvUtcTime c4_utc;            // Zeroed when corresponding JD is absent
     double  moon_ecliptic_lat_deg;  // Moon lat at greatest grahan
     double  angular_separation_deg; // Separation at greatest grahan
 } DhruvSuryaGrahanResult;
@@ -460,6 +473,7 @@ typedef struct {
 ```c
 typedef struct {
     double  jd_tdb;          // Event time (JD TDB)
+    DhruvUtcTime utc;        // Structured Gregorian UTC alongside JD
     int32_t body_code;       // NAIF body code
     double  longitude_deg;   // Ecliptic longitude at station
     double  latitude_deg;    // Ecliptic latitude at station
@@ -472,6 +486,7 @@ typedef struct {
 ```c
 typedef struct {
     double  jd_tdb;              // Event time (JD TDB)
+    DhruvUtcTime utc;            // Structured Gregorian UTC alongside JD
     int32_t body_code;           // NAIF body code
     double  longitude_deg;       // Ecliptic longitude at peak speed
     double  latitude_deg;        // Ecliptic latitude at peak speed
@@ -1849,7 +1864,9 @@ struct DhruvDashaPeriod {
     uint8_t  entity_type;  // 0=Graha, 1=Rashi, 2=Yogini
     uint8_t  entity_index; // Graha (0-8), Rashi (0-11), Yogini (0-7)
     const char *entity_name; // canonical static UTF-8 name
+    DhruvUtcTime start_utc; // Gregorian UTC, inclusive
     double   start_jd;     // JD UTC, inclusive
+    DhruvUtcTime end_utc;   // Gregorian UTC, exclusive
     double   end_jd;       // JD UTC, exclusive
     uint8_t  level;        // 0-4
     uint16_t order;        // 1-indexed position among siblings
@@ -1862,6 +1879,7 @@ struct DhruvDashaPeriod {
 ```c
 struct DhruvDashaSnapshot {
     uint8_t           system;     // DashaSystem code
+    DhruvUtcTime      query_utc;  // echoed query Gregorian UTC
     double            query_jd;   // echoed query JD UTC
     uint8_t           count;      // number of valid periods (0-5)
     DhruvDashaPeriod  periods[5]; // one per level
@@ -1873,8 +1891,10 @@ struct DhruvDashaSnapshot {
 All JD values in dasha APIs use **JD UTC** (not TDB):
 - `DhruvDashaSelectionConfig.snapshot_time.jd_utc` — query time when `time_kind == DHRUV_DASHA_TIME_JD_UTC`
 - `DhruvDashaPeriod.entity_name` — canonical static entity name
-- `DhruvDashaPeriod.start_jd`, `.end_jd` — period boundaries
-- `DhruvDashaSnapshot.query_jd` — echoed query time
+- `DhruvDashaPeriod.start_utc`, `.end_utc` — default structured Gregorian UTC boundaries
+- `DhruvDashaPeriod.start_jd`, `.end_jd` — numeric JD UTC boundaries kept alongside UTC
+- `DhruvDashaSnapshot.query_utc` — default structured Gregorian UTC query time
+- `DhruvDashaSnapshot.query_jd` — echoed numeric JD UTC query time
 
 ## Ownership & Lifetime Table (Dasha)
 
@@ -2040,6 +2060,10 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v52**: Extended `DhruvDashaPeriod` with structured Gregorian UTC `start_utc` and `end_utc` alongside numeric `start_jd` and `end_jd`. Extended `DhruvDashaSnapshot` with structured Gregorian UTC `query_utc` alongside numeric `query_jd`.
+
+**v53**: Extended high-level time-bearing search/event results so the main C ABI structs now carry structured Gregorian UTC alongside numeric JD/TDB. This includes `DhruvConjunctionEvent`, `DhruvStationaryEvent`, `DhruvMaxSpeedEvent`, `DhruvChandraGrahanResult`, and `DhruvSuryaGrahanResult`.
 
 **v47**: Added dedicated amsha C ABI entry points
 `dhruv_amsha_longitude`, `dhruv_amsha_rashi_info`,

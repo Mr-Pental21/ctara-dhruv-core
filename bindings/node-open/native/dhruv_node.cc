@@ -1038,6 +1038,8 @@ napi_value WriteDashaPeriod(napi_env env, const DhruvDashaPeriod& p) {
     SetNamed(env, po, "entityType", MakeUint32(env, p.entity_type));
     SetNamed(env, po, "entityIndex", MakeUint32(env, p.entity_index));
     SetNamed(env, po, "entityName", MakeString(env, p.entity_name ? p.entity_name : ""));
+    SetNamed(env, po, "startUtc", WriteUtcTime(env, p.start_utc));
+    SetNamed(env, po, "endUtc", WriteUtcTime(env, p.end_utc));
     SetNamed(env, po, "startJd", MakeDouble(env, p.start_jd));
     SetNamed(env, po, "endJd", MakeDouble(env, p.end_jd));
     SetNamed(env, po, "level", MakeUint32(env, p.level));
@@ -1623,6 +1625,7 @@ napi_value WriteBindusResult(napi_env env, const DhruvBindusResult& b) {
 napi_value WriteConjunctionEvent(napi_env env, const DhruvConjunctionEvent& ev) {
     napi_value obj;
     napi_create_object(env, &obj);
+    SetNamed(env, obj, "utc", WriteUtcTime(env, ev.utc));
     SetNamed(env, obj, "jdTdb", MakeDouble(env, ev.jd_tdb));
     SetNamed(env, obj, "actualSeparationDeg", MakeDouble(env, ev.actual_separation_deg));
     SetNamed(env, obj, "body1LongitudeDeg", MakeDouble(env, ev.body1_longitude_deg));
@@ -1647,6 +1650,7 @@ napi_value WriteSankrantiEvent(napi_env env, const DhruvSankrantiEvent& ev) {
 napi_value WriteStationaryEvent(napi_env env, const DhruvStationaryEvent& ev) {
     napi_value obj;
     napi_create_object(env, &obj);
+    SetNamed(env, obj, "utc", WriteUtcTime(env, ev.utc));
     SetNamed(env, obj, "jdTdb", MakeDouble(env, ev.jd_tdb));
     SetNamed(env, obj, "bodyCode", MakeInt32(env, ev.body_code));
     SetNamed(env, obj, "longitudeDeg", MakeDouble(env, ev.longitude_deg));
@@ -1658,6 +1662,7 @@ napi_value WriteStationaryEvent(napi_env env, const DhruvStationaryEvent& ev) {
 napi_value WriteMaxSpeedEvent(napi_env env, const DhruvMaxSpeedEvent& ev) {
     napi_value obj;
     napi_create_object(env, &obj);
+    SetNamed(env, obj, "utc", WriteUtcTime(env, ev.utc));
     SetNamed(env, obj, "jdTdb", MakeDouble(env, ev.jd_tdb));
     SetNamed(env, obj, "bodyCode", MakeInt32(env, ev.body_code));
     SetNamed(env, obj, "longitudeDeg", MakeDouble(env, ev.longitude_deg));
@@ -1670,15 +1675,24 @@ napi_value WriteMaxSpeedEvent(napi_env env, const DhruvMaxSpeedEvent& ev) {
 napi_value WriteChandraGrahanResult(napi_env env, const DhruvChandraGrahanResult& g) {
     napi_value obj;
     napi_create_object(env, &obj);
+    napi_value nullv;
+    napi_get_null(env, &nullv);
     SetNamed(env, obj, "grahanType", MakeInt32(env, g.grahan_type));
     SetNamed(env, obj, "magnitude", MakeDouble(env, g.magnitude));
     SetNamed(env, obj, "penumbralMagnitude", MakeDouble(env, g.penumbral_magnitude));
+    SetNamed(env, obj, "greatestGrahanUtc", WriteUtcTime(env, g.greatest_grahan_utc));
     SetNamed(env, obj, "greatestGrahanJd", MakeDouble(env, g.greatest_grahan_jd));
+    SetNamed(env, obj, "p1Utc", WriteUtcTime(env, g.p1_utc));
     SetNamed(env, obj, "p1Jd", MakeDouble(env, g.p1_jd));
+    SetNamed(env, obj, "u1Utc", g.u1_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.u1_utc));
     SetNamed(env, obj, "u1Jd", MakeDouble(env, g.u1_jd));
+    SetNamed(env, obj, "u2Utc", g.u2_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.u2_utc));
     SetNamed(env, obj, "u2Jd", MakeDouble(env, g.u2_jd));
+    SetNamed(env, obj, "u3Utc", g.u3_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.u3_utc));
     SetNamed(env, obj, "u3Jd", MakeDouble(env, g.u3_jd));
+    SetNamed(env, obj, "u4Utc", g.u4_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.u4_utc));
     SetNamed(env, obj, "u4Jd", MakeDouble(env, g.u4_jd));
+    SetNamed(env, obj, "p4Utc", WriteUtcTime(env, g.p4_utc));
     SetNamed(env, obj, "p4Jd", MakeDouble(env, g.p4_jd));
     SetNamed(env, obj, "moonEclipticLatDeg", MakeDouble(env, g.moon_ecliptic_lat_deg));
     SetNamed(env, obj, "angularSeparationDeg", MakeDouble(env, g.angular_separation_deg));
@@ -1688,12 +1702,19 @@ napi_value WriteChandraGrahanResult(napi_env env, const DhruvChandraGrahanResult
 napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g) {
     napi_value obj;
     napi_create_object(env, &obj);
+    napi_value nullv;
+    napi_get_null(env, &nullv);
     SetNamed(env, obj, "grahanType", MakeInt32(env, g.grahan_type));
     SetNamed(env, obj, "magnitude", MakeDouble(env, g.magnitude));
+    SetNamed(env, obj, "greatestGrahanUtc", WriteUtcTime(env, g.greatest_grahan_utc));
     SetNamed(env, obj, "greatestGrahanJd", MakeDouble(env, g.greatest_grahan_jd));
+    SetNamed(env, obj, "c1Utc", g.c1_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.c1_utc));
     SetNamed(env, obj, "c1Jd", MakeDouble(env, g.c1_jd));
+    SetNamed(env, obj, "c2Utc", g.c2_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.c2_utc));
     SetNamed(env, obj, "c2Jd", MakeDouble(env, g.c2_jd));
+    SetNamed(env, obj, "c3Utc", g.c3_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.c3_utc));
     SetNamed(env, obj, "c3Jd", MakeDouble(env, g.c3_jd));
+    SetNamed(env, obj, "c4Utc", g.c4_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.c4_utc));
     SetNamed(env, obj, "c4Jd", MakeDouble(env, g.c4_jd));
     SetNamed(env, obj, "moonEclipticLatDeg", MakeDouble(env, g.moon_ecliptic_lat_deg));
     SetNamed(env, obj, "angularSeparationDeg", MakeDouble(env, g.angular_separation_deg));
@@ -5882,6 +5903,7 @@ napi_value FullKundaliForDate(napi_env env, napi_callback_info info) {
             napi_value so;
             napi_create_object(env, &so);
             SetNamed(env, so, "system", MakeUint32(env, snapshot.system));
+            SetNamed(env, so, "queryUtc", WriteUtcTime(env, snapshot.query_utc));
             SetNamed(env, so, "queryJd", MakeDouble(env, snapshot.query_jd));
             SetNamed(env, so, "count", MakeUint32(env, snapshot.count));
             napi_value periods;
@@ -6132,6 +6154,7 @@ napi_value DashaSnapshot(napi_env env, napi_callback_info info) {
         napi_value snap;
         napi_create_object(env, &snap);
         SetNamed(env, snap, "system", MakeUint32(env, snapshot.system));
+        SetNamed(env, snap, "queryUtc", WriteUtcTime(env, snapshot.query_utc));
         SetNamed(env, snap, "queryJd", MakeDouble(env, snapshot.query_jd));
         SetNamed(env, snap, "count", MakeUint32(env, snapshot.count));
 

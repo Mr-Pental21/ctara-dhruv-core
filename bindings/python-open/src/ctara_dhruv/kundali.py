@@ -491,6 +491,8 @@ def _extract_dasha_period(p):
     return DashaPeriod(
         entity_type=p.entity_type,
         entity_index=p.entity_index,
+        start_utc=_utc_from_ffi(p.start_utc),
+        end_utc=_utc_from_ffi(p.end_utc),
         start_jd=p.start_jd,
         end_jd=p.end_jd,
         level=p.level,
@@ -910,6 +912,7 @@ def full_kundali(
                 periods = [_extract_dasha_period(snap.periods[j]) for j in range(snap.count)]
                 dasha_snapshots.append(DashaSnapshot(
                     system=snap.system,
+                    query_utc=_utc_from_ffi(snap.query_utc),
                     query_jd=snap.query_jd,
                     periods=periods,
                 ))

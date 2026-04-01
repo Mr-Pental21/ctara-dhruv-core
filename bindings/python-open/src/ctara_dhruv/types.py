@@ -348,6 +348,7 @@ class ConjunctionEvent:
     ``body1_code`` / ``body2_code``: NAIF body codes.
     """
 
+    utc: UtcTime
     jd_tdb: float
     actual_separation_deg: float
     body1_longitude_deg: float
@@ -369,12 +370,19 @@ class ChandraGrahanResult:
     grahan_type: int
     magnitude: float
     penumbral_magnitude: float
+    greatest_grahan_utc: UtcTime
     greatest_grahan_jd: float
+    p1_utc: UtcTime
     p1_jd: float
+    u1_utc: Optional[UtcTime]
     u1_jd: float
+    u2_utc: Optional[UtcTime]
     u2_jd: float
+    u3_utc: Optional[UtcTime]
     u3_jd: float
+    u4_utc: Optional[UtcTime]
     u4_jd: float
+    p4_utc: UtcTime
     p4_jd: float
     moon_ecliptic_lat_deg: float
     angular_separation_deg: float
@@ -389,10 +397,15 @@ class SuryaGrahanResult:
 
     grahan_type: int
     magnitude: float
+    greatest_grahan_utc: UtcTime
     greatest_grahan_jd: float
+    c1_utc: Optional[UtcTime]
     c1_jd: float
+    c2_utc: Optional[UtcTime]
     c2_jd: float
+    c3_utc: Optional[UtcTime]
     c3_jd: float
+    c4_utc: Optional[UtcTime]
     c4_jd: float
     moon_ecliptic_lat_deg: float
     angular_separation_deg: float
@@ -405,6 +418,7 @@ class StationaryEvent:
     ``station_type``: 0=retrograde, 1=direct.
     """
 
+    utc: UtcTime
     jd_tdb: float
     body_code: int
     longitude_deg: float
@@ -419,6 +433,7 @@ class MaxSpeedEvent:
     ``speed_type``: 0=direct, 1=retrograde.
     """
 
+    utc: UtcTime
     jd_tdb: float
     body_code: int
     longitude_deg: float
@@ -1113,7 +1128,8 @@ class DashaPeriod:
     ``entity_index``: Graha (0-8), rashi (0-11), or yogini (0-7).
     ``entity_name``: exact canonical entity name when available.
     ``level``: hierarchical level (0-4).
-    ``start_jd`` / ``end_jd``: JD UTC, [start, end) interval.
+    ``start_utc`` / ``end_utc``: structured Gregorian UTC [start, end) interval.
+    ``start_jd`` / ``end_jd``: JD UTC kept alongside UTC.
     ``order``: 1-indexed position among siblings.
     ``parent_idx``: index into parent level's array (0 for level 0).
     """
@@ -1126,6 +1142,8 @@ class DashaPeriod:
     order: int
     parent_idx: int
     entity_name: Optional[str] = None
+    start_utc: Optional[UtcTime] = None
+    end_utc: Optional[UtcTime] = None
 
 
 @dataclass(frozen=True)
@@ -1133,13 +1151,15 @@ class DashaSnapshot:
     """Dasha snapshot at a point in time (max 5 levels).
 
     ``system``: DashaSystem code.
-    ``query_jd``: query JD UTC.
+    ``query_utc``: structured Gregorian UTC query instant.
+    ``query_jd``: query JD UTC kept alongside UTC.
     ``periods``: one period per active level.
     """
 
     system: int
     query_jd: float
     periods: list[DashaPeriod]
+    query_utc: Optional[UtcTime] = None
 
 
 # ---------------------------------------------------------------------------

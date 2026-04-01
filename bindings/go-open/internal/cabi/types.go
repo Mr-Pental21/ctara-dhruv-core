@@ -375,6 +375,7 @@ type ConjunctionSearchRequest struct {
 }
 
 type ConjunctionEvent struct {
+	UTC                 UtcTime
 	JdTdb               float64
 	ActualSeparationDeg float64
 	Body1LongitudeDeg   float64
@@ -403,12 +404,19 @@ type ChandraGrahanResult struct {
 	GrahanType           int32
 	Magnitude            float64
 	PenumbralMagnitude   float64
+	GreatestGrahanUTC    UtcTime
 	GreatestGrahanJd     float64
+	P1UTC                UtcTime
 	P1Jd                 float64
+	U1UTC                *UtcTime
 	U1Jd                 float64
+	U2UTC                *UtcTime
 	U2Jd                 float64
+	U3UTC                *UtcTime
 	U3Jd                 float64
+	U4UTC                *UtcTime
 	U4Jd                 float64
+	P4UTC                UtcTime
 	P4Jd                 float64
 	MoonEclipticLatDeg   float64
 	AngularSeparationDeg float64
@@ -417,10 +425,15 @@ type ChandraGrahanResult struct {
 type SuryaGrahanResult struct {
 	GrahanType           int32
 	Magnitude            float64
+	GreatestGrahanUTC    UtcTime
 	GreatestGrahanJd     float64
+	C1UTC                *UtcTime
 	C1Jd                 float64
+	C2UTC                *UtcTime
 	C2Jd                 float64
+	C3UTC                *UtcTime
 	C3Jd                 float64
+	C4UTC                *UtcTime
 	C4Jd                 float64
 	MoonEclipticLatDeg   float64
 	AngularSeparationDeg float64
@@ -444,6 +457,7 @@ type MotionSearchRequest struct {
 }
 
 type StationaryEvent struct {
+	UTC          UtcTime
 	JdTdb        float64
 	BodyCode     int32
 	LongitudeDeg float64
@@ -452,6 +466,7 @@ type StationaryEvent struct {
 }
 
 type MaxSpeedEvent struct {
+	UTC            UtcTime
 	JdTdb          float64
 	BodyCode       int32
 	LongitudeDeg   float64
@@ -710,16 +725,19 @@ type DashaPeriod struct {
 	EntityName  string
 	StartJD     float64
 	EndJD       float64
+	StartUTC    UtcTime
+	EndUTC      UtcTime
 	Level       uint8
 	Order       uint16
 	ParentIdx   uint32
 }
 
 type DashaSnapshot struct {
-	System  uint8
-	QueryJD float64
-	Count   uint8
-	Periods [5]DashaPeriod
+	System   uint8
+	QueryJD  float64
+	QueryUTC UtcTime
+	Count    uint8
+	Periods  [5]DashaPeriod
 }
 
 type Dms struct {

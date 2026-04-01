@@ -2316,6 +2316,7 @@ fn conjunction_result_json(result: ConjunctionResult) -> Value {
 
 fn conjunction_event_json(event: dhruv_search::ConjunctionEvent) -> Value {
     json!({
+        "utc": utc_json(event.utc),
         "jd_tdb": event.jd_tdb,
         "actual_separation_deg": event.actual_separation_deg,
         "body1_longitude_deg": event.body1_longitude_deg,
@@ -2349,12 +2350,19 @@ fn chandra_grahan_json(event: dhruv_search::ChandraGrahan) -> Value {
         "grahan_type": debug_name(event.grahan_type),
         "magnitude": event.magnitude,
         "penumbral_magnitude": event.penumbral_magnitude,
+        "greatest_grahan_utc": utc_json(event.greatest_grahan_utc),
         "greatest_grahan_jd": event.greatest_grahan_jd,
+        "p1_utc": utc_json(event.p1_utc),
         "p1_jd": event.p1_jd,
+        "u1_utc": event.u1_utc.map(utc_json),
         "u1_jd": event.u1_jd,
+        "u2_utc": event.u2_utc.map(utc_json),
         "u2_jd": event.u2_jd,
+        "u3_utc": event.u3_utc.map(utc_json),
         "u3_jd": event.u3_jd,
+        "u4_utc": event.u4_utc.map(utc_json),
         "u4_jd": event.u4_jd,
+        "p4_utc": utc_json(event.p4_utc),
         "p4_jd": event.p4_jd
     })
 }
@@ -2363,10 +2371,15 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
     json!({
         "grahan_type": debug_name(event.grahan_type),
         "magnitude": event.magnitude,
+        "greatest_grahan_utc": utc_json(event.greatest_grahan_utc),
         "greatest_grahan_jd": event.greatest_grahan_jd,
+        "c1_utc": event.c1_utc.map(utc_json),
         "c1_jd": event.c1_jd,
+        "c2_utc": event.c2_utc.map(utc_json),
         "c2_jd": event.c2_jd,
+        "c3_utc": event.c3_utc.map(utc_json),
         "c3_jd": event.c3_jd,
+        "c4_utc": event.c4_utc.map(utc_json),
         "c4_jd": event.c4_jd
     })
 }
@@ -2427,6 +2440,7 @@ fn motion_result_json(result: MotionResult) -> Value {
 
 fn stationary_event_json(event: dhruv_search::StationaryEvent) -> Value {
     json!({
+        "utc": utc_json(event.utc),
         "jd_tdb": event.jd_tdb,
         "body": debug_name(event.body),
         "longitude_deg": event.longitude_deg,
@@ -2437,6 +2451,7 @@ fn stationary_event_json(event: dhruv_search::StationaryEvent) -> Value {
 
 fn max_speed_event_json(event: dhruv_search::MaxSpeedEvent) -> Value {
     json!({
+        "utc": utc_json(event.utc),
         "jd_tdb": event.jd_tdb,
         "body": debug_name(event.body),
         "longitude_deg": event.longitude_deg,
@@ -2756,6 +2771,7 @@ fn dasha_hierarchy_json(result: DashaHierarchy) -> Value {
 fn dasha_snapshot_json(result: DashaSnapshot) -> Value {
     json!({
         "system": debug_name(result.system),
+        "query_utc": utc_json_from_jd_utc(result.query_jd),
         "query_jd": result.query_jd,
         "periods": result.periods.into_iter().map(dasha_period_json).collect::<Vec<_>>()
     })
@@ -2764,11 +2780,31 @@ fn dasha_snapshot_json(result: DashaSnapshot) -> Value {
 fn dasha_period_json(period: DashaPeriod) -> Value {
     json!({
         "entity": dasha_entity_json(period.entity),
+        "start_utc": utc_json_from_jd_utc(period.start_jd),
         "start_jd": period.start_jd,
+        "end_utc": utc_json_from_jd_utc(period.end_jd),
         "end_jd": period.end_jd,
         "level": debug_name(period.level),
         "order": period.order,
         "parent_idx": period.parent_idx
+    })
+}
+
+fn utc_json_from_jd_utc(jd_utc: f64) -> Value {
+    let (year, month, day_frac) = dhruv_time::jd_to_calendar(jd_utc);
+    let day = day_frac.floor() as u32;
+    let frac = day_frac.fract();
+    let total_seconds = frac * 86_400.0;
+    let hour = (total_seconds / 3600.0).floor() as u32;
+    let minute = ((total_seconds % 3600.0) / 60.0).floor() as u32;
+    let second = total_seconds % 60.0;
+    json!({
+        "year": year,
+        "month": month,
+        "day": day,
+        "hour": hour,
+        "minute": minute,
+        "second": second
     })
 }
 

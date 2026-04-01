@@ -12,6 +12,7 @@ use dhruv_frames::{
     DEFAULT_PRECESSION_MODEL, PrecessionModel, ReferencePlane, cartesian_to_spherical,
     icrf_to_ecliptic, icrf_to_invariable, precess_ecliptic_j2000_to_date_with_model,
 };
+use dhruv_time::UtcTime;
 
 use crate::conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 use crate::error::SearchError;
@@ -181,6 +182,7 @@ fn bisect_refinement(
 
     Ok(ConjunctionEvent {
         jd_tdb: t_final,
+        utc: UtcTime::from_jd_tdb(t_final, engine.lsk()),
         actual_separation_deg: actual_sep,
         body1_longitude_deg: lon1,
         body2_longitude_deg: lon2,

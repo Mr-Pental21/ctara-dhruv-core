@@ -153,6 +153,10 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
 - `sankranti/2`
 - `motion/2`
 
+High-level search results carry structured UTC on the main event payloads.
+Conjunction, grahan, and motion results now include UTC alongside JD/TDB where
+numeric JD is still exposed; sankranti and lunar-phase results remain UTC-first.
+
 `CtaraDhruv.Dasha`:
 
 - `hierarchy/2`
@@ -217,5 +221,8 @@ Accepted enum-style string values:
 - Enum-like strings are normalized through the NIF boundary and usually come back as atoms in results.
 - `full_kundali_config[:dasha_config]` supports `:systems`, `:max_level`,
   `:max_levels`, and `:snapshot_utc`.
+- Dasha period results now include `:start_utc` / `:end_utc` alongside
+  `:start_jd` / `:end_jd`, and dasha snapshots include `:query_utc`
+  alongside `:query_jd`.
 
 For build/runtime notes, see [`bindings/elixir-open/README.md`](../../../bindings/elixir-open/README.md).

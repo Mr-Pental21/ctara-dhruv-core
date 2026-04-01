@@ -1,6 +1,7 @@
 //! Types for conjunction, opposition, and aspect search.
 
 use dhruv_core::Body;
+use dhruv_time::UtcTime;
 
 /// Configuration for a conjunction/aspect search.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -81,6 +82,8 @@ pub enum SearchDirection {
 pub struct ConjunctionEvent {
     /// Event time as Julian Date (TDB).
     pub jd_tdb: f64,
+    /// Event time as structured Gregorian UTC.
+    pub utc: UtcTime,
     /// Actual ecliptic longitude separation at peak, in degrees [0, 360).
     pub actual_separation_deg: f64,
     /// Body 1 ecliptic longitude in degrees [0, 360).

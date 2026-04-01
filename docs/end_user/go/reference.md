@@ -233,6 +233,13 @@ Go uses one main query request surface. `QueryRequest` carries JD-vs-UTC input
 and cartesian-vs-spherical output selection instead of separate `QueryUTC` or
 `QueryUTCSpherical` entrypoints.
 
+Go dasha period results expose structured `StartUTC` / `EndUTC` alongside
+`StartJD` / `EndJD`. Dasha snapshots expose `QueryUTC` alongside `QueryJD`.
+
+Go high-level search/event results follow the same rule: conjunction, grahan,
+stationary, and max-speed results expose structured UTC alongside their
+existing JD/TDB fields, while sankranti and lunar-phase results remain UTC-first.
+
 Go range-search methods auto-expand their internal buffers until the full
 result set is returned. The optional final argument is only the initial
 internal chunk size, not a public truncation cap.

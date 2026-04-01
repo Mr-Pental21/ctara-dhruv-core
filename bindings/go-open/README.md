@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=51`
+- ABI target: `DHRUV_API_VERSION=53`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -94,6 +94,7 @@ The public `dhruv` package includes wrappers for:
 - ayanamsha and lunar-node APIs
 - riseset/bhava APIs
 - unified search APIs (conjunction/grahan/motion/lunar phase/sankranti)
+  with structured UTC on the high-level time-bearing result objects alongside JD
 - panchang and calendar date APIs
 - panchang/classifier/math helper APIs
 - graha longitude and jyotish date APIs

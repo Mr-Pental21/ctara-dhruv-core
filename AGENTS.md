@@ -48,7 +48,8 @@ Scope: this file governs AI agent behavior in `ctara-dhruv-core`.
 9. Use request/context attributes for alternate inputs or precomputed invocation data (for example UTC vs JD, `with_inputs`, `with_moon`). Use config attributes for behavior and policy knobs. Do not encode those variations in public function names.
 10. Do not keep parallel setter-style policy APIs such as `set_*` when the value can live in request/context or config data. Consolidation should remove redundant variant/setter surfaces instead of deprecating and keeping them alongside the main shape.
 11. Keep all public library surfaces in sync for shared features: C ABI, `dhruv_rs` public APIs, CLIs, and wrappers including Python, Go, Node, Elixir, plus future additions. Language-specific convenience features are allowed, but core library features, request/context shapes, configs, and functions should stay aligned across surfaces.
-12. When public behavior changes, update documentation before considering the task complete:
+12. Default high-level public surfaces to Gregorian UTC structured input/output. Low-level/internal/math surfaces may continue to use JD UTC. Where numeric JD transport is still publicly exposed, keep JD alongside structured UTC instead of exposing JD alone.
+13. When public behavior changes, update documentation before considering the task complete:
    - update relevant internal/reference docs (for example `docs/`, wrapper READMEs, or other public-surface references),
    - update relevant end-user docs under `docs/end_user/`,
    - verify docs against the current code, not against older docs.

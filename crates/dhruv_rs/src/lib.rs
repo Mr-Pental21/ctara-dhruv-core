@@ -57,7 +57,7 @@ pub use dhruv_search::{
 pub use dhruv_tara::{
     EarthState, EquatorialPosition, TaraAccuracy, TaraCatalog, TaraConfig, TaraError, TaraId,
 };
-pub use dhruv_time::{EopKernel, TimeConversionOptions, TimeConversionPolicy};
+pub use dhruv_time::{EopKernel, TimeConversionOptions, TimeConversionPolicy, UtcTime};
 pub use dhruv_vedic_base::dasha::{
     DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot, DashaSystem,
     DashaVariationConfig, SubPeriodMethod, YoginiScheme,
@@ -82,6 +82,49 @@ pub use dhruv_vedic_ops::{
     dasha_children_for_birth, dasha_complete_level_for_birth, dasha_hierarchy_for_birth,
     dasha_level0_entity_for_birth, dasha_level0_for_birth, dasha_snapshot_at,
 };
+
+fn utc_from_jd_utc(jd_utc: f64) -> UtcTime {
+    let (year, month, day_frac) = dhruv_time::jd_to_calendar(jd_utc);
+    let day = day_frac.floor() as u32;
+    let frac = day_frac.fract();
+    let total_seconds = frac * 86_400.0;
+    let hour = (total_seconds / 3600.0).floor() as u32;
+    let minute = ((total_seconds % 3600.0) / 60.0).floor() as u32;
+    let second = total_seconds % 60.0;
+    UtcTime {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+    }
+}
+
+pub trait DashaTimeExt {
+    fn start_utc(&self) -> UtcTime;
+    fn end_utc(&self) -> UtcTime;
+}
+
+impl DashaTimeExt for DashaPeriod {
+    fn start_utc(&self) -> UtcTime {
+        utc_from_jd_utc(self.start_jd)
+    }
+
+    fn end_utc(&self) -> UtcTime {
+        utc_from_jd_utc(self.end_jd)
+    }
+}
+
+pub trait DashaSnapshotTimeExt {
+    fn query_utc(&self) -> UtcTime;
+}
+
+impl DashaSnapshotTimeExt for DashaSnapshot {
+    fn query_utc(&self) -> UtcTime {
+        utc_from_jd_utc(self.query_jd)
+    }
+}
 
 #[cfg(test)]
 mod tests {

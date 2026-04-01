@@ -64,6 +64,10 @@ Request-driven functions:
 - `charakaraka`
 - `upagraha_op`
 - `avastha_op`
+
+High-level time-bearing search results default to structured Gregorian UTC on
+their main result types while retaining numeric JD/TDB alongside UTC where the
+numeric transport remains part of the public contract.
 - `full_kundali`
 
 ## Common Public Types And Configs
@@ -93,6 +97,8 @@ Frequently used config and result families re-exported from `dhruv_rs::*`:
 - `FullKundaliConfig`
 - `FullKundaliResult`
 - `DashaSnapshotTime`
+- `DashaTimeExt`
+- `DashaSnapshotTimeExt`
 - `AllUpagrahas`
 - `AllGrahaAvasthas`
 - `GrahaAvasthas`

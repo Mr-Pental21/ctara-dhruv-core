@@ -1,6 +1,7 @@
 //! Types for stationary point and max-speed search.
 
 use dhruv_core::Body;
+use dhruv_time::UtcTime;
 
 /// Station type: retrograde or direct.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -16,6 +17,8 @@ pub enum StationType {
 pub struct StationaryEvent {
     /// Event time as Julian Date (TDB).
     pub jd_tdb: f64,
+    /// Event time as structured Gregorian UTC.
+    pub utc: UtcTime,
     /// Which body.
     pub body: Body,
     /// Ecliptic longitude at station in degrees [0, 360).
@@ -40,6 +43,8 @@ pub enum MaxSpeedType {
 pub struct MaxSpeedEvent {
     /// Event time as Julian Date (TDB).
     pub jd_tdb: f64,
+    /// Event time as structured Gregorian UTC.
+    pub utc: UtcTime,
     /// Which body.
     pub body: Body,
     /// Ecliptic longitude at peak speed in degrees [0, 360).

@@ -14,6 +14,7 @@
 //! See docs/clean_room_stationary.md for provenance.
 
 use dhruv_core::{Body, Engine};
+use dhruv_time::UtcTime;
 
 use crate::conjunction::body_ecliptic_state;
 use crate::conjunction_types::SearchDirection;
@@ -157,6 +158,7 @@ fn find_stationary_event(
 
             return Ok(Some(StationaryEvent {
                 jd_tdb: t_station,
+                utc: UtcTime::from_jd_tdb(t_station, engine.lsk()),
                 body,
                 longitude_deg: lon,
                 latitude_deg: lat,
@@ -243,6 +245,7 @@ pub fn search_stationary(
 
                 events.push(StationaryEvent {
                     jd_tdb: t_station,
+                    utc: UtcTime::from_jd_tdb(t_station, engine.lsk()),
                     body,
                     longitude_deg: lon,
                     latitude_deg: lat,
@@ -329,6 +332,7 @@ fn find_max_speed_event(
 
             return Ok(Some(MaxSpeedEvent {
                 jd_tdb: t_peak,
+                utc: UtcTime::from_jd_tdb(t_peak, engine.lsk()),
                 body,
                 longitude_deg: lon,
                 latitude_deg: lat,
@@ -415,6 +419,7 @@ pub fn search_max_speed(
 
                 events.push(MaxSpeedEvent {
                     jd_tdb: t_peak,
+                    utc: UtcTime::from_jd_tdb(t_peak, engine.lsk()),
                     body,
                     longitude_deg: lon,
                     latitude_deg: lat,

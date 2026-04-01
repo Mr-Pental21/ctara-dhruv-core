@@ -53,6 +53,7 @@ def _utc_from_c(u) -> UtcTime:
 
 def _conjunction_event(e) -> ConjunctionEvent:
     return ConjunctionEvent(
+        utc=_utc_from_c(e.utc),
         jd_tdb=e.jd_tdb,
         actual_separation_deg=e.actual_separation_deg,
         body1_longitude_deg=e.body1_longitude_deg,
@@ -69,12 +70,19 @@ def _chandra_grahan(r) -> ChandraGrahanResult:
         grahan_type=r.grahan_type,
         magnitude=r.magnitude,
         penumbral_magnitude=r.penumbral_magnitude,
+        greatest_grahan_utc=_utc_from_c(r.greatest_grahan_utc),
         greatest_grahan_jd=r.greatest_grahan_jd,
+        p1_utc=_utc_from_c(r.p1_utc),
         p1_jd=r.p1_jd,
+        u1_utc=None if r.u1_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.u1_utc),
         u1_jd=r.u1_jd,
+        u2_utc=None if r.u2_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.u2_utc),
         u2_jd=r.u2_jd,
+        u3_utc=None if r.u3_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.u3_utc),
         u3_jd=r.u3_jd,
+        u4_utc=None if r.u4_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.u4_utc),
         u4_jd=r.u4_jd,
+        p4_utc=_utc_from_c(r.p4_utc),
         p4_jd=r.p4_jd,
         moon_ecliptic_lat_deg=r.moon_ecliptic_lat_deg,
         angular_separation_deg=r.angular_separation_deg,
@@ -85,10 +93,15 @@ def _surya_grahan(r) -> SuryaGrahanResult:
     return SuryaGrahanResult(
         grahan_type=r.grahan_type,
         magnitude=r.magnitude,
+        greatest_grahan_utc=_utc_from_c(r.greatest_grahan_utc),
         greatest_grahan_jd=r.greatest_grahan_jd,
+        c1_utc=None if r.c1_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.c1_utc),
         c1_jd=r.c1_jd,
+        c2_utc=None if r.c2_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.c2_utc),
         c2_jd=r.c2_jd,
+        c3_utc=None if r.c3_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.c3_utc),
         c3_jd=r.c3_jd,
+        c4_utc=None if r.c4_jd == lib.DHRUV_JD_ABSENT else _utc_from_c(r.c4_utc),
         c4_jd=r.c4_jd,
         moon_ecliptic_lat_deg=r.moon_ecliptic_lat_deg,
         angular_separation_deg=r.angular_separation_deg,
@@ -97,6 +110,7 @@ def _surya_grahan(r) -> SuryaGrahanResult:
 
 def _stationary_event(e) -> StationaryEvent:
     return StationaryEvent(
+        utc=_utc_from_c(e.utc),
         jd_tdb=e.jd_tdb,
         body_code=e.body_code,
         longitude_deg=e.longitude_deg,
@@ -107,6 +121,7 @@ def _stationary_event(e) -> StationaryEvent:
 
 def _max_speed_event(e) -> MaxSpeedEvent:
     return MaxSpeedEvent(
+        utc=_utc_from_c(e.utc),
         jd_tdb=e.jd_tdb,
         body_code=e.body_code,
         longitude_deg=e.longitude_deg,

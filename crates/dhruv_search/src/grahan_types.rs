@@ -1,5 +1,7 @@
 //! Types for grahan (eclipse) computation.
 
+use dhruv_time::UtcTime;
+
 /// Geographic location on Earth's surface.
 ///
 /// Identical fields to `dhruv_vedic_base::GeoLocation` but defined
@@ -73,18 +75,32 @@ pub struct ChandraGrahan {
     pub penumbral_magnitude: f64,
     /// Time of greatest grahan (JD TDB).
     pub greatest_grahan_jd: f64,
+    /// Time of greatest grahan as structured Gregorian UTC.
+    pub greatest_grahan_utc: UtcTime,
     /// P1: First penumbral contact (JD TDB).
     pub p1_jd: f64,
+    /// P1: First penumbral contact as structured Gregorian UTC.
+    pub p1_utc: UtcTime,
     /// U1: First umbral contact (JD TDB). None for penumbral-only.
     pub u1_jd: Option<f64>,
+    /// U1: First umbral contact as structured Gregorian UTC. None for penumbral-only.
+    pub u1_utc: Option<UtcTime>,
     /// U2: Start of totality (JD TDB). None unless total.
     pub u2_jd: Option<f64>,
+    /// U2: Start of totality as structured Gregorian UTC. None unless total.
+    pub u2_utc: Option<UtcTime>,
     /// U3: End of totality (JD TDB). None unless total.
     pub u3_jd: Option<f64>,
+    /// U3: End of totality as structured Gregorian UTC. None unless total.
+    pub u3_utc: Option<UtcTime>,
     /// U4: Last umbral contact (JD TDB). None for penumbral-only.
     pub u4_jd: Option<f64>,
+    /// U4: Last umbral contact as structured Gregorian UTC. None for penumbral-only.
+    pub u4_utc: Option<UtcTime>,
     /// P4: Last penumbral contact (JD TDB).
     pub p4_jd: f64,
+    /// P4: Last penumbral contact as structured Gregorian UTC.
+    pub p4_utc: UtcTime,
     /// Moon's ecliptic latitude at greatest grahan, in degrees.
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation between Moon center and shadow axis at greatest grahan, in degrees.
@@ -113,14 +129,24 @@ pub struct SuryaGrahan {
     pub magnitude: f64,
     /// Time of greatest grahan (JD TDB).
     pub greatest_grahan_jd: f64,
+    /// Time of greatest grahan as structured Gregorian UTC.
+    pub greatest_grahan_utc: UtcTime,
     /// C1: First external contact (JD TDB). Moon's limb first touches Sun's limb.
     pub c1_jd: Option<f64>,
+    /// C1 as structured Gregorian UTC. None if absent.
+    pub c1_utc: Option<UtcTime>,
     /// C2: First internal contact (JD TDB). None for partial grahan.
     pub c2_jd: Option<f64>,
+    /// C2 as structured Gregorian UTC. None if absent.
+    pub c2_utc: Option<UtcTime>,
     /// C3: Last internal contact (JD TDB). None for partial grahan.
     pub c3_jd: Option<f64>,
+    /// C3 as structured Gregorian UTC. None if absent.
+    pub c3_utc: Option<UtcTime>,
     /// C4: Last external contact (JD TDB). Moon's limb last touches Sun's limb.
     pub c4_jd: Option<f64>,
+    /// C4 as structured Gregorian UTC. None if absent.
+    pub c4_utc: Option<UtcTime>,
     /// Moon's ecliptic latitude at greatest grahan, in degrees.
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation between Sun and Moon centers at greatest grahan, in degrees.

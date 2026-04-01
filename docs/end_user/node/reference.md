@@ -67,6 +67,10 @@ For range searches (`queryMode: 2`), these functions auto-expand their
 internal buffers until the full result set is returned. The optional third
 argument is only the initial internal chunk size, not a public result limit.
 
+High-level time-bearing search results expose structured UTC on the main
+result objects. Conjunction, grahan, stationary, and max-speed results now
+include UTC alongside JD/TDB; sankranti and lunar-phase results remain UTC-first.
+
 `panchang.js` exports:
 
 - `bhavaSystemCount`
@@ -263,7 +267,8 @@ accept either:
 `dashaSnapshot` similarly accepts either `queryUtc` or `queryJd`.
 
 Returned dasha period objects include `entityName`, the exact canonical
-Sanskrit entity name.
+Sanskrit entity name, plus `startUtc` / `endUtc` alongside `startJd` /
+`endJd`. Dasha snapshots expose `queryUtc` alongside `queryJd`.
 
 `tara.js` exports:
 

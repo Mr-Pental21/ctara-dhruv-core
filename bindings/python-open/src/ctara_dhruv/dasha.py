@@ -10,7 +10,7 @@ from typing import Optional
 
 from ._ffi import ffi, lib
 from ._check import check
-from .types import DashaPeriod, DashaSnapshot
+from .types import DashaPeriod, DashaSnapshot, UtcTime
 
 
 DHRUV_DASHA_TIME_JD_UTC = 0
@@ -61,6 +61,17 @@ def _make_utc(jd_utc):
     return utc
 
 
+def _utc_from_c(u):
+    return UtcTime(
+        year=u.year,
+        month=u.month,
+        day=u.day,
+        hour=u.hour,
+        minute=u.minute,
+        second=u.second,
+    )
+
+
 def _make_location(location):
     loc = ffi.new("DhruvGeoLocation *")
     loc.latitude_deg = location[0]
@@ -94,6 +105,8 @@ def _extract_period(p):
     return DashaPeriod(
         entity_type=p.entity_type,
         entity_index=p.entity_index,
+        start_utc=_utc_from_c(p.start_utc),
+        end_utc=_utc_from_c(p.end_utc),
         start_jd=p.start_jd,
         end_jd=p.end_jd,
         level=p.level,
@@ -110,6 +123,20 @@ def _make_period(period):
     out.entity_name = ffi.NULL
     out.start_jd = period.start_jd
     out.end_jd = period.end_jd
+    if getattr(period, "start_utc", None) is not None:
+        out.start_utc.year = period.start_utc.year
+        out.start_utc.month = period.start_utc.month
+        out.start_utc.day = period.start_utc.day
+        out.start_utc.hour = period.start_utc.hour
+        out.start_utc.minute = period.start_utc.minute
+        out.start_utc.second = period.start_utc.second
+    if getattr(period, "end_utc", None) is not None:
+        out.end_utc.year = period.end_utc.year
+        out.end_utc.month = period.end_utc.month
+        out.end_utc.day = period.end_utc.day
+        out.end_utc.hour = period.end_utc.hour
+        out.end_utc.minute = period.end_utc.minute
+        out.end_utc.second = period.end_utc.second
     out.level = period.level
     out.order = period.order
     out.parent_idx = period.parent_idx
@@ -451,6 +478,7 @@ def dasha_snapshot(
     periods = [_extract_period(out.periods[i]) for i in range(out.count)]
     return DashaSnapshot(
         system=out.system,
+        query_utc=_utc_from_c(out.query_utc),
         query_jd=out.query_jd,
         periods=periods,
     )
