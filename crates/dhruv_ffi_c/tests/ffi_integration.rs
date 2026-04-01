@@ -9,6 +9,15 @@ use dhruv_core::{Body, Frame, Observer};
 use dhruv_ffi_c::*;
 use dhruv_time::{calendar_to_jd, gmst_rad, local_sidereal_time_rad};
 
+const ZEROED_UTC: DhruvUtcTime = DhruvUtcTime {
+    year: 0,
+    month: 0,
+    day: 0,
+    hour: 0,
+    minute: 0,
+    second: 0.0,
+};
+
 fn kernel_base() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../kernels/data")
 }
@@ -127,9 +136,13 @@ fn ffi_sankranti_search_ex_default_config_works() {
         target_kind: DHRUV_SANKRANTI_TARGET_ANY,
         query_mode: DHRUV_SANKRANTI_QUERY_MODE_NEXT,
         rashi_index: 0,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
         at_jd_tdb: calendar_to_jd(2024, 3, 20.0),
         start_jd_tdb: 0.0,
         end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
         config: dhruv_sankranti_config_default(),
     };
     let mut event: DhruvSankrantiEvent = unsafe { std::mem::zeroed() };
@@ -164,9 +177,13 @@ fn ffi_conjunction_search_ex_default_config_works() {
         body1_code: Body::Sun.code(),
         body2_code: Body::Mercury.code(),
         query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
         at_jd_tdb: 2_460_390.5,
         start_jd_tdb: 0.0,
         end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
         config: dhruv_conjunction_config_default(),
     };
     let mut event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
@@ -1453,9 +1470,13 @@ fn ffi_utc_conjunction_roundtrip() {
         body1_code: Body::Sun.code(),
         body2_code: Body::Moon.code(),
         query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
         at_jd_tdb: jd_start,
         start_jd_tdb: 0.0,
         end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
         config: dhruv_conjunction_config_default(),
     };
     let mut jd_event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
@@ -1485,7 +1506,9 @@ fn ffi_utc_conjunction_roundtrip() {
     };
     let jd_from_utc_start = utc_to_tdb_jd_default(lsk_ptr, utc_start);
     let request_from_utc = DhruvConjunctionSearchRequest {
+        time_kind: DHRUV_SEARCH_TIME_UTC,
         at_jd_tdb: jd_from_utc_start,
+        at_utc: utc_start,
         ..request_jd
     };
     let mut utc_path_event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
@@ -1536,9 +1559,13 @@ fn ffi_utc_chandra_grahan_roundtrip() {
     let request_jd = DhruvGrahanSearchRequest {
         grahan_kind: DHRUV_GRAHAN_KIND_CHANDRA,
         query_mode: DHRUV_GRAHAN_QUERY_MODE_NEXT,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
         at_jd_tdb: jd_start,
         start_jd_tdb: 0.0,
         end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
         config: dhruv_grahan_config_default(),
     };
     let mut jd_result: DhruvChandraGrahanResult = unsafe { std::mem::zeroed() };
@@ -1570,7 +1597,9 @@ fn ffi_utc_chandra_grahan_roundtrip() {
     };
     let jd_from_utc_start = utc_to_tdb_jd_default(lsk_ptr, utc_start);
     let request_from_utc = DhruvGrahanSearchRequest {
+        time_kind: DHRUV_SEARCH_TIME_UTC,
         at_jd_tdb: jd_from_utc_start,
+        at_utc: utc_start,
         ..request_jd
     };
     let mut utc_path_result: DhruvChandraGrahanResult = unsafe { std::mem::zeroed() };
@@ -1643,9 +1672,13 @@ fn ffi_utc_surya_grahan_roundtrip() {
     let request_jd = DhruvGrahanSearchRequest {
         grahan_kind: DHRUV_GRAHAN_KIND_SURYA,
         query_mode: DHRUV_GRAHAN_QUERY_MODE_NEXT,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
         at_jd_tdb: jd_start,
         start_jd_tdb: 0.0,
         end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
         config: dhruv_grahan_config_default(),
     };
     let mut jd_result: DhruvSuryaGrahanResult = unsafe { std::mem::zeroed() };
@@ -1677,7 +1710,9 @@ fn ffi_utc_surya_grahan_roundtrip() {
     };
     let jd_from_utc_start = utc_to_tdb_jd_default(lsk_ptr, utc_start);
     let request_from_utc = DhruvGrahanSearchRequest {
+        time_kind: DHRUV_SEARCH_TIME_UTC,
         at_jd_tdb: jd_from_utc_start,
+        at_utc: utc_start,
         ..request_jd
     };
     let mut utc_path_result: DhruvSuryaGrahanResult = unsafe { std::mem::zeroed() };
@@ -1751,9 +1786,13 @@ fn ffi_utc_stationary_roundtrip() {
         body_code: Body::Mercury.code(),
         motion_kind: DHRUV_MOTION_KIND_STATIONARY,
         query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
         at_jd_tdb: jd_start,
         start_jd_tdb: 0.0,
         end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
         config: dhruv_stationary_config_default(),
     };
     let mut jd_event: DhruvStationaryEvent = unsafe { std::mem::zeroed() };
@@ -1785,7 +1824,9 @@ fn ffi_utc_stationary_roundtrip() {
     };
     let jd_from_utc_start = utc_to_tdb_jd_default(lsk_ptr, utc_start);
     let request_from_utc = DhruvMotionSearchRequest {
+        time_kind: DHRUV_SEARCH_TIME_UTC,
         at_jd_tdb: jd_from_utc_start,
+        at_utc: utc_start,
         ..request_jd
     };
     let mut utc_path_event: DhruvStationaryEvent = unsafe { std::mem::zeroed() };
