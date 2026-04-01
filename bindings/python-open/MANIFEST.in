@@ -1,0 +1,7 @@
+include README.md
+include requirements.lock.txt
+include scripts/prepare_native_lib.py
+recursive-include tests *.py
+global-exclude *.so
+global-exclude *.dylib
+global-exclude *.dll

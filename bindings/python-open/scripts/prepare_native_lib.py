@@ -20,6 +20,13 @@ def shared_library_name() -> str:
     return "libdhruv_ffi_c.so"
 
 
+def remove_stale_bundled_libraries() -> None:
+    for lib_name in ("libdhruv_ffi_c.so", "libdhruv_ffi_c.dylib", "dhruv_ffi_c.dll"):
+        path = PACKAGE_DIR / lib_name
+        if path.exists():
+            path.unlink()
+
+
 def resolve_repo_root(explicit: str | None) -> Path:
     candidates: list[Path] = []
     if explicit:
@@ -70,6 +77,7 @@ def main() -> int:
         raise SystemExit(f"expected built library at {built_lib}")
 
     PACKAGE_DIR.mkdir(parents=True, exist_ok=True)
+    remove_stale_bundled_libraries()
     bundled_lib = PACKAGE_DIR / lib_name
     shutil.copy2(built_lib, bundled_lib)
     print(bundled_lib)

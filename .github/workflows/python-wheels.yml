@@ -40,14 +40,10 @@ jobs:
             DHRUV_REPO_ROOT=${{ github.workspace }}
           CIBW_ENVIRONMENT_WINDOWS: >
             DHRUV_REPO_ROOT=${{ github.workspace }}
-          CIBW_BEFORE_BUILD_LINUX: >
+          CIBW_BEFORE_ALL_LINUX: >
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &&
-            export PATH="$HOME/.cargo/bin:$PATH" &&
-            python {project}/scripts/prepare_native_lib.py
-          CIBW_BEFORE_BUILD_MACOS: >
-            python {project}/scripts/prepare_native_lib.py
-          CIBW_BEFORE_BUILD_WINDOWS: >
-            python {project}\scripts\prepare_native_lib.py
+            ln -sf "$HOME/.cargo/bin/cargo" /usr/local/bin/cargo &&
+            ln -sf "$HOME/.cargo/bin/rustc" /usr/local/bin/rustc
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-musllinux_*"
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
