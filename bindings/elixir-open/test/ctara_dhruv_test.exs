@@ -219,6 +219,20 @@ defmodule CtaraDhruvTest do
           assert is_map(chart.bhava_cusps)
           assert_in_delta chart.bhava_cusps.lagna_deg, sidereal_lagna, 1.0e-6
           assert_in_delta chart.bhava_cusps.mc_deg, sidereal_mc, 1.0e-6
+
+          too_many_systems = List.duplicate(:vimshottari, 24)
+
+          assert {:error, %CtaraDhruv.Error{kind: :invalid_request, message: message}} =
+                   Jyotish.full_kundali(engine, %{
+                     utc: utc,
+                     location: location,
+                     full_kundali_config: %{
+                       include_dasha: true,
+                       dasha_config: %{systems: too_many_systems}
+                     }
+                   })
+
+          assert message =~ "systems may contain at most"
         else
           assert true
         end

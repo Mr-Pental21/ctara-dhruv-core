@@ -1878,6 +1878,15 @@ fn to_full_kundali_config(
                 config.dasha_config.max_level = max_level;
             }
             if let Some(max_levels) = dasha_config.max_levels.as_ref() {
+                if max_levels.len() > config.dasha_config.max_levels.len() {
+                    return Err(error_payload(
+                        "invalid_request",
+                        format!(
+                            "max_levels may contain at most {} entries",
+                            config.dasha_config.max_levels.len()
+                        ),
+                    ));
+                }
                 for (index, max_level) in max_levels
                     .iter()
                     .copied()
@@ -1888,6 +1897,15 @@ fn to_full_kundali_config(
                 }
             }
             if let Some(systems) = dasha_config.systems.as_ref() {
+                if systems.len() > config.dasha_config.systems.len() {
+                    return Err(error_payload(
+                        "invalid_request",
+                        format!(
+                            "systems may contain at most {} entries",
+                            config.dasha_config.systems.len()
+                        ),
+                    ));
+                }
                 config.dasha_config.count = systems.len() as u8;
                 for (index, system) in systems.iter().enumerate() {
                     config.dasha_config.systems[index] = parse_dasha_system(system)? as u8;
@@ -4977,5 +4995,109 @@ mod tests {
         assert!(config.amsha_scope.include_upagrahas);
         assert!(config.amsha_scope.include_sphutas);
         assert!(config.amsha_scope.include_special_lagnas);
+    }
+
+    #[test]
+    fn full_kundali_config_rejects_too_many_dasha_systems() {
+        let state = dummy_state();
+        let too_many = (0..(dhruv_vedic_base::dasha::MAX_DASHA_SYSTEMS + 1))
+            .map(|_| EnumInput::Str("vimshottari".to_string()))
+            .collect::<Vec<_>>();
+        let err = to_full_kundali_config(
+            &state,
+            Some(&FullKundaliConfigInput {
+                include_bhava_cusps: None,
+                include_graha_positions: None,
+                include_bindus: None,
+                include_drishti: None,
+                include_ashtakavarga: None,
+                include_upagrahas: None,
+                include_sphutas: None,
+                include_special_lagnas: None,
+                include_amshas: None,
+                include_shadbala: None,
+                include_bhavabala: None,
+                include_vimsopaka: None,
+                include_avastha: None,
+                include_charakaraka: None,
+                include_panchang: None,
+                include_calendar: None,
+                include_dasha: Some(true),
+                charakaraka_scheme: None,
+                node_dignity_policy: None,
+                upagraha_config: None,
+                graha_positions_config: None,
+                bindus_config: None,
+                drishti_config: None,
+                amsha_scope: None,
+                amsha_selection: None,
+                dasha_config: Some(DashaSelectionConfigInput {
+                    systems: Some(too_many),
+                    max_level: None,
+                    max_levels: None,
+                    snapshot_utc: None,
+                }),
+            }),
+        )
+        .expect_err("oversized systems list should be rejected");
+        assert_eq!(err["kind"], "invalid_request");
+        assert!(
+            err["message"]
+                .as_str()
+                .expect("error message")
+                .contains("systems may contain at most"),
+            "unexpected error payload: {err:?}"
+        );
+    }
+
+    #[test]
+    fn full_kundali_config_rejects_too_many_dasha_max_levels() {
+        let state = dummy_state();
+        let too_many = vec![2; dhruv_vedic_base::dasha::MAX_DASHA_SYSTEMS + 1];
+        let err = to_full_kundali_config(
+            &state,
+            Some(&FullKundaliConfigInput {
+                include_bhava_cusps: None,
+                include_graha_positions: None,
+                include_bindus: None,
+                include_drishti: None,
+                include_ashtakavarga: None,
+                include_upagrahas: None,
+                include_sphutas: None,
+                include_special_lagnas: None,
+                include_amshas: None,
+                include_shadbala: None,
+                include_bhavabala: None,
+                include_vimsopaka: None,
+                include_avastha: None,
+                include_charakaraka: None,
+                include_panchang: None,
+                include_calendar: None,
+                include_dasha: Some(true),
+                charakaraka_scheme: None,
+                node_dignity_policy: None,
+                upagraha_config: None,
+                graha_positions_config: None,
+                bindus_config: None,
+                drishti_config: None,
+                amsha_scope: None,
+                amsha_selection: None,
+                dasha_config: Some(DashaSelectionConfigInput {
+                    systems: None,
+                    max_level: None,
+                    max_levels: Some(too_many),
+                    snapshot_utc: None,
+                }),
+            }),
+        )
+        .expect_err("oversized max_levels list should be rejected");
+        assert_eq!(err["kind"], "invalid_request");
+        assert!(
+            err["message"]
+                .as_str()
+                .expect("error message")
+                .contains("max_levels may contain at most"),
+            "unexpected error payload: {err:?}"
+        );
     }
 }
