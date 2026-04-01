@@ -672,10 +672,10 @@ fn full_kundali_with_dasha() {
         r.dasha.as_ref().unwrap()[0].system,
         DashaSystem::Vimshottari
     );
-    assert!(r.dasha_snapshots.is_none()); // no snapshot_jd
+    assert!(r.dasha_snapshots.is_none()); // no snapshot_time
 }
 
-/// FullKundali with snapshot_jd.
+/// FullKundali with snapshot_time.
 #[test]
 fn full_kundali_dasha_snapshot() {
     let Some(engine) = load_engine() else { return };
@@ -690,7 +690,7 @@ fn full_kundali_dasha_snapshot() {
     dasha_config.count = 1;
     dasha_config.systems[0] = DashaSystem::Vimshottari as u8;
     // Set snapshot query to a date well within the dasha range
-    dasha_config.snapshot_jd = Some(2460000.0); // ~2023
+    dasha_config.snapshot_time = Some(dhruv_search::DashaSnapshotTime::JdUtc(2460000.0)); // ~2023
     let config = kundali_config_with_dasha(dasha_config);
 
     let r = full_kundali_for_date(

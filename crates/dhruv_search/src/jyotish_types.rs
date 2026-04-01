@@ -2,6 +2,7 @@
 
 use crate::panchang_types::PanchangInfo;
 use dhruv_frames::{DEFAULT_PRECESSION_MODEL, PrecessionModel, ReferencePlane};
+use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
     AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AmshaVariation, AshtakavargaResult,
     AyanamshaSystem, BhavaBalaResult, BhavaResult, CharakarakaResult, CharakarakaScheme, Dms,
@@ -376,6 +377,15 @@ pub struct BalaBundleResult {
 // Dasha selection config (for FullKundaliConfig)
 // ---------------------------------------------------------------------------
 
+/// Snapshot time selector used by full-kundali dasha embedding.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DashaSnapshotTime {
+    /// Snapshot at a UTC calendar instant.
+    Utc(UtcTime),
+    /// Snapshot at a Julian Date in UTC.
+    JdUtc(f64),
+}
+
 /// Dasha selection for FullKundaliConfig. Copy-safe, fixed-size.
 #[derive(Debug, Clone, Copy)]
 pub struct DashaSelectionConfig {
@@ -393,9 +403,9 @@ pub struct DashaSelectionConfig {
     pub yogini_scheme: u8,
     /// Whether to use Abhijit for Ashtottari (1=yes, 0=no).
     pub use_abhijit: u8,
-    /// Optional query JD for snapshot computation.
+    /// Optional snapshot time for full-kundali dasha snapshots.
     /// None = skip snapshots, only compute hierarchy.
-    pub snapshot_jd: Option<f64>,
+    pub snapshot_time: Option<DashaSnapshotTime>,
 }
 
 impl Default for DashaSelectionConfig {
@@ -408,7 +418,7 @@ impl Default for DashaSelectionConfig {
             level_methods: [0xFF; 5],
             yogini_scheme: 0,
             use_abhijit: 1,
-            snapshot_jd: None,
+            snapshot_time: None,
         }
     }
 }
@@ -640,6 +650,6 @@ pub struct FullKundaliResult {
     pub panchang: Option<PanchangInfo>,
     /// Present when `FullKundaliConfig::include_dasha` is true.
     pub dasha: Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
-    /// Present when dasha is computed and snapshot_jd is set.
+    /// Present when dasha is computed and snapshot_time is set.
     pub dasha_snapshots: Option<Vec<dhruv_vedic_base::DashaSnapshot>>,
 }

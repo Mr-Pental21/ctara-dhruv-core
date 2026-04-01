@@ -4738,19 +4738,19 @@ fn main() {
                 resolved.include_amshas = true;
             }
 
-            let snapshot_jd = args.dasha_snapshot_date.as_ref().map(|d| {
+            let snapshot_time = args.dasha_snapshot_date.as_ref().map(|d| {
                 let snap_utc = parse_utc(d).unwrap_or_else(|e| {
                     eprintln!("{e}");
                     std::process::exit(1);
                 });
-                utc_to_jd_utc(&snap_utc)
+                dhruv_search::DashaSnapshotTime::Utc(snap_utc)
             });
 
             let full_config = build_kundali_config(
                 &resolved,
                 args.dasha_systems.as_deref(),
                 args.dasha_max_level,
-                snapshot_jd,
+                snapshot_time,
                 node_dignity_policy,
                 parse_charakaraka_scheme(&args.charakaraka_scheme),
                 requested_amsha_selection.as_ref(),
@@ -8885,7 +8885,7 @@ fn parse_dasha_systems_config(s: &str, max_level: u8) -> dhruv_search::DashaSele
         count: count as u8,
         systems,
         max_level,
-        snapshot_jd: None,
+        snapshot_time: None,
         ..dhruv_search::DashaSelectionConfig::default()
     }
 }
@@ -9553,7 +9553,7 @@ fn build_kundali_config(
     resolved: &ResolvedKundaliFlags,
     dasha_systems: Option<&str>,
     dasha_max_level: u8,
-    dasha_snapshot_jd: Option<f64>,
+    dasha_snapshot_time: Option<dhruv_search::DashaSnapshotTime>,
     node_policy: NodeDignityPolicy,
     charakaraka_scheme: dhruv_vedic_base::CharakarakaScheme,
     requested_amsha_selection: Option<&dhruv_search::AmshaSelectionConfig>,
@@ -9579,7 +9579,7 @@ fn build_kundali_config(
     // Dasha: controlled solely by dasha_systems presence
     let (include_dasha, dasha_config) = if let Some(sys_str) = dasha_systems {
         let mut cfg = parse_dasha_systems_config(sys_str, dasha_max_level);
-        cfg.snapshot_jd = dasha_snapshot_jd;
+        cfg.snapshot_time = dasha_snapshot_time;
         (true, cfg)
     } else {
         (false, dhruv_search::DashaSelectionConfig::default())

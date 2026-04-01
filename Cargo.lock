@@ -255,6 +255,7 @@ dependencies = [
  "dhruv_frames",
  "dhruv_search",
  "dhruv_tara",
+ "dhruv_time",
  "dhruv_vedic_base",
  "serde",
  "serde_json",

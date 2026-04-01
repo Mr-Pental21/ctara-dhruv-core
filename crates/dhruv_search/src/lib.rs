@@ -63,10 +63,11 @@ pub use jyotish::{
 };
 pub use jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BalaBundleResult,
-    BindusConfig, BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult,
-    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
-    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry,
-    ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
+    BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig,
+    DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind,
+    GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig,
+    MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry,
+    VimsopakaResult,
 };
 pub use lunar_phase::{
     next_amavasya, next_purnima, prev_amavasya, prev_purnima, search_amavasyas, search_purnimas,

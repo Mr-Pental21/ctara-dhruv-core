@@ -26,10 +26,10 @@ pub use jyotish::{
 };
 pub use jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
-    BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult, FullKundaliConfig,
-    FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig,
-    GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult,
-    SphutalResult, VimsopakaEntry, VimsopakaResult,
+    BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig, DrishtiResult,
+    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
+    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry,
+    ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
 };
 pub use operations::{
     AyanamshaMode, AyanamshaOperation, NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL,

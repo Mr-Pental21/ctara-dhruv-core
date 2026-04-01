@@ -13,10 +13,12 @@ use std::path::{Path, PathBuf};
 use dhruv_core::{Body, EngineConfig};
 use dhruv_frames::{PrecessionModel, ReferencePlane};
 use dhruv_search::{
-    AmshaSelectionConfig, BindusConfig, ConjunctionConfig, DashaSelectionConfig, DrishtiConfig,
-    FullKundaliConfig, GrahaPositionsConfig, GrahanConfig, SankrantiConfig, StationaryConfig,
+    AmshaSelectionConfig, BindusConfig, ConjunctionConfig, DashaSelectionConfig, DashaSnapshotTime,
+    DrishtiConfig, FullKundaliConfig, GrahaPositionsConfig, GrahanConfig, SankrantiConfig,
+    StationaryConfig,
 };
 use dhruv_tara::{TaraAccuracy, TaraConfig};
+use dhruv_time::UtcTime;
 use dhruv_vedic_base::bhava_types::ALL_BHAVA_SYSTEMS;
 use dhruv_vedic_base::dasha::MAX_DASHA_SYSTEMS;
 use dhruv_vedic_base::{
@@ -256,6 +258,34 @@ pub struct AmshaSelectionConfigPatch {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct UtcTimeConfigValue {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+    pub hour: u32,
+    pub minute: u32,
+    pub second: f64,
+}
+
+impl TryFrom<UtcTimeConfigValue> for UtcTime {
+    type Error = ConfigError;
+
+    fn try_from(value: UtcTimeConfigValue) -> Result<Self, Self::Error> {
+        UtcTime::try_new(
+            value.year,
+            value.month,
+            value.day,
+            value.hour,
+            value.minute,
+            value.second,
+            None,
+        )
+        .map_err(|e| ConfigError::InvalidConfig(format!("invalid snapshot_utc: {e}")))
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DashaSelectionConfigPatch {
     pub count: Option<u8>,
     pub systems: Option<Vec<u8>>,
@@ -264,7 +294,8 @@ pub struct DashaSelectionConfigPatch {
     pub level_methods: Option<Vec<u8>>,
     pub yogini_scheme: Option<u8>,
     pub use_abhijit: Option<u8>,
-    pub snapshot_jd: Option<f64>,
+    pub snapshot_utc: Option<UtcTimeConfigValue>,
+    pub snapshot_jd_utc: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1631,8 +1662,16 @@ fn apply_dasha_selection_patch(
     if let Some(v) = patch.use_abhijit {
         base.use_abhijit = v;
     }
-    if patch.snapshot_jd.is_some() {
-        base.snapshot_jd = patch.snapshot_jd;
+    if patch.snapshot_utc.is_some() && patch.snapshot_jd_utc.is_some() {
+        return Err(ConfigError::InvalidConfig(
+            "dasha snapshot config accepts only one of snapshot_utc or snapshot_jd_utc".to_string(),
+        ));
+    }
+    if let Some(snapshot_utc) = patch.snapshot_utc {
+        base.snapshot_time = Some(DashaSnapshotTime::Utc(UtcTime::try_from(snapshot_utc)?));
+    }
+    if let Some(snapshot_jd_utc) = patch.snapshot_jd_utc {
+        base.snapshot_time = Some(DashaSnapshotTime::JdUtc(snapshot_jd_utc));
     }
 
     base.sanitize();

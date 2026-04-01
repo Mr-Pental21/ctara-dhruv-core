@@ -41,10 +41,10 @@ use crate::dasha::{
 use crate::error::SearchError;
 use crate::jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
-    BindusResult, DashaSelectionConfig, DrishtiConfig, DrishtiResult, FullKundaliConfig,
-    FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig,
-    GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult,
-    SphutalResult, VimsopakaEntry, VimsopakaResult,
+    BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig, DrishtiResult,
+    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
+    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry,
+    ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
 };
 use crate::panchang::{
     hora_from_sunrises, masa_for_date, panchang_for_date, varsha_for_date, vedic_day_sunrises,
@@ -1598,8 +1598,9 @@ fn compute_kundali_dashas(
         match dasha_hierarchy_with_inputs(birth_jd, system, max_level, &variation, &inputs) {
             Ok(hierarchy) => {
                 hierarchies.push(hierarchy);
-                // Attempt snapshot only if hierarchy succeeded and snapshot_jd is set
-                if let Some(query_jd) = config.snapshot_jd {
+                // Attempt snapshot only if hierarchy succeeded and snapshot_time is set
+                if let Some(snapshot_time) = config.snapshot_time {
+                    let query_jd = dasha_snapshot_time_to_jd_utc(snapshot_time);
                     match dasha_snapshot_with_inputs(
                         birth_jd, query_jd, system, max_level, &variation, &inputs,
                     ) {
@@ -1621,7 +1622,7 @@ fn compute_kundali_dashas(
     } else {
         Some(hierarchies)
     };
-    let dasha_snapshots = if config.snapshot_jd.is_some() && !snapshots.is_empty() {
+    let dasha_snapshots = if config.snapshot_time.is_some() && !snapshots.is_empty() {
         Some(snapshots)
     } else {
         None
@@ -1646,6 +1647,13 @@ fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
     let b = 2.0 - a + (a / 4.0).floor();
 
     (365.25 * (y2 + 4716.0)).floor() + (30.6001 * (m2 + 1.0)).floor() + d + b - 1524.5
+}
+
+fn dasha_snapshot_time_to_jd_utc(snapshot_time: DashaSnapshotTime) -> f64 {
+    match snapshot_time {
+        DashaSnapshotTime::Utc(utc) => utc_to_jd_utc(&utc),
+        DashaSnapshotTime::JdUtc(jd_utc) => jd_utc,
+    }
 }
 
 /// Normalize longitude to [0, 360).
