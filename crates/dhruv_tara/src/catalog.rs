@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 use crate::error::TaraError;
 use crate::tara_id::{TaraCategory, TaraId};
 
-const EMBEDDED_CATALOG_JSON: &str = include_str!("../../../kernels/data/hgca_tara.json");
+const EMBEDDED_CATALOG_JSON: &str = include_str!("../data/hgca_tara.json");
 
 static EMBEDDED_CATALOG: LazyLock<TaraCatalog> = LazyLock::new(|| {
     TaraCatalog::parse(EMBEDDED_CATALOG_JSON)

@@ -5,14 +5,16 @@ edition.workspace = true
 license.workspace = true
 version.workspace = true
 rust-version.workspace = true
+repository = "https://github.com/Mr-Pental21/ctara-dhruv-core"
+homepage = "https://github.com/Mr-Pental21/ctara-dhruv-core"
 
 [dependencies]
-dhruv_core = { path = "../dhruv_core" }
-dhruv_frames = { path = "../dhruv_frames" }
-dhruv_search = { path = "../dhruv_search" }
-dhruv_tara = { path = "../dhruv_tara" }
-dhruv_time = { path = "../dhruv_time" }
-dhruv_vedic_base = { path = "../dhruv_vedic_base" }
+dhruv_core = { path = "../dhruv_core", version = "0.1.0" }
+dhruv_frames = { path = "../dhruv_frames", version = "0.1.0" }
+dhruv_search = { path = "../dhruv_search", version = "0.1.0" }
+dhruv_tara = { path = "../dhruv_tara", version = "0.1.0" }
+dhruv_time = { path = "../dhruv_time", version = "0.1.0" }
+dhruv_vedic_base = { path = "../dhruv_vedic_base", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

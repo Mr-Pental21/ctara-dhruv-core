@@ -1,0 +1,544 @@
+name: Unified Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version override for dry-run validation"
+        required: false
+        type: string
+
+jobs:
+  validate-release:
+    name: Validate release inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.0"
+          otp-version: "28.0"
+
+      - name: Check unified versions
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ./scripts/ci/check_release_versions.py --github-ref "${GITHUB_REF}"
+          else
+            ./scripts/ci/check_release_versions.py --version "${{ inputs.version }}"
+          fi
+
+      - name: License gate
+        run: ./scripts/ci/license_gate.sh
+
+  rust-package-check:
+    name: Rust workspace package check
+    runs-on: ubuntu-latest
+    needs: validate-release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cargo package checks
+        run: ./scripts/ci/publish_rust_workspace.sh package
+
+  native-bundles:
+    name: Native bundles (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            platform: linux
+            arch: x64
+            experimental: false
+          - os: macos-13
+            label: macos-x64
+            platform: macos
+            arch: x64
+            experimental: false
+          - os: macos-14
+            label: macos-arm64
+            platform: macos
+            arch: arm64
+            experimental: false
+          - os: windows-latest
+            label: windows-x64
+            platform: windows
+            arch: x64
+            experimental: false
+          - os: windows-11-arm
+            label: windows-arm64
+            platform: windows
+            arch: arm64
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - id: version
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+          with open("Cargo.toml", "rb") as handle:
+              data = tomllib.load(handle)
+          print(f"value={data['workspace']['package']['version']}")
+          PY
+
+      - name: Build CLI
+        run: cargo build -p dhruv_cli --release
+
+      - name: Build C ABI
+        run: cargo build -p dhruv_ffi_c --release
+
+      - name: CLI smoke
+        if: runner.os != 'Windows'
+        run: ./target/release/dhruv_cli --help
+
+      - name: CLI smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\target\release\dhruv_cli.exe --help
+
+      - name: Package CLI artifact
+        run: >
+          python scripts/ci/package_release_asset.py
+          --kind cli
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+          --version ${{ steps.version.outputs.value }}
+          --input-root target/release
+          --output-dir dist
+
+      - name: Package C ABI artifact
+        run: >
+          python scripts/ci/package_release_asset.py
+          --kind cabi
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+          --version ${{ steps.version.outputs.value }}
+          --input-root target/release
+          --output-dir dist
+
+      - name: Extract C ABI bundle
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib
+          import zipfile
+
+          dist = pathlib.Path("dist")
+          cabi = next(path for path in dist.glob("dhruv_c_abi-*.zip"))
+          with zipfile.ZipFile(cabi) as archive:
+              archive.extractall("dist/cabi-smoke")
+          PY
+
+      - name: Smoke C ABI bundle (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cc scripts/ci/smoke_cabi_version.c \
+            -Idist/cabi-smoke/include \
+            dist/cabi-smoke/lib/$(if [[ "${{ runner.os }}" == "macOS" ]]; then echo libdhruv_ffi_c.dylib; else echo libdhruv_ffi_c.so; fi) \
+            -Wl,-rpath,$PWD/dist/cabi-smoke/lib \
+            -o dist/cabi-smoke/smoke_cabi
+          ./dist/cabi-smoke/smoke_cabi
+
+      - name: Smoke C ABI bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) { throw "Unable to locate a Visual Studio installation with C++ tools" }
+          $vsDevCmd = Join-Path $vsPath "Common7\\Tools\\VsDevCmd.bat"
+          $targetArch = if ("${{ matrix.arch }}" -eq "arm64") { "arm64" } else { "x64" }
+          $hostArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+          cmd /c "`"$vsDevCmd`" -arch=$targetArch -host_arch=$hostArch >nul && set" | ForEach-Object {
+            if ($_ -match '^(.*?)=(.*)$') {
+              Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+            }
+          }
+          cl /nologo /Idist\\cabi-smoke\\include scripts\\ci\\smoke_cabi_version.c /link /LIBPATH:dist\\cabi-smoke\\lib dhruv_ffi_c.lib /OUT:dist\\cabi-smoke\\smoke_cabi.exe
+          $env:PATH = "$PWD\\dist\\cabi-smoke\\lib;$env:PATH"
+          .\dist\cabi-smoke\smoke_cabi.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-bundles-${{ matrix.label }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  node-prebuilds:
+    name: Node prebuilds (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            prebuild: linux-x64
+            experimental: false
+          - os: macos-13
+            label: darwin-x64
+            prebuild: darwin-x64
+            experimental: false
+          - os: macos-14
+            label: darwin-arm64
+            prebuild: darwin-arm64
+            experimental: false
+          - os: windows-latest
+            label: win32-x64
+            prebuild: win32-x64
+            experimental: false
+          - os: windows-11-arm
+            label: win32-arm64
+            prebuild: win32-arm64
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install npm deps
+        shell: bash
+        run: |
+          cd bindings/node-open
+          npm ci --ignore-scripts
+
+      - name: Build Node prebuild (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd bindings/node-open
+          DHRUV_NODE_OUTPUT_DIR=prebuilds/${{ matrix.prebuild }} npm run build
+          node -e "const dhruv = require('./'); dhruv.verifyAbi();"
+
+      - name: Build Node prebuild (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd bindings/node-open
+          $vswhere = "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) { throw "Unable to locate a Visual Studio installation with C++ tools" }
+          $vsDevCmd = Join-Path $vsPath "Common7\\Tools\\VsDevCmd.bat"
+          $targetArch = if ((node -p "process.arch") -eq "arm64") { "arm64" } else { "x64" }
+          $hostArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+          cmd /c "`"$vsDevCmd`" -arch=$targetArch -host_arch=$hostArch >nul && set" | ForEach-Object {
+            if ($_ -match '^(.*?)=(.*)$') {
+              Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+            }
+          }
+          $env:npm_config_devdir = "$env:LOCALAPPDATA\\node-gyp\\Cache"
+          $nodeVersion = node -p "process.versions.node"
+          $nodeArch = node -p "process.arch"
+          npx --yes node-gyp install --target $nodeVersion --devdir "$env:npm_config_devdir"
+          $env:NODE_INCLUDE_DIR = "$env:npm_config_devdir\\$nodeVersion\\include\\node"
+          $env:NODE_LIB_DIR = "$env:npm_config_devdir\\$nodeVersion\\$nodeArch"
+          $env:DHRUV_NODE_OUTPUT_DIR = "prebuilds/${{ matrix.prebuild }}"
+          npm run build
+          node -e "const dhruv = require('./'); dhruv.verifyAbi();"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-prebuild-${{ matrix.prebuild }}
+          path: bindings/node-open/prebuilds/${{ matrix.prebuild }}
+          if-no-files-found: error
+
+  node-package:
+    name: Pack Node release
+    runs-on: ubuntu-latest
+    needs: node-prebuilds
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: node-prebuild-*
+          path: bindings/node-open/prebuilds
+          merge-multiple: true
+
+      - name: Pack npm tarball
+        shell: bash
+        run: |
+          cd bindings/node-open
+          npm pack
+
+      - name: Smoke install packed npm tarball
+        shell: bash
+        run: |
+          TARBALL="$(ls bindings/node-open/*.tgz)"
+          TMP_DIR="$(mktemp -d)"
+          cd "$TMP_DIR"
+          npm init -y >/dev/null
+          npm install "${GITHUB_WORKSPACE}/${TARBALL}"
+          node -e "const dhruv = require('ctara-dhruv-node-open'); dhruv.verifyAbi();"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-package
+          path: bindings/node-open/*.tgz
+          if-no-files-found: error
+
+  go-release-verify:
+    name: Go release verify (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            experimental: false
+          - os: macos-13
+            label: macos-x64
+            experimental: false
+          - os: macos-14
+            label: macos-arm64
+            experimental: false
+          - os: windows-latest
+            label: windows-x64
+            experimental: false
+          - os: windows-11-arm
+            label: windows-arm64
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Go Windows ARM64 status
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        shell: pwsh
+        run: |
+          "Go Windows ARM64 stays best-effort in the initial rollout and is not a publish blocker." | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Build local C ABI
+        if: runner.os != 'Windows'
+        run: cargo build -p dhruv_ffi_c --release
+
+      - name: Setup Rust Windows GNU target
+        if: runner.os == 'Windows' && runner.arch != 'ARM64'
+        run: rustup target add x86_64-pc-windows-gnu
+
+      - name: Build local Windows GNU C ABI
+        if: runner.os == 'Windows' && runner.arch != 'ARM64'
+        run: cargo build -p dhruv_ffi_c --release --target x86_64-pc-windows-gnu
+
+      - name: Verify go-open (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          export GOCACHE=/tmp/go-build
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            export LD_LIBRARY_PATH="$PWD/target/release:${LD_LIBRARY_PATH:-}"
+          else
+            export DYLD_LIBRARY_PATH="$PWD/target/release:${DYLD_LIBRARY_PATH:-}"
+          fi
+          cd bindings/go-open
+          go test ./...
+
+      - name: Verify go-open (Windows)
+        if: runner.os == 'Windows' && runner.arch != 'ARM64'
+        shell: pwsh
+        run: |
+          $env:GOCACHE = "$env:TEMP\\go-build"
+          $env:PATH = "$PWD\\target\\x86_64-pc-windows-gnu\\release;$env:PATH"
+          cd bindings/go-open
+          go test ./...
+
+  elixir-package-smoke:
+    name: Elixir package smoke (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            experimental: false
+          - os: macos-13
+            label: macos-x64
+            experimental: false
+          - os: macos-14
+            label: macos-arm64
+            experimental: false
+          - os: windows-latest
+            label: windows-x64
+            experimental: false
+          - os: windows-11-arm
+            label: windows-arm64
+            experimental: true
+    defaults:
+      run:
+        working-directory: bindings/elixir-open
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.0"
+          otp-version: "28.0"
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Test package
+        env:
+          MIX_ENV: test
+        run: |
+          mix deps.get
+          mix test
+          mix hex.build
+
+      - name: Upload Hex package tarball
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: elixir-hex-package
+          path: bindings/elixir-open/*.tar
+          if-no-files-found: error
+
+  publish-rust:
+    name: Publish Rust crate stack
+    runs-on: ubuntu-latest
+    needs: rust-package-check
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Publish Rust crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: ./scripts/ci/publish_rust_workspace.sh publish
+
+  publish-node:
+    name: Publish npm package
+    runs-on: ubuntu-latest
+    needs: node-package
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: node-prebuild-*
+          path: bindings/node-open/prebuilds
+          merge-multiple: true
+      - name: Publish npm package
+        shell: bash
+        run: |
+          cd bindings/node-open
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-elixir:
+    name: Publish Hex package
+    runs-on: ubuntu-latest
+    needs: elixir-package-smoke
+    if: startsWith(github.ref, 'refs/tags/v')
+    defaults:
+      run:
+        working-directory: bindings/elixir-open
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.0"
+          otp-version: "28.0"
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+      - name: Publish to Hex
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: mix hex.publish --yes
+
+  github-release:
+    name: Publish GitHub Release assets
+    runs-on: ubuntu-latest
+    needs: [native-bundles, node-package, elixir-package-smoke]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/native-bundles-*/*.zip
+            release-artifacts/node-package/*.tgz
+            release-artifacts/elixir-hex-package/*.tar

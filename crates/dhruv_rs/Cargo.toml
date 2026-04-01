@@ -5,16 +5,20 @@ edition.workspace = true
 license.workspace = true
 version.workspace = true
 rust-version.workspace = true
+repository = "https://github.com/Mr-Pental21/ctara-dhruv-core"
+homepage = "https://github.com/Mr-Pental21/ctara-dhruv-core"
+keywords = ["ephemeris", "astronomy", "jyotish", "vedic"]
+categories = ["science"]
 
 [dependencies]
-dhruv_core       = { path = "../dhruv_core" }
-dhruv_config     = { path = "../dhruv_config" }
-dhruv_time       = { path = "../dhruv_time" }
-dhruv_frames     = { path = "../dhruv_frames" }
-dhruv_vedic_base = { path = "../dhruv_vedic_base" }
-dhruv_vedic_ops  = { path = "../dhruv_vedic_ops" }
-dhruv_search     = { path = "../dhruv_search" }
-dhruv_tara       = { path = "../dhruv_tara" }
+dhruv_core       = { path = "../dhruv_core", version = "0.1.0" }
+dhruv_config     = { path = "../dhruv_config", version = "0.1.0" }
+dhruv_time       = { path = "../dhruv_time", version = "0.1.0" }
+dhruv_frames     = { path = "../dhruv_frames", version = "0.1.0" }
+dhruv_vedic_base = { path = "../dhruv_vedic_base", version = "0.1.0" }
+dhruv_vedic_ops  = { path = "../dhruv_vedic_ops", version = "0.1.0" }
+dhruv_search     = { path = "../dhruv_search", version = "0.1.0" }
+dhruv_tara       = { path = "../dhruv_tara", version = "0.1.0" }
 
 [dev-dependencies]
 criterion = { workspace = true }

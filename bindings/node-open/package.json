@@ -3,20 +3,40 @@
   "version": "0.1.0",
   "description": "Open-source Node.js wrapper for ctara-dhruv-core via dhruv_ffi_c",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mr-Pental21/ctara-dhruv-core.git",
+    "directory": "bindings/node-open"
+  },
+  "homepage": "https://github.com/Mr-Pental21/ctara-dhruv-core",
+  "bugs": {
+    "url": "https://github.com/Mr-Pental21/ctara-dhruv-core/issues"
+  },
   "type": "commonjs",
   "main": "index.js",
   "files": [
     "index.js",
     "src/",
     "native/",
+    "prebuilds/",
     "scripts/",
     "build/Release/*.node"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "astronomy",
+    "ephemeris",
+    "jyotish",
+    "vedic"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "build": "node ./scripts/build-addon.mjs",
+    "pack:release": "npm pack",
     "test": "node --test",
     "test:ci": "node --test"
   }

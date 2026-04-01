@@ -6,9 +6,24 @@ build-backend = "setuptools.build_meta"
 name = "ctara-dhruv"
 version = "0.1.0"
 description = "Python bindings for ctara-dhruv-core ephemeris engine"
+readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = ["cffi>=1.16"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Astronomy"
+]
+
+[project.urls]
+Homepage = "https://github.com/Mr-Pental21/ctara-dhruv-core"
+Repository = "https://github.com/Mr-Pental21/ctara-dhruv-core"
+Issues = "https://github.com/Mr-Pental21/ctara-dhruv-core/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]

@@ -117,8 +117,7 @@ impl Smh2016Reconstruction {
 }
 
 static SMH2016_RECONSTRUCTION: OnceLock<Smh2016Reconstruction> = OnceLock::new();
-const SMH2016_RECONSTRUCTION_BUNDLED: &str =
-    include_str!("../../../kernels/data/time/smh2016_reconstruction.tsv");
+const SMH2016_RECONSTRUCTION_BUNDLED: &str = include_str!("../data/smh2016_reconstruction.tsv");
 
 /// Parse a plain-text SMH2016 table.
 ///

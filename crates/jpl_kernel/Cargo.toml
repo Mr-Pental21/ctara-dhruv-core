@@ -3,6 +3,9 @@ name = "jpl_kernel"
 version = "0.1.0"
 license = "Apache-2.0"
 edition = "2024"
+description = "JPL SPK kernel reader used by ctara-dhruv-core"
+repository = "https://github.com/Mr-Pental21/ctara-dhruv-core"
+homepage = "https://github.com/Mr-Pental21/ctara-dhruv-core"
 
 [dependencies]
 

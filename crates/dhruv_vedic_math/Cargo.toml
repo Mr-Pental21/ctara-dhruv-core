@@ -3,6 +3,9 @@ name = "dhruv_vedic_math"
 version = "0.1.0"
 license = "Apache-2.0"
 edition = "2024"
+description = "Pure Vedic math helpers for ctara-dhruv-core"
+repository = "https://github.com/Mr-Pental21/ctara-dhruv-core"
+homepage = "https://github.com/Mr-Pental21/ctara-dhruv-core"
 
 [dependencies]
 

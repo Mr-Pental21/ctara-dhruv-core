@@ -11,7 +11,10 @@ const pkgDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(pkgDir, '..', '..');
 
 const nativeSrc = path.join(pkgDir, 'native', 'dhruv_node.cc');
-const outDir = path.join(pkgDir, 'build', 'Release');
+const defaultOutDir = path.join(pkgDir, 'build', 'Release');
+const outDir = process.env.DHRUV_NODE_OUTPUT_DIR
+  ? path.resolve(pkgDir, process.env.DHRUV_NODE_OUTPUT_DIR)
+  : defaultOutDir;
 const outFile = path.join(outDir, 'dhruv_node.node');
 const headerDir = path.join(repoRoot, 'crates', 'dhruv_ffi_c', 'include');
 const targetRelease = path.join(repoRoot, 'target', 'release');
