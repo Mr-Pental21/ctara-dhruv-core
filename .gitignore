@@ -36,6 +36,14 @@ docs/benchmarks/ffi_bench_*_sorted.tsv
 *.egg-info/
 **/__pycache__/
 *.py[cod]
+bindings/python-open/dist/
+bindings/python-open/wheelhouse/
+bindings/python-open/src/ctara_dhruv/*.so
+bindings/python-open/src/ctara_dhruv/*.dylib
+bindings/python-open/src/ctara_dhruv/*.dll
+
+# Local release packaging artifacts
+dist/local/
 
 # Generated local benchmark reports
 docs/elixir_wrapper_benchmarks.md

@@ -21,6 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Rust
+        if: runner.os != 'Linux'
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Set up QEMU (Linux aarch64)
         if: runner.os == 'Linux'
         uses: docker/setup-qemu-action@v3
@@ -32,18 +36,11 @@ jobs:
         env:
           CIBW_BEFORE_BUILD_LINUX: >
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &&
-            source $HOME/.cargo/env &&
-            cargo build -p dhruv_ffi_c --release --manifest-path {project}/../../Cargo.toml &&
-            cp {project}/../../target/release/libdhruv_ffi_c.so {project}/src/ctara_dhruv/
+            python {project}/scripts/prepare_native_lib.py
           CIBW_BEFORE_BUILD_MACOS: >
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &&
-            source $HOME/.cargo/env &&
-            cargo build -p dhruv_ffi_c --release --manifest-path {project}/../../Cargo.toml &&
-            cp {project}/../../target/release/libdhruv_ffi_c.dylib {project}/src/ctara_dhruv/
+            python {project}/scripts/prepare_native_lib.py
           CIBW_BEFORE_BUILD_WINDOWS: >
-            rustup default stable &&
-            cargo build -p dhruv_ffi_c --release --manifest-path {project}\..\..\Cargo.toml &&
-            copy {project}\..\..\target\release\dhruv_ffi_c.dll {project}\src\ctara_dhruv\
+            python {project}\scripts\prepare_native_lib.py
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-musllinux_*"
           CIBW_ARCHS_LINUX: "x86_64 aarch64"

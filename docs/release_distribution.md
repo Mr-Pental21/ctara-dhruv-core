@@ -30,6 +30,10 @@ Current runtime expectations:
 - Elixir publishes a Hex package, but the NIF is still compiled from source on install.
 - Go remains a source-consumed module; CI validates the wrapper on release tags and the released C ABI bundles stay the canonical native artifact.
 
+Local non-debug artifact path:
+
+- `./scripts/ci/build_local_native_binaries.sh` builds optimized local CLI/C ABI artifacts, refreshes the bundled Python shared library, refreshes the Elixir release NIF, and writes local CLI/C ABI zip bundles to `dist/local/` without requiring a release tag.
+
 ## Maintainer Release Flow
 
 1. Update all surface versions together to the same `X.Y.Z`.

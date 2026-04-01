@@ -35,6 +35,13 @@ The shared `dhruv_ffi_c` library must be built from the repository root:
 cargo build -p dhruv_ffi_c --release
 ```
 
+Or use the repository helper to refresh the optimized local binaries, bundled
+Python shared library, and local CLI/C ABI archives without cutting a release:
+
+```bash
+./scripts/ci/build_local_native_binaries.sh
+```
+
 Supported prebuilt wheel targets are Linux, macOS, and Windows x64 on the main
 release matrix. Windows ARM64 remains best-effort until wheel support is proven
 green in CI.
