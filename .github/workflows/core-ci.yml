@@ -40,7 +40,7 @@ jobs:
           - os: ubuntu-latest
             label: linux-x64
             experimental: false
-          - os: macos-13
+          - os: macos-15-intel
             label: macos-x64
             experimental: false
           - os: macos-14

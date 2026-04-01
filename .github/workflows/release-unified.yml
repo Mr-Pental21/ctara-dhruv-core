@@ -74,7 +74,7 @@ jobs:
             platform: linux
             arch: x64
             experimental: false
-          - os: macos-13
+          - os: macos-15-intel
             label: macos-x64
             platform: macos
             arch: x64
@@ -212,7 +212,7 @@ jobs:
             label: linux-x64
             prebuild: linux-x64
             experimental: false
-          - os: macos-13
+          - os: macos-15-intel
             label: darwin-x64
             prebuild: darwin-x64
             experimental: false
@@ -337,7 +337,7 @@ jobs:
           - os: ubuntu-latest
             label: linux-x64
             experimental: false
-          - os: macos-13
+          - os: macos-15-intel
             label: macos-x64
             experimental: false
           - os: macos-14
@@ -412,7 +412,7 @@ jobs:
           - os: ubuntu-latest
             label: linux-x64
             experimental: false
-          - os: macos-13
+          - os: macos-15-intel
             label: macos-x64
             experimental: false
           - os: macos-14
