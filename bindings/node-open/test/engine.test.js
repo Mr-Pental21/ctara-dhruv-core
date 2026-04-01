@@ -108,9 +108,22 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     {
       phaseKind: 1,
       queryMode: 2,
-      atJdTdb: 0,
-      startJdTdb: 2451545.0,
-      endJdTdb: 2451545.0 + 365.0,
+      startUtc: {
+        year: 2000,
+        month: 1,
+        day: 1,
+        hour: 12,
+        minute: 0,
+        second: 0,
+      },
+      endUtc: {
+        year: 2000,
+        month: 12,
+        day: 31,
+        hour: 12,
+        minute: 0,
+        second: 0,
+      },
     },
     1,
   );
@@ -123,9 +136,7 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
       body1Code: 10,
       body2Code: 301,
       queryMode: 0,
-      atJdTdb: 2460000.5,
-      startJdTdb: 0,
-      endJdTdb: 0,
+      atUtc: utc,
     },
     4,
   );
@@ -137,9 +148,7 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
       targetKind: 0,
       queryMode: 0,
       rashiIndex: 0,
-      atJdTdb: 2460000.5,
-      startJdTdb: 0,
-      endJdTdb: 0,
+      atUtc: utc,
     },
     4,
   );
@@ -150,9 +159,7 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     {
       grahanKind: 0,
       queryMode: 0,
-      atJdTdb: 2460000.5,
-      startJdTdb: 0,
-      endJdTdb: 0,
+      atUtc: utc,
     },
     2,
   );
@@ -164,9 +171,7 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
       bodyCode: 199,
       motionKind: 0,
       queryMode: 0,
-      atJdTdb: 2460000.5,
-      startJdTdb: 0,
-      endJdTdb: 0,
+      atUtc: utc,
     },
     2,
   );

@@ -20,6 +20,9 @@ from .types import (
     UtcTime,
 )
 
+_SEARCH_TIME_JD_TDB = 0
+_SEARCH_TIME_UTC = 1
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -49,6 +52,46 @@ def _utc_from_c(u) -> UtcTime:
         minute=u.minute,
         second=u.second,
     )
+
+
+def _utc_struct(utc: UtcTime):
+    out = ffi.new("DhruvUtcTime *")
+    out.year = utc.year
+    out.month = utc.month
+    out.day = utc.day
+    out.hour = utc.hour
+    out.minute = utc.minute
+    out.second = utc.second
+    return out
+
+
+def _set_single_search_time(req, when, *, arg_name: str) -> None:
+    if isinstance(when, UtcTime):
+        req.time_kind = _SEARCH_TIME_UTC
+        req.at_utc = _utc_struct(when)[0]
+        return
+    if when is None:
+        raise ValueError(f"{arg_name} is required")
+    req.time_kind = _SEARCH_TIME_JD_TDB
+    req.at_jd_tdb = float(when)
+
+
+def _set_range_search_time(req, start, end, *, start_name: str, end_name: str) -> None:
+    if start is None or end is None:
+        missing = start_name if start is None else end_name
+        raise ValueError(f"{missing} is required")
+    start_is_utc = isinstance(start, UtcTime)
+    end_is_utc = isinstance(end, UtcTime)
+    if start_is_utc != end_is_utc:
+        raise TypeError(f"{start_name} and {end_name} must use the same time input form")
+    if start_is_utc:
+        req.time_kind = _SEARCH_TIME_UTC
+        req.start_utc = _utc_struct(start)[0]
+        req.end_utc = _utc_struct(end)[0]
+        return
+    req.time_kind = _SEARCH_TIME_JD_TDB
+    req.start_jd_tdb = float(start)
+    req.end_jd_tdb = float(end)
 
 
 def _conjunction_event(e) -> ConjunctionEvent:
@@ -168,15 +211,15 @@ def next_conjunction(
     engine,
     body1_code: int,
     body2_code: int,
-    after_jd_tdb: float,
+    after_jd_tdb,
     config=None,
 ) -> Optional[ConjunctionEvent]:
-    """Find next conjunction after *after_jd_tdb*. Returns ConjunctionEvent or None."""
+    """Find next conjunction after a ``UtcTime`` or JD(TDB) anchor."""
     req = ffi.new("DhruvConjunctionSearchRequest *")
     req.body1_code = body1_code
     req.body2_code = body2_code
     req.query_mode = _CONJUNCTION_NEXT
-    req.at_jd_tdb = after_jd_tdb
+    _set_single_search_time(req, after_jd_tdb, arg_name="after_jd_tdb")
     req.config = config if config is not None else lib.dhruv_conjunction_config_default()
 
     out_event = ffi.new("DhruvConjunctionEvent *")
@@ -197,15 +240,15 @@ def prev_conjunction(
     engine,
     body1_code: int,
     body2_code: int,
-    before_jd_tdb: float,
+    before_jd_tdb,
     config=None,
 ) -> Optional[ConjunctionEvent]:
-    """Find previous conjunction before *before_jd_tdb*."""
+    """Find previous conjunction before a ``UtcTime`` or JD(TDB) anchor."""
     req = ffi.new("DhruvConjunctionSearchRequest *")
     req.body1_code = body1_code
     req.body2_code = body2_code
     req.query_mode = _CONJUNCTION_PREV
-    req.at_jd_tdb = before_jd_tdb
+    _set_single_search_time(req, before_jd_tdb, arg_name="before_jd_tdb")
     req.config = config if config is not None else lib.dhruv_conjunction_config_default()
 
     out_event = ffi.new("DhruvConjunctionEvent *")
@@ -226,18 +269,17 @@ def search_conjunctions(
     engine,
     body1_code: int,
     body2_code: int,
-    start_jd: float,
-    end_jd: float,
+    start_jd,
+    end_jd,
     config=None,
     max_results: int = 100,
 ) -> list[ConjunctionEvent]:
-    """Search for conjunctions in [start_jd, end_jd]. Returns list of events."""
+    """Search for conjunctions in a UTC or JD(TDB) range."""
     req = ffi.new("DhruvConjunctionSearchRequest *")
     req.body1_code = body1_code
     req.body2_code = body2_code
     req.query_mode = _CONJUNCTION_RANGE
-    req.start_jd_tdb = start_jd
-    req.end_jd_tdb = end_jd
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_conjunction_config_default()
 
     def fetch(capacity: int):
@@ -273,12 +315,12 @@ def grahan_config_default():
     return lib.dhruv_grahan_config_default()
 
 
-def _grahan_single(engine, grahan_kind: int, query_mode: int, jd: float, config):
+def _grahan_single(engine, grahan_kind: int, query_mode: int, when, config):
     """Internal: single grahan search (NEXT/PREV)."""
     req = ffi.new("DhruvGrahanSearchRequest *")
     req.grahan_kind = grahan_kind
     req.query_mode = query_mode
-    req.at_jd_tdb = jd
+    _set_single_search_time(req, when, arg_name="jd")
     req.config = config if config is not None else lib.dhruv_grahan_config_default()
 
     out_chandra = ffi.new("DhruvChandraGrahanResult *")
@@ -299,39 +341,38 @@ def _grahan_single(engine, grahan_kind: int, query_mode: int, jd: float, config)
     return _surya_grahan(out_surya[0])
 
 
-def next_lunar_eclipse(engine, after_jd: float, config=None) -> Optional[ChandraGrahanResult]:
-    """Find the next lunar eclipse after *after_jd*."""
+def next_lunar_eclipse(engine, after_jd, config=None) -> Optional[ChandraGrahanResult]:
+    """Find the next lunar eclipse after a ``UtcTime`` or JD(TDB) anchor."""
     return _grahan_single(engine, _GRAHAN_CHANDRA, _GRAHAN_NEXT, after_jd, config)
 
 
-def prev_lunar_eclipse(engine, before_jd: float, config=None) -> Optional[ChandraGrahanResult]:
-    """Find the previous lunar eclipse before *before_jd*."""
+def prev_lunar_eclipse(engine, before_jd, config=None) -> Optional[ChandraGrahanResult]:
+    """Find the previous lunar eclipse before a ``UtcTime`` or JD(TDB) anchor."""
     return _grahan_single(engine, _GRAHAN_CHANDRA, _GRAHAN_PREV, before_jd, config)
 
 
-def next_solar_eclipse(engine, after_jd: float, config=None) -> Optional[SuryaGrahanResult]:
-    """Find the next solar eclipse after *after_jd*."""
+def next_solar_eclipse(engine, after_jd, config=None) -> Optional[SuryaGrahanResult]:
+    """Find the next solar eclipse after a ``UtcTime`` or JD(TDB) anchor."""
     return _grahan_single(engine, _GRAHAN_SURYA, _GRAHAN_NEXT, after_jd, config)
 
 
-def prev_solar_eclipse(engine, before_jd: float, config=None) -> Optional[SuryaGrahanResult]:
-    """Find the previous solar eclipse before *before_jd*."""
+def prev_solar_eclipse(engine, before_jd, config=None) -> Optional[SuryaGrahanResult]:
+    """Find the previous solar eclipse before a ``UtcTime`` or JD(TDB) anchor."""
     return _grahan_single(engine, _GRAHAN_SURYA, _GRAHAN_PREV, before_jd, config)
 
 
 def search_lunar_eclipses(
     engine,
-    start_jd: float,
-    end_jd: float,
+    start_jd,
+    end_jd,
     config=None,
     max_results: int = 50,
 ) -> list[ChandraGrahanResult]:
-    """Search for lunar eclipses in [start_jd, end_jd]."""
+    """Search for lunar eclipses in a UTC or JD(TDB) range."""
     req = ffi.new("DhruvGrahanSearchRequest *")
     req.grahan_kind = _GRAHAN_CHANDRA
     req.query_mode = _GRAHAN_RANGE
-    req.start_jd_tdb = start_jd
-    req.end_jd_tdb = end_jd
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_grahan_config_default()
 
     def fetch(capacity: int):
@@ -353,17 +394,16 @@ def search_lunar_eclipses(
 
 def search_solar_eclipses(
     engine,
-    start_jd: float,
-    end_jd: float,
+    start_jd,
+    end_jd,
     config=None,
     max_results: int = 50,
 ) -> list[SuryaGrahanResult]:
-    """Search for solar eclipses in [start_jd, end_jd]."""
+    """Search for solar eclipses in a UTC or JD(TDB) range."""
     req = ffi.new("DhruvGrahanSearchRequest *")
     req.grahan_kind = _GRAHAN_SURYA
     req.query_mode = _GRAHAN_RANGE
-    req.start_jd_tdb = start_jd
-    req.end_jd_tdb = end_jd
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_grahan_config_default()
 
     def fetch(capacity: int):
@@ -399,13 +439,13 @@ def stationary_config_default():
     return lib.dhruv_stationary_config_default()
 
 
-def _motion_single_stationary(engine, query_mode: int, body_code: int, jd: float, config):
+def _motion_single_stationary(engine, query_mode: int, body_code: int, when, config):
     """Internal: single stationary search."""
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
     req.motion_kind = _MOTION_STATIONARY
     req.query_mode = query_mode
-    req.at_jd_tdb = jd
+    _set_single_search_time(req, when, arg_name="jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
 
     out_event = ffi.new("DhruvStationaryEvent *")
@@ -423,13 +463,13 @@ def _motion_single_stationary(engine, query_mode: int, body_code: int, jd: float
     return _stationary_event(out_event[0])
 
 
-def _motion_single_max_speed(engine, query_mode: int, body_code: int, jd: float, config):
+def _motion_single_max_speed(engine, query_mode: int, body_code: int, when, config):
     """Internal: single max-speed search."""
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
     req.motion_kind = _MOTION_MAX_SPEED
     req.query_mode = query_mode
-    req.at_jd_tdb = jd
+    _set_single_search_time(req, when, arg_name="jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
 
     out_event = ffi.new("DhruvMaxSpeedEvent *")
@@ -448,34 +488,33 @@ def _motion_single_max_speed(engine, query_mode: int, body_code: int, jd: float,
 
 
 def next_stationary(
-    engine, body_code: int, after_jd: float, config=None
+    engine, body_code: int, after_jd, config=None
 ) -> Optional[StationaryEvent]:
-    """Find next stationary point after *after_jd*."""
+    """Find next stationary point after a ``UtcTime`` or JD(TDB) anchor."""
     return _motion_single_stationary(engine, _MOTION_NEXT, body_code, after_jd, config)
 
 
 def prev_stationary(
-    engine, body_code: int, before_jd: float, config=None
+    engine, body_code: int, before_jd, config=None
 ) -> Optional[StationaryEvent]:
-    """Find previous stationary point before *before_jd*."""
+    """Find previous stationary point before a ``UtcTime`` or JD(TDB) anchor."""
     return _motion_single_stationary(engine, _MOTION_PREV, body_code, before_jd, config)
 
 
 def search_stationary(
     engine,
     body_code: int,
-    start_jd: float,
-    end_jd: float,
+    start_jd,
+    end_jd,
     config=None,
     max_results: int = 100,
 ) -> list[StationaryEvent]:
-    """Search for stationary points in [start_jd, end_jd]."""
+    """Search for stationary points in a UTC or JD(TDB) range."""
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
     req.motion_kind = _MOTION_STATIONARY
     req.query_mode = _MOTION_RANGE
-    req.start_jd_tdb = start_jd
-    req.end_jd_tdb = end_jd
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
 
     def fetch(capacity: int):
@@ -496,34 +535,33 @@ def search_stationary(
 
 
 def next_max_speed(
-    engine, body_code: int, after_jd: float, config=None
+    engine, body_code: int, after_jd, config=None
 ) -> Optional[MaxSpeedEvent]:
-    """Find next max-speed event after *after_jd*."""
+    """Find next max-speed event after a ``UtcTime`` or JD(TDB) anchor."""
     return _motion_single_max_speed(engine, _MOTION_NEXT, body_code, after_jd, config)
 
 
 def prev_max_speed(
-    engine, body_code: int, before_jd: float, config=None
+    engine, body_code: int, before_jd, config=None
 ) -> Optional[MaxSpeedEvent]:
-    """Find previous max-speed event before *before_jd*."""
+    """Find previous max-speed event before a ``UtcTime`` or JD(TDB) anchor."""
     return _motion_single_max_speed(engine, _MOTION_PREV, body_code, before_jd, config)
 
 
 def search_max_speeds(
     engine,
     body_code: int,
-    start_jd: float,
-    end_jd: float,
+    start_jd,
+    end_jd,
     config=None,
     max_results: int = 100,
 ) -> list[MaxSpeedEvent]:
-    """Search for max-speed events in [start_jd, end_jd]."""
+    """Search for max-speed events in a UTC or JD(TDB) range."""
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
     req.motion_kind = _MOTION_MAX_SPEED
     req.query_mode = _MOTION_RANGE
-    req.start_jd_tdb = start_jd
-    req.end_jd_tdb = end_jd
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
 
     def fetch(capacity: int):
@@ -554,12 +592,12 @@ _LUNAR_PHASE_PREV = 1
 _LUNAR_PHASE_RANGE = 2
 
 
-def _lunar_phase_single(engine, phase_kind: int, query_mode: int, jd: float):
+def _lunar_phase_single(engine, phase_kind: int, query_mode: int, when):
     """Internal: single lunar-phase search."""
     req = ffi.new("DhruvLunarPhaseSearchRequest *")
     req.phase_kind = phase_kind
     req.query_mode = query_mode
-    req.at_jd_tdb = jd
+    _set_single_search_time(req, when, arg_name="jd")
 
     out_event = ffi.new("DhruvLunarPhaseEvent *")
     out_found = ffi.new("uint8_t *")
@@ -576,42 +614,41 @@ def _lunar_phase_single(engine, phase_kind: int, query_mode: int, jd: float):
     return _lunar_phase_event(out_event[0])
 
 
-def next_purnima(engine, after_jd: float) -> Optional[LunarPhaseEvent]:
-    """Find the next Purnima (full moon) after *after_jd*."""
+def next_purnima(engine, after_jd) -> Optional[LunarPhaseEvent]:
+    """Find the next Purnima after a ``UtcTime`` or JD(TDB) anchor."""
     return _lunar_phase_single(engine, _LUNAR_PHASE_PURNIMA, _LUNAR_PHASE_NEXT, after_jd)
 
 
-def prev_purnima(engine, before_jd: float) -> Optional[LunarPhaseEvent]:
-    """Find the previous Purnima (full moon) before *before_jd*."""
+def prev_purnima(engine, before_jd) -> Optional[LunarPhaseEvent]:
+    """Find the previous Purnima before a ``UtcTime`` or JD(TDB) anchor."""
     return _lunar_phase_single(engine, _LUNAR_PHASE_PURNIMA, _LUNAR_PHASE_PREV, before_jd)
 
 
-def next_amavasya(engine, after_jd: float) -> Optional[LunarPhaseEvent]:
-    """Find the next Amavasya (new moon) after *after_jd*."""
+def next_amavasya(engine, after_jd) -> Optional[LunarPhaseEvent]:
+    """Find the next Amavasya after a ``UtcTime`` or JD(TDB) anchor."""
     return _lunar_phase_single(engine, _LUNAR_PHASE_AMAVASYA, _LUNAR_PHASE_NEXT, after_jd)
 
 
-def prev_amavasya(engine, before_jd: float) -> Optional[LunarPhaseEvent]:
-    """Find the previous Amavasya (new moon) before *before_jd*."""
+def prev_amavasya(engine, before_jd) -> Optional[LunarPhaseEvent]:
+    """Find the previous Amavasya before a ``UtcTime`` or JD(TDB) anchor."""
     return _lunar_phase_single(engine, _LUNAR_PHASE_AMAVASYA, _LUNAR_PHASE_PREV, before_jd)
 
 
 def search_lunar_phases(
     engine,
     phase_kind: int,
-    start_jd: float,
-    end_jd: float,
+    start_jd,
+    end_jd,
     max_results: int = 50,
 ) -> list[LunarPhaseEvent]:
-    """Search for lunar phase events in [start_jd, end_jd].
+    """Search for lunar phase events in a UTC or JD(TDB) range.
 
     *phase_kind*: 0=Amavasya, 1=Purnima.
     """
     req = ffi.new("DhruvLunarPhaseSearchRequest *")
     req.phase_kind = phase_kind
     req.query_mode = _LUNAR_PHASE_RANGE
-    req.start_jd_tdb = start_jd
-    req.end_jd_tdb = end_jd
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
 
     def fetch(capacity: int):
         out_events = ffi.new("DhruvLunarPhaseEvent[]", capacity)
@@ -647,13 +684,13 @@ def sankranti_config_default():
 
 
 def next_sankranti(
-    engine, after_jd: float, config=None
+    engine, after_jd, config=None
 ) -> Optional[SankrantiEvent]:
-    """Find the next sankranti (any rashi) after *after_jd*."""
+    """Find the next sankranti after a ``UtcTime`` or JD(TDB) anchor."""
     req = ffi.new("DhruvSankrantiSearchRequest *")
     req.target_kind = _SANKRANTI_TARGET_ANY
     req.query_mode = _SANKRANTI_NEXT
-    req.at_jd_tdb = after_jd
+    _set_single_search_time(req, after_jd, arg_name="after_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
 
     out_event = ffi.new("DhruvSankrantiEvent *")
@@ -672,13 +709,13 @@ def next_sankranti(
 
 
 def prev_sankranti(
-    engine, before_jd: float, config=None
+    engine, before_jd, config=None
 ) -> Optional[SankrantiEvent]:
-    """Find the previous sankranti (any rashi) before *before_jd*."""
+    """Find the previous sankranti before a ``UtcTime`` or JD(TDB) anchor."""
     req = ffi.new("DhruvSankrantiSearchRequest *")
     req.target_kind = _SANKRANTI_TARGET_ANY
     req.query_mode = _SANKRANTI_PREV
-    req.at_jd_tdb = before_jd
+    _set_single_search_time(req, before_jd, arg_name="before_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
 
     out_event = ffi.new("DhruvSankrantiEvent *")
@@ -697,7 +734,7 @@ def prev_sankranti(
 
 
 def specific_sankranti(
-    engine, at_jd: float, rashi_index: int, direction: str = "next", config=None
+    engine, at_jd, rashi_index: int, direction: str = "next", config=None
 ) -> Optional[SankrantiEvent]:
     """Find a direction-specific sankranti into a specific rashi.
 
@@ -717,7 +754,7 @@ def specific_sankranti(
     req.target_kind = _SANKRANTI_TARGET_SPECIFIC
     req.query_mode = query_mode
     req.rashi_index = rashi_index
-    req.at_jd_tdb = at_jd
+    _set_single_search_time(req, at_jd, arg_name="at_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
 
     out_event = ffi.new("DhruvSankrantiEvent *")
@@ -737,17 +774,16 @@ def specific_sankranti(
 
 def search_sankrantis(
     engine,
-    start_jd: float,
-    end_jd: float,
+    start_jd,
+    end_jd,
     config=None,
     max_results: int = 50,
 ) -> list[SankrantiEvent]:
-    """Search for sankrantis in [start_jd, end_jd]."""
+    """Search for sankrantis in a UTC or JD(TDB) range."""
     req = ffi.new("DhruvSankrantiSearchRequest *")
     req.target_kind = _SANKRANTI_TARGET_ANY
     req.query_mode = _SANKRANTI_RANGE
-    req.start_jd_tdb = start_jd
-    req.end_jd_tdb = end_jd
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
 
     def fetch(capacity: int):

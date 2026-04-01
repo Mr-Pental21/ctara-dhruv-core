@@ -2,6 +2,7 @@
 
 import pytest
 from conftest import skip_no_kernels
+from ctara_dhruv.types import UtcTime
 
 
 J2000 = 2451545.0
@@ -15,7 +16,7 @@ class TestConjunction:
         evt = next_conjunction(
             engine_handles._ptr,
             body1_code=10, body2_code=301,
-            after_jd_tdb=J2000,
+            after_jd_tdb=UtcTime(2000, 1, 1, 12, 0, 0.0),
         )
         assert evt is not None
         assert evt.jd_tdb > J2000
@@ -109,7 +110,8 @@ class TestLunarPhase:
         events = search_lunar_phases(
             engine_handles._ptr,
             phase_kind=1,  # Purnima
-            start_jd=J2000, end_jd=J2000 + 365.0,
+            start_jd=UtcTime(2000, 1, 1, 12, 0, 0.0),
+            end_jd=UtcTime(2000, 12, 31, 12, 0, 0.0),
             max_results=1,
         )
         assert 12 <= len(events) <= 14
@@ -120,7 +122,10 @@ class TestSankranti:
     def test_next_sankranti(self, engine_handles):
         """Find next sankranti (any rashi) after J2000."""
         from ctara_dhruv.search import next_sankranti
-        evt = next_sankranti(engine_handles._ptr, after_jd=J2000)
+        evt = next_sankranti(
+            engine_handles._ptr,
+            after_jd=UtcTime(2000, 1, 1, 12, 0, 0.0),
+        )
         assert evt is not None
         assert 0 <= evt.rashi_index <= 11
 

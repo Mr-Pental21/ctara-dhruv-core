@@ -71,6 +71,10 @@ High-level time-bearing search results expose structured UTC on the main
 result objects. Conjunction, grahan, stationary, and max-speed results now
 include UTC alongside JD/TDB; sankranti and lunar-phase results remain UTC-first.
 
+The same request objects accept `atUtc` / `startUtc` / `endUtc` alongside
+`atJdTdb` / `startJdTdb` / `endJdTdb`, so UTC input stays on the main search
+functions instead of introducing `*UtcSearch` variants.
+
 `panchang.js` exports:
 
 - `bhavaSystemCount`

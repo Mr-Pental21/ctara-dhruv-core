@@ -68,7 +68,7 @@ defmodule CtaraDhruvTest do
                    Vedic.rise_set(engine, %{utc: utc, location: location, event: :sunrise})
 
           assert {:ok, _} = Panchang.tithi(engine, %{utc: utc})
-          assert {:ok, _} = Search.sankranti(engine, %{mode: :next, at_jd_tdb: 2_451_545.0})
+          assert {:ok, _} = Search.sankranti(engine, %{mode: :next, at_utc: utc})
           assert {:ok, _} = Jyotish.graha_positions(engine, %{utc: utc, location: location})
           assert {:ok, _} = Jyotish.bindus(engine, %{utc: utc, location: location})
 

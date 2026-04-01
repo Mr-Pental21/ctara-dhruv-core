@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       51
+#define DHRUV_API_VERSION       54
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 
@@ -82,6 +82,9 @@ typedef int32_t DhruvStatus;
 /* Query time selectors */
 #define DHRUV_QUERY_TIME_JD_TDB 0
 #define DHRUV_QUERY_TIME_UTC    1
+
+#define DHRUV_SEARCH_TIME_JD_TDB 0
+#define DHRUV_SEARCH_TIME_UTC    1
 
 /* Query output selectors */
 #define DHRUV_QUERY_OUTPUT_CARTESIAN 0
@@ -562,9 +565,13 @@ typedef struct {
     int32_t body1_code;
     int32_t body2_code;
     int32_t query_mode;
+    int32_t time_kind;
     double  at_jd_tdb;
     double  start_jd_tdb;
     double  end_jd_tdb;
+    DhruvUtcTime at_utc;
+    DhruvUtcTime start_utc;
+    DhruvUtcTime end_utc;
     DhruvConjunctionConfig config;
 } DhruvConjunctionSearchRequest;
 
@@ -590,9 +597,13 @@ typedef struct {
 typedef struct {
     int32_t grahan_kind;
     int32_t query_mode;
+    int32_t time_kind;
     double  at_jd_tdb;
     double  start_jd_tdb;
     double  end_jd_tdb;
+    DhruvUtcTime at_utc;
+    DhruvUtcTime start_utc;
+    DhruvUtcTime end_utc;
     DhruvGrahanConfig config;
 } DhruvGrahanSearchRequest;
 
@@ -648,9 +659,13 @@ typedef struct {
     int32_t body_code;
     int32_t motion_kind;
     int32_t query_mode;
+    int32_t time_kind;
     double  at_jd_tdb;
     double  start_jd_tdb;
     double  end_jd_tdb;
+    DhruvUtcTime at_utc;
+    DhruvUtcTime start_utc;
+    DhruvUtcTime end_utc;
     DhruvStationaryConfig config;
 } DhruvMotionSearchRequest;
 
@@ -695,18 +710,26 @@ typedef struct {
     int32_t target_kind;
     int32_t query_mode;
     int32_t rashi_index;
+    int32_t time_kind;
     double  at_jd_tdb;
     double  start_jd_tdb;
     double  end_jd_tdb;
+    DhruvUtcTime at_utc;
+    DhruvUtcTime start_utc;
+    DhruvUtcTime end_utc;
     DhruvSankrantiConfig config;
 } DhruvSankrantiSearchRequest;
 
 typedef struct {
     int32_t phase_kind;
     int32_t query_mode;
+    int32_t time_kind;
     double  at_jd_tdb;
     double  start_jd_tdb;
     double  end_jd_tdb;
+    DhruvUtcTime at_utc;
+    DhruvUtcTime start_utc;
+    DhruvUtcTime end_utc;
 } DhruvLunarPhaseSearchRequest;
 
 typedef struct {

@@ -240,6 +240,10 @@ Go high-level search/event results follow the same rule: conjunction, grahan,
 stationary, and max-speed results expose structured UTC alongside their
 existing JD/TDB fields, while sankranti and lunar-phase results remain UTC-first.
 
+The corresponding Go search request structs carry `AtUTC` / `StartUTC` /
+`EndUTC` alongside `AtJdTdb` / `StartJdTdb` / `EndJdTdb`, with one shared
+request surface per feature instead of separate UTC-specific methods.
+
 Go range-search methods auto-expand their internal buffers until the full
 result set is returned. The optional final argument is only the initial
 internal chunk size, not a public truncation cap.

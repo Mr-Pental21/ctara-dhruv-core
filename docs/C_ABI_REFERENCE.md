@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 53`
+**ABI version:** `DHRUV_API_VERSION = 54`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -539,11 +539,15 @@ typedef struct {
 
 ```c
 typedef struct {
-    int32_t phase_kind;     // DHRUV_LUNAR_PHASE_KIND_*
-    int32_t query_mode;     // DHRUV_LUNAR_PHASE_QUERY_MODE_*
-    double  at_jd_tdb;      // NEXT/PREV
-    double  start_jd_tdb;   // RANGE
-    double  end_jd_tdb;     // RANGE
+    int32_t      phase_kind;     // DHRUV_LUNAR_PHASE_KIND_*
+    int32_t      query_mode;     // DHRUV_LUNAR_PHASE_QUERY_MODE_*
+    int32_t      time_kind;      // DHRUV_SEARCH_TIME_*
+    double       at_jd_tdb;      // NEXT/PREV when time_kind=JD_TDB
+    double       start_jd_tdb;   // RANGE when time_kind=JD_TDB
+    double       end_jd_tdb;     // RANGE when time_kind=JD_TDB
+    DhruvUtcTime at_utc;         // NEXT/PREV when time_kind=UTC
+    DhruvUtcTime start_utc;      // RANGE when time_kind=UTC
+    DhruvUtcTime end_utc;        // RANGE when time_kind=UTC
 } DhruvLunarPhaseSearchRequest;
 ```
 
@@ -554,9 +558,13 @@ typedef struct {
     int32_t              target_kind;   // DHRUV_SANKRANTI_TARGET_*
     int32_t              query_mode;    // DHRUV_SANKRANTI_QUERY_MODE_*
     int32_t              rashi_index;   // 0..11 for TARGET_SPECIFIC
-    double               at_jd_tdb;     // NEXT/PREV
-    double               start_jd_tdb;  // RANGE
-    double               end_jd_tdb;    // RANGE
+    int32_t              time_kind;     // DHRUV_SEARCH_TIME_*
+    double               at_jd_tdb;     // NEXT/PREV when time_kind=JD_TDB
+    double               start_jd_tdb;  // RANGE when time_kind=JD_TDB
+    double               end_jd_tdb;    // RANGE when time_kind=JD_TDB
+    DhruvUtcTime         at_utc;        // NEXT/PREV when time_kind=UTC
+    DhruvUtcTime         start_utc;     // RANGE when time_kind=UTC
+    DhruvUtcTime         end_utc;       // RANGE when time_kind=UTC
     DhruvSankrantiConfig config;
 } DhruvSankrantiSearchRequest;
 ```
@@ -1105,9 +1113,13 @@ typedef struct {
     int32_t                body1_code;
     int32_t                body2_code;
     int32_t                query_mode;
+    int32_t                time_kind;
     double                 at_jd_tdb;
     double                 start_jd_tdb;
     double                 end_jd_tdb;
+    DhruvUtcTime           at_utc;
+    DhruvUtcTime           start_utc;
+    DhruvUtcTime           end_utc;
     DhruvConjunctionConfig config;
 } DhruvConjunctionSearchRequest;
 
@@ -1123,8 +1135,10 @@ DhruvStatus dhruv_conjunction_search_ex(
 ```
 
 Unified conjunction entrypoint:
-- `query_mode=NEXT/PREV` uses `at_jd_tdb` and writes to `out_event/out_found`.
-- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and writes to `out_events/out_count`.
+- `time_kind=JD_TDB` uses `at_jd_tdb` or `start_jd_tdb/end_jd_tdb`.
+- `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
+- `query_mode=NEXT/PREV` writes to `out_event/out_found`.
+- `query_mode=RANGE` writes to `out_events/out_count`.
 
 ---
 
@@ -1146,9 +1160,13 @@ Returns default: `include_penumbral=1`, `include_peak_details=1`.
 typedef struct {
     int32_t           grahan_kind;    // DHRUV_GRAHAN_KIND_*
     int32_t           query_mode;     // DHRUV_GRAHAN_QUERY_MODE_*
+    int32_t           time_kind;      // DHRUV_SEARCH_TIME_*
     double            at_jd_tdb;
     double            start_jd_tdb;
     double            end_jd_tdb;
+    DhruvUtcTime      at_utc;
+    DhruvUtcTime      start_utc;
+    DhruvUtcTime      end_utc;
     DhruvGrahanConfig config;
 } DhruvGrahanSearchRequest;
 
@@ -1167,8 +1185,10 @@ DhruvStatus dhruv_grahan_search_ex(
 
 Unified grahan entrypoint:
 - `grahan_kind` selects chandra vs surya result family.
-- `query_mode=NEXT/PREV` uses `at_jd_tdb`, `out_found`, and single-result pointer.
-- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and array output pointer + `out_count`.
+- `time_kind=JD_TDB` uses `at_jd_tdb` or `start_jd_tdb/end_jd_tdb`.
+- `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
+- `query_mode=NEXT/PREV` uses `out_found` and a single-result pointer.
+- `query_mode=RANGE` uses array output pointer + `out_count`.
 
 **Note:** Legacy split grahan wrappers were removed in v42. Use `dhruv_grahan_search_ex`.
 
@@ -1193,9 +1213,13 @@ typedef struct {
     int32_t               body_code;     // NAIF code
     int32_t               motion_kind;   // DHRUV_MOTION_KIND_*
     int32_t               query_mode;    // DHRUV_MOTION_QUERY_MODE_*
+    int32_t               time_kind;     // DHRUV_SEARCH_TIME_*
     double                at_jd_tdb;
     double                start_jd_tdb;
     double                end_jd_tdb;
+    DhruvUtcTime          at_utc;
+    DhruvUtcTime          start_utc;
+    DhruvUtcTime          end_utc;
     DhruvStationaryConfig config;
 } DhruvMotionSearchRequest;
 
@@ -1214,8 +1238,10 @@ DhruvStatus dhruv_motion_search_ex(
 
 Unified motion entrypoint:
 - `motion_kind` selects stationary vs max-speed family.
-- `query_mode=NEXT/PREV` uses `at_jd_tdb`, `out_found`, and single-result pointer.
-- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and array output pointer + `out_count`.
+- `time_kind=JD_TDB` uses `at_jd_tdb` or `start_jd_tdb/end_jd_tdb`.
+- `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
+- `query_mode=NEXT/PREV` uses `out_found` and a single-result pointer.
+- `query_mode=RANGE` uses array output pointer + `out_count`.
 
 **Note:** Legacy split motion wrappers were removed in v42. Use `dhruv_motion_search_ex`.
 
@@ -1243,8 +1269,10 @@ DhruvStatus dhruv_lunar_phase_search_ex(
 
 Unified lunar-phase entrypoint:
 - `phase_kind` selects amavasya vs purnima family.
-- `query_mode=NEXT/PREV` uses `at_jd_tdb` and writes `out_event/out_found`.
-- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and writes `out_events/out_count`.
+- `time_kind=JD_TDB` uses `at_jd_tdb` or `start_jd_tdb/end_jd_tdb`.
+- `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
+- `query_mode=NEXT/PREV` writes `out_event/out_found`.
+- `query_mode=RANGE` writes `out_events/out_count`.
 
 ---
 
@@ -1271,8 +1299,10 @@ DhruvStatus dhruv_sankranti_search_ex(
 Unified sankranti entrypoint:
 - `target_kind=ANY` covers all rashis.
 - `target_kind=SPECIFIC` filters to `rashi_index`.
-- `query_mode=NEXT/PREV` uses `at_jd_tdb` and writes `out_event/out_found`.
-- `query_mode=RANGE` uses `start_jd_tdb/end_jd_tdb` and writes `out_events/out_count`.
+- `time_kind=JD_TDB` uses `at_jd_tdb` or `start_jd_tdb/end_jd_tdb`.
+- `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
+- `query_mode=NEXT/PREV` writes `out_event/out_found`.
+- `query_mode=RANGE` writes `out_events/out_count`.
 
 ---
 
@@ -2060,6 +2090,11 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v54**: Extended the unified high-level search request structs with `time_kind`
+plus structured UTC fields (`at_utc`, `start_utc`, `end_utc`) so conjunction,
+grahan, motion, lunar-phase, and sankranti searches can use Gregorian UTC or
+numeric JD/TDB through the same main request shape.
 
 **v52**: Extended `DhruvDashaPeriod` with structured Gregorian UTC `start_utc` and `end_utc` alongside numeric `start_jd` and `end_jd`. Extended `DhruvDashaSnapshot` with structured Gregorian UTC `query_utc` alongside numeric `query_jd`.
 

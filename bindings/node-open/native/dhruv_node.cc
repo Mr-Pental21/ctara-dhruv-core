@@ -887,6 +887,61 @@ bool ReadQueryRequest(napi_env env, napi_value obj, DhruvQueryRequest* out) {
     return true;
 }
 
+bool ReadSearchTimeRequest(
+    napi_env env,
+    napi_value obj,
+    int32_t query_mode,
+    int32_t* time_kind,
+    double* at_jd_tdb,
+    double* start_jd_tdb,
+    double* end_jd_tdb,
+    DhruvUtcTime* at_utc,
+    DhruvUtcTime* start_utc,
+    DhruvUtcTime* end_utc) {
+    napi_value v;
+    bool has_time_kind = false;
+    if (!GetOptionalNamedProperty(env, obj, "timeKind", &v, &has_time_kind)) return false;
+    if (has_time_kind && !GetInt32(env, v, time_kind)) return false;
+
+    bool has_at_jd = false, has_start_jd = false, has_end_jd = false;
+    bool has_at_utc = false, has_start_utc = false, has_end_utc = false;
+    if (!GetOptionalNamedProperty(env, obj, "atJdTdb", &v, &has_at_jd)) return false;
+    if (has_at_jd && !GetDouble(env, v, at_jd_tdb)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "startJdTdb", &v, &has_start_jd)) return false;
+    if (has_start_jd && !GetDouble(env, v, start_jd_tdb)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "endJdTdb", &v, &has_end_jd)) return false;
+    if (has_end_jd && !GetDouble(env, v, end_jd_tdb)) return false;
+
+    if (!GetOptionalNamedProperty(env, obj, "atUtc", &v, &has_at_utc)) return false;
+    if (has_at_utc && !ReadUtcTime(env, v, at_utc)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "startUtc", &v, &has_start_utc)) return false;
+    if (has_start_utc && !ReadUtcTime(env, v, start_utc)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "endUtc", &v, &has_end_utc)) return false;
+    if (has_end_utc && !ReadUtcTime(env, v, end_utc)) return false;
+
+    if (!has_time_kind) {
+        if (query_mode == 2) {
+            bool has_jd = has_start_jd || has_end_jd;
+            bool has_utc = has_start_utc || has_end_utc;
+            if (has_jd == has_utc) return false;
+            *time_kind = has_utc ? DHRUV_SEARCH_TIME_UTC : DHRUV_SEARCH_TIME_JD_TDB;
+        } else {
+            if (has_at_jd == has_at_utc) return false;
+            *time_kind = has_at_utc ? DHRUV_SEARCH_TIME_UTC : DHRUV_SEARCH_TIME_JD_TDB;
+        }
+    }
+
+    if (*time_kind == DHRUV_SEARCH_TIME_JD_TDB) {
+        if (query_mode == 2) return has_start_jd && has_end_jd;
+        return has_at_jd;
+    }
+    if (*time_kind == DHRUV_SEARCH_TIME_UTC) {
+        if (query_mode == 2) return has_start_utc && has_end_utc;
+        return has_at_utc;
+    }
+    return true;
+}
+
 napi_value WriteLunarPhaseEvent(napi_env env, const DhruvLunarPhaseEvent& ev) {
     napi_value obj;
     napi_create_object(env, &obj);
@@ -3619,9 +3674,19 @@ napi_value ConjunctionSearch(napi_env env, napi_callback_info info) {
     if (!GetNamedProperty(env, args[1], "body1Code", &v) || !GetInt32(env, v, &req.body1_code)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "body2Code", &v) || !GetInt32(env, v, &req.body2_code)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "queryMode", &v) || !GetInt32(env, v, &req.query_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "atJdTdb", &v) || !GetDouble(env, v, &req.at_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "startJdTdb", &v) || !GetDouble(env, v, &req.start_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "endJdTdb", &v) || !GetDouble(env, v, &req.end_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (!ReadSearchTimeRequest(
+            env,
+            args[1],
+            req.query_mode,
+            &req.time_kind,
+            &req.at_jd_tdb,
+            &req.start_jd_tdb,
+            &req.end_jd_tdb,
+            &req.at_utc,
+            &req.start_utc,
+            &req.end_utc)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
 
     bool has_cfg = false;
     napi_value cfg_obj;
@@ -3684,9 +3749,19 @@ napi_value GrahanSearch(napi_env env, napi_callback_info info) {
     napi_value v;
     if (!GetNamedProperty(env, args[1], "grahanKind", &v) || !GetInt32(env, v, &req.grahan_kind)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "queryMode", &v) || !GetInt32(env, v, &req.query_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "atJdTdb", &v) || !GetDouble(env, v, &req.at_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "startJdTdb", &v) || !GetDouble(env, v, &req.start_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "endJdTdb", &v) || !GetDouble(env, v, &req.end_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (!ReadSearchTimeRequest(
+            env,
+            args[1],
+            req.query_mode,
+            &req.time_kind,
+            &req.at_jd_tdb,
+            &req.start_jd_tdb,
+            &req.end_jd_tdb,
+            &req.at_utc,
+            &req.start_utc,
+            &req.end_utc)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
 
     bool has_cfg = false;
     napi_value cfg_obj;
@@ -3765,9 +3840,19 @@ napi_value MotionSearch(napi_env env, napi_callback_info info) {
     if (!GetNamedProperty(env, args[1], "bodyCode", &v) || !GetInt32(env, v, &req.body_code)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "motionKind", &v) || !GetInt32(env, v, &req.motion_kind)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "queryMode", &v) || !GetInt32(env, v, &req.query_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "atJdTdb", &v) || !GetDouble(env, v, &req.at_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "startJdTdb", &v) || !GetDouble(env, v, &req.start_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "endJdTdb", &v) || !GetDouble(env, v, &req.end_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (!ReadSearchTimeRequest(
+            env,
+            args[1],
+            req.query_mode,
+            &req.time_kind,
+            &req.at_jd_tdb,
+            &req.start_jd_tdb,
+            &req.end_jd_tdb,
+            &req.at_utc,
+            &req.start_utc,
+            &req.end_utc)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
 
     bool has_cfg = false;
     napi_value cfg_obj;
@@ -3842,9 +3927,19 @@ napi_value SankrantiSearch(napi_env env, napi_callback_info info) {
     if (!GetNamedProperty(env, args[1], "targetKind", &v) || !GetInt32(env, v, &req.target_kind)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "queryMode", &v) || !GetInt32(env, v, &req.query_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "rashiIndex", &v) || !GetInt32(env, v, &req.rashi_index)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "atJdTdb", &v) || !GetDouble(env, v, &req.at_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "startJdTdb", &v) || !GetDouble(env, v, &req.start_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "endJdTdb", &v) || !GetDouble(env, v, &req.end_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (!ReadSearchTimeRequest(
+            env,
+            args[1],
+            req.query_mode,
+            &req.time_kind,
+            &req.at_jd_tdb,
+            &req.start_jd_tdb,
+            &req.end_jd_tdb,
+            &req.at_utc,
+            &req.start_utc,
+            &req.end_utc)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
 
     bool has_cfg = false;
     napi_value cfg_obj;
@@ -3918,9 +4013,19 @@ napi_value LunarPhaseSearch(napi_env env, napi_callback_info info) {
     napi_value v;
     if (!GetNamedProperty(env, args[1], "phaseKind", &v) || !GetInt32(env, v, &req.phase_kind)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "queryMode", &v) || !GetInt32(env, v, &req.query_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "atJdTdb", &v) || !GetDouble(env, v, &req.at_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "startJdTdb", &v) || !GetDouble(env, v, &req.start_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
-    if (!GetNamedProperty(env, args[1], "endJdTdb", &v) || !GetDouble(env, v, &req.end_jd_tdb)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (!ReadSearchTimeRequest(
+            env,
+            args[1],
+            req.query_mode,
+            &req.time_kind,
+            &req.at_jd_tdb,
+            &req.start_jd_tdb,
+            &req.end_jd_tdb,
+            &req.at_utc,
+            &req.start_utc,
+            &req.end_utc)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
 
     uint32_t capacity = 0;
     if (!GetUint32(env, args[2], &capacity)) {

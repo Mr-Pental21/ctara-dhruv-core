@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 53
+const ExpectedAPIVersion = 54
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -93,6 +93,11 @@ const (
 const (
 	QueryTimeJDTDB = cabi.QueryTimeJDTDB
 	QueryTimeUTC   = cabi.QueryTimeUTC
+)
+
+const (
+	SearchTimeJDTDB = cabi.SearchTimeJDTDB
+	SearchTimeUTC   = cabi.SearchTimeUTC
 )
 
 const (

@@ -81,6 +81,11 @@ The corresponding entrypoints are:
 - `avastha_op`
 - `full_kundali`
 
+High-level request-based search ops use one main request shape per feature.
+Their `TimeInput` fields accept either structured Gregorian UTC or numeric
+JD/TDB transport without splitting the public API into `*_utc` or similar
+variant entrypoints.
+
 ### Re-Export Policy
 
 `dhruv_rs` intentionally re-exports a selected set of high-level config/result

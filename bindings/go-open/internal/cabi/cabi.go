@@ -82,6 +82,31 @@ func goOptionalUTC(valid bool, utc C.DhruvUtcTime) *UtcTime {
 	return &value
 }
 
+func isZeroUTC(utc UtcTime) bool {
+	return utc.Year == 0 &&
+		utc.Month == 0 &&
+		utc.Day == 0 &&
+		utc.Hour == 0 &&
+		utc.Minute == 0 &&
+		utc.Second == 0
+}
+
+func resolveSearchTimeKind(queryMode, timeKind int32, atUTC, startUTC, endUTC UtcTime) int32 {
+	if timeKind == SearchTimeUTC {
+		return SearchTimeUTC
+	}
+	if queryMode == 2 {
+		if !isZeroUTC(startUTC) || !isZeroUTC(endUTC) {
+			return SearchTimeUTC
+		}
+		return SearchTimeJDTDB
+	}
+	if !isZeroUTC(atUTC) {
+		return SearchTimeUTC
+	}
+	return SearchTimeJDTDB
+}
+
 func jdUTCToUTC(jd float64) UtcTime {
 	z := math.Floor(jd + 0.5)
 	f := jd + 0.5 - z
@@ -763,13 +788,18 @@ func ConjunctionConfigDefault() ConjunctionConfig {
 }
 
 func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capacity uint32) (ConjunctionEvent, bool, []ConjunctionEvent, Status) {
+	timeKind := resolveSearchTimeKind(req.QueryMode, req.TimeKind, req.AtUTC, req.StartUTC, req.EndUTC)
 	creq := C.DhruvConjunctionSearchRequest{
 		body1_code:   C.int32_t(req.Body1Code),
 		body2_code:   C.int32_t(req.Body2Code),
 		query_mode:   C.int32_t(req.QueryMode),
+		time_kind:    C.int32_t(timeKind),
 		at_jd_tdb:    C.double(req.AtJdTdb),
 		start_jd_tdb: C.double(req.StartJdTdb),
 		end_jd_tdb:   C.double(req.EndJdTdb),
+		at_utc:       cUTC(req.AtUTC),
+		start_utc:    cUTC(req.StartUTC),
+		end_utc:      cUTC(req.EndUTC),
 		config: C.DhruvConjunctionConfig{
 			target_separation_deg: C.double(req.Config.TargetSeparationDeg),
 			step_size_days:        C.double(req.Config.StepSizeDays),
@@ -825,12 +855,17 @@ func GrahanConfigDefault() GrahanConfig {
 }
 
 func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32) (ChandraGrahanResult, SuryaGrahanResult, bool, []ChandraGrahanResult, []SuryaGrahanResult, Status) {
+	timeKind := resolveSearchTimeKind(req.QueryMode, req.TimeKind, req.AtUTC, req.StartUTC, req.EndUTC)
 	creq := C.DhruvGrahanSearchRequest{
 		grahan_kind:  C.int32_t(req.GrahanKind),
 		query_mode:   C.int32_t(req.QueryMode),
+		time_kind:    C.int32_t(timeKind),
 		at_jd_tdb:    C.double(req.AtJdTdb),
 		start_jd_tdb: C.double(req.StartJdTdb),
 		end_jd_tdb:   C.double(req.EndJdTdb),
+		at_utc:       cUTC(req.AtUTC),
+		start_utc:    cUTC(req.StartUTC),
+		end_utc:      cUTC(req.EndUTC),
 		config:       C.DhruvGrahanConfig{include_penumbral: boolU8(req.Config.IncludePenumbral), include_peak_details: boolU8(req.Config.IncludePeakDetails)},
 	}
 	var outC C.DhruvChandraGrahanResult
@@ -913,13 +948,18 @@ func StationaryConfigDefault() StationaryConfig {
 }
 
 func SearchMotion(engine EngineHandle, req MotionSearchRequest, capacity uint32) (StationaryEvent, MaxSpeedEvent, bool, []StationaryEvent, []MaxSpeedEvent, Status) {
+	timeKind := resolveSearchTimeKind(req.QueryMode, req.TimeKind, req.AtUTC, req.StartUTC, req.EndUTC)
 	creq := C.DhruvMotionSearchRequest{
 		body_code:    C.int32_t(req.BodyCode),
 		motion_kind:  C.int32_t(req.MotionKind),
 		query_mode:   C.int32_t(req.QueryMode),
+		time_kind:    C.int32_t(timeKind),
 		at_jd_tdb:    C.double(req.AtJdTdb),
 		start_jd_tdb: C.double(req.StartJdTdb),
 		end_jd_tdb:   C.double(req.EndJdTdb),
+		at_utc:       cUTC(req.AtUTC),
+		start_utc:    cUTC(req.StartUTC),
+		end_utc:      cUTC(req.EndUTC),
 		config: C.DhruvStationaryConfig{
 			step_size_days:      C.double(req.Config.StepSizeDays),
 			max_iterations:      C.uint32_t(req.Config.MaxIterations),
@@ -966,12 +1006,17 @@ func SankrantiConfigDefault() SankrantiConfig {
 }
 
 func SearchLunarPhase(engine EngineHandle, req LunarPhaseSearchRequest, capacity uint32) (LunarPhaseEvent, bool, []LunarPhaseEvent, Status) {
+	timeKind := resolveSearchTimeKind(req.QueryMode, req.TimeKind, req.AtUTC, req.StartUTC, req.EndUTC)
 	creq := C.DhruvLunarPhaseSearchRequest{
 		phase_kind:   C.int32_t(req.PhaseKind),
 		query_mode:   C.int32_t(req.QueryMode),
+		time_kind:    C.int32_t(timeKind),
 		at_jd_tdb:    C.double(req.AtJdTdb),
 		start_jd_tdb: C.double(req.StartJdTdb),
 		end_jd_tdb:   C.double(req.EndJdTdb),
+		at_utc:       cUTC(req.AtUTC),
+		start_utc:    cUTC(req.StartUTC),
+		end_utc:      cUTC(req.EndUTC),
 	}
 	var out C.DhruvLunarPhaseEvent
 	var found C.uint8_t
@@ -998,13 +1043,18 @@ func SearchLunarPhase(engine EngineHandle, req LunarPhaseSearchRequest, capacity
 }
 
 func SearchSankranti(engine EngineHandle, req SankrantiSearchRequest, capacity uint32) (SankrantiEvent, bool, []SankrantiEvent, Status) {
+	timeKind := resolveSearchTimeKind(req.QueryMode, req.TimeKind, req.AtUTC, req.StartUTC, req.EndUTC)
 	creq := C.DhruvSankrantiSearchRequest{
 		target_kind:  C.int32_t(req.TargetKind),
 		query_mode:   C.int32_t(req.QueryMode),
 		rashi_index:  C.int32_t(req.RashiIndex),
+		time_kind:    C.int32_t(timeKind),
 		at_jd_tdb:    C.double(req.AtJdTdb),
 		start_jd_tdb: C.double(req.StartJdTdb),
 		end_jd_tdb:   C.double(req.EndJdTdb),
+		at_utc:       cUTC(req.AtUTC),
+		start_utc:    cUTC(req.StartUTC),
+		end_utc:      cUTC(req.EndUTC),
 		config:       cSankrantiConfig(req.Config),
 	}
 	var out C.DhruvSankrantiEvent

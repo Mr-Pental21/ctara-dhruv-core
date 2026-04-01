@@ -55,7 +55,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 53;
+pub const DHRUV_API_VERSION: u32 = 54;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -2886,6 +2886,54 @@ pub const DHRUV_CONJUNCTION_QUERY_MODE_NEXT: i32 = 0;
 pub const DHRUV_CONJUNCTION_QUERY_MODE_PREV: i32 = 1;
 /// Conjunction query mode: all events in [`start_jd_tdb`, `end_jd_tdb`].
 pub const DHRUV_CONJUNCTION_QUERY_MODE_RANGE: i32 = 2;
+/// Search time input selector: JD TDB.
+pub const DHRUV_SEARCH_TIME_JD_TDB: i32 = 0;
+/// Search time input selector: Gregorian UTC.
+pub const DHRUV_SEARCH_TIME_UTC: i32 = 1;
+
+fn validate_search_time_kind(time_kind: i32) -> Result<(), DhruvStatus> {
+    match time_kind {
+        DHRUV_SEARCH_TIME_JD_TDB | DHRUV_SEARCH_TIME_UTC => Ok(()),
+        _ => Err(DhruvStatus::InvalidQuery),
+    }
+}
+
+fn search_time_to_jd_tdb(
+    engine: &Engine,
+    time_kind: i32,
+    jd_tdb: f64,
+    utc: DhruvUtcTime,
+) -> Result<f64, DhruvStatus> {
+    validate_search_time_kind(time_kind)?;
+    match time_kind {
+        DHRUV_SEARCH_TIME_JD_TDB => Ok(jd_tdb),
+        DHRUV_SEARCH_TIME_UTC => Ok(dhruv_time::Epoch::from_utc(
+            utc.year,
+            utc.month,
+            utc.day,
+            utc.hour,
+            utc.minute,
+            utc.second,
+            engine.lsk(),
+        )
+        .as_jd_tdb()),
+        _ => unreachable!("validated above"),
+    }
+}
+
+fn search_time_to_utc(
+    engine: &Engine,
+    time_kind: i32,
+    jd_tdb: f64,
+    utc: DhruvUtcTime,
+) -> Result<UtcTime, DhruvStatus> {
+    validate_search_time_kind(time_kind)?;
+    match time_kind {
+        DHRUV_SEARCH_TIME_JD_TDB => Ok(UtcTime::from_jd_tdb(jd_tdb, engine.lsk())),
+        DHRUV_SEARCH_TIME_UTC => Ok(ffi_to_utc_time(&utc)),
+        _ => unreachable!("validated above"),
+    }
+}
 
 /// C-compatible request for unified conjunction search.
 #[repr(C)]
@@ -2897,12 +2945,20 @@ pub struct DhruvConjunctionSearchRequest {
     pub body2_code: i32,
     /// Query mode (see `DHRUV_CONJUNCTION_QUERY_MODE_*` constants).
     pub query_mode: i32,
+    /// Time selector (`DHRUV_SEARCH_TIME_*`).
+    pub time_kind: i32,
     /// Anchor time for next/prev modes (JD TDB).
     pub at_jd_tdb: f64,
     /// Start of range window for range mode (JD TDB).
     pub start_jd_tdb: f64,
     /// End of range window for range mode (JD TDB).
     pub end_jd_tdb: f64,
+    /// Anchor time for next/prev modes (UTC).
+    pub at_utc: DhruvUtcTime,
+    /// Start of range window for range mode (UTC).
+    pub start_utc: DhruvUtcTime,
+    /// End of range window for range mode (UTC).
+    pub end_utc: DhruvUtcTime,
     /// Conjunction search configuration.
     pub config: DhruvConjunctionConfig,
 }
@@ -3005,6 +3061,9 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
             Some(b) => b,
             None => return DhruvStatus::InvalidQuery,
         };
+        if let Err(status) = validate_search_time_kind(req.time_kind) {
+            return status;
+        }
         let rust_config = conjunction_config_from_ffi(&req.config);
 
         match req.query_mode {
@@ -3012,7 +3071,16 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match next_conjunction(engine_ref, body1, body2, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match next_conjunction(engine_ref, body1, body2, at, &rust_config) {
                     Ok(Some(event)) => {
                         unsafe {
                             *out_event = DhruvConjunctionEvent::from(&event);
@@ -3031,7 +3099,16 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match prev_conjunction(engine_ref, body1, body2, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match prev_conjunction(engine_ref, body1, body2, at, &rust_config) {
                     Ok(Some(event)) => {
                         unsafe {
                             *out_event = DhruvConjunctionEvent::from(&event);
@@ -3050,14 +3127,25 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
                 if out_events.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match search_conjunctions(
+                let start = match search_time_to_jd_tdb(
                     engine_ref,
-                    body1,
-                    body2,
+                    req.time_kind,
                     req.start_jd_tdb,
-                    req.end_jd_tdb,
-                    &rust_config,
+                    req.start_utc,
                 ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match search_conjunctions(engine_ref, body1, body2, start, end, &rust_config) {
                     Ok(events) => {
                         let count = events.len().min(max_count as usize);
                         let out_slice = unsafe {
@@ -3130,12 +3218,20 @@ pub struct DhruvGrahanSearchRequest {
     pub grahan_kind: i32,
     /// Query mode selector (`DHRUV_GRAHAN_QUERY_MODE_*`).
     pub query_mode: i32,
+    /// Time selector (`DHRUV_SEARCH_TIME_*`).
+    pub time_kind: i32,
     /// Anchor time for next/prev modes (JD TDB).
     pub at_jd_tdb: f64,
     /// Start of range window for range mode (JD TDB).
     pub start_jd_tdb: f64,
     /// End of range window for range mode (JD TDB).
     pub end_jd_tdb: f64,
+    /// Anchor time for next/prev modes (UTC).
+    pub at_utc: DhruvUtcTime,
+    /// Start of range window for range mode (UTC).
+    pub start_utc: DhruvUtcTime,
+    /// End of range window for range mode (UTC).
+    pub end_utc: DhruvUtcTime,
     /// Grahan search configuration.
     pub config: DhruvGrahanConfig,
 }
@@ -3360,6 +3456,9 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
 
         let engine_ref = unsafe { &*engine };
         let req = unsafe { &*request };
+        if let Err(status) = validate_search_time_kind(req.time_kind) {
+            return status;
+        }
         let rust_config = grahan_config_from_ffi(&req.config);
 
         match (req.grahan_kind, req.query_mode) {
@@ -3367,7 +3466,16 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                 if out_chandra_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match next_chandra_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match next_chandra_grahan(engine_ref, at, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_chandra_single = DhruvChandraGrahanResult::from(&grahan);
@@ -3386,7 +3494,16 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                 if out_chandra_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match prev_chandra_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match prev_chandra_grahan(engine_ref, at, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_chandra_single = DhruvChandraGrahanResult::from(&grahan);
@@ -3405,12 +3522,25 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                 if out_chandra_many.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match search_chandra_grahan(
+                let start = match search_time_to_jd_tdb(
                     engine_ref,
+                    req.time_kind,
                     req.start_jd_tdb,
-                    req.end_jd_tdb,
-                    &rust_config,
+                    req.start_utc,
                 ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match search_chandra_grahan(engine_ref, start, end, &rust_config) {
                     Ok(results) => {
                         let count = results.len().min(max_count as usize);
                         let out_slice = unsafe {
@@ -3429,7 +3559,16 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                 if out_surya_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match next_surya_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match next_surya_grahan(engine_ref, at, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_surya_single = DhruvSuryaGrahanResult::from(&grahan);
@@ -3448,7 +3587,16 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                 if out_surya_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match prev_surya_grahan(engine_ref, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match prev_surya_grahan(engine_ref, at, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_surya_single = DhruvSuryaGrahanResult::from(&grahan);
@@ -3467,12 +3615,25 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                 if out_surya_many.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match search_surya_grahan(
+                let start = match search_time_to_jd_tdb(
                     engine_ref,
+                    req.time_kind,
                     req.start_jd_tdb,
-                    req.end_jd_tdb,
-                    &rust_config,
+                    req.start_utc,
                 ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match search_surya_grahan(engine_ref, start, end, &rust_config) {
                     Ok(results) => {
                         let count = results.len().min(max_count as usize);
                         let out_slice = unsafe {
@@ -3542,12 +3703,20 @@ pub struct DhruvMotionSearchRequest {
     pub motion_kind: i32,
     /// Query mode selector (`DHRUV_MOTION_QUERY_MODE_*`).
     pub query_mode: i32,
+    /// Time selector (`DHRUV_SEARCH_TIME_*`).
+    pub time_kind: i32,
     /// Anchor time for next/prev modes (JD TDB).
     pub at_jd_tdb: f64,
     /// Start of range window for range mode (JD TDB).
     pub start_jd_tdb: f64,
     /// End of range window for range mode (JD TDB).
     pub end_jd_tdb: f64,
+    /// Anchor time for next/prev modes (UTC).
+    pub at_utc: DhruvUtcTime,
+    /// Start of range window for range mode (UTC).
+    pub start_utc: DhruvUtcTime,
+    /// End of range window for range mode (UTC).
+    pub end_utc: DhruvUtcTime,
     /// Search configuration.
     pub config: DhruvStationaryConfig,
 }
@@ -3689,6 +3858,9 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
             Some(b) => b,
             None => return DhruvStatus::InvalidQuery,
         };
+        if let Err(status) = validate_search_time_kind(req.time_kind) {
+            return status;
+        }
         let rust_config = stationary_config_from_ffi(&req.config);
 
         match (req.motion_kind, req.query_mode) {
@@ -3696,7 +3868,16 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
                 if out_stationary_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match next_stationary(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match next_stationary(engine_ref, body, at, &rust_config) {
                     Ok(Some(event)) => {
                         unsafe {
                             *out_stationary_single = DhruvStationaryEvent::from(&event);
@@ -3715,7 +3896,16 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
                 if out_stationary_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match prev_stationary(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match prev_stationary(engine_ref, body, at, &rust_config) {
                     Ok(Some(event)) => {
                         unsafe {
                             *out_stationary_single = DhruvStationaryEvent::from(&event);
@@ -3734,13 +3924,25 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
                 if out_stationary_many.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match search_stationary(
+                let start = match search_time_to_jd_tdb(
                     engine_ref,
-                    body,
+                    req.time_kind,
                     req.start_jd_tdb,
-                    req.end_jd_tdb,
-                    &rust_config,
+                    req.start_utc,
                 ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match search_stationary(engine_ref, body, start, end, &rust_config) {
                     Ok(events) => {
                         let count = events.len().min(max_count as usize);
                         let out_slice = unsafe {
@@ -3759,7 +3961,16 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
                 if out_max_speed_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match next_max_speed(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match next_max_speed(engine_ref, body, at, &rust_config) {
                     Ok(Some(event)) => {
                         unsafe {
                             *out_max_speed_single = DhruvMaxSpeedEvent::from(&event);
@@ -3778,7 +3989,16 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
                 if out_max_speed_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match prev_max_speed(engine_ref, body, req.at_jd_tdb, &rust_config) {
+                let at = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match prev_max_speed(engine_ref, body, at, &rust_config) {
                     Ok(Some(event)) => {
                         unsafe {
                             *out_max_speed_single = DhruvMaxSpeedEvent::from(&event);
@@ -3797,13 +4017,25 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
                 if out_max_speed_many.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                match search_max_speed(
+                let start = match search_time_to_jd_tdb(
                     engine_ref,
-                    body,
+                    req.time_kind,
                     req.start_jd_tdb,
-                    req.end_jd_tdb,
-                    &rust_config,
+                    req.start_utc,
                 ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                match search_max_speed(engine_ref, body, start, end, &rust_config) {
                     Ok(events) => {
                         let count = events.len().min(max_count as usize);
                         let out_slice = unsafe {
@@ -4282,12 +4514,20 @@ pub struct DhruvLunarPhaseSearchRequest {
     pub phase_kind: i32,
     /// Query mode selector (`DHRUV_LUNAR_PHASE_QUERY_MODE_*`).
     pub query_mode: i32,
+    /// Time selector (`DHRUV_SEARCH_TIME_*`).
+    pub time_kind: i32,
     /// Anchor time for next/prev modes (JD TDB).
     pub at_jd_tdb: f64,
     /// Start of range window for range mode (JD TDB).
     pub start_jd_tdb: f64,
     /// End of range window for range mode (JD TDB).
     pub end_jd_tdb: f64,
+    /// Anchor time for next/prev modes (UTC).
+    pub at_utc: DhruvUtcTime,
+    /// Start of range window for range mode (UTC).
+    pub start_utc: DhruvUtcTime,
+    /// End of range window for range mode (UTC).
+    pub end_utc: DhruvUtcTime,
 }
 
 /// C-compatible lunar phase event.
@@ -4337,12 +4577,20 @@ pub struct DhruvSankrantiSearchRequest {
     pub query_mode: i32,
     /// Rashi index for specific target (`0..11`), ignored for `TARGET_ANY`.
     pub rashi_index: i32,
+    /// Time selector (`DHRUV_SEARCH_TIME_*`).
+    pub time_kind: i32,
     /// Anchor time for next/prev modes (JD TDB).
     pub at_jd_tdb: f64,
     /// Start of range window for range mode (JD TDB).
     pub start_jd_tdb: f64,
     /// End of range window for range mode (JD TDB).
     pub end_jd_tdb: f64,
+    /// Anchor time for next/prev modes (UTC).
+    pub at_utc: DhruvUtcTime,
+    /// Start of range window for range mode (UTC).
+    pub start_utc: DhruvUtcTime,
+    /// End of range window for range mode (UTC).
+    pub end_utc: DhruvUtcTime,
     /// Sankranti search configuration.
     pub config: DhruvSankrantiConfig,
 }
@@ -4617,13 +4865,24 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
 
         let engine_ref = unsafe { &*engine };
         let req = unsafe { &*request };
+        if let Err(status) = validate_search_time_kind(req.time_kind) {
+            return status;
+        }
 
         match (req.phase_kind, req.query_mode) {
             (DHRUV_LUNAR_PHASE_KIND_AMAVASYA, DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT) => {
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let at = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 match next_amavasya(engine_ref, &at) {
                     Ok(Some(event)) => {
                         unsafe {
@@ -4643,7 +4902,15 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let at = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 match prev_amavasya(engine_ref, &at) {
                     Ok(Some(event)) => {
                         unsafe {
@@ -4663,8 +4930,24 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
                 if out_events.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let start = UtcTime::from_jd_tdb(req.start_jd_tdb, engine_ref.lsk());
-                let end = UtcTime::from_jd_tdb(req.end_jd_tdb, engine_ref.lsk());
+                let start = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.start_jd_tdb,
+                    req.start_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 match search_amavasyas(engine_ref, &start, &end) {
                     Ok(events) => {
                         let count = events.len().min(max_count as usize);
@@ -4684,7 +4967,15 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let at = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 match next_purnima(engine_ref, &at) {
                     Ok(Some(event)) => {
                         unsafe {
@@ -4704,7 +4995,15 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let at = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 match prev_purnima(engine_ref, &at) {
                     Ok(Some(event)) => {
                         unsafe {
@@ -4724,8 +5023,24 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
                 if out_events.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let start = UtcTime::from_jd_tdb(req.start_jd_tdb, engine_ref.lsk());
-                let end = UtcTime::from_jd_tdb(req.end_jd_tdb, engine_ref.lsk());
+                let start = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.start_jd_tdb,
+                    req.start_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 match search_purnimas(engine_ref, &start, &end) {
                     Ok(events) => {
                         let count = events.len().min(max_count as usize);
@@ -4778,6 +5093,9 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
 
         let engine_ref = unsafe { &*engine };
         let req = unsafe { &*request };
+        if let Err(status) = validate_search_time_kind(req.time_kind) {
+            return status;
+        }
         let config = match sankranti_config_from_ffi(&req.config) {
             Some(c) => c,
             None => return DhruvStatus::InvalidQuery,
@@ -4799,7 +5117,15 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let at = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 let result = match specific_rashi {
                     Some(rashi) => next_specific_sankranti(engine_ref, &at, rashi, &config),
                     None => next_sankranti(engine_ref, &at, &config),
@@ -4823,7 +5149,15 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = UtcTime::from_jd_tdb(req.at_jd_tdb, engine_ref.lsk());
+                let at = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.at_jd_tdb,
+                    req.at_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 let result = match specific_rashi {
                     Some(rashi) => prev_specific_sankranti(engine_ref, &at, rashi, &config),
                     None => prev_sankranti(engine_ref, &at, &config),
@@ -4847,8 +5181,24 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                 if out_events.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let start = UtcTime::from_jd_tdb(req.start_jd_tdb, engine_ref.lsk());
-                let end = UtcTime::from_jd_tdb(req.end_jd_tdb, engine_ref.lsk());
+                let start = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.start_jd_tdb,
+                    req.start_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_utc(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
                 match search_sankrantis(engine_ref, &start, &end, &config) {
                     Ok(events) => {
                         let filtered: Vec<_> = match specific_rashi {
@@ -13937,8 +14287,8 @@ mod tests {
     }
 
     #[test]
-    fn ffi_api_version_is_53() {
-        assert_eq!(dhruv_api_version(), 53);
+    fn ffi_api_version_is_54() {
+        assert_eq!(dhruv_api_version(), 54);
     }
 
     #[test]
@@ -14021,9 +14371,13 @@ mod tests {
             body1_code: 10,
             body2_code: 301,
             query_mode: 99,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_conjunction_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
@@ -14048,9 +14402,13 @@ mod tests {
             body1_code: 10,
             body2_code: 301,
             query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_conjunction_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
@@ -14076,9 +14434,13 @@ mod tests {
             body1_code: 999999,
             body2_code: 301,
             query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_conjunction_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
@@ -14132,9 +14494,13 @@ mod tests {
         let request = DhruvGrahanSearchRequest {
             grahan_kind: 99,
             query_mode: 99,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_grahan_config_default(),
         };
         let mut found: u8 = 0;
@@ -14160,9 +14526,13 @@ mod tests {
         let request = DhruvGrahanSearchRequest {
             grahan_kind: DHRUV_GRAHAN_KIND_CHANDRA,
             query_mode: DHRUV_GRAHAN_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_grahan_config_default(),
         };
         let mut chandra = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
@@ -14188,9 +14558,13 @@ mod tests {
         let request = DhruvGrahanSearchRequest {
             grahan_kind: DHRUV_GRAHAN_KIND_SURYA,
             query_mode: DHRUV_GRAHAN_QUERY_MODE_PREV,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_grahan_config_default(),
         };
         let mut surya = std::mem::MaybeUninit::<DhruvSuryaGrahanResult>::uninit();
@@ -14291,9 +14665,13 @@ mod tests {
             body_code: 199,
             motion_kind: 99,
             query_mode: 99,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
         };
         let mut found: u8 = 0;
@@ -14320,9 +14698,13 @@ mod tests {
             body_code: 199,
             motion_kind: DHRUV_MOTION_KIND_STATIONARY,
             query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
         };
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
@@ -14349,9 +14731,13 @@ mod tests {
             body_code: 199,
             motion_kind: DHRUV_MOTION_KIND_MAX_SPEED,
             query_mode: DHRUV_MOTION_QUERY_MODE_PREV,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
         };
         let mut max_speed = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
@@ -14379,9 +14765,13 @@ mod tests {
             body_code: 999999,
             motion_kind: DHRUV_MOTION_KIND_STATIONARY,
             query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
         };
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
@@ -14409,9 +14799,13 @@ mod tests {
             body_code: 10, // Sun
             motion_kind: DHRUV_MOTION_KIND_STATIONARY,
             query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
         };
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
@@ -14439,9 +14833,13 @@ mod tests {
             body_code: 399, // Earth
             motion_kind: DHRUV_MOTION_KIND_MAX_SPEED,
             query_mode: DHRUV_MOTION_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
         };
         let mut max_speed = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
@@ -14684,9 +15082,13 @@ mod tests {
         let request = DhruvLunarPhaseSearchRequest {
             phase_kind: 99,
             query_mode: 99,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
         };
         let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
         let mut found: u8 = 0;
@@ -14709,9 +15111,13 @@ mod tests {
         let request = DhruvLunarPhaseSearchRequest {
             phase_kind: DHRUV_LUNAR_PHASE_KIND_PURNIMA,
             query_mode: DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
         };
         let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
         let mut found: u8 = 0;
@@ -14734,9 +15140,13 @@ mod tests {
         let request = DhruvLunarPhaseSearchRequest {
             phase_kind: DHRUV_LUNAR_PHASE_KIND_AMAVASYA,
             query_mode: DHRUV_LUNAR_PHASE_QUERY_MODE_NEXT,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
         };
         let mut event = std::mem::MaybeUninit::<DhruvLunarPhaseEvent>::uninit();
         let mut found: u8 = 0;
@@ -14779,9 +15189,13 @@ mod tests {
             target_kind: 99,
             query_mode: 99,
             rashi_index: 0,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_sankranti_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvSankrantiEvent>::uninit();
@@ -14806,9 +15220,13 @@ mod tests {
             target_kind: DHRUV_SANKRANTI_TARGET_ANY,
             query_mode: DHRUV_SANKRANTI_QUERY_MODE_NEXT,
             rashi_index: 0,
+            time_kind: DHRUV_SEARCH_TIME_JD_TDB,
             at_jd_tdb: 2_460_000.5,
             start_jd_tdb: 2_460_000.5,
             end_jd_tdb: 2_460_100.5,
+            at_utc: ZEROED_UTC,
+            start_utc: ZEROED_UTC,
+            end_utc: ZEROED_UTC,
             config: dhruv_sankranti_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvSankrantiEvent>::uninit();

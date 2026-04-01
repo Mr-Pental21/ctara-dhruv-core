@@ -157,6 +157,10 @@ High-level search results carry structured UTC on the main event payloads.
 Conjunction, grahan, and motion results now include UTC alongside JD/TDB where
 numeric JD is still exposed; sankranti and lunar-phase results remain UTC-first.
 
+The same search request maps accept `:at_utc`, `:start_utc`, and `:end_utc`
+alongside `:at_jd_tdb`, `:start_jd_tdb`, and `:end_jd_tdb`, keeping UTC input
+on the main operations instead of splitting out separate UTC-specific APIs.
+
 `CtaraDhruv.Dasha`:
 
 - `hierarchy/2`

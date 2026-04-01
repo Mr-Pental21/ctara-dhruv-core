@@ -209,10 +209,10 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 	defer eop.Close()
 
 	req := LunarPhaseSearchRequest{
-		PhaseKind:  1,
-		QueryMode:  2,
-		StartJdTdb: 2451545.0,
-		EndJdTdb:   2451545.0 + 365.0,
+		PhaseKind: 1,
+		QueryMode: 2,
+		StartUTC:  UtcTime{Year: 2000, Month: 1, Day: 1, Hour: 12, Minute: 0, Second: 0},
+		EndUTC:    UtcTime{Year: 2000, Month: 12, Day: 31, Hour: 12, Minute: 0, Second: 0},
 	}
 	_, found, events, err := eng.LunarPhaseSearch(req, 1)
 	if err != nil {

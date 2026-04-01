@@ -1,6 +1,6 @@
 'use strict';
 
-const EXPECTED_API_VERSION = 53;
+const EXPECTED_API_VERSION = 54;
 
 const STATUS = {
   OK: 0,
@@ -25,6 +25,11 @@ const STATUS_NAME = new Map(
 );
 
 const QUERY_TIME = {
+  JD_TDB: 0,
+  UTC: 1,
+};
+
+const SEARCH_TIME = {
   JD_TDB: 0,
   UTC: 1,
 };
@@ -135,6 +140,7 @@ module.exports = {
   PANCHADHA,
   QUERY_OUTPUT,
   QUERY_TIME,
+  SEARCH_TIME,
   SMH_FUTURE_FAMILY,
   STATUS,
   TATKALIKA,

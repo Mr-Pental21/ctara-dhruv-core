@@ -323,6 +323,10 @@ Python high-level search results expose structured Gregorian UTC wherever the
 result itself represents an event time. Conjunction, grahan, stationary, and
 max-speed results now carry UTC alongside the existing JD values; sankranti and
 lunar-phase results continue to expose UTC directly.
+
+The same main Python search functions accept either `UtcTime` inputs or numeric
+JD/TDB transport on their existing parameters; no separate `*_utc` helper
+families are required.
 - `next_sankranti`
 - `prev_sankranti`
 - `specific_sankranti`

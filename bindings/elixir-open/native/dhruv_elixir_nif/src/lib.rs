@@ -261,6 +261,9 @@ struct SearchRequest {
     at_jd_tdb: Option<f64>,
     start_jd_tdb: Option<f64>,
     end_jd_tdb: Option<f64>,
+    at_utc: Option<UtcInput>,
+    start_utc: Option<UtcInput>,
+    end_utc: Option<UtcInput>,
     config: Option<SearchConfigInput>,
     sankranti_config: Option<SankrantiConfigInput>,
 }
@@ -1988,6 +1991,57 @@ fn utc_to_jd_utc(utc: &UtcTime) -> f64 {
     (365.25 * (y2 + 4716.0)).floor() + (30.6001 * (m2 + 1.0)).floor() + d + b - 1524.5
 }
 
+fn utc_to_jd_tdb(engine: &Engine, utc: &UtcTime) -> f64 {
+    dhruv_time::Epoch::from_utc(
+        utc.year,
+        utc.month,
+        utc.day,
+        utc.hour,
+        utc.minute,
+        utc.second,
+        engine.lsk(),
+    )
+    .as_jd_tdb()
+}
+
+fn search_at_jd_tdb(engine: &Engine, request: &SearchRequest) -> Result<f64, Value> {
+    match (&request.at_jd_tdb, &request.at_utc) {
+        (Some(jd), None) => Ok(*jd),
+        (None, Some(utc)) => Ok(utc_to_jd_tdb(engine, &parse_utc(utc.clone())?)),
+        (Some(_), Some(_)) => Err(error_payload(
+            "invalid_request",
+            "provide only one of at_jd_tdb or at_utc",
+        )),
+        (None, None) => Err(error_payload(
+            "invalid_request",
+            "at_jd_tdb or at_utc is required",
+        )),
+    }
+}
+
+fn search_range_jd_tdb(engine: &Engine, request: &SearchRequest) -> Result<(f64, f64), Value> {
+    match (
+        &request.start_jd_tdb,
+        &request.end_jd_tdb,
+        &request.start_utc,
+        &request.end_utc,
+    ) {
+        (Some(start), Some(end), None, None) => Ok((*start, *end)),
+        (None, None, Some(start), Some(end)) => Ok((
+            utc_to_jd_tdb(engine, &parse_utc(start.clone())?),
+            utc_to_jd_tdb(engine, &parse_utc(end.clone())?),
+        )),
+        (Some(_), Some(_), Some(_), Some(_)) => Err(error_payload(
+            "invalid_request",
+            "provide either start/end_jd_tdb or start/end_utc, not both",
+        )),
+        _ => Err(error_payload(
+            "invalid_request",
+            "start/end_jd_tdb or start/end_utc are required",
+        )),
+    }
+}
+
 fn parse_defaults_mode(input: Option<&EnumInput>) -> Result<DefaultsMode, Value> {
     match input {
         None => Ok(DefaultsMode::Recommended),
@@ -3349,36 +3403,28 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
         match request.op.as_str() {
             "conjunction" => {
                 let query = match request.mode {
-                    EnumInput::Str(ref value) if value == "range" => ConjunctionQuery::Range {
-                        start_jd_tdb: request.start_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "start_jd_tdb is required")
-                        })?,
-                        end_jd_tdb: request.end_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "end_jd_tdb is required")
-                        })?,
-                    },
+                    EnumInput::Str(ref value) if value == "range" => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        ConjunctionQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
                     EnumInput::Str(ref value) if value == "prev" => ConjunctionQuery::Prev {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                     EnumInput::Int(1) => ConjunctionQuery::Prev {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
-                    EnumInput::Int(2) => ConjunctionQuery::Range {
-                        start_jd_tdb: request.start_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "start_jd_tdb is required")
-                        })?,
-                        end_jd_tdb: request.end_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "end_jd_tdb is required")
-                        })?,
-                    },
+                    EnumInput::Int(2) => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        ConjunctionQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
                     _ => ConjunctionQuery::Next {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                 };
                 let op =
@@ -3398,23 +3444,18 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
             }
             "grahan" => {
                 let query = match request.mode {
-                    EnumInput::Str(ref value) if value == "range" => GrahanQuery::Range {
-                        start_jd_tdb: request.start_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "start_jd_tdb is required")
-                        })?,
-                        end_jd_tdb: request.end_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "end_jd_tdb is required")
-                        })?,
-                    },
+                    EnumInput::Str(ref value) if value == "range" => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        GrahanQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
                     EnumInput::Str(ref value) if value == "prev" => GrahanQuery::Prev {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                     _ => GrahanQuery::Next {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                 };
                 let op =
@@ -3431,23 +3472,18 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
             }
             "lunar_phase" => {
                 let query = match request.mode {
-                    EnumInput::Str(ref value) if value == "range" => LunarPhaseQuery::Range {
-                        start_jd_tdb: request.start_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "start_jd_tdb is required")
-                        })?,
-                        end_jd_tdb: request.end_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "end_jd_tdb is required")
-                        })?,
-                    },
+                    EnumInput::Str(ref value) if value == "range" => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        LunarPhaseQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
                     EnumInput::Str(ref value) if value == "prev" => LunarPhaseQuery::Prev {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                     _ => LunarPhaseQuery::Next {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                 };
                 let op =
@@ -3463,23 +3499,18 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
             }
             "sankranti" => {
                 let query = match request.mode {
-                    EnumInput::Str(ref value) if value == "range" => SankrantiQuery::Range {
-                        start_jd_tdb: request.start_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "start_jd_tdb is required")
-                        })?,
-                        end_jd_tdb: request.end_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "end_jd_tdb is required")
-                        })?,
-                    },
+                    EnumInput::Str(ref value) if value == "range" => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        SankrantiQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
                     EnumInput::Str(ref value) if value == "prev" => SankrantiQuery::Prev {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                     _ => SankrantiQuery::Next {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                 };
                 let target = match request.target.as_ref() {
@@ -3511,23 +3542,18 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
             }
             "motion" => {
                 let query = match request.mode {
-                    EnumInput::Str(ref value) if value == "range" => MotionQuery::Range {
-                        start_jd_tdb: request.start_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "start_jd_tdb is required")
-                        })?,
-                        end_jd_tdb: request.end_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "end_jd_tdb is required")
-                        })?,
-                    },
+                    EnumInput::Str(ref value) if value == "range" => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        MotionQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
                     EnumInput::Str(ref value) if value == "prev" => MotionQuery::Prev {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                     _ => MotionQuery::Next {
-                        at_jd_tdb: request.at_jd_tdb.ok_or_else(|| {
-                            error_payload("invalid_request", "at_jd_tdb is required")
-                        })?,
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
                     },
                 };
                 let op =

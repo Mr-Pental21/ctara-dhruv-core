@@ -94,6 +94,11 @@ const (
 )
 
 const (
+	SearchTimeJDTDB int32 = 0
+	SearchTimeUTC   int32 = 1
+)
+
+const (
 	DefaultsModeRecommended int32 = 0
 	DefaultsModeNone        int32 = 1
 )
@@ -368,9 +373,13 @@ type ConjunctionSearchRequest struct {
 	Body1Code  int32
 	Body2Code  int32
 	QueryMode  int32
+	TimeKind   int32
 	AtJdTdb    float64
 	StartJdTdb float64
 	EndJdTdb   float64
+	AtUTC      UtcTime
+	StartUTC   UtcTime
+	EndUTC     UtcTime
 	Config     ConjunctionConfig
 }
 
@@ -394,9 +403,13 @@ type GrahanConfig struct {
 type GrahanSearchRequest struct {
 	GrahanKind int32
 	QueryMode  int32
+	TimeKind   int32
 	AtJdTdb    float64
 	StartJdTdb float64
 	EndJdTdb   float64
+	AtUTC      UtcTime
+	StartUTC   UtcTime
+	EndUTC     UtcTime
 	Config     GrahanConfig
 }
 
@@ -450,9 +463,13 @@ type MotionSearchRequest struct {
 	BodyCode   int32
 	MotionKind int32
 	QueryMode  int32
+	TimeKind   int32
 	AtJdTdb    float64
 	StartJdTdb float64
 	EndJdTdb   float64
+	AtUTC      UtcTime
+	StartUTC   UtcTime
+	EndUTC     UtcTime
 	Config     StationaryConfig
 }
 
@@ -503,18 +520,26 @@ type SankrantiSearchRequest struct {
 	TargetKind int32
 	QueryMode  int32
 	RashiIndex int32
+	TimeKind   int32
 	AtJdTdb    float64
 	StartJdTdb float64
 	EndJdTdb   float64
+	AtUTC      UtcTime
+	StartUTC   UtcTime
+	EndUTC     UtcTime
 	Config     SankrantiConfig
 }
 
 type LunarPhaseSearchRequest struct {
 	PhaseKind  int32
 	QueryMode  int32
+	TimeKind   int32
 	AtJdTdb    float64
 	StartJdTdb float64
 	EndJdTdb   float64
+	AtUTC      UtcTime
+	StartUTC   UtcTime
+	EndUTC     UtcTime
 }
 
 type LunarPhaseEvent struct {
