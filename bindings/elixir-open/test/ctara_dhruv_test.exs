@@ -353,6 +353,8 @@ defmodule CtaraDhruvTest do
     assert d2.amsha_code == 2
     assert d2.default_variation_code == 0
     assert Enum.any?(d2.variations, &(&1.name == "cancer-leo-only" and &1.variation_code == 1))
+    assert Enum.any?(d2.variations, &(&1.name == "lunar-hora" and &1.variation_code == 2))
+    assert Enum.any?(d2.variations, &(&1.name == "kashinath-hora" and &1.variation_code == 3))
 
     assert {:ok, many} = Math.amsha_variations_many(%{amsha_codes: [2, 9]})
     assert length(many.catalogs) == 2

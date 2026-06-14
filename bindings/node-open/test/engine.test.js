@@ -86,11 +86,13 @@ test('amsha variation helpers expose per-amsha catalogs', () => {
   const d2 = dhruv.amshaVariations(2);
   assert.equal(d2.amshaCode, 2);
   assert.equal(d2.defaultVariationCode, 0);
-  assert.equal(d2.variations.length, 2);
+  assert.equal(d2.variations.length, 4);
   assert.deepEqual(
     d2.variations.map((entry) => entry.name),
-    ['default', 'cancer-leo-only'],
+    ['default', 'cancer-leo-only', 'lunar-hora', 'kashinath-hora'],
   );
+  assert.ok(Math.abs(dhruv.amshaLongitude(1.25, 2, 2) - 135) < 0.01);
+  assert.ok(Math.abs(dhruv.amshaLongitude(20, 2, 3) - 220) < 0.01);
 
   const many = dhruv.amshaVariationsMany([2, 9]);
   assert.equal(many.length, 2);

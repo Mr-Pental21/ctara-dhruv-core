@@ -395,6 +395,8 @@ pub struct AmshaVariationCatalog {
 
 pub const DEFAULT_AMSHA_VARIATION_CODE: AmshaVariationCode = 0;
 pub const D2_CANCER_LEO_ONLY_VARIATION_CODE: AmshaVariationCode = 1;
+pub const D2_LUNAR_HORA_VARIATION_CODE: AmshaVariationCode = 2;
+pub const D2_KASHINATH_HORA_VARIATION_CODE: AmshaVariationCode = 3;
 
 const DEFAULT_VARIATION_INFOS: [AmshaVariationInfo; 1] = [AmshaVariationInfo {
     variation_code: DEFAULT_AMSHA_VARIATION_CODE,
@@ -404,7 +406,7 @@ const DEFAULT_VARIATION_INFOS: [AmshaVariationInfo; 1] = [AmshaVariationInfo {
     description: "Traditional Parashari method.",
 }];
 
-const D2_VARIATION_INFOS: [AmshaVariationInfo; 2] = [
+const D2_VARIATION_INFOS: [AmshaVariationInfo; 4] = [
     AmshaVariationInfo {
         variation_code: DEFAULT_AMSHA_VARIATION_CODE,
         name: "default",
@@ -418,6 +420,20 @@ const D2_VARIATION_INFOS: [AmshaVariationInfo; 2] = [
         label: "Cancer/Leo Only",
         is_default: false,
         description: "Odd rashi map to Cancer/Leo and even rashi map to Leo/Cancer.",
+    },
+    AmshaVariationInfo {
+        variation_code: D2_LUNAR_HORA_VARIATION_CODE,
+        name: "lunar-hora",
+        label: "Lunar Hora",
+        is_default: false,
+        description: "Each rashi is divided into 12 hora parts; odd signs run Simha to Karka and even signs run Karka to Simha.",
+    },
+    AmshaVariationInfo {
+        variation_code: D2_KASHINATH_HORA_VARIATION_CODE,
+        name: "kashinath-hora",
+        label: "Kashinath Hora",
+        is_default: false,
+        description: "Sun/Moon hora halves are reassigned through the natal rashi lord pairs.",
     },
 ];
 
@@ -525,7 +541,7 @@ fn amsha_target_rashi(
         // D1: identity
         Amsha::D1 => natal_rashi_idx,
 
-        // D2: two variations
+        // D2: variation-specific hora mappings.
         Amsha::D2 => match variation_code {
             D2_CANCER_LEO_ONLY_VARIATION_CODE => {
                 // Odd rashi (1-based 1,3,5,7,9,11 = 0-based 0,2,4,6,8,10)
@@ -537,6 +553,19 @@ fn amsha_target_rashi(
                 } else {
                     3 // Cancer
                 }
+            }
+            D2_LUNAR_HORA_VARIATION_CODE => {
+                // Odd signs: Simha..Karka. Even signs: Karka..Simha.
+                let is_odd_rashi = natal_rashi_idx.is_multiple_of(2);
+                if is_odd_rashi {
+                    ((4 + div_idx) % 12) as u8
+                } else {
+                    ((3 + 12 - (div_idx % 12)) % 12) as u8
+                }
+            }
+            D2_KASHINATH_HORA_VARIATION_CODE => {
+                let is_sun_hora = d2_cancer_leo_target(natal_rashi_idx, div_idx) == 4;
+                kashinath_hora_target(natal_rashi_idx, is_sun_hora)
             }
             DEFAULT_AMSHA_VARIATION_CODE => {
                 // Uma Shambhu / Parashara default:
@@ -670,6 +699,81 @@ fn amsha_target_rashi(
     }
 }
 
+fn d2_effective_divisions(variation_code: AmshaVariationCode) -> u16 {
+    if variation_code == D2_LUNAR_HORA_VARIATION_CODE {
+        12
+    } else {
+        2
+    }
+}
+
+fn effective_divisions(amsha: Amsha, variation_code: AmshaVariationCode) -> u16 {
+    if amsha == Amsha::D2 {
+        d2_effective_divisions(variation_code)
+    } else {
+        amsha.divisions()
+    }
+}
+
+fn d2_cancer_leo_target(natal_rashi_idx: u8, div_idx: u16) -> u8 {
+    let is_odd_rashi = natal_rashi_idx.is_multiple_of(2);
+    if is_odd_rashi {
+        if div_idx == 0 { 3 } else { 4 }
+    } else if div_idx == 0 {
+        4
+    } else {
+        3
+    }
+}
+
+fn kashinath_hora_target(natal_rashi_idx: u8, is_sun_hora: bool) -> u8 {
+    match natal_rashi_idx {
+        3 | 4 => {
+            if is_sun_hora {
+                4
+            } else {
+                3
+            }
+        }
+        2 | 5 => {
+            if is_sun_hora {
+                5
+            } else {
+                2
+            }
+        }
+        1 | 6 => {
+            if is_sun_hora {
+                6
+            } else {
+                1
+            }
+        }
+        0 | 7 => {
+            if is_sun_hora {
+                7
+            } else {
+                0
+            }
+        }
+        8 | 11 => {
+            if is_sun_hora {
+                8
+            } else {
+                11
+            }
+        }
+        9 | 10 => {
+            if is_sun_hora {
+                9
+            } else {
+                10
+            }
+        }
+        _ => unreachable!("rashi index is normalized to 0..11"),
+    }
+}
+
 /// Helper for INCREMENT amshas: odd rashi starts from natal, even from natal+offset.
 fn increment_start(natal_rashi_idx: u8, div_idx: u16, even_offset: u16) -> u8 {
     // 0-indexed: 0,2,4,6,8,10 are odd rashis (1-based 1,3,5,7,9,11)
@@ -746,7 +850,7 @@ pub fn amsha_longitude(
         return (target_rashi_idx as f64 * 30.0 + scaled_pos) % 360.0;
     }
 
-    let total_divisions = amsha.divisions();
+    let total_divisions = effective_divisions(amsha, variation);
     let deg_per_div = 30.0 / total_divisions as f64;
 
     // Division index (clamped to valid range)
@@ -933,6 +1037,47 @@ mod tests {
             (result2 - 140.0).abs() < 0.01,
             "D2 cancer-leo even: got {result2}"
         );
+    }
+
+    #[test]
+    fn d2_lunar_hora_uses_twelve_parts() {
+        let cases = [
+            // Odd signs run Simha..Karka.
+            (1.25, 135.0, "odd first lunar hora"),
+            (28.75, 105.0, "odd last lunar hora"),
+            // Even signs run Karka..Simha.
+            (31.25, 105.0, "even first lunar hora"),
+            (58.75, 135.0, "even last lunar hora"),
+        ];
+
+        for (lon, expected, label) in cases {
+            let result = amsha_longitude(lon, Amsha::D2, Some(D2_LUNAR_HORA_VARIATION_CODE));
+            assert!(
+                (result - expected).abs() < 0.01,
+                "{label}: got {result}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn d2_kashinath_hora_maps_owner_pairs() {
+        let cases = [
+            (10.0, 20.0, "Mangala moon hora -> Mesha"),
+            (20.0, 220.0, "Mangala sun hora -> Vrischika"),
+            (40.0, 200.0, "Shukra sun hora -> Tula"),
+            (80.0, 160.0, "Budha sun hora -> Kanya"),
+            (100.0, 140.0, "Chandra sun hora -> Simha"),
+            (250.0, 350.0, "Guru moon hora -> Meena"),
+            (280.0, 290.0, "Shani sun hora -> Makara"),
+        ];
+
+        for (lon, expected, label) in cases {
+            let result = amsha_longitude(lon, Amsha::D2, Some(D2_KASHINATH_HORA_VARIATION_CODE));
+            assert!(
+                (result - expected).abs() < 0.01,
+                "{label}: got {result}, expected {expected}"
+            );
+        }
     }
 
     #[test]
@@ -1185,6 +1330,7 @@ mod tests {
 
     #[test]
     fn variation_catalog_lookup() {
+        assert_eq!(amsha_variations(Amsha::D2).len(), 4);
         assert_eq!(
             amsha_variation_info(Amsha::D9, DEFAULT_AMSHA_VARIATION_CODE).map(|info| info.name),
             Some("default")
@@ -1193,6 +1339,14 @@ mod tests {
             amsha_variation_info(Amsha::D2, D2_CANCER_LEO_ONLY_VARIATION_CODE)
                 .map(|info| info.name),
             Some("cancer-leo-only")
+        );
+        assert_eq!(
+            amsha_variation_info(Amsha::D2, D2_LUNAR_HORA_VARIATION_CODE).map(|info| info.name),
+            Some("lunar-hora")
+        );
+        assert_eq!(
+            amsha_variation_info(Amsha::D2, D2_KASHINATH_HORA_VARIATION_CODE).map(|info| info.name),
+            Some("kashinath-hora")
         );
         assert_eq!(
             amsha_variation_info(Amsha::D2, DEFAULT_AMSHA_VARIATION_CODE).map(|info| info.label),
@@ -1207,6 +1361,14 @@ mod tests {
             amsha_variation_info(Amsha::D9, D2_CANCER_LEO_ONLY_VARIATION_CODE),
             None
         );
+        assert_eq!(
+            amsha_variation_info(Amsha::D9, D2_LUNAR_HORA_VARIATION_CODE),
+            None
+        );
+        assert_eq!(
+            amsha_variation_info(Amsha::D9, D2_KASHINATH_HORA_VARIATION_CODE),
+            None
+        );
     }
 
     #[test]
@@ -1219,9 +1381,25 @@ mod tests {
             Amsha::D2,
             D2_CANCER_LEO_ONLY_VARIATION_CODE
         ));
+        assert!(is_valid_amsha_variation(
+            Amsha::D2,
+            D2_LUNAR_HORA_VARIATION_CODE
+        ));
+        assert!(is_valid_amsha_variation(
+            Amsha::D2,
+            D2_KASHINATH_HORA_VARIATION_CODE
+        ));
         assert!(!is_valid_amsha_variation(
             Amsha::D9,
             D2_CANCER_LEO_ONLY_VARIATION_CODE
+        ));
+        assert!(!is_valid_amsha_variation(
+            Amsha::D9,
+            D2_LUNAR_HORA_VARIATION_CODE
+        ));
+        assert!(!is_valid_amsha_variation(
+            Amsha::D9,
+            D2_KASHINATH_HORA_VARIATION_CODE
         ));
     }
 

@@ -2609,8 +2609,10 @@ fn ffi_amsha_variation_catalogs_are_amsha_scoped() {
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(d2.amsha_code, 2);
     assert_eq!(d2.default_variation_code, 0);
-    assert_eq!(d2.count, 2);
+    assert_eq!(d2.count, 4);
     assert_eq!(d2.variations[1].variation_code, 1);
+    assert_eq!(d2.variations[2].variation_code, 2);
+    assert_eq!(d2.variations[3].variation_code, 3);
 
     let mut many = DhruvAmshaVariationCatalogs {
         count: 0,
@@ -2635,6 +2637,26 @@ fn ffi_amsha_variation_catalogs_are_amsha_scoped() {
     assert_eq!(many.lists[1].amsha_code, 9);
     assert_eq!(many.lists[1].count, 1);
     assert_eq!(many.lists[1].variations[0].variation_code, 0);
+}
+
+#[test]
+fn ffi_amsha_longitude_accepts_new_d2_hora_variations() {
+    let mut lunar = 0.0;
+    let status = unsafe { dhruv_amsha_longitude(1.25, 2, 2, &mut lunar) };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!((lunar - 135.0).abs() < 0.01, "lunar hora got {lunar}");
+
+    let mut kashinath = 0.0;
+    let status = unsafe { dhruv_amsha_longitude(20.0, 2, 3, &mut kashinath) };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!(
+        (kashinath - 220.0).abs() < 0.01,
+        "kashinath hora got {kashinath}"
+    );
+
+    let mut invalid = 0.0;
+    let status = unsafe { dhruv_amsha_longitude(20.0, 9, 3, &mut invalid) };
+    assert_eq!(status, DhruvStatus::InvalidSearchConfig);
 }
 
 #[test]

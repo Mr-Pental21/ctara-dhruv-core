@@ -403,6 +403,8 @@ Variation names:
 
 - `default` (all currently supported amshas)
 - `cancer-leo-only` (`D2` only)
+- `lunar-hora` (`D2` only)
+- `kashinath-hora` (`D2` only)
 
 Variation names are resolved per amsha. Use `amsha-variations` to discover the
 valid names and numeric codes for a given amsha:

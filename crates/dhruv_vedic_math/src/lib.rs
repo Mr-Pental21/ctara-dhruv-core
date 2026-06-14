@@ -32,7 +32,8 @@ pub mod yoga;
 
 pub use amsha::{
     ALL_AMSHAS, Amsha, AmshaRequest, AmshaVariationCatalog, AmshaVariationCode, AmshaVariationInfo,
-    D2_CANCER_LEO_ONLY_VARIATION_CODE, DEFAULT_AMSHA_VARIATION_CODE, RashiElement, SHODASHAVARGA,
+    D2_CANCER_LEO_ONLY_VARIATION_CODE, D2_KASHINATH_HORA_VARIATION_CODE,
+    D2_LUNAR_HORA_VARIATION_CODE, DEFAULT_AMSHA_VARIATION_CODE, RashiElement, SHODASHAVARGA,
     amsha_from_rashi_position, amsha_longitude, amsha_longitudes, amsha_rashi_info,
     amsha_rashi_infos, amsha_variation_by_name, amsha_variation_catalog, amsha_variation_info,
     amsha_variations, default_amsha_variation, is_valid_amsha_variation, rashi_element,

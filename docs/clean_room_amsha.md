@@ -7,6 +7,10 @@ Shastra* (BPHS), chapters on Shodashavarga (16 divisional charts) and other
 varga classifications. The mapping rules below are derived solely from public
 BPHS translations and standard Jyotish reference texts.
 
+The `lunar-hora` and `kashinath-hora` D2 variations are implemented from the
+clean, user-provided specification recorded in the development thread for this
+change.
+
 No code or algorithms from copyleft or source-available implementations were
 consulted.
 
@@ -82,7 +86,9 @@ D1, D2, D3, D4, D7, D9, D10, D12, D16, D20, D24, D27, D30, D40, D45, D60
 |-----------|-------------|---------|
 | NATAL | Start from natal rashi | D5-D6, D8, D11-D12, D15, D18, D21-D22, D25, D28, D36, D48, D50, D54, D60, D72, D81, D108, D144 |
 | DOUBLE_MOD_REV_EVEN | odd signs: `start=(rashi*2)%12`, halves = `start,start+1`; even signs: halves = `start+1,start` | D2 (default) |
-| CANCER_LEO | Odd rashi → Cancer(3), Even → Leo(4) | D2 (HoraCancerLeoOnly variation) |
+| CANCER_LEO | Odd rashi → Cancer(3)/Leo(4), Even rashi → Leo(4)/Cancer(3) | D2 (`cancer-leo-only` variation) |
+| LUNAR_HORA | 12 equal parts per rashi; odd signs run Simha(4) → Karka(3), even signs run Karka(3) → Simha(4) | D2 (`lunar-hora` variation) |
+| KASHINATH_HORA | Resolve Sun/Moon hora with CANCER_LEO, then assign by natal sign lord pair | D2 (`kashinath-hora` variation) |
 | KENDRA_STEP | Start from natal rashi, advance by +3 per division | D4 |
 | INCREMENT | Odd rashi → natal, Even → natal + offset | D7(+6), D10(+8) |
 | FEAW | Element-based fixed start | D9, D27 |
@@ -163,6 +169,22 @@ Variation codes are resolved per amsha. Current catalog entries are:
 |------|------|------|-------------|
 | All supported amshas | 0 | default | Standard BPHS divisional mapping for that amsha |
 | D2 | 1 | cancer-leo-only | Hora with only Cancer/Leo as target rashis |
+| D2 | 2 | lunar-hora | Hora with 12 parts per rashi; odd signs run Simha to Karka and even signs run Karka to Simha |
+| D2 | 3 | kashinath-hora | Hora reassigned from Sun/Moon halves through natal sign lord pairs |
+
+### D2 Kashinath Hora Mapping
+
+The `kashinath-hora` variation first determines Sun hora or Moon hora using the
+`cancer-leo-only` split. It then maps the natal rashi owner pair as follows:
+
+| Natal Rashi Pair | Sun Hora Target | Moon Hora Target |
+|------------------|-----------------|------------------|
+| Karka(3), Simha(4) | Simha(4) | Karka(3) |
+| Mithuna(2), Kanya(5) | Kanya(5) | Mithuna(2) |
+| Vrishabha(1), Tula(6) | Tula(6) | Vrishabha(1) |
+| Mesha(0), Vrischika(7) | Vrischika(7) | Mesha(0) |
+| Dhanu(8), Meena(11) | Dhanu(8) | Meena(11) |
+| Makara(9), Kumbha(10) | Makara(9) | Kumbha(10) |
 
 ## Validation
 

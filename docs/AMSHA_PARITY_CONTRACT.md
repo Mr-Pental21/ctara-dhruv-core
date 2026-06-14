@@ -23,11 +23,11 @@ Primary source files:
 
 - `crates/dhruv_ffi_c/src/lib.rs`
 - `crates/dhruv_search/src/jyotish_types.rs`
-- `crates/dhruv_vedic_base/src/amsha.rs`
+- `crates/dhruv_vedic_math/src/amsha.rs`
 
 Current ABI constants relevant to amsha:
 
-- `DHRUV_API_VERSION = 49`
+- `DHRUV_API_VERSION = 70`
 - `DHRUV_MAX_AMSHA_REQUESTS = 40`
 
 ## Canonical Concepts
@@ -46,11 +46,22 @@ The standard shodashavarga subset is:
 
 Variation codes are amsha-scoped. The current catalog entries are:
 
-- `D2`: `0=default`, `1=cancer-leo-only`
+- `D2`: `0=default`, `1=cancer-leo-only`, `2=lunar-hora`, `3=kashinath-hora`
 - every other supported amsha currently exposes `0=default`
 
 For `D2` default, odd signs map halves as `start,start+1` and even signs map
 halves as `start+1,start`, where `start = (rashi * 2) % 12`.
+
+For `D2` `lunar-hora`, each rashi is divided into 12 equal parts. Odd signs
+start at Simha and advance one rashi per part through Karka; even signs start
+at Karka and move backward one rashi per part through Simha. The position
+inside each 1/12 sign part is scaled to 30 degrees.
+
+For `D2` `kashinath-hora`, the Sun/Moon half is determined by the
+`cancer-leo-only` split and then reassigned by natal rashi owner pair:
+Surya/Chandra signs map to Simha/Karka, Budha signs to Kanya/Mithuna, Shukra
+signs to Tula/Vrishabha, Mangala signs to Vrischika/Mesha, Guru signs to
+Dhanu/Meena, and Shani signs to Makara/Kumbha for Sun/Moon hora respectively.
 
 Use the amsha variation discovery helpers as the authoritative source for the
 valid codes, names, labels, and defaults for any given amsha.

@@ -121,8 +121,15 @@ fn amsha_low_level_helpers_run() {
 #[test]
 fn amsha_variation_helpers_are_amsha_scoped() {
     let d2 = amsha_variations(Amsha::D2);
-    assert_eq!(d2.len(), 2);
+    assert_eq!(d2.len(), 4);
     assert_eq!(d2[1].name, "cancer-leo-only");
+    assert_eq!(d2[2].name, "lunar-hora");
+    assert_eq!(d2[3].name, "kashinath-hora");
+
+    let lunar = amsha_longitude(1.25, Amsha::D2, Some(D2_LUNAR_HORA_VARIATION_CODE));
+    assert!((lunar - 135.0).abs() < 0.01);
+    let kashinath = amsha_longitude(20.0, Amsha::D2, Some(D2_KASHINATH_HORA_VARIATION_CODE));
+    assert!((kashinath - 220.0).abs() < 0.01);
 
     let many = amsha_variations_many(&[Amsha::D2, Amsha::D9]);
     assert_eq!(many.len(), 2);

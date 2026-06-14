@@ -35,6 +35,12 @@ class TestAmshaLongitudePureMath:
         result = amsha_longitude(200.0, 60)
         assert 0 <= result < 360
 
+    def test_new_d2_hora_variations(self):
+        """D2 Hora variations should be accepted by numeric code."""
+        from ctara_dhruv.amsha import amsha_longitude
+        assert abs(amsha_longitude(1.25, 2, 2) - 135.0) < 0.01
+        assert abs(amsha_longitude(20.0, 2, 3) - 220.0) < 0.01
+
 
 class TestAmshaRashiInfo:
     def test_amsha_rashi_info_d9(self):
@@ -61,7 +67,12 @@ class TestAmshaLongitudesBatch:
         d2 = amsha_variations(2)
         assert d2.amsha_code == 2
         assert d2.default_variation_code == 0
-        assert [entry.name for entry in d2.variations] == ["default", "cancer-leo-only"]
+        assert [entry.name for entry in d2.variations] == [
+            "default",
+            "cancer-leo-only",
+            "lunar-hora",
+            "kashinath-hora",
+        ]
 
         many = amsha_variations_many([2, 9])
         assert len(many) == 2

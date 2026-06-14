@@ -1,6 +1,27 @@
 package dhruv
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+func TestAmshaLongitudeNewD2HoraVariations(t *testing.T) {
+	lunar, err := AmshaLongitude(1.25, 2, 2)
+	if err != nil {
+		t.Fatalf("AmshaLongitude(D2 lunar-hora) failed: %v", err)
+	}
+	if math.Abs(lunar-135.0) > 0.01 {
+		t.Fatalf("unexpected D2 lunar-hora longitude: %.6f", lunar)
+	}
+
+	kashinath, err := AmshaLongitude(20.0, 2, 3)
+	if err != nil {
+		t.Fatalf("AmshaLongitude(D2 kashinath-hora) failed: %v", err)
+	}
+	if math.Abs(kashinath-220.0) > 0.01 {
+		t.Fatalf("unexpected D2 kashinath-hora longitude: %.6f", kashinath)
+	}
+}
 
 func TestAmshaVariations(t *testing.T) {
 	out, err := AmshaVariations(2)
@@ -13,11 +34,17 @@ func TestAmshaVariations(t *testing.T) {
 	if out.DefaultVariationCode != 0 {
 		t.Fatalf("expected default variation 0, got %d", out.DefaultVariationCode)
 	}
-	if len(out.Variations) != 2 {
-		t.Fatalf("expected 2 D2 variations, got %d", len(out.Variations))
+	if len(out.Variations) != 4 {
+		t.Fatalf("expected 4 D2 variations, got %d", len(out.Variations))
 	}
 	if out.Variations[1].Name != "cancer-leo-only" {
 		t.Fatalf("unexpected D2 variation name: %q", out.Variations[1].Name)
+	}
+	if out.Variations[2].Name != "lunar-hora" {
+		t.Fatalf("unexpected D2 variation name: %q", out.Variations[2].Name)
+	}
+	if out.Variations[3].Name != "kashinath-hora" {
+		t.Fatalf("unexpected D2 variation name: %q", out.Variations[3].Name)
 	}
 }
 

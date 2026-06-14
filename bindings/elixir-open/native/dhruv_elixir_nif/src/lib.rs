@@ -5339,8 +5339,10 @@ mod tests {
         let d9 = amsha_variation_catalog_json(Amsha::D9);
 
         assert_eq!(d2["default_variation_code"], 0);
-        assert_eq!(d2["variations"].as_array().unwrap().len(), 2);
+        assert_eq!(d2["variations"].as_array().unwrap().len(), 4);
         assert_eq!(d2["variations"][1]["name"], "cancer-leo-only");
+        assert_eq!(d2["variations"][2]["name"], "lunar-hora");
+        assert_eq!(d2["variations"][3]["name"], "kashinath-hora");
         assert_eq!(d9["variations"].as_array().unwrap().len(), 1);
         assert_eq!(d9["variations"][0]["variation_code"], 0);
     }

@@ -238,5 +238,28 @@ fn cli_amsha_variations_lists_catalogs() {
     assert!(stdout.contains("Hora (D2):"));
     assert!(stdout.contains("0   default"));
     assert!(stdout.contains("1   cancer-leo-only"));
+    assert!(stdout.contains("2   lunar-hora"));
+    assert!(stdout.contains("3   kashinath-hora"));
     assert!(stdout.contains("Navamsha (D9):"));
+}
+
+#[test]
+fn cli_amsha_accepts_new_d2_hora_variations() {
+    let output = run_cli(&[
+        "--no-config",
+        "amsha",
+        "--lon",
+        "1.25",
+        "--amsha",
+        "D2:lunar-hora,D2:kashinath-hora",
+        "--output",
+        "longitude",
+        "--format",
+        "tsv",
+    ]);
+    assert_success(&output, "amsha new D2 variations");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("D2\t2\t135.000000"));
+    assert!(stdout.contains("D2\t3\t2.500000"));
 }
