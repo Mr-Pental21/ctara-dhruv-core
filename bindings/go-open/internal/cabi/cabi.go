@@ -1693,6 +1693,37 @@ func cFullKundaliConfig(cfg FullKundaliConfig) C.DhruvFullKundaliConfig {
 	return out
 }
 
+func GocharEventsConfigDefault() GocharEventsConfig {
+	cfg := C.dhruv_gochar_events_config_default()
+	return GocharEventsConfig{
+		TajakaReturnBasis:    int32(cfg.tajaka_return_basis),
+		YearlyCount:          uint32(cfg.yearly_count),
+		MonthlyCount:         uint32(cfg.monthly_count),
+		TransitWindowDays:    float64(cfg.transit_window_days),
+		IncludeReturnCharts:  cfg.include_return_charts != 0,
+		SolarStepSizeDays:    float64(cfg.solar_step_size_days),
+		LunarStepSizeDays:    float64(cfg.lunar_step_size_days),
+		SolarConvergenceDays: float64(cfg.solar_convergence_days),
+		LunarConvergenceDays: float64(cfg.lunar_convergence_days),
+		MaxIterations:        uint32(cfg.max_iterations),
+	}
+}
+
+func cGocharEventsConfig(cfg GocharEventsConfig) C.DhruvGocharEventsConfig {
+	return C.DhruvGocharEventsConfig{
+		tajaka_return_basis:   C.int32_t(cfg.TajakaReturnBasis),
+		yearly_count:          C.uint32_t(cfg.YearlyCount),
+		monthly_count:         C.uint32_t(cfg.MonthlyCount),
+		transit_window_days:   C.double(cfg.TransitWindowDays),
+		include_return_charts: boolU8(cfg.IncludeReturnCharts),
+		solar_step_size_days:  C.double(cfg.SolarStepSizeDays),
+		lunar_step_size_days:  C.double(cfg.LunarStepSizeDays),
+		solar_convergence_days: C.double(cfg.SolarConvergenceDays),
+		lunar_convergence_days: C.double(cfg.LunarConvergenceDays),
+		max_iterations:        C.uint32_t(cfg.MaxIterations),
+	}
+}
+
 func DashaHierarchy(engine EngineHandle, eop EopHandle, request DashaHierarchyRequest) (DashaHierarchyHandle, Status) {
 	crequest := C.DhruvDashaHierarchyRequest{
 		birth:     cDashaBirthContext(request.Birth),
@@ -2339,28 +2370,7 @@ func goFullKundaliDashaHierarchy(handle C.DhruvDashaHierarchyHandle, system uint
 	return out, StatusOK
 }
 
-func FullKundaliForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool, cfg FullKundaliConfig) (FullKundaliResult, Status) {
-	cutc, cloc := cUTC(utc), cGeo(loc)
-	cbhava, crise := cBhavaConfig(bhavaCfg), cRiseSetConfig(riseCfg)
-	ccfg := cFullKundaliConfig(cfg)
-	var out C.DhruvFullKundaliResult
-	st := Status(C.dhruv_full_kundali_for_date(
-		engine.ptr,
-		eop.ptr,
-		&cutc,
-		&cloc,
-		&cbhava,
-		&crise,
-		C.uint32_t(ayanamshaSystem),
-		boolU8(useNutation),
-		&ccfg,
-		&out,
-	))
-	if st != StatusOK {
-		return FullKundaliResult{}, st
-	}
-	defer C.dhruv_full_kundali_result_free(&out)
-
+func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Status) {
 	res := FullKundaliResult{AyanamshaDeg: float64(out.ayanamsha_deg)}
 	if out.bhava_cusps_valid != 0 {
 		v := goBhavaResult(out.bhava_cusps)
@@ -2552,4 +2562,398 @@ func FullKundaliForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc Geo
 		}
 	}
 	return res, StatusOK
+}
+
+func FullKundaliForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool, cfg FullKundaliConfig) (FullKundaliResult, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
+	cbhava, crise := cBhavaConfig(bhavaCfg), cRiseSetConfig(riseCfg)
+	ccfg := cFullKundaliConfig(cfg)
+	var out C.DhruvFullKundaliResult
+	st := Status(C.dhruv_full_kundali_for_date(
+		engine.ptr,
+		eop.ptr,
+		&cutc,
+		&cloc,
+		&cbhava,
+		&crise,
+		C.uint32_t(ayanamshaSystem),
+		boolU8(useNutation),
+		&ccfg,
+		&out,
+	))
+	if st != StatusOK {
+		return FullKundaliResult{}, st
+	}
+	defer C.dhruv_full_kundali_result_free(&out)
+	return goFullKundaliResult(out)
+}
+
+func materializeFullKundali(fetch func(*C.DhruvFullKundaliResult) Status) (*FullKundaliResult, Status) {
+	var out C.DhruvFullKundaliResult
+	st := fetch(&out)
+	if st != StatusOK {
+		return nil, st
+	}
+	defer C.dhruv_full_kundali_result_free(&out)
+	result, st := goFullKundaliResult(out)
+	if st != StatusOK {
+		return nil, st
+	}
+	return &result, StatusOK
+}
+
+func goGocharReference(v C.DhruvGocharReference) GocharReference {
+	return GocharReference{
+		NatalTropicalSolarLongitudeDeg: float64(v.natal_tropical_solar_longitude_deg),
+		NatalSiderealSolarLongitudeDeg: float64(v.natal_sidereal_solar_longitude_deg),
+		NatalElongationDeg:             float64(v.natal_elongation_deg),
+		NatalMasa:                      goMasaInfo(v.natal_masa),
+	}
+}
+
+func goTajakaReturnEventRow(v C.DhruvTajakaReturnEventRow) TajakaReturnEvent {
+	return TajakaReturnEvent{
+		UTC:                     goUTC(v.utc),
+		JDTDB:                   float64(v.jd_tdb),
+		Basis:                   int32(v.basis),
+		TargetSolarLongitudeDeg: float64(v.target_solar_longitude_deg),
+		EventSolarLongitudeDeg:  float64(v.event_solar_longitude_deg),
+	}
+}
+
+func goTithiPraveshaEventRow(v C.DhruvTithiPraveshaEventRow) TithiPraveshaEvent {
+	return TithiPraveshaEvent{
+		UTC:                 goUTC(v.utc),
+		JDTDB:               float64(v.jd_tdb),
+		TargetElongationDeg: float64(v.target_elongation_deg),
+		EventElongationDeg:  float64(v.event_elongation_deg),
+		Masa:                goMasaInfo(v.masa),
+	}
+}
+
+func goTransitToNatalAspectEventRow(v C.DhruvTransitToNatalAspectEventRow) TransitToNatalAspectEvent {
+	return TransitToNatalAspectEvent{
+		TransitBodyCode:     int32(v.transit_body_code),
+		TargetKind:          int32(v.target_kind),
+		TargetIndex:         uint8(v.target_index),
+		TargetName:          cString((*C.char)(unsafe.Pointer(&v.target_name[0]))),
+		AspectKind:          int32(v.aspect_kind),
+		AspectOwner:         int32(v.aspect_owner),
+		AspectAngleDeg:      float64(v.aspect_angle_deg),
+		UTC:                 goUTC(v.utc),
+		JDTDB:               float64(v.jd_tdb),
+		TransitLongitudeDeg: float64(v.transit_longitude_deg),
+		TargetLongitudeDeg:  float64(v.target_longitude_deg),
+		ActualSeparationDeg: float64(v.actual_separation_deg),
+	}
+}
+
+func collectGocharTajaka(handle C.DhruvGocharEventsHandle, monthly, before C.uint8_t) ([]TajakaReturnEvent, Status) {
+	var count C.uint32_t
+	st := Status(C.dhruv_gochar_events_tajaka_count(handle, monthly, before, &count))
+	if st != StatusOK {
+		return nil, st
+	}
+	events := make([]TajakaReturnEvent, int(count))
+	for i := 0; i < int(count); i++ {
+		var row C.DhruvTajakaReturnEventRow
+		st = Status(C.dhruv_gochar_events_tajaka_at(handle, monthly, before, C.uint32_t(i), &row))
+		if st != StatusOK {
+			return nil, st
+		}
+		event := goTajakaReturnEventRow(row)
+		if row.has_chart != 0 {
+			chart, cst := materializeFullKundali(func(out *C.DhruvFullKundaliResult) Status {
+				return Status(C.dhruv_gochar_events_tajaka_chart_at(handle, monthly, before, C.uint32_t(i), out))
+			})
+			if cst != StatusOK {
+				return nil, cst
+			}
+			event.Chart = chart
+		}
+		events[i] = event
+	}
+	return events, StatusOK
+}
+
+func collectGocharTithi(handle C.DhruvGocharEventsHandle, monthly, before C.uint8_t) ([]TithiPraveshaEvent, Status) {
+	var count C.uint32_t
+	st := Status(C.dhruv_gochar_events_tithi_count(handle, monthly, before, &count))
+	if st != StatusOK {
+		return nil, st
+	}
+	events := make([]TithiPraveshaEvent, int(count))
+	for i := 0; i < int(count); i++ {
+		var row C.DhruvTithiPraveshaEventRow
+		st = Status(C.dhruv_gochar_events_tithi_at(handle, monthly, before, C.uint32_t(i), &row))
+		if st != StatusOK {
+			return nil, st
+		}
+		event := goTithiPraveshaEventRow(row)
+		if row.has_chart != 0 {
+			chart, cst := materializeFullKundali(func(out *C.DhruvFullKundaliResult) Status {
+				return Status(C.dhruv_gochar_events_tithi_chart_at(handle, monthly, before, C.uint32_t(i), out))
+			})
+			if cst != StatusOK {
+				return nil, cst
+			}
+			event.Chart = chart
+		}
+		events[i] = event
+	}
+	return events, StatusOK
+}
+
+func GocharEvents(engine EngineHandle, eop EopHandle, req GocharEventsRequest) (GocharEventsResult, Status) {
+	cbirth, cat := cUTC(req.BirthUTC), cUTC(req.AtUTC)
+	cloc := cGeo(req.Location)
+	cbhava, crise := cBhavaConfig(req.BhavaConfig), cRiseSetConfig(req.RiseSetConfig)
+	csankranti := cSankrantiConfig(req.SankrantiConfig)
+	ckundali := cFullKundaliConfig(req.KundaliConfig)
+	ccfg := cGocharEventsConfig(req.Config)
+
+	var bodyPtr *C.uint32_t
+	if len(req.TransitBodyCodes) > 0 {
+		bodyCodes := make([]C.uint32_t, len(req.TransitBodyCodes))
+		for i, code := range req.TransitBodyCodes {
+			bodyCodes[i] = C.uint32_t(code)
+		}
+		bodyPtr = &bodyCodes[0]
+
+		var targetPtr *C.DhruvGocharNatalTarget
+		targets := make([]C.DhruvGocharNatalTarget, len(req.NatalTargets))
+		cNames := make([]*C.char, len(req.NatalTargets))
+		for i, target := range req.NatalTargets {
+			if target.Name != "" {
+				cNames[i] = C.CString(target.Name)
+				defer C.free(unsafe.Pointer(cNames[i]))
+			}
+			targets[i] = C.DhruvGocharNatalTarget{
+				kind:          C.int32_t(target.Kind),
+				index:         C.uint8_t(target.Index),
+				name_utf8:     cNames[i],
+				longitude_deg: C.double(target.LongitudeDeg),
+			}
+		}
+		if len(targets) > 0 {
+			targetPtr = &targets[0]
+		}
+
+		creq := C.DhruvGocharEventsRequest{
+			birth_utc:          cbirth,
+			at_utc:             cat,
+			location:           cloc,
+			bhava_config:       cbhava,
+			riseset_config:     crise,
+			sankranti_config:   csankranti,
+			kundali_config:     ckundali,
+			config:             ccfg,
+			transit_body_codes: bodyPtr,
+			transit_body_count: C.uint32_t(len(req.TransitBodyCodes)),
+			natal_targets:      targetPtr,
+			natal_target_count: C.uint32_t(len(req.NatalTargets)),
+		}
+
+		var handle C.DhruvGocharEventsHandle
+		st := Status(C.dhruv_gochar_events(engine.ptr, eop.ptr, &creq, &handle))
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		defer C.dhruv_gochar_events_free(handle)
+
+		var summary C.DhruvGocharEventsSummary
+		st = Status(C.dhruv_gochar_events_summary(handle, &summary))
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+
+		yearlyBefore, st := collectGocharTajaka(handle, 0, 1)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		yearlyAfter, st := collectGocharTajaka(handle, 0, 0)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		monthlyBefore, st := collectGocharTajaka(handle, 1, 1)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		monthlyAfter, st := collectGocharTajaka(handle, 1, 0)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+
+		yearlyTithiBefore, st := collectGocharTithi(handle, 0, 1)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		yearlyTithiAfter, st := collectGocharTithi(handle, 0, 0)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		monthlyTithiBefore, st := collectGocharTithi(handle, 1, 1)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		monthlyTithiAfter, st := collectGocharTithi(handle, 1, 0)
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+
+		var transitCount C.uint32_t
+		st = Status(C.dhruv_gochar_events_transit_count(handle, &transitCount))
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		transitEvents := make([]TransitToNatalAspectEvent, int(transitCount))
+		for i := 0; i < int(transitCount); i++ {
+			var row C.DhruvTransitToNatalAspectEventRow
+			st = Status(C.dhruv_gochar_events_transit_at(handle, C.uint32_t(i), &row))
+			if st != StatusOK {
+				return GocharEventsResult{}, st
+			}
+			transitEvents[i] = goTransitToNatalAspectEventRow(row)
+		}
+
+		return GocharEventsResult{
+			BirthUTC:  goUTC(summary.birth_utc),
+			AtUTC:     goUTC(summary.at_utc),
+			Reference: goGocharReference(summary.reference),
+			YearlyTajaka: GocharEventWindow[TajakaReturnEvent]{
+				Before: yearlyBefore,
+				After:  yearlyAfter,
+			},
+			YearlyTithiPravesha: GocharEventWindow[TithiPraveshaEvent]{
+				Before: yearlyTithiBefore,
+				After:  yearlyTithiAfter,
+			},
+			MonthlyTajaka: GocharEventWindow[TajakaReturnEvent]{
+				Before: monthlyBefore,
+				After:  monthlyAfter,
+			},
+			MonthlyTithiPravesha: GocharEventWindow[TithiPraveshaEvent]{
+				Before: monthlyTithiBefore,
+				After:  monthlyTithiAfter,
+			},
+			TransitEvents: transitEvents,
+		}, StatusOK
+	}
+
+	var targetPtr *C.DhruvGocharNatalTarget
+	targets := make([]C.DhruvGocharNatalTarget, len(req.NatalTargets))
+	cNames := make([]*C.char, len(req.NatalTargets))
+	for i, target := range req.NatalTargets {
+		if target.Name != "" {
+			cNames[i] = C.CString(target.Name)
+			defer C.free(unsafe.Pointer(cNames[i]))
+		}
+		targets[i] = C.DhruvGocharNatalTarget{
+			kind:          C.int32_t(target.Kind),
+			index:         C.uint8_t(target.Index),
+			name_utf8:     cNames[i],
+			longitude_deg: C.double(target.LongitudeDeg),
+		}
+	}
+	if len(targets) > 0 {
+		targetPtr = &targets[0]
+	}
+
+	creq := C.DhruvGocharEventsRequest{
+		birth_utc:          cbirth,
+		at_utc:             cat,
+		location:           cloc,
+		bhava_config:       cbhava,
+		riseset_config:     crise,
+		sankranti_config:   csankranti,
+		kundali_config:     ckundali,
+		config:             ccfg,
+		transit_body_codes: nil,
+		transit_body_count: 0,
+		natal_targets:      targetPtr,
+		natal_target_count: C.uint32_t(len(req.NatalTargets)),
+	}
+
+	var handle C.DhruvGocharEventsHandle
+	st := Status(C.dhruv_gochar_events(engine.ptr, eop.ptr, &creq, &handle))
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	defer C.dhruv_gochar_events_free(handle)
+
+	var summary C.DhruvGocharEventsSummary
+	st = Status(C.dhruv_gochar_events_summary(handle, &summary))
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+
+	yearlyBefore, st := collectGocharTajaka(handle, 0, 1)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	yearlyAfter, st := collectGocharTajaka(handle, 0, 0)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	monthlyBefore, st := collectGocharTajaka(handle, 1, 1)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	monthlyAfter, st := collectGocharTajaka(handle, 1, 0)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	yearlyTithiBefore, st := collectGocharTithi(handle, 0, 1)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	yearlyTithiAfter, st := collectGocharTithi(handle, 0, 0)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	monthlyTithiBefore, st := collectGocharTithi(handle, 1, 1)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	monthlyTithiAfter, st := collectGocharTithi(handle, 1, 0)
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	var transitCount C.uint32_t
+	st = Status(C.dhruv_gochar_events_transit_count(handle, &transitCount))
+	if st != StatusOK {
+		return GocharEventsResult{}, st
+	}
+	transitEvents := make([]TransitToNatalAspectEvent, int(transitCount))
+	for i := 0; i < int(transitCount); i++ {
+		var row C.DhruvTransitToNatalAspectEventRow
+		st = Status(C.dhruv_gochar_events_transit_at(handle, C.uint32_t(i), &row))
+		if st != StatusOK {
+			return GocharEventsResult{}, st
+		}
+		transitEvents[i] = goTransitToNatalAspectEventRow(row)
+	}
+
+	return GocharEventsResult{
+		BirthUTC:  goUTC(summary.birth_utc),
+		AtUTC:     goUTC(summary.at_utc),
+		Reference: goGocharReference(summary.reference),
+		YearlyTajaka: GocharEventWindow[TajakaReturnEvent]{
+			Before: yearlyBefore,
+			After:  yearlyAfter,
+		},
+		YearlyTithiPravesha: GocharEventWindow[TithiPraveshaEvent]{
+			Before: yearlyTithiBefore,
+			After:  yearlyTithiAfter,
+		},
+		MonthlyTajaka: GocharEventWindow[TajakaReturnEvent]{
+			Before: monthlyBefore,
+			After:  monthlyAfter,
+		},
+		MonthlyTithiPravesha: GocharEventWindow[TithiPraveshaEvent]{
+			Before: monthlyTithiBefore,
+			After:  monthlyTithiAfter,
+		},
+		TransitEvents: transitEvents,
+	}, StatusOK
 }

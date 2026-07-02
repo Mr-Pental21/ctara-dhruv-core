@@ -121,6 +121,13 @@ from ctara_dhruv.types import (
     CharakarakaResult,
     DashaPeriod,
     DashaSnapshot,
+    GocharNatalTarget,
+    GocharReference,
+    GocharEventWindow,
+    TajakaReturnEvent,
+    TithiPraveshaEvent,
+    TransitToNatalAspectEvent,
+    GocharEventsResult,
 )
 
 # Errors
@@ -166,6 +173,7 @@ from ctara_dhruv.dasha import (
     dasha_child_period,
     dasha_complete_level,
 )
+from ctara_dhruv.search import gochar_events, gochar_events_config_default
 
 __all__ = [
     # Engine
@@ -204,6 +212,9 @@ __all__ = [
     "GrahaEntry", "GrahaPositions", "MovingOsculatingApogeeEntry", "MovingOsculatingApogees",
     "CharakarakaEntry", "CharakarakaResult", "DashaPeriod",
     "DashaSnapshot", "AmshaVariationCatalog", "AmshaVariationInfo",
+    "GocharNatalTarget", "GocharReference", "GocharEventWindow",
+    "TajakaReturnEvent", "TithiPraveshaEvent", "TransitToNatalAspectEvent",
+    "GocharEventsResult",
     # Errors
     "DhruvError",
     # Functions
@@ -219,4 +230,5 @@ __all__ = [
     "dasha_hierarchy", "dasha_snapshot",
     "dasha_level0", "dasha_level0_entity",
     "dasha_children", "dasha_child_period", "dasha_complete_level",
+    "gochar_events", "gochar_events_config_default",
 ]

@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 70
+const ExpectedAPIVersion = 71
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -72,6 +72,31 @@ const (
 const (
 	NodeDignitySignLordBased = cabi.NodeDignitySignLordBased
 	NodeDignityAlwaysSama    = cabi.NodeDignityAlwaysSama
+)
+
+const (
+	GocharNatalTargetGraha        = cabi.GocharNatalTargetGraha
+	GocharNatalTargetBindu        = cabi.GocharNatalTargetBindu
+	GocharNatalTargetSphuta       = cabi.GocharNatalTargetSphuta
+	GocharNatalTargetSpecialLagna = cabi.GocharNatalTargetSpecialLagna
+	GocharNatalTargetArudhaPada   = cabi.GocharNatalTargetArudhaPada
+	GocharNatalTargetCustom       = cabi.GocharNatalTargetCustom
+)
+
+const (
+	TajakaReturnBasisTropicalSolar = cabi.TajakaReturnBasisTropicalSolar
+	TajakaReturnBasisSiderealSolar = cabi.TajakaReturnBasisSiderealSolar
+)
+
+const (
+	TransitAspectKindConjunction = cabi.TransitAspectKindConjunction
+	TransitAspectKindOpposition  = cabi.TransitAspectKindOpposition
+	TransitAspectKindSpecial     = cabi.TransitAspectKindSpecial
+)
+
+const (
+	TransitAspectOwnerGocharBody  = cabi.TransitAspectOwnerGocharBody
+	TransitAspectOwnerNatalTarget = cabi.TransitAspectOwnerNatalTarget
 )
 
 const (
@@ -287,6 +312,14 @@ type (
 	FullKundaliDashaLevel     = cabi.FullKundaliDashaLevel
 	FullKundaliDashaHierarchy = cabi.FullKundaliDashaHierarchy
 	FullKundaliResult         = cabi.FullKundaliResult
+	GocharNatalTarget         = cabi.GocharNatalTarget
+	GocharEventsConfig        = cabi.GocharEventsConfig
+	GocharEventsRequest       = cabi.GocharEventsRequest
+	GocharReference           = cabi.GocharReference
+	TajakaReturnEvent         = cabi.TajakaReturnEvent
+	TithiPraveshaEvent        = cabi.TithiPraveshaEvent
+	TransitToNatalAspectEvent = cabi.TransitToNatalAspectEvent
+	GocharEventsResult        = cabi.GocharEventsResult
 
 	Dms             = cabi.Dms
 	RashiInfo       = cabi.RashiInfo
@@ -319,3 +352,5 @@ type (
 	AmshaVariationInfo    = cabi.AmshaVariationInfo
 	AmshaVariationCatalog = cabi.AmshaVariationCatalog
 )
+
+type GocharEventWindow[T any] = cabi.GocharEventWindow[T]

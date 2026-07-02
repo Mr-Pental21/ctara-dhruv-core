@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=70`
+- ABI target: `DHRUV_API_VERSION=71`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -81,7 +81,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v70).
+symbols from `dhruv.h` (ABI v71).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -97,6 +97,7 @@ The public `dhruv` package includes wrappers for:
 - riseset/bhava APIs
 - unified search APIs (conjunction/grahan/motion/lunar phase/sankranti)
   with structured UTC on the high-level time-bearing result objects alongside JD
+- grouped `gochar_events` return-chart and transit-aspect API with caller-named natal targets
 - panchang and calendar date APIs
 - panchang/classifier/math helper APIs
 - graha longitude and jyotish date APIs

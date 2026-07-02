@@ -12,6 +12,8 @@ pub mod conjunction;
 pub mod conjunction_types;
 pub mod dasha;
 pub mod error;
+pub mod gochar_events;
+pub mod gochar_events_types;
 pub mod grahan;
 pub mod grahan_types;
 pub mod jyotish;
@@ -44,6 +46,12 @@ pub use dhruv_vedic_base::{
     CharakarakaResult, CharakarakaRole, CharakarakaScheme,
 };
 pub use error::SearchError;
+pub use gochar_events::gochar_events;
+pub use gochar_events_types::{
+    EventWindow, GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
+    NatalTargetKind, NatalTargetLongitude, TajakaReturnBasis, TajakaReturnEvent,
+    TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
+};
 pub use grahan::{
     next_chandra_grahan, next_surya_grahan, prev_chandra_grahan, prev_surya_grahan,
     search_chandra_grahan, search_surya_grahan,

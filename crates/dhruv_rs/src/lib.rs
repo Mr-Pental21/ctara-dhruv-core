@@ -28,11 +28,11 @@ pub use error::DhruvError;
 pub use ops::{
     AvasthaRequest, AvasthaResult, AvasthaTarget, AyanamshaRequest, AyanamshaRequestMode,
     CharakarakaRequest, ConjunctionRequest, ConjunctionRequestQuery, FullKundaliRequest,
-    GrahanRequest, GrahanRequestQuery, LunarPhaseRequest, LunarPhaseRequestQuery, MotionRequest,
-    MotionRequestQuery, NodeRequest, PanchangRequest, SankrantiRequest, SankrantiRequestQuery,
-    TaraRequest, TimeInput, UpagrahaRequest, avastha_op, ayanamsha_op, charakaraka, conjunction,
-    full_kundali, grahan, lunar_node_op, lunar_phase, motion, panchang_op, sankranti, tara_op,
-    upagraha_op,
+    GocharEventsRequest, GrahanRequest, GrahanRequestQuery, LunarPhaseRequest,
+    LunarPhaseRequestQuery, MotionRequest, MotionRequestQuery, NodeRequest, PanchangRequest,
+    SankrantiRequest, SankrantiRequestQuery, TaraRequest, TimeInput, UpagrahaRequest, avastha_op,
+    ayanamsha_op, charakaraka, conjunction, full_kundali, gochar_events, grahan, lunar_node_op,
+    lunar_phase, motion, panchang_op, sankranti, tara_op, upagraha_op,
 };
 
 // Re-export core types so callers don't need to depend on dhruv_core directly.
@@ -43,6 +43,11 @@ pub use dhruv_core::{
 // Re-export commonly used config/result types.
 pub use dhruv_frames::{ReferencePlane, SphericalCoords, SphericalState};
 pub use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
+pub use dhruv_search::gochar_events_types::{
+    EventWindow, GocharEventsConfig, GocharEventsResult, GocharReference, NatalTargetKind,
+    NatalTargetLongitude, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
+    TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
+};
 pub use dhruv_search::grahan_types::{
     ChandraGrahan, ChandraGrahanType, GrahanConfig, SuryaGrahan, SuryaGrahanType,
 };

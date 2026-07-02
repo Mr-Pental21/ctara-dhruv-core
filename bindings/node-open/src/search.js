@@ -18,6 +18,10 @@ function stationaryConfigDefault() {
   return addon.stationaryConfigDefault();
 }
 
+function gocharEventsConfigDefault() {
+  return addon.gocharEventsConfigDefault();
+}
+
 function normalizeRangeCapacity(capacity) {
   if (!Number.isFinite(capacity) || capacity < 1) {
     return DEFAULT_RANGE_CAPACITY;
@@ -134,13 +138,36 @@ function sankrantiSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
   );
 }
 
+function normalizeGocharRequest(request) {
+  const normalized = {
+    ...request,
+  };
+  normalized.config = {
+    ...gocharEventsConfigDefault(),
+    ...(request?.config || {}),
+  };
+  return normalized;
+}
+
+function gocharEvents(engine, eop, request) {
+  const response = addon.gocharEvents(
+    engine._handle,
+    eop._handle,
+    normalizeGocharRequest(request),
+  );
+  checkStatus('gochar_events', response.status);
+  return response.result;
+}
+
 module.exports = {
   conjunctionConfigDefault,
   grahanConfigDefault,
   stationaryConfigDefault,
+  gocharEventsConfigDefault,
   conjunctionSearch,
   grahanSearch,
   motionSearch,
   lunarPhaseSearch,
   sankrantiSearch,
+  gocharEvents,
 };

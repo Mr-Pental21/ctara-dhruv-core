@@ -17,4 +17,7 @@ defmodule CtaraDhruv.Search do
 
   def motion(engine, request),
     do: Native.call_engine(&Native.search_run/2, engine, Map.put(request, :op, :motion))
+
+  def gochar_events(engine, request),
+    do: Native.call_engine(&Native.search_run/2, engine, Map.put(request, :op, :gochar_events))
 end

@@ -2,7 +2,7 @@
 
 This is the runtime/query surface of `dhruv_search` re-exported from `crates/dhruv_search/src/lib.rs`.
 
-Total runtime functions documented here: **57**.
+Total runtime functions documented here: **58**.
 
 ## Conjunction / Aspect (4)
 
@@ -98,7 +98,13 @@ Total runtime functions documented here: **57**.
 | `core_bindus` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<BindusResult, SearchError>` | Curated bindu/sensitive points set. |
 | `drishti_for_date` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<DrishtiResult, SearchError>` | Graha drishti matrix (+ optional projections). |
 
+## Forecast / Returns (1)
+
+| Function | Inputs | Output | What it does |
+|---|---|---|---|
+| `gochar_events` | `engine`, `operation` | `Result<GocharEventsResult, SearchError>` | Grouped yearly/monthly Tajaka returns, yearly/monthly Tithi Pravesha returns, and transit graha conjunctions to caller-supplied natal target longitudes around a query time. |
+
 ## Related Detailed Docs
 
 - Full inventory (includes helper methods): `docs/SEARCH_API_INVENTORY.md`
-- Clean-room provenance: `docs/clean_room_conjunction.md`, `docs/clean_room_grahan.md`, `docs/clean_room_stationary.md`, `docs/clean_room_panchang.md`, `docs/clean_room_tithi_karana_yoga.md`, `docs/clean_room_ashtakavarga.md`, `docs/clean_room_drishti.md`, `docs/clean_room_upagraha.md`
+- Clean-room provenance: `docs/clean_room_conjunction.md`, `docs/clean_room_grahan.md`, `docs/clean_room_stationary.md`, `docs/clean_room_panchang.md`, `docs/clean_room_tithi_karana_yoga.md`, `docs/clean_room_ashtakavarga.md`, `docs/clean_room_drishti.md`, `docs/clean_room_upagraha.md`, `docs/clean_room_gochar_events.md`

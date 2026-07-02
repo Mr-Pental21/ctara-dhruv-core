@@ -1327,3 +1327,117 @@ type FullKundaliResult struct {
 	Dasha           []FullKundaliDashaHierarchy
 	DashaSnapshots  []DashaSnapshot
 }
+
+const (
+	GocharNatalTargetGraha        = 0
+	GocharNatalTargetBindu        = 1
+	GocharNatalTargetSphuta       = 2
+	GocharNatalTargetSpecialLagna = 3
+	GocharNatalTargetArudhaPada   = 4
+	GocharNatalTargetCustom       = 5
+)
+
+const (
+	TajakaReturnBasisTropicalSolar = 0
+	TajakaReturnBasisSiderealSolar = 1
+)
+
+const (
+	TransitAspectKindConjunction = 0
+	TransitAspectKindOpposition  = 1
+	TransitAspectKindSpecial     = 2
+)
+
+const (
+	TransitAspectOwnerGocharBody  = 0
+	TransitAspectOwnerNatalTarget = 1
+)
+
+type GocharNatalTarget struct {
+	Kind         int32
+	Index        uint8
+	Name         string
+	LongitudeDeg float64
+}
+
+type GocharEventsConfig struct {
+	TajakaReturnBasis    int32
+	YearlyCount          uint32
+	MonthlyCount         uint32
+	TransitWindowDays    float64
+	IncludeReturnCharts  bool
+	SolarStepSizeDays    float64
+	LunarStepSizeDays    float64
+	SolarConvergenceDays float64
+	LunarConvergenceDays float64
+	MaxIterations        uint32
+}
+
+type GocharEventsRequest struct {
+	BirthUTC         UtcTime
+	AtUTC            UtcTime
+	Location         GeoLocation
+	BhavaConfig      BhavaConfig
+	RiseSetConfig    RiseSetConfig
+	SankrantiConfig  SankrantiConfig
+	KundaliConfig    FullKundaliConfig
+	Config           GocharEventsConfig
+	TransitBodyCodes []int32
+	NatalTargets     []GocharNatalTarget
+}
+
+type GocharReference struct {
+	NatalTropicalSolarLongitudeDeg float64
+	NatalSiderealSolarLongitudeDeg float64
+	NatalElongationDeg             float64
+	NatalMasa                      MasaInfo
+}
+
+type GocharEventWindow[T any] struct {
+	Before []T
+	After  []T
+}
+
+type TajakaReturnEvent struct {
+	UTC                     UtcTime
+	JDTDB                   float64
+	Basis                   int32
+	TargetSolarLongitudeDeg float64
+	EventSolarLongitudeDeg  float64
+	Chart                   *FullKundaliResult
+}
+
+type TithiPraveshaEvent struct {
+	UTC                 UtcTime
+	JDTDB               float64
+	TargetElongationDeg float64
+	EventElongationDeg  float64
+	Masa                MasaInfo
+	Chart               *FullKundaliResult
+}
+
+type TransitToNatalAspectEvent struct {
+	TransitBodyCode     int32
+	TargetKind          int32
+	TargetIndex         uint8
+	TargetName          string
+	AspectKind          int32
+	AspectOwner         int32
+	AspectAngleDeg      float64
+	UTC                 UtcTime
+	JDTDB               float64
+	TransitLongitudeDeg float64
+	TargetLongitudeDeg  float64
+	ActualSeparationDeg float64
+}
+
+type GocharEventsResult struct {
+	BirthUTC             UtcTime
+	AtUTC                UtcTime
+	Reference            GocharReference
+	YearlyTajaka         GocharEventWindow[TajakaReturnEvent]
+	YearlyTithiPravesha  GocharEventWindow[TithiPraveshaEvent]
+	MonthlyTajaka        GocharEventWindow[TajakaReturnEvent]
+	MonthlyTithiPravesha GocharEventWindow[TithiPraveshaEvent]
+	TransitEvents        []TransitToNatalAspectEvent
+}

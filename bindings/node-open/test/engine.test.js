@@ -733,3 +733,49 @@ test('bala wrappers accept amshaSelection and kundali returns resolved amsha uni
   eop.close();
   engine.close();
 });
+
+test('gochar events wrapper preserves named natal targets and optional charts', { skip: !(hasKernels() && hasEop()) }, () => {
+  const paths = kernelPaths();
+  const engine = dhruv.Engine.create({
+    spkPaths: [paths.spk],
+    lskPath: paths.lsk,
+    cacheCapacity: 64,
+    strictValidation: false,
+  });
+  const eop = dhruv.EOP.load(paths.eop);
+
+  const birthUtc = { year: 1990, month: 1, day: 1, hour: 12, minute: 0, second: 0 };
+  const atUtc = { year: 2025, month: 1, day: 15, hour: 12, minute: 0, second: 0 };
+  const location = { latitudeDeg: 12.9716, longitudeDeg: 77.5946, altitudeM: 920 };
+  const config = dhruv.gocharEventsConfigDefault();
+  config.includeReturnCharts = true;
+
+  const result = dhruv.gocharEvents(engine, eop, {
+    birthUtc,
+    atUtc,
+    location,
+    config,
+    transitBodyCodes: [10],
+    natalTargets: [
+      {
+        kind: 5,
+        index: 0,
+        name: 'Zero Point',
+        longitudeDeg: 0,
+      },
+    ],
+  });
+
+  assert.equal(result.birthUtc.year, 1990);
+  assert.equal(result.yearlyTajaka.before.length, config.yearlyCount);
+  assert.equal(result.yearlyTajaka.after.length, config.yearlyCount);
+  assert.equal(result.monthlyTajaka.before.length, config.monthlyCount);
+  assert.equal(result.monthlyTajaka.after.length, config.monthlyCount);
+  assert.equal(result.yearlyTajaka.before[0].chart !== null, true);
+  assert.equal(result.yearlyTithiPravesha.before[0].chart !== null, true);
+  assert.ok(result.transitEvents.length > 0);
+  assert.ok(result.transitEvents.some((event) => event.targetName === 'Zero Point'));
+
+  eop.close();
+  engine.close();
+});

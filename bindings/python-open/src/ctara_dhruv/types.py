@@ -1328,3 +1328,87 @@ class FullKundaliResult:
     panchang: Optional[PanchangInfo] = None
     dasha: Optional[list[DashaHierarchy]] = None
     dasha_snapshots: Optional[list[DashaSnapshot]] = None
+
+
+@dataclass(frozen=True)
+class GocharNatalTarget:
+    kind: int
+    index: int
+    name: str
+    longitude_deg: float
+
+
+@dataclass(frozen=True)
+class GocharEventsConfig:
+    tajaka_return_basis: int
+    yearly_count: int
+    monthly_count: int
+    transit_window_days: float
+    include_return_charts: bool
+    solar_step_size_days: float
+    lunar_step_size_days: float
+    solar_convergence_days: float
+    lunar_convergence_days: float
+    max_iterations: int
+
+
+@dataclass(frozen=True)
+class GocharReference:
+    natal_tropical_solar_longitude_deg: float
+    natal_sidereal_solar_longitude_deg: float
+    natal_elongation_deg: float
+    natal_masa: MasaInfo
+
+
+@dataclass(frozen=True)
+class GocharEventWindow:
+    before: list
+    after: list
+
+
+@dataclass(frozen=True)
+class TajakaReturnEvent:
+    utc: UtcTime
+    jd_tdb: float
+    basis: int
+    target_solar_longitude_deg: float
+    event_solar_longitude_deg: float
+    chart: Optional[FullKundaliResult] = None
+
+
+@dataclass(frozen=True)
+class TithiPraveshaEvent:
+    utc: UtcTime
+    jd_tdb: float
+    target_elongation_deg: float
+    event_elongation_deg: float
+    masa: MasaInfo
+    chart: Optional[FullKundaliResult] = None
+
+
+@dataclass(frozen=True)
+class TransitToNatalAspectEvent:
+    transit_body_code: int
+    target_kind: int
+    target_index: int
+    target_name: str
+    aspect_kind: int
+    aspect_owner: int
+    aspect_angle_deg: float
+    utc: UtcTime
+    jd_tdb: float
+    transit_longitude_deg: float
+    target_longitude_deg: float
+    actual_separation_deg: float
+
+
+@dataclass(frozen=True)
+class GocharEventsResult:
+    birth_utc: UtcTime
+    at_utc: UtcTime
+    reference: GocharReference
+    yearly_tajaka: GocharEventWindow
+    yearly_tithi_pravesha: GocharEventWindow
+    monthly_tajaka: GocharEventWindow
+    monthly_tithi_pravesha: GocharEventWindow
+    transit_events: list[TransitToNatalAspectEvent]

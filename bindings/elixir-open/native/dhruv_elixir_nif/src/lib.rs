@@ -17,24 +17,27 @@ use dhruv_search::operations::{
     SankrantiQuery, SankrantiResult, SankrantiTarget, TaraOperation, TaraOutputKind, TaraResult,
 };
 use dhruv_search::{
+    GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
+    NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_AYANA,
+    PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_VARSHA, SankrantiConfig, StationaryConfig,
+    TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
+    TransitAspectOwner, TransitToNatalAspectEvent, ayanamsha, body_ecliptic_lon_lat, conjunction,
+    dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
+    dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
+    dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth,
+    dasha_level0_entity_with_inputs, dasha_level0_for_birth, dasha_level0_with_inputs,
+    dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
+    ghatika_from_sunrises, gochar_events, graha_longitudes, hora_from_sunrises, karana_at,
+    lunar_node, motion, nakshatra_at, panchang, set_time_conversion_policy, sidereal_sum_at,
+    tara as tara_op, tithi_at, vaar_from_sunrises, vedic_day_sunrises, yoga_at,
+};
+use dhruv_search::{
     GrahaLongitudeKind, GrahaLongitudesConfig, all_upagrahas_for_date,
     all_upagrahas_for_date_with_config, amsha_charts_for_date, arudha_padas_for_date,
     ashtakavarga_for_date, avastha_for_date, balas_for_date, bhavabala_for_date,
     charakaraka_for_date, core_bindus, drishti_for_date, graha_positions as graha_positions_fn,
     moving_osculating_apogees_for_date, shadbala_for_date, sidereal_bhavas_for_date,
     sidereal_lagna_for_date, sidereal_mc_for_date, special_lagnas_for_date, vimsopaka_for_date,
-};
-use dhruv_search::{
-    PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_VARSHA,
-    SankrantiConfig, StationaryConfig, ayanamsha, body_ecliptic_lon_lat, conjunction,
-    dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
-    dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
-    dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth,
-    dasha_level0_entity_with_inputs, dasha_level0_for_birth, dasha_level0_with_inputs,
-    dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
-    ghatika_from_sunrises, graha_longitudes, hora_from_sunrises, karana_at, lunar_node, motion,
-    nakshatra_at, panchang, set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at,
-    vaar_from_sunrises, vedic_day_sunrises, yoga_at,
 };
 use dhruv_tara::apparent::{apply_aberration, apply_light_deflection};
 use dhruv_tara::galactic::galactic_anticenter_icrs;
@@ -269,10 +272,40 @@ struct SearchRequest {
     start_jd_tdb: Option<f64>,
     end_jd_tdb: Option<f64>,
     at_utc: Option<UtcInput>,
+    birth_utc: Option<UtcInput>,
     start_utc: Option<UtcInput>,
     end_utc: Option<UtcInput>,
+    location: Option<GeoLocationInput>,
+    transit_bodies: Option<Vec<EnumInput>>,
+    natal_targets: Option<Vec<GocharNatalTargetInput>>,
+    bhava_config: Option<BhavaConfigInput>,
+    riseset_config: Option<RiseSetConfigInput>,
     config: Option<SearchConfigInput>,
     sankranti_config: Option<SankrantiConfigInput>,
+    kundali_config: Option<FullKundaliConfigInput>,
+    gochar_config: Option<GocharEventsConfigInput>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GocharNatalTargetInput {
+    kind: EnumInput,
+    index: u8,
+    name: Option<String>,
+    longitude_deg: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GocharEventsConfigInput {
+    tajaka_return_basis: Option<EnumInput>,
+    yearly_count: Option<u32>,
+    monthly_count: Option<u32>,
+    transit_window_days: Option<f64>,
+    include_return_charts: Option<bool>,
+    solar_step_size_days: Option<f64>,
+    lunar_step_size_days: Option<f64>,
+    solar_convergence_days: Option<f64>,
+    lunar_convergence_days: Option<f64>,
+    max_iterations: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1606,6 +1639,85 @@ fn to_sankranti_config(
         }
         if let Some(convergence) = input.convergence_days {
             config.convergence_days = convergence;
+        }
+    }
+    Ok(config)
+}
+
+fn parse_tajaka_return_basis(input: Option<&EnumInput>) -> Result<TajakaReturnBasis, Value> {
+    match input {
+        None => Ok(TajakaReturnBasis::SiderealSolar),
+        Some(EnumInput::Int(0)) => Ok(TajakaReturnBasis::TropicalSolar),
+        Some(EnumInput::Int(1)) => Ok(TajakaReturnBasis::SiderealSolar),
+        Some(EnumInput::Str(value)) if value == "tropical_solar" => {
+            Ok(TajakaReturnBasis::TropicalSolar)
+        }
+        Some(EnumInput::Str(value)) if value == "sidereal_solar" => {
+            Ok(TajakaReturnBasis::SiderealSolar)
+        }
+        _ => Err(error_payload(
+            "invalid_request",
+            "unknown tajaka_return_basis",
+        )),
+    }
+}
+
+fn parse_natal_target_kind(input: &EnumInput) -> Result<NatalTargetKind, Value> {
+    match input {
+        EnumInput::Int(0) => Ok(NatalTargetKind::Graha),
+        EnumInput::Int(1) => Ok(NatalTargetKind::Bindu),
+        EnumInput::Int(2) => Ok(NatalTargetKind::Sphuta),
+        EnumInput::Int(3) => Ok(NatalTargetKind::SpecialLagna),
+        EnumInput::Int(4) => Ok(NatalTargetKind::ArudhaPada),
+        EnumInput::Int(5) => Ok(NatalTargetKind::Custom),
+        EnumInput::Str(value) if value == "graha" => Ok(NatalTargetKind::Graha),
+        EnumInput::Str(value) if value == "bindu" => Ok(NatalTargetKind::Bindu),
+        EnumInput::Str(value) if value == "sphuta" => Ok(NatalTargetKind::Sphuta),
+        EnumInput::Str(value) if value == "special_lagna" => Ok(NatalTargetKind::SpecialLagna),
+        EnumInput::Str(value) if value == "arudha_pada" => Ok(NatalTargetKind::ArudhaPada),
+        EnumInput::Str(value) if value == "custom" => Ok(NatalTargetKind::Custom),
+        _ => Err(error_payload(
+            "invalid_request",
+            "unknown natal target kind",
+        )),
+    }
+}
+
+fn to_gochar_events_config(
+    input: Option<&GocharEventsConfigInput>,
+) -> Result<GocharEventsConfig, Value> {
+    let mut config = GocharEventsConfig::default();
+    if let Some(input) = input {
+        if input.tajaka_return_basis.is_some() {
+            config.tajaka_return_basis =
+                parse_tajaka_return_basis(input.tajaka_return_basis.as_ref())?;
+        }
+        if let Some(value) = input.yearly_count {
+            config.yearly_count = value as usize;
+        }
+        if let Some(value) = input.monthly_count {
+            config.monthly_count = value as usize;
+        }
+        if let Some(value) = input.transit_window_days {
+            config.transit_window_days = value;
+        }
+        if let Some(value) = input.include_return_charts {
+            config.include_return_charts = value;
+        }
+        if let Some(value) = input.solar_step_size_days {
+            config.solar_step_size_days = value;
+        }
+        if let Some(value) = input.lunar_step_size_days {
+            config.lunar_step_size_days = value;
+        }
+        if let Some(value) = input.solar_convergence_days {
+            config.solar_convergence_days = value;
+        }
+        if let Some(value) = input.lunar_convergence_days {
+            config.lunar_convergence_days = value;
+        }
+        if let Some(value) = input.max_iterations {
+            config.max_iterations = value;
         }
     }
     Ok(config)
@@ -3001,6 +3113,100 @@ fn full_kundali_json(result: dhruv_search::FullKundaliResult) -> Value {
     })
 }
 
+fn gochar_reference_json(reference: GocharReference) -> Value {
+    json!({
+        "natal_tropical_solar_longitude_deg": reference.natal_tropical_solar_longitude_deg,
+        "natal_sidereal_solar_longitude_deg": reference.natal_sidereal_solar_longitude_deg,
+        "natal_elongation_deg": reference.natal_elongation_deg,
+        "natal_masa": masa_json(reference.natal_masa)
+    })
+}
+
+fn tajaka_return_event_json(event: TajakaReturnEvent) -> Value {
+    json!({
+        "utc": utc_json(event.utc),
+        "jd_tdb": event.jd_tdb,
+        "basis": match event.basis {
+            TajakaReturnBasis::TropicalSolar => "tropical_solar",
+            TajakaReturnBasis::SiderealSolar => "sidereal_solar"
+        },
+        "target_solar_longitude_deg": event.target_solar_longitude_deg,
+        "event_solar_longitude_deg": event.event_solar_longitude_deg,
+        "chart": event.chart.map(full_kundali_json)
+    })
+}
+
+fn tithi_pravesha_event_json(event: TithiPraveshaEvent) -> Value {
+    json!({
+        "utc": utc_json(event.utc),
+        "jd_tdb": event.jd_tdb,
+        "target_elongation_deg": event.target_elongation_deg,
+        "event_elongation_deg": event.event_elongation_deg,
+        "masa": masa_json(event.masa),
+        "chart": event.chart.map(full_kundali_json)
+    })
+}
+
+fn transit_to_natal_aspect_event_json(event: TransitToNatalAspectEvent) -> Value {
+    json!({
+        "transit_body": debug_name(event.transit_body),
+        "target_name": event.target_name,
+        "target": {
+            "kind": match event.target.kind {
+                NatalTargetKind::Graha => "graha",
+                NatalTargetKind::Bindu => "bindu",
+                NatalTargetKind::Sphuta => "sphuta",
+                NatalTargetKind::SpecialLagna => "special_lagna",
+                NatalTargetKind::ArudhaPada => "arudha_pada",
+                NatalTargetKind::Custom => "custom"
+            },
+            "index": event.target.index,
+            "name": event.target.name,
+            "longitude_deg": event.target.longitude_deg
+        },
+        "aspect_kind": match event.aspect_kind {
+            TransitAspectKind::Conjunction => "conjunction",
+            TransitAspectKind::Opposition => "opposition",
+            TransitAspectKind::Special => "special"
+        },
+        "aspect_owner": match event.aspect_owner {
+            TransitAspectOwner::GocharBody => "gochar_body",
+            TransitAspectOwner::NatalTarget => "natal_target"
+        },
+        "aspect_angle_deg": event.aspect_angle_deg,
+        "utc": utc_json(event.utc),
+        "jd_tdb": event.jd_tdb,
+        "transit_longitude_deg": event.transit_longitude_deg,
+        "target_longitude_deg": event.target_longitude_deg,
+        "actual_separation_deg": event.actual_separation_deg
+    })
+}
+
+fn gochar_events_json(result: GocharEventsResult) -> Value {
+    json!({
+        "birth_utc": utc_json(result.birth_utc),
+        "at_utc": utc_json(result.at_utc),
+        "reference": gochar_reference_json(result.reference),
+        "yearly_tajaka": {
+            "before": result.yearly_tajaka.before.into_iter().map(tajaka_return_event_json).collect::<Vec<_>>(),
+            "after": result.yearly_tajaka.after.into_iter().map(tajaka_return_event_json).collect::<Vec<_>>()
+        },
+        "yearly_tithi_pravesha": {
+            "before": result.yearly_tithi_pravesha.before.into_iter().map(tithi_pravesha_event_json).collect::<Vec<_>>(),
+            "after": result.yearly_tithi_pravesha.after.into_iter().map(tithi_pravesha_event_json).collect::<Vec<_>>()
+        },
+        "monthly_tajaka": {
+            "before": result.monthly_tajaka.before.into_iter().map(tajaka_return_event_json).collect::<Vec<_>>(),
+            "after": result.monthly_tajaka.after.into_iter().map(tajaka_return_event_json).collect::<Vec<_>>()
+        },
+        "monthly_tithi_pravesha": {
+            "before": result.monthly_tithi_pravesha.before.into_iter().map(tithi_pravesha_event_json).collect::<Vec<_>>(),
+            "after": result.monthly_tithi_pravesha.after.into_iter().map(tithi_pravesha_event_json).collect::<Vec<_>>()
+        },
+        "transit_events": result.transit_events.into_iter().map(transit_to_natal_aspect_event_json).collect::<Vec<_>>()
+    })
+}
+
 fn dasha_hierarchy_json(result: DashaHierarchy) -> Value {
     json!({
         "system": debug_name(result.system),
@@ -3770,6 +3976,67 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                     };
                 motion(engine, &op)
                     .map(motion_result_json)
+                    .map_err(|err| map_error("search_error", err))
+            }
+            "gochar_events" => {
+                let birth_utc =
+                    parse_utc(request.birth_utc.clone().ok_or_else(|| {
+                        error_payload("invalid_request", "birth_utc is required")
+                    })?)?;
+                let at_utc = parse_utc(
+                    request
+                        .at_utc
+                        .clone()
+                        .ok_or_else(|| error_payload("invalid_request", "at_utc is required"))?,
+                )?;
+                let location = parse_location(
+                    request
+                        .location
+                        .clone()
+                        .ok_or_else(|| error_payload("invalid_request", "location is required"))?,
+                );
+                let eop = state.eop.as_ref().ok_or_else(|| {
+                    error_payload("missing_eop", "gochar_events requires loaded EOP data")
+                })?;
+                let transit_bodies = request
+                    .transit_bodies
+                    .clone()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|input| parse_body(&input))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let natal_targets = request
+                    .natal_targets
+                    .clone()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|target| {
+                        Ok(NatalTargetLongitude {
+                            kind: parse_natal_target_kind(&target.kind)?,
+                            index: target.index,
+                            name: target.name.unwrap_or_default(),
+                            longitude_deg: target.longitude_deg,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Value>>()?;
+                let op = GocharEventsOperation {
+                    birth_utc,
+                    at_utc,
+                    location,
+                    eop,
+                    bhava_config: to_bhava_config(state, request.bhava_config.as_ref())?,
+                    riseset_config: to_riseset_config(state, request.riseset_config.as_ref())?,
+                    sankranti_config: to_sankranti_config(
+                        state,
+                        request.sankranti_config.as_ref(),
+                    )?,
+                    kundali_config: to_full_kundali_config(state, request.kundali_config.as_ref())?,
+                    config: to_gochar_events_config(request.gochar_config.as_ref())?,
+                    transit_bodies,
+                    natal_targets,
+                };
+                gochar_events(engine, &op)
+                    .map(gochar_events_json)
                     .map_err(|err| map_error("search_error", err))
             }
             _ => Err(error_payload("invalid_request", "unknown search operation")),

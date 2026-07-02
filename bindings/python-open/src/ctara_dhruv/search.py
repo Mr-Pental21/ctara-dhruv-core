@@ -17,7 +17,24 @@ from .types import (
     MaxSpeedEvent,
     LunarPhaseEvent,
     SankrantiEvent,
+    MasaInfo,
     UtcTime,
+    GocharNatalTarget,
+    GocharReference,
+    GocharEventWindow,
+    TajakaReturnEvent,
+    TithiPraveshaEvent,
+    TransitToNatalAspectEvent,
+    GocharEventsResult,
+)
+from .kundali import (
+    _make_utc,
+    _make_location,
+    _make_bhava_config,
+    _make_riseset_config,
+    _make_sankranti_config,
+    full_kundali_config_default,
+    _extract_full_kundali_result_ffi,
 )
 
 _SEARCH_TIME_JD_TDB = 0
@@ -191,6 +208,30 @@ def _sankranti_event(e) -> SankrantiEvent:
         sun_sidereal_longitude_deg=e.sun_sidereal_longitude_deg,
         sun_tropical_longitude_deg=e.sun_tropical_longitude_deg,
     )
+
+
+def _masa_from_c(v) -> MasaInfo:
+    return MasaInfo(
+        masa_index=v.masa_index,
+        adhika=bool(v.adhika),
+        start=_utc_from_c(v.start),
+        end=_utc_from_c(v.end),
+    )
+
+
+def gochar_events_config_default():
+    cfg = lib.dhruv_gochar_events_config_default()
+    return cfg
+
+
+def _coerce_full_kundali_config_ptr(config):
+    if config is None:
+        return ffi.addressof(full_kundali_config_default())
+    if isinstance(config, ffi.CData):
+        if ffi.typeof(config) == ffi.typeof("DhruvFullKundaliConfig *"):
+            return config
+        return ffi.addressof(config)
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -802,3 +843,167 @@ def search_sankrantis(
         return ([_sankranti_event(out_events[i]) for i in range(count)], count)
 
     return _collect_full_range(fetch, max_results)
+
+
+def gochar_events(
+    engine,
+    eop,
+    birth_utc,
+    at_utc,
+    location,
+    *,
+    transit_body_codes: list[int],
+    natal_targets: list[GocharNatalTarget],
+    bhava_config=None,
+    riseset_config=None,
+    sankranti_config=None,
+    kundali_config=None,
+    config=None,
+) -> GocharEventsResult:
+    req = ffi.new("DhruvGocharEventsRequest *")
+    req.birth_utc = _make_utc(birth_utc)[0]
+    req.at_utc = _make_utc(at_utc)[0]
+    req.location = _make_location(location)[0]
+    req.bhava_config = _make_bhava_config(bhava_config)[0]
+    req.riseset_config = _make_riseset_config(riseset_config)[0]
+    req.sankranti_config = _make_sankranti_config(sankranti_config)[0]
+
+    if kundali_config is None:
+        kundali_cfg = full_kundali_config_default()
+    else:
+        kundali_cfg = kundali_config
+    req.kundali_config = kundali_cfg if not isinstance(kundali_cfg, ffi.CData) or ffi.typeof(kundali_cfg) != ffi.typeof("DhruvFullKundaliConfig *") else kundali_cfg[0]
+
+    req.config = config if config is not None else lib.dhruv_gochar_events_config_default()
+
+    body_codes = ffi.new("uint32_t[]", [int(code) for code in transit_body_codes])
+    req.transit_body_codes = body_codes if len(transit_body_codes) else ffi.NULL
+    req.transit_body_count = len(transit_body_codes)
+
+    target_rows = ffi.new("DhruvGocharNatalTarget[]", len(natal_targets))
+    target_names = []
+    for idx, target in enumerate(natal_targets):
+        name_ptr = ffi.NULL
+        if target.name:
+            name_ptr = ffi.new("char[]", target.name.encode("utf-8"))
+            target_names.append(name_ptr)
+        target_rows[idx].kind = int(target.kind)
+        target_rows[idx].index = int(target.index)
+        target_rows[idx].name_utf8 = name_ptr
+        target_rows[idx].longitude_deg = float(target.longitude_deg)
+    req.natal_targets = target_rows if len(natal_targets) else ffi.NULL
+    req.natal_target_count = len(natal_targets)
+
+    handle = ffi.new("DhruvGocharEventsHandle *")
+    check(lib.dhruv_gochar_events(engine._ptr, eop, req, handle), "gochar_events")
+
+    def _decode_tajaka(monthly: int, before: int) -> list[TajakaReturnEvent]:
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_gochar_events_tajaka_count(handle[0], monthly, before, out_count),
+            "gochar_events_tajaka_count",
+        )
+        events = []
+        for i in range(int(out_count[0])):
+            row = ffi.new("DhruvTajakaReturnEventRow *")
+            check(
+                lib.dhruv_gochar_events_tajaka_at(handle[0], monthly, before, i, row),
+                "gochar_events_tajaka_at",
+            )
+            chart = None
+            if row[0].has_chart:
+                chart_out = ffi.new("DhruvFullKundaliResult *")
+                check(
+                    lib.dhruv_gochar_events_tajaka_chart_at(handle[0], monthly, before, i, chart_out),
+                    "gochar_events_tajaka_chart_at",
+                )
+                try:
+                    chart = _extract_full_kundali_result_ffi(chart_out[0])
+                finally:
+                    lib.dhruv_full_kundali_result_free(chart_out)
+            events.append(TajakaReturnEvent(
+                utc=_utc_from_c(row[0].utc),
+                jd_tdb=row[0].jd_tdb,
+                basis=row[0].basis,
+                target_solar_longitude_deg=row[0].target_solar_longitude_deg,
+                event_solar_longitude_deg=row[0].event_solar_longitude_deg,
+                chart=chart,
+            ))
+        return events
+
+    def _decode_tithi(monthly: int, before: int) -> list[TithiPraveshaEvent]:
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_gochar_events_tithi_count(handle[0], monthly, before, out_count),
+            "gochar_events_tithi_count",
+        )
+        events = []
+        for i in range(int(out_count[0])):
+            row = ffi.new("DhruvTithiPraveshaEventRow *")
+            check(
+                lib.dhruv_gochar_events_tithi_at(handle[0], monthly, before, i, row),
+                "gochar_events_tithi_at",
+            )
+            chart = None
+            if row[0].has_chart:
+                chart_out = ffi.new("DhruvFullKundaliResult *")
+                check(
+                    lib.dhruv_gochar_events_tithi_chart_at(handle[0], monthly, before, i, chart_out),
+                    "gochar_events_tithi_chart_at",
+                )
+                try:
+                    chart = _extract_full_kundali_result_ffi(chart_out[0])
+                finally:
+                    lib.dhruv_full_kundali_result_free(chart_out)
+            events.append(TithiPraveshaEvent(
+                utc=_utc_from_c(row[0].utc),
+                jd_tdb=row[0].jd_tdb,
+                target_elongation_deg=row[0].target_elongation_deg,
+                event_elongation_deg=row[0].event_elongation_deg,
+                masa=_masa_from_c(row[0].masa),
+                chart=chart,
+            ))
+        return events
+
+    try:
+        summary = ffi.new("DhruvGocharEventsSummary *")
+        check(lib.dhruv_gochar_events_summary(handle[0], summary), "gochar_events_summary")
+
+        transit_count = ffi.new("uint32_t *")
+        check(lib.dhruv_gochar_events_transit_count(handle[0], transit_count), "gochar_events_transit_count")
+        transit_events = []
+        for i in range(int(transit_count[0])):
+            row = ffi.new("DhruvTransitToNatalAspectEventRow *")
+            check(lib.dhruv_gochar_events_transit_at(handle[0], i, row), "gochar_events_transit_at")
+            transit_events.append(TransitToNatalAspectEvent(
+                transit_body_code=row[0].transit_body_code,
+                target_kind=row[0].target_kind,
+                target_index=row[0].target_index,
+                target_name=ffi.string(row[0].target_name).decode("utf-8"),
+                aspect_kind=row[0].aspect_kind,
+                aspect_owner=row[0].aspect_owner,
+                aspect_angle_deg=row[0].aspect_angle_deg,
+                utc=_utc_from_c(row[0].utc),
+                jd_tdb=row[0].jd_tdb,
+                transit_longitude_deg=row[0].transit_longitude_deg,
+                target_longitude_deg=row[0].target_longitude_deg,
+                actual_separation_deg=row[0].actual_separation_deg,
+            ))
+
+        return GocharEventsResult(
+            birth_utc=_utc_from_c(summary[0].birth_utc),
+            at_utc=_utc_from_c(summary[0].at_utc),
+            reference=GocharReference(
+                natal_tropical_solar_longitude_deg=summary[0].reference.natal_tropical_solar_longitude_deg,
+                natal_sidereal_solar_longitude_deg=summary[0].reference.natal_sidereal_solar_longitude_deg,
+                natal_elongation_deg=summary[0].reference.natal_elongation_deg,
+                natal_masa=_masa_from_c(summary[0].reference.natal_masa),
+            ),
+            yearly_tajaka=GocharEventWindow(before=_decode_tajaka(0, 1), after=_decode_tajaka(0, 0)),
+            yearly_tithi_pravesha=GocharEventWindow(before=_decode_tithi(0, 1), after=_decode_tithi(0, 0)),
+            monthly_tajaka=GocharEventWindow(before=_decode_tajaka(1, 1), after=_decode_tajaka(1, 0)),
+            monthly_tithi_pravesha=GocharEventWindow(before=_decode_tithi(1, 1), after=_decode_tithi(1, 0)),
+            transit_events=transit_events,
+        )
+    finally:
+        lib.dhruv_gochar_events_free(handle[0])

@@ -6,6 +6,7 @@ func ConjunctionConfigDefault() ConjunctionConfig { return cabi.ConjunctionConfi
 func GrahanConfigDefault() GrahanConfig           { return cabi.GrahanConfigDefault() }
 func StationaryConfigDefault() StationaryConfig   { return cabi.StationaryConfigDefault() }
 func SankrantiConfigDefault() SankrantiConfig     { return cabi.SankrantiConfigDefault() }
+func GocharEventsConfigDefault() GocharEventsConfig { return cabi.GocharEventsConfigDefault() }
 
 const (
 	searchRangeMode       = 2
@@ -74,4 +75,9 @@ func (e *Engine) SankrantiSearch(req SankrantiSearchRequest, pageSize ...uint32)
 		ev, found, events, st = cabi.SearchSankranti(e.h, req, capacity)
 	}
 	return ev, found, events, statusErr("sankranti_search_ex", st)
+}
+
+func (e *Engine) GocharEvents(ep *EOP, req GocharEventsRequest) (GocharEventsResult, error) {
+	out, st := cabi.GocharEvents(e.h, ep.h, req)
+	return out, statusErr("gochar_events", st)
 }

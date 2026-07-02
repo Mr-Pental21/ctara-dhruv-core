@@ -95,6 +95,26 @@ napi_value MakeStatusResult(napi_env env, int32_t status) {
     return obj;
 }
 
+napi_value WriteBhavaResult(napi_env env, const DhruvBhavaResult& b);
+napi_value WriteGrahaPositions(napi_env env, const DhruvGrahaPositions& p);
+napi_value WriteBindusResult(napi_env env, const DhruvBindusResult& b);
+napi_value WriteDrishtiResult(napi_env env, const DhruvDrishtiResult& d);
+napi_value WriteAshtakavargaResult(napi_env env, const DhruvAshtakavargaResult& a);
+napi_value WriteAllUpagrahas(napi_env env, const DhruvAllUpagrahas& u);
+napi_value WriteSphutalResult(napi_env env, const DhruvSphutalResult& s);
+napi_value WriteSpecialLagnas(napi_env env, const DhruvSpecialLagnas& s);
+napi_value WriteAmshaChart(napi_env env, const DhruvAmshaChart& a);
+napi_value WriteShadbalaResult(napi_env env, const DhruvShadbalaResult& s);
+napi_value WriteBhavaBalaResult(napi_env env, const DhruvBhavaBalaResult& b);
+napi_value WriteVimsopakaResult(napi_env env, const DhruvVimsopakaResult& v);
+napi_value WriteAllGrahaAvasthas(napi_env env, const DhruvAllGrahaAvasthas& a);
+napi_value WriteCharakarakaResult(napi_env env, const DhruvCharakarakaResult& c);
+int32_t WriteDashaHierarchyFromHandle(
+    napi_env env,
+    DhruvDashaHierarchyHandle handle,
+    uint8_t system,
+    napi_value* out);
+
 void SetNamed(napi_env env, napi_value obj, const char* name, napi_value value) {
     napi_set_named_property(env, obj, name, value);
 }
@@ -741,6 +761,127 @@ bool ReadFullKundaliConfig(napi_env env, napi_value obj, DhruvFullKundaliConfig*
     return true;
 }
 
+bool ReadGocharEventsConfig(napi_env env, napi_value obj, DhruvGocharEventsConfig* out) {
+    *out = dhruv_gochar_events_config_default();
+
+    napi_value v;
+    bool has = false;
+    bool b = false;
+    if (!GetOptionalNamedProperty(env, obj, "tajakaReturnBasis", &v, &has)) return false;
+    if (has && !GetInt32(env, v, &out->tajaka_return_basis)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "yearlyCount", &v, &has)) return false;
+    if (has && !GetUint32(env, v, &out->yearly_count)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "monthlyCount", &v, &has)) return false;
+    if (has && !GetUint32(env, v, &out->monthly_count)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "transitWindowDays", &v, &has)) return false;
+    if (has && !GetDouble(env, v, &out->transit_window_days)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "includeReturnCharts", &v, &has)) return false;
+    if (has && !GetBool(env, v, &b)) return false;
+    if (has) out->include_return_charts = b ? 1 : 0;
+    if (!GetOptionalNamedProperty(env, obj, "solarStepSizeDays", &v, &has)) return false;
+    if (has && !GetDouble(env, v, &out->solar_step_size_days)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "lunarStepSizeDays", &v, &has)) return false;
+    if (has && !GetDouble(env, v, &out->lunar_step_size_days)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "solarConvergenceDays", &v, &has)) return false;
+    if (has && !GetDouble(env, v, &out->solar_convergence_days)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "lunarConvergenceDays", &v, &has)) return false;
+    if (has && !GetDouble(env, v, &out->lunar_convergence_days)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "maxIterations", &v, &has)) return false;
+    if (has && !GetUint32(env, v, &out->max_iterations)) return false;
+    return true;
+}
+
+bool ReadGocharNatalTarget(
+    napi_env env,
+    napi_value obj,
+    DhruvGocharNatalTarget* out,
+    std::string* out_name) {
+    napi_value v;
+    uint32_t u32 = 0;
+    if (!GetNamedProperty(env, obj, "kind", &v) || !GetInt32(env, v, &out->kind)) return false;
+    if (!GetNamedProperty(env, obj, "index", &v) || !GetUint32(env, v, &u32)) return false;
+    out->index = static_cast<uint8_t>(u32);
+    if (!GetNamedProperty(env, obj, "name", &v) || !GetString(env, v, out_name)) return false;
+    if (!GetNamedProperty(env, obj, "longitudeDeg", &v) || !GetDouble(env, v, &out->longitude_deg)) return false;
+    out->name_utf8 = nullptr;
+    return true;
+}
+
+bool ReadGocharEventsRequest(
+    napi_env env,
+    napi_value obj,
+    DhruvGocharEventsRequest* out,
+    std::vector<uint32_t>* transit_body_codes,
+    std::vector<DhruvGocharNatalTarget>* natal_targets,
+    std::vector<std::string>* natal_target_names) {
+    *out = DhruvGocharEventsRequest{};
+    out->bhava_config = dhruv_bhava_config_default();
+    out->riseset_config = dhruv_riseset_config_default();
+    out->sankranti_config = dhruv_sankranti_config_default();
+    out->kundali_config = dhruv_full_kundali_config_default();
+    out->config = dhruv_gochar_events_config_default();
+
+    napi_value v;
+    if (!GetNamedProperty(env, obj, "birthUtc", &v) || !ReadUtcTime(env, v, &out->birth_utc)) return false;
+    if (!GetNamedProperty(env, obj, "atUtc", &v) || !ReadUtcTime(env, v, &out->at_utc)) return false;
+    if (!GetNamedProperty(env, obj, "location", &v) || !ReadGeoLocation(env, v, &out->location)) return false;
+
+    bool has = false;
+    if (!GetOptionalNamedProperty(env, obj, "bhavaConfig", &v, &has)) return false;
+    if (has && !ReadBhavaConfig(env, v, &out->bhava_config)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "riseSetConfig", &v, &has)) return false;
+    if (has && !ReadRiseSetConfig(env, v, &out->riseset_config)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "sankrantiConfig", &v, &has)) return false;
+    if (has && !ReadSankrantiConfig(env, v, &out->sankranti_config)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "kundaliConfig", &v, &has)) return false;
+    if (has && !ReadFullKundaliConfig(env, v, &out->kundali_config)) return false;
+    if (!GetOptionalNamedProperty(env, obj, "config", &v, &has)) return false;
+    if (has && !ReadGocharEventsConfig(env, v, &out->config)) return false;
+
+    transit_body_codes->clear();
+    if (!GetOptionalNamedProperty(env, obj, "transitBodyCodes", &v, &has)) return false;
+    if (has) {
+        bool is_array = false;
+        if (napi_is_array(env, v, &is_array) != napi_ok || !is_array) return false;
+        uint32_t len = 0;
+        if (napi_get_array_length(env, v, &len) != napi_ok) return false;
+        transit_body_codes->reserve(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            napi_value item;
+            uint32_t code = 0;
+            if (napi_get_element(env, v, i, &item) != napi_ok || !GetUint32(env, item, &code)) return false;
+            transit_body_codes->push_back(code);
+        }
+    }
+    out->transit_body_codes = transit_body_codes->empty() ? nullptr : transit_body_codes->data();
+    out->transit_body_count = static_cast<uint32_t>(transit_body_codes->size());
+
+    natal_targets->clear();
+    natal_target_names->clear();
+    if (!GetOptionalNamedProperty(env, obj, "natalTargets", &v, &has)) return false;
+    if (has) {
+        bool is_array = false;
+        if (napi_is_array(env, v, &is_array) != napi_ok || !is_array) return false;
+        uint32_t len = 0;
+        if (napi_get_array_length(env, v, &len) != napi_ok) return false;
+        natal_targets->resize(len);
+        natal_target_names->resize(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            napi_value item;
+            if (napi_get_element(env, v, i, &item) != napi_ok ||
+                !ReadGocharNatalTarget(env, item, &(*natal_targets)[i], &(*natal_target_names)[i])) {
+                return false;
+            }
+        }
+        for (uint32_t i = 0; i < len; ++i) {
+            (*natal_targets)[i].name_utf8 = (*natal_target_names)[i].c_str();
+        }
+    }
+    out->natal_targets = natal_targets->empty() ? nullptr : natal_targets->data();
+    out->natal_target_count = static_cast<uint32_t>(natal_targets->size());
+    return true;
+}
+
 bool ReadSphutalInputs(napi_env env, napi_value obj, DhruvSphutalInputs* out) {
     napi_value v;
     if (!GetNamedProperty(env, obj, "sun", &v) || !GetDouble(env, v, &out->sun)) return false;
@@ -1097,6 +1238,56 @@ napi_value WriteMasaInfo(napi_env env, const DhruvMasaInfo& m) {
     return obj;
 }
 
+napi_value WriteGocharReference(napi_env env, const DhruvGocharReference& reference) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "natalTropicalSolarLongitudeDeg", MakeDouble(env, reference.natal_tropical_solar_longitude_deg));
+    SetNamed(env, obj, "natalSiderealSolarLongitudeDeg", MakeDouble(env, reference.natal_sidereal_solar_longitude_deg));
+    SetNamed(env, obj, "natalElongationDeg", MakeDouble(env, reference.natal_elongation_deg));
+    SetNamed(env, obj, "natalMasa", WriteMasaInfo(env, reference.natal_masa));
+    return obj;
+}
+
+napi_value WriteTajakaReturnEventRow(napi_env env, const DhruvTajakaReturnEventRow& row) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "utc", WriteUtcTime(env, row.utc));
+    SetNamed(env, obj, "jdTdb", MakeDouble(env, row.jd_tdb));
+    SetNamed(env, obj, "basis", MakeInt32(env, row.basis));
+    SetNamed(env, obj, "targetSolarLongitudeDeg", MakeDouble(env, row.target_solar_longitude_deg));
+    SetNamed(env, obj, "eventSolarLongitudeDeg", MakeDouble(env, row.event_solar_longitude_deg));
+    return obj;
+}
+
+napi_value WriteTithiPraveshaEventRow(napi_env env, const DhruvTithiPraveshaEventRow& row) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "utc", WriteUtcTime(env, row.utc));
+    SetNamed(env, obj, "jdTdb", MakeDouble(env, row.jd_tdb));
+    SetNamed(env, obj, "targetElongationDeg", MakeDouble(env, row.target_elongation_deg));
+    SetNamed(env, obj, "eventElongationDeg", MakeDouble(env, row.event_elongation_deg));
+    SetNamed(env, obj, "masa", WriteMasaInfo(env, row.masa));
+    return obj;
+}
+
+napi_value WriteTransitToNatalAspectEventRow(napi_env env, const DhruvTransitToNatalAspectEventRow& row) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "transitBodyCode", MakeUint32(env, row.transit_body_code));
+    SetNamed(env, obj, "targetKind", MakeInt32(env, row.target_kind));
+    SetNamed(env, obj, "targetIndex", MakeUint32(env, row.target_index));
+    SetNamed(env, obj, "targetName", MakeString(env, row.target_name));
+    SetNamed(env, obj, "aspectKind", MakeInt32(env, row.aspect_kind));
+    SetNamed(env, obj, "aspectOwner", MakeInt32(env, row.aspect_owner));
+    SetNamed(env, obj, "aspectAngleDeg", MakeDouble(env, row.aspect_angle_deg));
+    SetNamed(env, obj, "utc", WriteUtcTime(env, row.utc));
+    SetNamed(env, obj, "jdTdb", MakeDouble(env, row.jd_tdb));
+    SetNamed(env, obj, "transitLongitudeDeg", MakeDouble(env, row.transit_longitude_deg));
+    SetNamed(env, obj, "targetLongitudeDeg", MakeDouble(env, row.target_longitude_deg));
+    SetNamed(env, obj, "actualSeparationDeg", MakeDouble(env, row.actual_separation_deg));
+    return obj;
+}
+
 napi_value WriteAyanaInfo(napi_env env, const DhruvAyanaInfo& a) {
     napi_value obj;
     napi_create_object(env, &obj);
@@ -1224,6 +1415,221 @@ napi_value WriteFullPanchangInfo(napi_env env, const DhruvPanchangInfo& p) {
     SetNamed(env, obj, "ayana", WriteAyanaInfo(env, p.ayana));
     SetNamed(env, obj, "varsha", WriteVarshaInfo(env, p.varsha));
     return obj;
+}
+
+int32_t WriteFullKundaliResultObject(
+    napi_env env,
+    const DhruvFullKundaliResult& result,
+    napi_value* out) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "ayanamshaDeg", MakeDouble(env, result.ayanamsha_deg));
+    if (result.bhava_cusps_valid != 0) SetNamed(env, obj, "bhavaCusps", WriteBhavaResult(env, result.bhava_cusps));
+    if (result.rashi_bhava_cusps_valid != 0) SetNamed(env, obj, "rashiBhavaCusps", WriteBhavaResult(env, result.rashi_bhava_cusps));
+    if (result.graha_positions_valid != 0) SetNamed(env, obj, "grahaPositions", WriteGrahaPositions(env, result.graha_positions));
+    if (result.bindus_valid != 0) SetNamed(env, obj, "bindus", WriteBindusResult(env, result.bindus));
+    if (result.drishti_valid != 0) SetNamed(env, obj, "drishti", WriteDrishtiResult(env, result.drishti));
+    if (result.ashtakavarga_valid != 0) SetNamed(env, obj, "ashtakavarga", WriteAshtakavargaResult(env, result.ashtakavarga));
+    if (result.upagrahas_valid != 0) SetNamed(env, obj, "upagrahas", WriteAllUpagrahas(env, result.upagrahas));
+    if (result.sphutas_valid != 0) SetNamed(env, obj, "sphutas", WriteSphutalResult(env, result.sphutas));
+    if (result.special_lagnas_valid != 0) SetNamed(env, obj, "specialLagnas", WriteSpecialLagnas(env, result.special_lagnas));
+    if (result.amshas_valid != 0) {
+        napi_value amshas;
+        napi_create_array_with_length(env, result.amshas_count, &amshas);
+        for (uint32_t i = 0; i < result.amshas_count; ++i) {
+            napi_set_element(env, amshas, i, WriteAmshaChart(env, result.amshas[i]));
+        }
+        SetNamed(env, obj, "amshas", amshas);
+    }
+    if (result.shadbala_valid != 0) SetNamed(env, obj, "shadbala", WriteShadbalaResult(env, result.shadbala));
+    if (result.bhavabala_valid != 0) SetNamed(env, obj, "bhavabala", WriteBhavaBalaResult(env, result.bhavabala));
+    if (result.vimsopaka_valid != 0) SetNamed(env, obj, "vimsopaka", WriteVimsopakaResult(env, result.vimsopaka));
+    if (result.avastha_valid != 0) SetNamed(env, obj, "avastha", WriteAllGrahaAvasthas(env, result.avastha));
+    if (result.charakaraka_valid != 0) SetNamed(env, obj, "charakaraka", WriteCharakarakaResult(env, result.charakaraka));
+    if (result.panchang_valid != 0) SetNamed(env, obj, "panchang", WriteFullPanchangInfo(env, result.panchang));
+
+    int32_t status = STATUS_OK;
+    if (result.dasha_count > 0) {
+        napi_value dashas;
+        napi_create_array_with_length(env, result.dasha_count, &dashas);
+        for (uint32_t i = 0; i < result.dasha_count; ++i) {
+            napi_value hierarchy;
+            status = WriteDashaHierarchyFromHandle(env, result.dasha_handles[i], result.dasha_systems[i], &hierarchy);
+            if (status != STATUS_OK) {
+                return status;
+            }
+            napi_set_element(env, dashas, i, hierarchy);
+        }
+        SetNamed(env, obj, "dasha", dashas);
+    }
+
+    if (result.dasha_snapshot_count > 0) {
+        napi_value snapshots;
+        napi_create_array_with_length(env, result.dasha_snapshot_count, &snapshots);
+        for (uint32_t i = 0; i < result.dasha_snapshot_count; ++i) {
+            const DhruvDashaSnapshot& snapshot = result.dasha_snapshots[i];
+            napi_value so;
+            napi_create_object(env, &so);
+            SetNamed(env, so, "system", MakeUint32(env, snapshot.system));
+            SetNamed(env, so, "queryUtc", WriteUtcTime(env, snapshot.query_utc));
+            SetNamed(env, so, "queryJd", MakeDouble(env, snapshot.query_jd));
+            SetNamed(env, so, "count", MakeUint32(env, snapshot.count));
+            napi_value periods;
+            napi_create_array_with_length(env, snapshot.count, &periods);
+            for (uint32_t j = 0; j < snapshot.count && j < 5; ++j) {
+                napi_set_element(env, periods, j, WriteDashaPeriod(env, snapshot.periods[j]));
+            }
+            SetNamed(env, so, "periods", periods);
+            napi_set_element(env, snapshots, i, so);
+        }
+        SetNamed(env, obj, "dashaSnapshots", snapshots);
+    }
+
+    *out = obj;
+    return STATUS_OK;
+}
+
+int32_t WriteGocharTajakaList(
+    napi_env env,
+    DhruvGocharEventsHandle handle,
+    bool monthly_series,
+    bool before_side,
+    napi_value* out) {
+    uint32_t count = 0;
+    int32_t status = dhruv_gochar_events_tajaka_count(
+        handle,
+        monthly_series ? 1 : 0,
+        before_side ? 1 : 0,
+        &count);
+    if (status != STATUS_OK) {
+        return status;
+    }
+
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    for (uint32_t idx = 0; idx < count; ++idx) {
+        DhruvTajakaReturnEventRow row{};
+        status = dhruv_gochar_events_tajaka_at(
+            handle,
+            monthly_series ? 1 : 0,
+            before_side ? 1 : 0,
+            idx,
+            &row);
+        if (status != STATUS_OK) {
+            return status;
+        }
+
+        napi_value event = WriteTajakaReturnEventRow(env, row);
+        napi_value chart_value;
+        if (row.has_chart != 0) {
+            DhruvFullKundaliResult chart{};
+            status = dhruv_gochar_events_tajaka_chart_at(
+                handle,
+                monthly_series ? 1 : 0,
+                before_side ? 1 : 0,
+                idx,
+                &chart);
+            if (status != STATUS_OK) {
+                return status;
+            }
+            status = WriteFullKundaliResultObject(env, chart, &chart_value);
+            dhruv_full_kundali_result_free(&chart);
+            if (status != STATUS_OK) {
+                return status;
+            }
+        } else {
+            napi_get_null(env, &chart_value);
+        }
+        SetNamed(env, event, "chart", chart_value);
+        napi_set_element(env, arr, idx, event);
+    }
+
+    *out = arr;
+    return STATUS_OK;
+}
+
+int32_t WriteGocharTithiList(
+    napi_env env,
+    DhruvGocharEventsHandle handle,
+    bool monthly_series,
+    bool before_side,
+    napi_value* out) {
+    uint32_t count = 0;
+    int32_t status = dhruv_gochar_events_tithi_count(
+        handle,
+        monthly_series ? 1 : 0,
+        before_side ? 1 : 0,
+        &count);
+    if (status != STATUS_OK) {
+        return status;
+    }
+
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    for (uint32_t idx = 0; idx < count; ++idx) {
+        DhruvTithiPraveshaEventRow row{};
+        status = dhruv_gochar_events_tithi_at(
+            handle,
+            monthly_series ? 1 : 0,
+            before_side ? 1 : 0,
+            idx,
+            &row);
+        if (status != STATUS_OK) {
+            return status;
+        }
+
+        napi_value event = WriteTithiPraveshaEventRow(env, row);
+        napi_value chart_value;
+        if (row.has_chart != 0) {
+            DhruvFullKundaliResult chart{};
+            status = dhruv_gochar_events_tithi_chart_at(
+                handle,
+                monthly_series ? 1 : 0,
+                before_side ? 1 : 0,
+                idx,
+                &chart);
+            if (status != STATUS_OK) {
+                return status;
+            }
+            status = WriteFullKundaliResultObject(env, chart, &chart_value);
+            dhruv_full_kundali_result_free(&chart);
+            if (status != STATUS_OK) {
+                return status;
+            }
+        } else {
+            napi_get_null(env, &chart_value);
+        }
+        SetNamed(env, event, "chart", chart_value);
+        napi_set_element(env, arr, idx, event);
+    }
+
+    *out = arr;
+    return STATUS_OK;
+}
+
+int32_t WriteGocharTransitList(
+    napi_env env,
+    DhruvGocharEventsHandle handle,
+    napi_value* out) {
+    uint32_t count = 0;
+    int32_t status = dhruv_gochar_events_transit_count(handle, &count);
+    if (status != STATUS_OK) {
+        return status;
+    }
+
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    for (uint32_t idx = 0; idx < count; ++idx) {
+        DhruvTransitToNatalAspectEventRow row{};
+        status = dhruv_gochar_events_transit_at(handle, idx, &row);
+        if (status != STATUS_OK) {
+            return status;
+        }
+        napi_set_element(env, arr, idx, WriteTransitToNatalAspectEventRow(env, row));
+    }
+
+    *out = arr;
+    return STATUS_OK;
 }
 
 int32_t WriteDashaHierarchyFromHandle(
@@ -6257,6 +6663,24 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
     return obj;
 }
 
+napi_value GocharEventsConfigDefault(napi_env env, napi_callback_info info) {
+    (void)info;
+    DhruvGocharEventsConfig cfg = dhruv_gochar_events_config_default();
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "tajakaReturnBasis", MakeInt32(env, cfg.tajaka_return_basis));
+    SetNamed(env, obj, "yearlyCount", MakeUint32(env, cfg.yearly_count));
+    SetNamed(env, obj, "monthlyCount", MakeUint32(env, cfg.monthly_count));
+    SetNamed(env, obj, "transitWindowDays", MakeDouble(env, cfg.transit_window_days));
+    SetNamed(env, obj, "includeReturnCharts", MakeBool(env, cfg.include_return_charts != 0));
+    SetNamed(env, obj, "solarStepSizeDays", MakeDouble(env, cfg.solar_step_size_days));
+    SetNamed(env, obj, "lunarStepSizeDays", MakeDouble(env, cfg.lunar_step_size_days));
+    SetNamed(env, obj, "solarConvergenceDays", MakeDouble(env, cfg.solar_convergence_days));
+    SetNamed(env, obj, "lunarConvergenceDays", MakeDouble(env, cfg.lunar_convergence_days));
+    SetNamed(env, obj, "maxIterations", MakeUint32(env, cfg.max_iterations));
+    return obj;
+}
+
 napi_value DashaSelectionConfigDefault(napi_env env, napi_callback_info info) {
     (void)info;
     DhruvDashaSelectionConfig cfg = dhruv_dasha_selection_config_default();
@@ -6354,74 +6778,140 @@ napi_value FullKundaliForDate(napi_env env, napi_callback_info info) {
     }
 
     napi_value obj;
-    napi_create_object(env, &obj);
-    SetNamed(env, obj, "ayanamshaDeg", MakeDouble(env, result.ayanamsha_deg));
-    if (result.bhava_cusps_valid != 0) SetNamed(env, obj, "bhavaCusps", WriteBhavaResult(env, result.bhava_cusps));
-    if (result.rashi_bhava_cusps_valid != 0) SetNamed(env, obj, "rashiBhavaCusps", WriteBhavaResult(env, result.rashi_bhava_cusps));
-    if (result.graha_positions_valid != 0) SetNamed(env, obj, "grahaPositions", WriteGrahaPositions(env, result.graha_positions));
-    if (result.bindus_valid != 0) SetNamed(env, obj, "bindus", WriteBindusResult(env, result.bindus));
-    if (result.drishti_valid != 0) SetNamed(env, obj, "drishti", WriteDrishtiResult(env, result.drishti));
-    if (result.ashtakavarga_valid != 0) SetNamed(env, obj, "ashtakavarga", WriteAshtakavargaResult(env, result.ashtakavarga));
-    if (result.upagrahas_valid != 0) SetNamed(env, obj, "upagrahas", WriteAllUpagrahas(env, result.upagrahas));
-    if (result.sphutas_valid != 0) SetNamed(env, obj, "sphutas", WriteSphutalResult(env, result.sphutas));
-    if (result.special_lagnas_valid != 0) SetNamed(env, obj, "specialLagnas", WriteSpecialLagnas(env, result.special_lagnas));
-    if (result.amshas_valid != 0) {
-        napi_value amshas;
-        napi_create_array_with_length(env, result.amshas_count, &amshas);
-        for (uint32_t i = 0; i < result.amshas_count; ++i) {
-            napi_set_element(env, amshas, i, WriteAmshaChart(env, result.amshas[i]));
-        }
-        SetNamed(env, obj, "amshas", amshas);
-    }
-    if (result.shadbala_valid != 0) SetNamed(env, obj, "shadbala", WriteShadbalaResult(env, result.shadbala));
-    if (result.bhavabala_valid != 0) SetNamed(env, obj, "bhavabala", WriteBhavaBalaResult(env, result.bhavabala));
-    if (result.vimsopaka_valid != 0) SetNamed(env, obj, "vimsopaka", WriteVimsopakaResult(env, result.vimsopaka));
-    if (result.avastha_valid != 0) SetNamed(env, obj, "avastha", WriteAllGrahaAvasthas(env, result.avastha));
-    if (result.charakaraka_valid != 0) SetNamed(env, obj, "charakaraka", WriteCharakarakaResult(env, result.charakaraka));
-    if (result.panchang_valid != 0) SetNamed(env, obj, "panchang", WriteFullPanchangInfo(env, result.panchang));
-
-    if (result.dasha_count > 0) {
-        napi_value dashas;
-        napi_create_array_with_length(env, result.dasha_count, &dashas);
-        for (uint32_t i = 0; i < result.dasha_count; ++i) {
-            napi_value hierarchy;
-            status = WriteDashaHierarchyFromHandle(
-                env,
-                result.dasha_handles[i],
-                result.dasha_systems[i],
-                &hierarchy);
-            if (status != STATUS_OK) {
-                dhruv_full_kundali_result_free(&result);
-                return MakeStatusResult(env, status);
-            }
-            napi_set_element(env, dashas, i, hierarchy);
-        }
-        SetNamed(env, obj, "dasha", dashas);
-    }
-
-    if (result.dasha_snapshot_count > 0) {
-        napi_value snapshots;
-        napi_create_array_with_length(env, result.dasha_snapshot_count, &snapshots);
-        for (uint32_t i = 0; i < result.dasha_snapshot_count; ++i) {
-            const DhruvDashaSnapshot& snapshot = result.dasha_snapshots[i];
-            napi_value so;
-            napi_create_object(env, &so);
-            SetNamed(env, so, "system", MakeUint32(env, snapshot.system));
-            SetNamed(env, so, "queryUtc", WriteUtcTime(env, snapshot.query_utc));
-            SetNamed(env, so, "queryJd", MakeDouble(env, snapshot.query_jd));
-            SetNamed(env, so, "count", MakeUint32(env, snapshot.count));
-            napi_value periods;
-            napi_create_array_with_length(env, snapshot.count, &periods);
-            for (uint32_t j = 0; j < snapshot.count && j < 5; ++j) {
-                napi_set_element(env, periods, j, WriteDashaPeriod(env, snapshot.periods[j]));
-            }
-            SetNamed(env, so, "periods", periods);
-            napi_set_element(env, snapshots, i, so);
-        }
-        SetNamed(env, obj, "dashaSnapshots", snapshots);
-    }
-
+    status = WriteFullKundaliResultObject(env, result, &obj);
     dhruv_full_kundali_result_free(&result);
+    if (status != STATUS_OK) {
+        return MakeStatusResult(env, status);
+    }
+    SetNamed(env, out, "result", obj);
+    return out;
+}
+
+napi_value GocharEvents(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 3) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    DhruvGocharEventsRequest request{};
+    std::vector<uint32_t> transit_body_codes;
+    std::vector<DhruvGocharNatalTarget> natal_targets;
+    std::vector<std::string> natal_target_names;
+    if (!ReadGocharEventsRequest(
+            env,
+            args[2],
+            &request,
+            &transit_body_codes,
+            &natal_targets,
+            &natal_target_names)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    DhruvGocharEventsHandle handle = nullptr;
+    int32_t status = dhruv_gochar_events(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &request,
+        &handle);
+
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) {
+        return out;
+    }
+
+    DhruvGocharEventsSummary summary{};
+    status = dhruv_gochar_events_summary(handle, &summary);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "birthUtc", WriteUtcTime(env, summary.birth_utc));
+    SetNamed(env, obj, "atUtc", WriteUtcTime(env, summary.at_utc));
+    SetNamed(env, obj, "reference", WriteGocharReference(env, summary.reference));
+
+    napi_value before;
+    napi_value after;
+    napi_value window;
+
+    status = WriteGocharTajakaList(env, handle, false, true, &before);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    status = WriteGocharTajakaList(env, handle, false, false, &after);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_create_object(env, &window);
+    SetNamed(env, window, "before", before);
+    SetNamed(env, window, "after", after);
+    SetNamed(env, obj, "yearlyTajaka", window);
+
+    status = WriteGocharTithiList(env, handle, false, true, &before);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    status = WriteGocharTithiList(env, handle, false, false, &after);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_create_object(env, &window);
+    SetNamed(env, window, "before", before);
+    SetNamed(env, window, "after", after);
+    SetNamed(env, obj, "yearlyTithiPravesha", window);
+
+    status = WriteGocharTajakaList(env, handle, true, true, &before);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    status = WriteGocharTajakaList(env, handle, true, false, &after);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_create_object(env, &window);
+    SetNamed(env, window, "before", before);
+    SetNamed(env, window, "after", after);
+    SetNamed(env, obj, "monthlyTajaka", window);
+
+    status = WriteGocharTithiList(env, handle, true, true, &before);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    status = WriteGocharTithiList(env, handle, true, false, &after);
+    if (status != STATUS_OK) {
+        dhruv_gochar_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_create_object(env, &window);
+    SetNamed(env, window, "before", before);
+    SetNamed(env, window, "after", after);
+    SetNamed(env, obj, "monthlyTithiPravesha", window);
+
+    napi_value transit_events;
+    status = WriteGocharTransitList(env, handle, &transit_events);
+    dhruv_gochar_events_free(handle);
+    if (status != STATUS_OK) {
+        return MakeStatusResult(env, status);
+    }
+    SetNamed(env, obj, "transitEvents", transit_events);
+
     SetNamed(env, out, "result", obj);
     return out;
 }
@@ -7340,6 +7830,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"conjunctionConfigDefault", nullptr, ConjunctionConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"grahanConfigDefault", nullptr, GrahanConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"stationaryConfigDefault", nullptr, StationaryConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"gocharEventsConfigDefault", nullptr, GocharEventsConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},
 
         {"computeRiseSet", nullptr, ComputeRiseSet, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"computeAllEvents", nullptr, ComputeAllEvents, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -7444,6 +7935,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"fullKundaliSummaryForDate", nullptr, FullKundaliSummaryForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"fullKundaliConfigDefault", nullptr, FullKundaliConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"fullKundaliForDate", nullptr, FullKundaliForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"gocharEvents", nullptr, GocharEvents, nullptr, nullptr, nullptr, napi_default, nullptr},
 
         {"dashaSelectionConfigDefault", nullptr, DashaSelectionConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"dashaVariationConfigDefault", nullptr, DashaVariationConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},

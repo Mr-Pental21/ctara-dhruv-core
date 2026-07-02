@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       70
+#define DHRUV_API_VERSION       71
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -49,6 +49,7 @@ extern "C" {
 #define DHRUV_AMSHA_VARIATION_NAME_CAPACITY 48
 #define DHRUV_AMSHA_VARIATION_LABEL_CAPACITY 64
 #define DHRUV_AMSHA_VARIATION_DESCRIPTION_CAPACITY 160
+#define DHRUV_GOCHAR_NAME_CAPACITY 128
 
 /* DhruvStatus (repr(i32)) */
 typedef int32_t DhruvStatus;
@@ -279,6 +280,24 @@ typedef int32_t DhruvStatus;
 #define DHRUV_SANKRANTI_TARGET_ANY      0
 #define DHRUV_SANKRANTI_TARGET_SPECIFIC 1
 
+/* Gochar events */
+#define DHRUV_GOCHAR_NATAL_TARGET_GRAHA         0
+#define DHRUV_GOCHAR_NATAL_TARGET_BINDU         1
+#define DHRUV_GOCHAR_NATAL_TARGET_SPHUTA        2
+#define DHRUV_GOCHAR_NATAL_TARGET_SPECIAL_LAGNA 3
+#define DHRUV_GOCHAR_NATAL_TARGET_ARUDHA_PADA   4
+#define DHRUV_GOCHAR_NATAL_TARGET_CUSTOM        5
+
+#define DHRUV_TAJAKA_RETURN_BASIS_TROPICAL_SOLAR 0
+#define DHRUV_TAJAKA_RETURN_BASIS_SIDEREAL_SOLAR 1
+
+#define DHRUV_TRANSIT_ASPECT_KIND_CONJUNCTION 0
+#define DHRUV_TRANSIT_ASPECT_KIND_OPPOSITION  1
+#define DHRUV_TRANSIT_ASPECT_KIND_SPECIAL     2
+
+#define DHRUV_TRANSIT_ASPECT_OWNER_GOCHAR_BODY  0
+#define DHRUV_TRANSIT_ASPECT_OWNER_NATAL_TARGET 1
+
 #define DHRUV_SANKRANTI_QUERY_MODE_NEXT  0
 #define DHRUV_SANKRANTI_QUERY_MODE_PREV  1
 #define DHRUV_SANKRANTI_QUERY_MODE_RANGE 2
@@ -362,6 +381,8 @@ typedef struct DhruvTaraCatalogHandle DhruvTaraCatalogHandle;
 typedef void *DhruvDashaHierarchyHandle;
 /* DhruvDashaPeriodListHandle is void* */
 typedef void *DhruvDashaPeriodListHandle;
+/* DhruvGocharEventsHandle is void* */
+typedef void *DhruvGocharEventsHandle;
 
 /* ===================================================================
  * Structs
@@ -907,6 +928,72 @@ typedef struct {
     uint8_t                  varsha_valid;
     DhruvVarshaInfo          varsha;
 } DhruvPanchangOperationResult;
+
+typedef struct {
+    int32_t     kind;
+    uint8_t     index;
+    const char *name_utf8;
+    double      longitude_deg;
+} DhruvGocharNatalTarget;
+
+typedef struct {
+    int32_t  tajaka_return_basis;
+    uint32_t yearly_count;
+    uint32_t monthly_count;
+    double   transit_window_days;
+    uint8_t  include_return_charts;
+    double   solar_step_size_days;
+    double   lunar_step_size_days;
+    double   solar_convergence_days;
+    double   lunar_convergence_days;
+    uint32_t max_iterations;
+} DhruvGocharEventsConfig;
+
+typedef struct {
+    double        natal_tropical_solar_longitude_deg;
+    double        natal_sidereal_solar_longitude_deg;
+    double        natal_elongation_deg;
+    DhruvMasaInfo natal_masa;
+} DhruvGocharReference;
+
+typedef struct {
+    DhruvUtcTime         birth_utc;
+    DhruvUtcTime         at_utc;
+    DhruvGocharReference reference;
+} DhruvGocharEventsSummary;
+
+typedef struct {
+    DhruvUtcTime utc;
+    double       jd_tdb;
+    int32_t      basis;
+    double       target_solar_longitude_deg;
+    double       event_solar_longitude_deg;
+    uint8_t      has_chart;
+} DhruvTajakaReturnEventRow;
+
+typedef struct {
+    DhruvUtcTime  utc;
+    double        jd_tdb;
+    double        target_elongation_deg;
+    double        event_elongation_deg;
+    DhruvMasaInfo masa;
+    uint8_t       has_chart;
+} DhruvTithiPraveshaEventRow;
+
+typedef struct {
+    uint32_t transit_body_code;
+    int32_t  target_kind;
+    uint8_t  target_index;
+    char     target_name[DHRUV_GOCHAR_NAME_CAPACITY];
+    int32_t  aspect_kind;
+    int32_t  aspect_owner;
+    double   aspect_angle_deg;
+    DhruvUtcTime utc;
+    double   jd_tdb;
+    double   transit_longitude_deg;
+    double   target_longitude_deg;
+    double   actual_separation_deg;
+} DhruvTransitToNatalAspectEventRow;
 
 typedef struct {
     DhruvTithiInfo              tithi;
@@ -1551,6 +1638,21 @@ typedef struct {
 } DhruvFullKundaliConfig;
 
 typedef struct {
+    DhruvUtcTime             birth_utc;
+    DhruvUtcTime             at_utc;
+    DhruvGeoLocation         location;
+    DhruvBhavaConfig         bhava_config;
+    DhruvRiseSetConfig       riseset_config;
+    DhruvSankrantiConfig     sankranti_config;
+    DhruvFullKundaliConfig   kundali_config;
+    DhruvGocharEventsConfig  config;
+    const uint32_t           *transit_body_codes;
+    uint32_t                 transit_body_count;
+    const DhruvGocharNatalTarget *natal_targets;
+    uint32_t                 natal_target_count;
+} DhruvGocharEventsRequest;
+
+typedef struct {
     double                    ayanamsha_deg;
     uint8_t                   bhava_cusps_valid;
     DhruvBhavaResult          bhava_cusps;
@@ -1866,7 +1968,6 @@ DhruvStatus dhruv_sankranti_search_ex(
     DhruvSankrantiEvent *out_events,
     uint32_t out_capacity,
     uint32_t *out_count);
-
 /* --- Calendar --- */
 DhruvStatus dhruv_masa_for_date(
     const DhruvEngineHandle *engine,
@@ -2619,6 +2720,57 @@ DhruvStatus dhruv_full_kundali_for_date(
     const DhruvFullKundaliConfig *config,
     DhruvFullKundaliResult *out);
 void dhruv_full_kundali_result_free(DhruvFullKundaliResult *result);
+DhruvGocharEventsConfig dhruv_gochar_events_config_default(void);
+DhruvStatus dhruv_gochar_events(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvGocharEventsRequest *request,
+    DhruvGocharEventsHandle *out_handle);
+void dhruv_gochar_events_free(DhruvGocharEventsHandle handle);
+DhruvStatus dhruv_gochar_events_summary(
+    DhruvGocharEventsHandle handle,
+    DhruvGocharEventsSummary *out);
+DhruvStatus dhruv_gochar_events_tajaka_count(
+    DhruvGocharEventsHandle handle,
+    uint8_t monthly_series,
+    uint8_t before_side,
+    uint32_t *out_count);
+DhruvStatus dhruv_gochar_events_tajaka_at(
+    DhruvGocharEventsHandle handle,
+    uint8_t monthly_series,
+    uint8_t before_side,
+    uint32_t idx,
+    DhruvTajakaReturnEventRow *out);
+DhruvStatus dhruv_gochar_events_tajaka_chart_at(
+    DhruvGocharEventsHandle handle,
+    uint8_t monthly_series,
+    uint8_t before_side,
+    uint32_t idx,
+    DhruvFullKundaliResult *out);
+DhruvStatus dhruv_gochar_events_tithi_count(
+    DhruvGocharEventsHandle handle,
+    uint8_t monthly_series,
+    uint8_t before_side,
+    uint32_t *out_count);
+DhruvStatus dhruv_gochar_events_tithi_at(
+    DhruvGocharEventsHandle handle,
+    uint8_t monthly_series,
+    uint8_t before_side,
+    uint32_t idx,
+    DhruvTithiPraveshaEventRow *out);
+DhruvStatus dhruv_gochar_events_tithi_chart_at(
+    DhruvGocharEventsHandle handle,
+    uint8_t monthly_series,
+    uint8_t before_side,
+    uint32_t idx,
+    DhruvFullKundaliResult *out);
+DhruvStatus dhruv_gochar_events_transit_count(
+    DhruvGocharEventsHandle handle,
+    uint32_t *out_count);
+DhruvStatus dhruv_gochar_events_transit_at(
+    DhruvGocharEventsHandle handle,
+    uint32_t idx,
+    DhruvTransitToNatalAspectEventRow *out);
 
 /* --- Tara (fixed star) --- */
 DhruvStatus dhruv_tara_catalog_load(

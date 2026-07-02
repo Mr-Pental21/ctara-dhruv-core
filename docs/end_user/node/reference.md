@@ -61,11 +61,13 @@ all-or-nothing and list output preserves active query order.
 - `conjunctionConfigDefault`
 - `grahanConfigDefault`
 - `stationaryConfigDefault`
+- `gocharEventsConfigDefault`
 - `conjunctionSearch`
 - `grahanSearch`
 - `motionSearch`
 - `lunarPhaseSearch`
 - `sankrantiSearch`
+- `gocharEvents`
 
 For range searches (`queryMode: 2`), these functions auto-expand their
 internal buffers until the full result set is returned. The optional third
@@ -78,6 +80,13 @@ include UTC alongside JD/TDB; sankranti and lunar-phase results remain UTC-first
 The same request objects accept `atUtc` / `startUtc` / `endUtc` alongside
 `atJdTdb` / `startJdTdb` / `endJdTdb`, so UTC input stays on the main search
 functions instead of introducing `*UtcSearch` variants.
+
+`gocharEvents(engine, eop, request)` returns grouped `yearlyTajaka`,
+`yearlyTithiPravesha`, `monthlyTajaka`, `monthlyTithiPravesha`, and
+`transitEvents`, with caller-supplied natal target names preserved on emitted
+transit aspect rows. `gocharEventsConfigDefault()` exposes the typed defaults
+for Tajaka basis, yearly/monthly window sizes, transit window, search steps,
+and optional embedded return charts.
 
 `panchang.js` exports:
 

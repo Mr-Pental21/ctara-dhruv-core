@@ -1058,3 +1058,231 @@ def full_kundali(
         )
     finally:
         lib.dhruv_full_kundali_result_free(out)
+
+
+def _extract_full_kundali_result_ffi(out) -> FullKundaliResult:
+    ayanamsha_deg = out.ayanamsha_deg
+
+    bhava_cusps = None
+    if out.bhava_cusps_valid:
+        bhavas = []
+        for i in range(12):
+            b = out.bhava_cusps.bhavas[i]
+            bhavas.append(BhavaEntry(
+                number=b.number, cusp_deg=b.cusp_deg,
+                start_deg=b.start_deg, end_deg=b.end_deg,
+            ))
+        bhava_cusps = BhavaResult(
+            bhavas=bhavas,
+            lagna_deg=out.bhava_cusps.lagna_deg,
+            mc_deg=out.bhava_cusps.mc_deg,
+        )
+
+    rashi_bhava_cusps = None
+    if out.rashi_bhava_cusps_valid:
+        bhavas = []
+        for i in range(12):
+            b = out.rashi_bhava_cusps.bhavas[i]
+            bhavas.append(BhavaEntry(
+                number=b.number, cusp_deg=b.cusp_deg,
+                start_deg=b.start_deg, end_deg=b.end_deg,
+            ))
+        rashi_bhava_cusps = BhavaResult(
+            bhavas=bhavas,
+            lagna_deg=out.rashi_bhava_cusps.lagna_deg,
+            mc_deg=out.rashi_bhava_cusps.mc_deg,
+        )
+
+    graha_pos = None
+    if out.graha_positions_valid:
+        grahas = [_graha_entry_from_ffi(out.graha_positions.grahas[i]) for i in range(9)]
+        lagna_entry = _graha_entry_from_ffi(out.graha_positions.lagna)
+        outer = [_graha_entry_from_ffi(out.graha_positions.outer_planets[i]) for i in range(3)]
+        graha_pos = GrahaPositions(grahas=grahas, lagna=lagna_entry, outer_planets=outer)
+
+    bindus = None
+    if out.bindus_valid:
+        arudha_padas = [_graha_entry_from_ffi(out.bindus.arudha_padas[i]) for i in range(12)]
+        rashi_bhava_arudha_padas = None
+        if out.bindus.rashi_bhava_arudha_padas_valid:
+            rashi_bhava_arudha_padas = [
+                _graha_entry_from_ffi(out.bindus.rashi_bhava_arudha_padas[i])
+                for i in range(12)
+            ]
+        bindus = BindusResult(
+            arudha_padas=arudha_padas,
+            bhrigu_bindu=_graha_entry_from_ffi(out.bindus.bhrigu_bindu),
+            pranapada_lagna=_graha_entry_from_ffi(out.bindus.pranapada_lagna),
+            gulika=_graha_entry_from_ffi(out.bindus.gulika),
+            maandi=_graha_entry_from_ffi(out.bindus.maandi),
+            hora_lagna=_graha_entry_from_ffi(out.bindus.hora_lagna),
+            ghati_lagna=_graha_entry_from_ffi(out.bindus.ghati_lagna),
+            sree_lagna=_graha_entry_from_ffi(out.bindus.sree_lagna),
+            rashi_bhava_arudha_padas=rashi_bhava_arudha_padas,
+        )
+
+    drishti = None
+    if out.drishti_valid:
+        g2g = [
+            [_extract_drishti_entry(out.drishti.graha_to_graha[i][j]) for j in range(9)]
+            for i in range(9)
+        ]
+        g2b = [
+            [_extract_drishti_entry(out.drishti.graha_to_bhava[i][j]) for j in range(12)]
+            for i in range(9)
+        ]
+        g2rb = [
+            [
+                _extract_drishti_entry(out.drishti.graha_to_rashi_bhava[i][j])
+                for j in range(12)
+            ]
+            for i in range(9)
+        ]
+        g2l = [_extract_drishti_entry(out.drishti.graha_to_lagna[i]) for i in range(9)]
+        g2bi = [
+            [_extract_drishti_entry(out.drishti.graha_to_bindus[i][j]) for j in range(19)]
+            for i in range(9)
+        ]
+        drishti = DrishtiResult(
+            graha_to_graha=g2g,
+            graha_to_bhava=g2b,
+            graha_to_rashi_bhava=g2rb,
+            graha_to_lagna=g2l,
+            graha_to_bindus=g2bi,
+        )
+
+    ashtakavarga = None
+    if out.ashtakavarga_valid:
+        bavs = []
+        for i in range(7):
+            b = out.ashtakavarga.bavs[i]
+            bavs.append(BhinnaAshtakavarga(
+                graha_index=b.graha_index,
+                points=[b.points[j] for j in range(12)],
+                contributors=[[b.contributors[r][c] for c in range(8)] for r in range(12)],
+            ))
+        sav = SarvaAshtakavarga(
+            total_points=[out.ashtakavarga.sav.total_points[j] for j in range(12)],
+            after_trikona=[out.ashtakavarga.sav.after_trikona[j] for j in range(12)],
+            after_ekadhipatya=[out.ashtakavarga.sav.after_ekadhipatya[j] for j in range(12)],
+        )
+        ashtakavarga = AshtakavargaResult(bavs=bavs, sav=sav)
+
+    upagrahas = None
+    if out.upagrahas_valid:
+        u = out.upagrahas
+        upagrahas = AllUpagrahas(
+            gulika=u.gulika, maandi=u.maandi, kaala=u.kaala,
+            mrityu=u.mrityu, artha_prahara=u.artha_prahara,
+            yama_ghantaka=u.yama_ghantaka, dhooma=u.dhooma,
+            vyatipata=u.vyatipata, parivesha=u.parivesha,
+            indra_chapa=u.indra_chapa, upaketu=u.upaketu,
+        )
+
+    sphutas = None
+    if out.sphutas_valid:
+        sphutas = SphutalResult(
+            longitudes=[out.sphutas.longitudes[i] for i in range(16)]
+        )
+
+    special_lagnas = None
+    if out.special_lagnas_valid:
+        sl = out.special_lagnas
+        special_lagnas = SpecialLagnas(
+            bhava_lagna=sl.bhava_lagna, hora_lagna=sl.hora_lagna,
+            ghati_lagna=sl.ghati_lagna, vighati_lagna=sl.vighati_lagna,
+            varnada_lagna=sl.varnada_lagna, sree_lagna=sl.sree_lagna,
+            pranapada_lagna=sl.pranapada_lagna, indu_lagna=sl.indu_lagna,
+        )
+
+    amshas = None
+    if out.amshas_valid and out.amshas_count > 0:
+        amshas = [_extract_amsha_chart(out.amshas[i]) for i in range(out.amshas_count)]
+
+    shadbala = None
+    if out.shadbala_valid:
+        shadbala = ShadbalaResult(
+            entries=[_extract_shadbala_entry(out.shadbala.entries[i]) for i in range(7)]
+        )
+
+    bhavabala = None
+    if out.bhavabala_valid:
+        bhavabala = BhavaBalaResult(
+            entries=[
+                BhavaBalaEntry(
+                    bhava_number=out.bhavabala.entries[i].bhava_number,
+                    cusp_sidereal_lon=out.bhavabala.entries[i].cusp_sidereal_lon,
+                    rashi_index=out.bhavabala.entries[i].rashi_index,
+                    lord_graha_index=out.bhavabala.entries[i].lord_graha_index,
+                    bhavadhipati=out.bhavabala.entries[i].bhavadhipati,
+                    dig=out.bhavabala.entries[i].dig,
+                    drishti=out.bhavabala.entries[i].drishti,
+                    occupation_bonus=out.bhavabala.entries[i].occupation_bonus,
+                    rising_bonus=out.bhavabala.entries[i].rising_bonus,
+                    total_virupas=out.bhavabala.entries[i].total_virupas,
+                    total_rupas=out.bhavabala.entries[i].total_rupas,
+                )
+                for i in range(12)
+            ]
+        )
+
+    vimsopaka = None
+    if out.vimsopaka_valid:
+        vimsopaka = VimsopakaResult(
+            entries=[_extract_vimsopaka_entry(out.vimsopaka.entries[i]) for i in range(9)]
+        )
+
+    avastha = None
+    if out.avastha_valid:
+        avastha = AllGrahaAvasthas(
+            entries=[_extract_graha_avastha(out.avastha.entries[i]) for i in range(9)]
+        )
+
+    charakaraka = None
+    if out.charakaraka_valid:
+        charakaraka = _extract_charakaraka_result(out.charakaraka)
+
+    panchang = None
+    if out.panchang_valid:
+        panchang = _extract_panchang_info(out.panchang)
+
+    dasha = None
+    if out.dasha_count > 0:
+        dasha = []
+        for i in range(out.dasha_count):
+            dasha.append(_extract_dasha_hierarchy(out.dasha_handles[i], out.dasha_systems[i]))
+
+    dasha_snapshots = None
+    if out.dasha_snapshot_count > 0:
+        dasha_snapshots = []
+        for i in range(out.dasha_snapshot_count):
+            snap = out.dasha_snapshots[i]
+            periods = [_extract_dasha_period(snap.periods[j]) for j in range(snap.count)]
+            dasha_snapshots.append(DashaSnapshot(
+                system=snap.system,
+                query_utc=_utc_from_ffi(snap.query_utc),
+                query_jd=snap.query_jd,
+                periods=periods,
+            ))
+
+    return FullKundaliResult(
+        ayanamsha_deg=ayanamsha_deg,
+        bhava_cusps=bhava_cusps,
+        rashi_bhava_cusps=rashi_bhava_cusps,
+        graha_positions=graha_pos,
+        bindus=bindus,
+        drishti=drishti,
+        ashtakavarga=ashtakavarga,
+        upagrahas=upagrahas,
+        sphutas=sphutas,
+        special_lagnas=special_lagnas,
+        amshas=amshas,
+        shadbala=shadbala,
+        bhavabala=bhavabala,
+        vimsopaka=vimsopaka,
+        avastha=avastha,
+        charakaraka=charakaraka,
+        panchang=panchang,
+        dasha=dasha,
+        dasha_snapshots=dasha_snapshots,
+    )

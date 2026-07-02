@@ -12,20 +12,23 @@ use dhruv_core::{
 };
 use dhruv_frames::PrecessionModel;
 use dhruv_search::{
-    ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, GrahaLongitudeKind,
-    GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent, MaxSpeedType, SankrantiConfig,
-    SearchError, StationType, StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanType,
-    amsha_charts_for_date, avastha_for_date, ayana_for_date, balas_for_date, bhavabala_for_date,
-    body_ecliptic_lon_lat, charakaraka_for_date, dasha_child_period_with_inputs,
-    dasha_children_with_inputs, dasha_complete_level_with_inputs, dasha_hierarchy_with_inputs,
-    dasha_level0_entity_with_inputs, dasha_level0_with_inputs, dasha_snapshot_with_inputs,
-    elongation_at, full_kundali_for_date, ghatika_for_date, ghatika_from_sunrises,
-    graha_longitudes, hora_for_date, hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
-    moving_osculating_apogees_for_date, nakshatra_at, nakshatra_for_date, next_amavasya,
-    next_chandra_grahan, next_conjunction, next_max_speed, next_purnima, next_sankranti,
-    next_specific_sankranti, next_stationary, next_surya_grahan, prev_amavasya,
-    prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima, prev_sankranti,
-    prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
+    ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, EventWindow,
+    GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
+    GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent,
+    MaxSpeedType, NatalTargetKind, NatalTargetLongitude, SankrantiConfig, SearchError, StationType,
+    StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanType, TajakaReturnBasis,
+    TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner,
+    TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date, ayana_for_date,
+    balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat, charakaraka_for_date,
+    dasha_child_period_with_inputs, dasha_children_with_inputs, dasha_complete_level_with_inputs,
+    dasha_hierarchy_with_inputs, dasha_level0_entity_with_inputs, dasha_level0_with_inputs,
+    dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date, ghatika_for_date,
+    ghatika_from_sunrises, gochar_events, graha_longitudes, hora_for_date, hora_from_sunrises,
+    karana_at, karana_for_date, masa_for_date, moving_osculating_apogees_for_date, nakshatra_at,
+    nakshatra_for_date, next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed,
+    next_purnima, next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan,
+    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
+    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
     search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
     search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date, sidereal_sum_at,
     siderealize_bhava_result, special_lagnas_for_date, tithi_at, tithi_for_date,
@@ -61,7 +64,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 70;
+pub const DHRUV_API_VERSION: u32 = 71;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -78,6 +81,8 @@ pub const DHRUV_AMSHA_VARIATION_NAME_CAPACITY: usize = 48;
 pub const DHRUV_AMSHA_VARIATION_LABEL_CAPACITY: usize = 64;
 /// Fixed UTF-8 buffer size for amsha variation descriptions.
 pub const DHRUV_AMSHA_VARIATION_DESCRIPTION_CAPACITY: usize = 160;
+/// Fixed UTF-8 buffer size for gochar target names.
+pub const DHRUV_GOCHAR_NAME_CAPACITY: usize = 128;
 
 /// C-facing status codes.
 #[repr(i32)]
@@ -1164,6 +1169,44 @@ fn resolve_full_kundali_config_ptr(
             .map_err(|_| DhruvStatus::InvalidSearchConfig);
     }
     full_kundali_config_from_ffi(&dhruv_full_kundali_config_default())
+}
+
+fn gochar_events_config_from_ffi(
+    cfg: &DhruvGocharEventsConfig,
+) -> Result<GocharEventsConfig, DhruvStatus> {
+    Ok(GocharEventsConfig {
+        tajaka_return_basis: tajaka_return_basis_from_code(cfg.tajaka_return_basis)
+            .ok_or(DhruvStatus::InvalidSearchConfig)?,
+        yearly_count: cfg.yearly_count as usize,
+        monthly_count: cfg.monthly_count as usize,
+        transit_window_days: cfg.transit_window_days,
+        include_return_charts: cfg.include_return_charts != 0,
+        solar_step_size_days: cfg.solar_step_size_days,
+        lunar_step_size_days: cfg.lunar_step_size_days,
+        solar_convergence_days: cfg.solar_convergence_days,
+        lunar_convergence_days: cfg.lunar_convergence_days,
+        max_iterations: cfg.max_iterations,
+    })
+}
+
+fn natal_target_from_ffi(
+    target: &DhruvGocharNatalTarget,
+) -> Result<NatalTargetLongitude, DhruvStatus> {
+    let kind = natal_target_kind_from_code(target.kind).ok_or(DhruvStatus::InvalidInput)?;
+    let name = if target.name_utf8.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(target.name_utf8) }
+            .to_str()
+            .map_err(|_| DhruvStatus::InvalidInput)?
+            .to_owned()
+    };
+    Ok(NatalTargetLongitude {
+        kind,
+        index: target.index,
+        name,
+        longitude_deg: target.longitude_deg,
+    })
 }
 
 /// Build a core engine from C-compatible config.
@@ -5014,6 +5057,142 @@ pub struct DhruvPanchangOperationResult {
     pub varsha: DhruvVarshaInfo,
 }
 
+pub const DHRUV_GOCHAR_NATAL_TARGET_GRAHA: i32 = 0;
+pub const DHRUV_GOCHAR_NATAL_TARGET_BINDU: i32 = 1;
+pub const DHRUV_GOCHAR_NATAL_TARGET_SPHUTA: i32 = 2;
+pub const DHRUV_GOCHAR_NATAL_TARGET_SPECIAL_LAGNA: i32 = 3;
+pub const DHRUV_GOCHAR_NATAL_TARGET_ARUDHA_PADA: i32 = 4;
+pub const DHRUV_GOCHAR_NATAL_TARGET_CUSTOM: i32 = 5;
+
+pub const DHRUV_TAJAKA_RETURN_BASIS_TROPICAL_SOLAR: i32 = 0;
+pub const DHRUV_TAJAKA_RETURN_BASIS_SIDEREAL_SOLAR: i32 = 1;
+
+pub const DHRUV_TRANSIT_ASPECT_KIND_CONJUNCTION: i32 = 0;
+pub const DHRUV_TRANSIT_ASPECT_KIND_OPPOSITION: i32 = 1;
+pub const DHRUV_TRANSIT_ASPECT_KIND_SPECIAL: i32 = 2;
+
+pub const DHRUV_TRANSIT_ASPECT_OWNER_GOCHAR_BODY: i32 = 0;
+pub const DHRUV_TRANSIT_ASPECT_OWNER_NATAL_TARGET: i32 = 1;
+
+/// Opaque gochar-events handle for ABI consumers.
+pub type DhruvGocharEventsHandle = *mut std::ffi::c_void;
+
+/// C-compatible natal target input for gochar-events requests.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvGocharNatalTarget {
+    /// Target kind (`DHRUV_GOCHAR_NATAL_TARGET_*`).
+    pub kind: i32,
+    /// Category-local target index.
+    pub index: u8,
+    /// Caller-supplied UTF-8 name, or NULL for empty/default naming.
+    pub name_utf8: *const c_char,
+    /// Sidereal longitude in degrees [0, 360).
+    pub longitude_deg: f64,
+}
+
+/// C-compatible gochar-events search configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvGocharEventsConfig {
+    /// Tajaka trigger basis (`DHRUV_TAJAKA_RETURN_BASIS_*`).
+    pub tajaka_return_basis: i32,
+    /// Number of yearly events before and after `at_utc`.
+    pub yearly_count: u32,
+    /// Number of monthly events before and after `at_utc`.
+    pub monthly_count: u32,
+    /// Transit-event window in days before/after `at_utc`.
+    pub transit_window_days: f64,
+    /// Whether to compute and retain embedded return charts.
+    pub include_return_charts: u8,
+    pub solar_step_size_days: f64,
+    pub lunar_step_size_days: f64,
+    pub solar_convergence_days: f64,
+    pub lunar_convergence_days: f64,
+    pub max_iterations: u32,
+}
+
+/// C-compatible gochar-events request.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvGocharEventsRequest {
+    pub birth_utc: DhruvUtcTime,
+    pub at_utc: DhruvUtcTime,
+    pub location: DhruvGeoLocation,
+    pub bhava_config: DhruvBhavaConfig,
+    pub riseset_config: DhruvRiseSetConfig,
+    pub sankranti_config: DhruvSankrantiConfig,
+    pub kundali_config: DhruvFullKundaliConfig,
+    pub config: DhruvGocharEventsConfig,
+    /// Pointer to `transit_body_count` Body codes (`Body::code()` values).
+    pub transit_body_codes: *const u32,
+    pub transit_body_count: u32,
+    /// Pointer to `natal_target_count` target rows.
+    pub natal_targets: *const DhruvGocharNatalTarget,
+    pub natal_target_count: u32,
+}
+
+/// Reference values captured from the natal chart.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvGocharReference {
+    pub natal_tropical_solar_longitude_deg: f64,
+    pub natal_sidereal_solar_longitude_deg: f64,
+    pub natal_elongation_deg: f64,
+    pub natal_masa: DhruvMasaInfo,
+}
+
+/// Top-level metadata for one gochar-events result.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvGocharEventsSummary {
+    pub birth_utc: DhruvUtcTime,
+    pub at_utc: DhruvUtcTime,
+    pub reference: DhruvGocharReference,
+}
+
+/// Lightweight Tajaka event row. Use `dhruv_gochar_events_tajaka_chart_at` for the optional chart.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvTajakaReturnEventRow {
+    pub utc: DhruvUtcTime,
+    pub jd_tdb: f64,
+    pub basis: i32,
+    pub target_solar_longitude_deg: f64,
+    pub event_solar_longitude_deg: f64,
+    pub has_chart: u8,
+}
+
+/// Lightweight Tithi Pravesha event row. Use `dhruv_gochar_events_tithi_chart_at` for the optional chart.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvTithiPraveshaEventRow {
+    pub utc: DhruvUtcTime,
+    pub jd_tdb: f64,
+    pub target_elongation_deg: f64,
+    pub event_elongation_deg: f64,
+    pub masa: DhruvMasaInfo,
+    pub has_chart: u8,
+}
+
+/// C-compatible transit-to-natal aspect event row.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvTransitToNatalAspectEventRow {
+    pub transit_body_code: u32,
+    pub target_kind: i32,
+    pub target_index: u8,
+    pub target_name: [c_char; DHRUV_GOCHAR_NAME_CAPACITY],
+    pub aspect_kind: i32,
+    pub aspect_owner: i32,
+    pub aspect_angle_deg: f64,
+    pub utc: DhruvUtcTime,
+    pub jd_tdb: f64,
+    pub transit_longitude_deg: f64,
+    pub target_longitude_deg: f64,
+    pub actual_separation_deg: f64,
+}
+
 fn utc_time_to_ffi(t: &UtcTime) -> DhruvUtcTime {
     DhruvUtcTime {
         year: t.year,
@@ -5563,6 +5742,384 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
             _ => DhruvStatus::InvalidQuery,
         }
     })
+}
+
+struct GocharEventsHandle {
+    result: GocharEventsResult,
+}
+
+fn select_event_window<'a, T>(
+    yearly: &'a EventWindow<T>,
+    monthly: &'a EventWindow<T>,
+    monthly_series: bool,
+) -> &'a EventWindow<T> {
+    if monthly_series { monthly } else { yearly }
+}
+
+fn select_window_side<T>(window: &EventWindow<T>, before_side: bool) -> &Vec<T> {
+    if before_side {
+        &window.before
+    } else {
+        &window.after
+    }
+}
+
+/// Return the default `DhruvGocharEventsConfig`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_gochar_events_config_default() -> DhruvGocharEventsConfig {
+    let cfg = GocharEventsConfig::default();
+    DhruvGocharEventsConfig {
+        tajaka_return_basis: tajaka_return_basis_to_code(cfg.tajaka_return_basis),
+        yearly_count: cfg.yearly_count as u32,
+        monthly_count: cfg.monthly_count as u32,
+        transit_window_days: cfg.transit_window_days,
+        include_return_charts: u8::from(cfg.include_return_charts),
+        solar_step_size_days: cfg.solar_step_size_days,
+        lunar_step_size_days: cfg.lunar_step_size_days,
+        solar_convergence_days: cfg.solar_convergence_days,
+        lunar_convergence_days: cfg.lunar_convergence_days,
+        max_iterations: cfg.max_iterations,
+    }
+}
+
+/// Compute grouped Tajaka, Tithi Pravesha, and transit aspect events.
+///
+/// # Safety
+/// `engine`, `eop`, `request`, and `out_handle` must be valid and non-null.
+/// If counts are non-zero, the corresponding arrays in `request` must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events(
+    engine: *const DhruvEngineHandle,
+    eop: *const dhruv_time::EopKernel,
+    request: *const DhruvGocharEventsRequest,
+    out_handle: *mut DhruvGocharEventsHandle,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || eop.is_null() || request.is_null() || out_handle.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let eop_ref = unsafe { &*eop };
+        let request = unsafe { &*request };
+
+        if request.transit_body_count > 0 && request.transit_body_codes.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+        if request.natal_target_count > 0 && request.natal_targets.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let transit_body_codes = unsafe {
+            std::slice::from_raw_parts(
+                request.transit_body_codes,
+                request.transit_body_count as usize,
+            )
+        };
+        let mut transit_bodies = Vec::with_capacity(transit_body_codes.len());
+        for &code in transit_body_codes {
+            let body = match i32::try_from(code).ok().and_then(Body::from_code) {
+                Some(value) => value,
+                None => return DhruvStatus::InvalidInput,
+            };
+            transit_bodies.push(body);
+        }
+
+        let natal_targets_raw = unsafe {
+            std::slice::from_raw_parts(request.natal_targets, request.natal_target_count as usize)
+        };
+        let natal_targets = natal_targets_raw
+            .iter()
+            .map(natal_target_from_ffi)
+            .collect::<Result<Vec<_>, _>>();
+        let natal_targets = match natal_targets {
+            Ok(value) => value,
+            Err(status) => return status,
+        };
+
+        let bhava_config = match resolve_bhava_config_ptr(&request.bhava_config) {
+            Ok(value) => value,
+            Err(status) => return status,
+        };
+        let riseset_config = match resolve_riseset_config_ptr(&request.riseset_config) {
+            Ok(value) => value,
+            Err(status) => return status,
+        };
+        let sankranti_config = match resolve_sankranti_config_ptr(&request.sankranti_config) {
+            Ok(value) => value,
+            Err(status) => return status,
+        };
+        let kundali_config = match resolve_full_kundali_config_ptr(&request.kundali_config) {
+            Ok(value) => value,
+            Err(status) => return status,
+        };
+        let config = match gochar_events_config_from_ffi(&request.config) {
+            Ok(value) => value,
+            Err(status) => return status,
+        };
+
+        let op = GocharEventsOperation {
+            birth_utc: ffi_to_utc_time(&request.birth_utc),
+            at_utc: ffi_to_utc_time(&request.at_utc),
+            location: GeoLocation::new(
+                request.location.latitude_deg,
+                request.location.longitude_deg,
+                request.location.altitude_m,
+            ),
+            eop: eop_ref,
+            bhava_config,
+            riseset_config,
+            sankranti_config,
+            kundali_config,
+            config,
+            transit_bodies,
+            natal_targets,
+        };
+
+        match gochar_events(engine_ref, &op) {
+            Ok(result) => {
+                let boxed = Box::new(GocharEventsHandle { result });
+                unsafe { *out_handle = Box::into_raw(boxed) as DhruvGocharEventsHandle };
+                DhruvStatus::Ok
+            }
+            Err(err) => DhruvStatus::from(&err),
+        }
+    })
+}
+
+/// Free a gochar-events handle. Passing NULL is a no-op.
+///
+/// # Safety
+/// `handle` must be a valid handle returned by `dhruv_gochar_events`, or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_free(handle: DhruvGocharEventsHandle) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle as *mut GocharEventsHandle) };
+    }
+}
+
+/// Read top-level metadata from a gochar-events handle.
+///
+/// # Safety
+/// `handle` and `out` must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_summary(
+    handle: DhruvGocharEventsHandle,
+    out: *mut DhruvGocharEventsSummary,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    unsafe {
+        *out = DhruvGocharEventsSummary {
+            birth_utc: utc_time_to_ffi(&result.result.birth_utc),
+            at_utc: utc_time_to_ffi(&result.result.at_utc),
+            reference: gochar_reference_to_ffi(&result.result.reference),
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// Read the number of Tajaka events in one yearly/monthly before/after bucket.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_tajaka_count(
+    handle: DhruvGocharEventsHandle,
+    monthly_series: u8,
+    before_side: u8,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out_count.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    let window = select_event_window(
+        &result.result.yearly_tajaka,
+        &result.result.monthly_tajaka,
+        monthly_series != 0,
+    );
+    let bucket = select_window_side(window, before_side != 0);
+    unsafe { *out_count = bucket.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one Tajaka event row by bucket and index.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_tajaka_at(
+    handle: DhruvGocharEventsHandle,
+    monthly_series: u8,
+    before_side: u8,
+    idx: u32,
+    out: *mut DhruvTajakaReturnEventRow,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    let window = select_event_window(
+        &result.result.yearly_tajaka,
+        &result.result.monthly_tajaka,
+        monthly_series != 0,
+    );
+    let bucket = select_window_side(window, before_side != 0);
+    let event = match bucket.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = tajaka_return_event_to_ffi(event) };
+    DhruvStatus::Ok
+}
+
+/// Materialize the optional full-kundali chart for a Tajaka event row.
+///
+/// # Safety
+/// `out` must point to writable storage. Call `dhruv_full_kundali_result_free` on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_tajaka_chart_at(
+    handle: DhruvGocharEventsHandle,
+    monthly_series: u8,
+    before_side: u8,
+    idx: u32,
+    out: *mut DhruvFullKundaliResult,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    unsafe { std::ptr::write_bytes(out, 0, 1) };
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    let window = select_event_window(
+        &result.result.yearly_tajaka,
+        &result.result.monthly_tajaka,
+        monthly_series != 0,
+    );
+    let bucket = select_window_side(window, before_side != 0);
+    let event = match bucket.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let chart = match event.chart.as_ref() {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let out = unsafe { &mut *out };
+    populate_full_kundali_result(out, chart)
+}
+
+/// Read the number of Tithi Pravesha events in one yearly/monthly before/after bucket.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_tithi_count(
+    handle: DhruvGocharEventsHandle,
+    monthly_series: u8,
+    before_side: u8,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out_count.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    let window = select_event_window(
+        &result.result.yearly_tithi_pravesha,
+        &result.result.monthly_tithi_pravesha,
+        monthly_series != 0,
+    );
+    let bucket = select_window_side(window, before_side != 0);
+    unsafe { *out_count = bucket.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one Tithi Pravesha event row by bucket and index.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_tithi_at(
+    handle: DhruvGocharEventsHandle,
+    monthly_series: u8,
+    before_side: u8,
+    idx: u32,
+    out: *mut DhruvTithiPraveshaEventRow,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    let window = select_event_window(
+        &result.result.yearly_tithi_pravesha,
+        &result.result.monthly_tithi_pravesha,
+        monthly_series != 0,
+    );
+    let bucket = select_window_side(window, before_side != 0);
+    let event = match bucket.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = tithi_pravesha_event_to_ffi(event) };
+    DhruvStatus::Ok
+}
+
+/// Materialize the optional full-kundali chart for a Tithi Pravesha event row.
+///
+/// # Safety
+/// `out` must point to writable storage. Call `dhruv_full_kundali_result_free` on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_tithi_chart_at(
+    handle: DhruvGocharEventsHandle,
+    monthly_series: u8,
+    before_side: u8,
+    idx: u32,
+    out: *mut DhruvFullKundaliResult,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    unsafe { std::ptr::write_bytes(out, 0, 1) };
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    let window = select_event_window(
+        &result.result.yearly_tithi_pravesha,
+        &result.result.monthly_tithi_pravesha,
+        monthly_series != 0,
+    );
+    let bucket = select_window_side(window, before_side != 0);
+    let event = match bucket.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let chart = match event.chart.as_ref() {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let out = unsafe { &mut *out };
+    populate_full_kundali_result(out, chart)
+}
+
+/// Read the number of transit aspect events in a gochar-events handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_transit_count(
+    handle: DhruvGocharEventsHandle,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out_count.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    unsafe { *out_count = result.result.transit_events.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one transit aspect event row by index.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_gochar_events_transit_at(
+    handle: DhruvGocharEventsHandle,
+    idx: u32,
+    out: *mut DhruvTransitToNatalAspectEventRow,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const GocharEventsHandle) };
+    let event = match result.result.transit_events.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = transit_to_natal_aspect_event_to_ffi(event) };
+    DhruvStatus::Ok
 }
 
 /// Determine the Masa (lunar month) for a given UTC date.
@@ -7479,6 +8036,111 @@ fn varsha_info_to_ffi(info: &dhruv_search::VarshaInfo) -> DhruvVarshaInfo {
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
     }
+}
+
+fn tajaka_return_basis_to_code(value: TajakaReturnBasis) -> i32 {
+    match value {
+        TajakaReturnBasis::TropicalSolar => DHRUV_TAJAKA_RETURN_BASIS_TROPICAL_SOLAR,
+        TajakaReturnBasis::SiderealSolar => DHRUV_TAJAKA_RETURN_BASIS_SIDEREAL_SOLAR,
+    }
+}
+
+fn tajaka_return_basis_from_code(value: i32) -> Option<TajakaReturnBasis> {
+    match value {
+        DHRUV_TAJAKA_RETURN_BASIS_TROPICAL_SOLAR => Some(TajakaReturnBasis::TropicalSolar),
+        DHRUV_TAJAKA_RETURN_BASIS_SIDEREAL_SOLAR => Some(TajakaReturnBasis::SiderealSolar),
+        _ => None,
+    }
+}
+
+fn natal_target_kind_to_code(value: NatalTargetKind) -> i32 {
+    match value {
+        NatalTargetKind::Graha => DHRUV_GOCHAR_NATAL_TARGET_GRAHA,
+        NatalTargetKind::Bindu => DHRUV_GOCHAR_NATAL_TARGET_BINDU,
+        NatalTargetKind::Sphuta => DHRUV_GOCHAR_NATAL_TARGET_SPHUTA,
+        NatalTargetKind::SpecialLagna => DHRUV_GOCHAR_NATAL_TARGET_SPECIAL_LAGNA,
+        NatalTargetKind::ArudhaPada => DHRUV_GOCHAR_NATAL_TARGET_ARUDHA_PADA,
+        NatalTargetKind::Custom => DHRUV_GOCHAR_NATAL_TARGET_CUSTOM,
+    }
+}
+
+fn natal_target_kind_from_code(value: i32) -> Option<NatalTargetKind> {
+    match value {
+        DHRUV_GOCHAR_NATAL_TARGET_GRAHA => Some(NatalTargetKind::Graha),
+        DHRUV_GOCHAR_NATAL_TARGET_BINDU => Some(NatalTargetKind::Bindu),
+        DHRUV_GOCHAR_NATAL_TARGET_SPHUTA => Some(NatalTargetKind::Sphuta),
+        DHRUV_GOCHAR_NATAL_TARGET_SPECIAL_LAGNA => Some(NatalTargetKind::SpecialLagna),
+        DHRUV_GOCHAR_NATAL_TARGET_ARUDHA_PADA => Some(NatalTargetKind::ArudhaPada),
+        DHRUV_GOCHAR_NATAL_TARGET_CUSTOM => Some(NatalTargetKind::Custom),
+        _ => None,
+    }
+}
+
+fn transit_aspect_kind_to_code(value: TransitAspectKind) -> i32 {
+    match value {
+        TransitAspectKind::Conjunction => DHRUV_TRANSIT_ASPECT_KIND_CONJUNCTION,
+        TransitAspectKind::Opposition => DHRUV_TRANSIT_ASPECT_KIND_OPPOSITION,
+        TransitAspectKind::Special => DHRUV_TRANSIT_ASPECT_KIND_SPECIAL,
+    }
+}
+
+fn transit_aspect_owner_to_code(value: TransitAspectOwner) -> i32 {
+    match value {
+        TransitAspectOwner::GocharBody => DHRUV_TRANSIT_ASPECT_OWNER_GOCHAR_BODY,
+        TransitAspectOwner::NatalTarget => DHRUV_TRANSIT_ASPECT_OWNER_NATAL_TARGET,
+    }
+}
+
+fn gochar_reference_to_ffi(reference: &GocharReference) -> DhruvGocharReference {
+    DhruvGocharReference {
+        natal_tropical_solar_longitude_deg: reference.natal_tropical_solar_longitude_deg,
+        natal_sidereal_solar_longitude_deg: reference.natal_sidereal_solar_longitude_deg,
+        natal_elongation_deg: reference.natal_elongation_deg,
+        natal_masa: masa_info_to_ffi(&reference.natal_masa),
+    }
+}
+
+fn tajaka_return_event_to_ffi(event: &TajakaReturnEvent) -> DhruvTajakaReturnEventRow {
+    DhruvTajakaReturnEventRow {
+        utc: utc_time_to_ffi(&event.utc),
+        jd_tdb: event.jd_tdb,
+        basis: tajaka_return_basis_to_code(event.basis),
+        target_solar_longitude_deg: event.target_solar_longitude_deg,
+        event_solar_longitude_deg: event.event_solar_longitude_deg,
+        has_chart: u8::from(event.chart.is_some()),
+    }
+}
+
+fn tithi_pravesha_event_to_ffi(event: &TithiPraveshaEvent) -> DhruvTithiPraveshaEventRow {
+    DhruvTithiPraveshaEventRow {
+        utc: utc_time_to_ffi(&event.utc),
+        jd_tdb: event.jd_tdb,
+        target_elongation_deg: event.target_elongation_deg,
+        event_elongation_deg: event.event_elongation_deg,
+        masa: masa_info_to_ffi(&event.masa),
+        has_chart: u8::from(event.chart.is_some()),
+    }
+}
+
+fn transit_to_natal_aspect_event_to_ffi(
+    event: &TransitToNatalAspectEvent,
+) -> DhruvTransitToNatalAspectEventRow {
+    let mut row = DhruvTransitToNatalAspectEventRow {
+        transit_body_code: event.transit_body.code() as u32,
+        target_kind: natal_target_kind_to_code(event.target.kind),
+        target_index: event.target.index,
+        target_name: [0; DHRUV_GOCHAR_NAME_CAPACITY],
+        aspect_kind: transit_aspect_kind_to_code(event.aspect_kind),
+        aspect_owner: transit_aspect_owner_to_code(event.aspect_owner),
+        aspect_angle_deg: event.aspect_angle_deg,
+        utc: utc_time_to_ffi(&event.utc),
+        jd_tdb: event.jd_tdb,
+        transit_longitude_deg: event.transit_longitude_deg,
+        target_longitude_deg: event.target_longitude_deg,
+        actual_separation_deg: event.actual_separation_deg,
+    };
+    write_fixed_c_string(&mut row.target_name, event.target_name.as_str());
+    row
 }
 
 /// Convert a Rust `PanchangInfo` to a C-compatible `DhruvPanchangInfo`.
@@ -11346,6 +12008,221 @@ pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig 
     }
 }
 
+fn populate_full_kundali_result(
+    out: &mut DhruvFullKundaliResult,
+    result: &dhruv_search::FullKundaliResult,
+) -> DhruvStatus {
+    out.ayanamsha_deg = result.ayanamsha_deg;
+
+    if let Some(bh) = result.bhava_cusps.as_ref() {
+        out.bhava_cusps_valid = 1;
+        out.bhava_cusps = bhava_result_to_ffi_with_projection(bh, None);
+    }
+
+    if let Some(bh) = result.rashi_bhava_cusps.as_ref() {
+        out.rashi_bhava_cusps_valid = 1;
+        out.rashi_bhava_cusps = bhava_result_to_ffi_with_projection(bh, None);
+    }
+
+    if let Some(g) = result.graha_positions.as_ref() {
+        out.graha_positions_valid = 1;
+        for i in 0..9 {
+            out.graha_positions.grahas[i] = graha_entry_to_ffi(&g.grahas[i]);
+        }
+        out.graha_positions.lagna = graha_entry_to_ffi(&g.lagna);
+        for i in 0..3 {
+            out.graha_positions.outer_planets[i] = graha_entry_to_ffi(&g.outer_planets[i]);
+        }
+    }
+
+    if let Some(b) = result.bindus.as_ref() {
+        out.bindus_valid = 1;
+        for i in 0..12 {
+            out.bindus.arudha_padas[i] = graha_entry_to_ffi(&b.arudha_padas[i]);
+        }
+        if let Some(padas) = b.rashi_bhava_arudha_padas {
+            out.bindus.rashi_bhava_arudha_padas_valid = 1;
+            for (i, pada) in padas.iter().enumerate() {
+                out.bindus.rashi_bhava_arudha_padas[i] = graha_entry_to_ffi(pada);
+            }
+        }
+        out.bindus.bhrigu_bindu = graha_entry_to_ffi(&b.bhrigu_bindu);
+        out.bindus.pranapada_lagna = graha_entry_to_ffi(&b.pranapada_lagna);
+        out.bindus.gulika = graha_entry_to_ffi(&b.gulika);
+        out.bindus.maandi = graha_entry_to_ffi(&b.maandi);
+        out.bindus.hora_lagna = graha_entry_to_ffi(&b.hora_lagna);
+        out.bindus.ghati_lagna = graha_entry_to_ffi(&b.ghati_lagna);
+        out.bindus.sree_lagna = graha_entry_to_ffi(&b.sree_lagna);
+    }
+
+    if let Some(d) = result.drishti.as_ref() {
+        out.drishti_valid = 1;
+        for i in 0..9 {
+            for j in 0..9 {
+                out.drishti.graha_to_graha[i][j] =
+                    drishti_entry_to_ffi(&d.graha_to_graha.entries[i][j]);
+            }
+            out.drishti.graha_to_lagna[i] = drishti_entry_to_ffi(&d.graha_to_lagna[i]);
+            for j in 0..12 {
+                out.drishti.graha_to_bhava[i][j] = drishti_entry_to_ffi(&d.graha_to_bhava[i][j]);
+                out.drishti.graha_to_rashi_bhava[i][j] =
+                    drishti_entry_to_ffi(&d.graha_to_rashi_bhava[i][j]);
+            }
+            for j in 0..19 {
+                out.drishti.graha_to_bindus[i][j] = drishti_entry_to_ffi(&d.graha_to_bindus[i][j]);
+            }
+        }
+    }
+
+    if let Some(a) = result.ashtakavarga.as_ref() {
+        out.ashtakavarga_valid = 1;
+        for (i, bav) in a.bavs.iter().enumerate() {
+            out.ashtakavarga.bavs[i] = DhruvBhinnaAshtakavarga {
+                graha_index: bav.graha_index,
+                points: bav.points,
+                contributors: bav.contributors,
+            };
+        }
+        out.ashtakavarga.sav = DhruvSarvaAshtakavarga {
+            total_points: a.sav.total_points,
+            after_trikona: a.sav.after_trikona,
+            after_ekadhipatya: a.sav.after_ekadhipatya,
+        };
+    }
+
+    if let Some(u) = result.upagrahas.as_ref() {
+        out.upagrahas_valid = 1;
+        out.upagrahas.gulika = u.gulika;
+        out.upagrahas.maandi = u.maandi;
+        out.upagrahas.kaala = u.kaala;
+        out.upagrahas.mrityu = u.mrityu;
+        out.upagrahas.artha_prahara = u.artha_prahara;
+        out.upagrahas.yama_ghantaka = u.yama_ghantaka;
+        out.upagrahas.dhooma = u.dhooma;
+        out.upagrahas.vyatipata = u.vyatipata;
+        out.upagrahas.parivesha = u.parivesha;
+        out.upagrahas.indra_chapa = u.indra_chapa;
+        out.upagrahas.upaketu = u.upaketu;
+    }
+
+    if let Some(s) = result.sphutas.as_ref() {
+        out.sphutas_valid = 1;
+        out.sphutas.longitudes = s.longitudes;
+    }
+
+    if let Some(s) = result.special_lagnas.as_ref() {
+        out.special_lagnas_valid = 1;
+        out.special_lagnas.bhava_lagna = s.bhava_lagna;
+        out.special_lagnas.hora_lagna = s.hora_lagna;
+        out.special_lagnas.ghati_lagna = s.ghati_lagna;
+        out.special_lagnas.vighati_lagna = s.vighati_lagna;
+        out.special_lagnas.varnada_lagna = s.varnada_lagna;
+        out.special_lagnas.sree_lagna = s.sree_lagna;
+        out.special_lagnas.pranapada_lagna = s.pranapada_lagna;
+        out.special_lagnas.indu_lagna = s.indu_lagna;
+    }
+
+    if let Some(am) = result.amshas.as_ref() {
+        out.amshas_valid = 1;
+        let count = am.charts.len().min(DHRUV_MAX_AMSHA_REQUESTS);
+        out.amshas_count = count as u8;
+        for i in 0..count {
+            out.amshas[i] = amsha_chart_to_ffi(&am.charts[i]);
+        }
+    }
+
+    if let Some(sb) = result.shadbala.as_ref() {
+        out.shadbala_valid = 1;
+        out.shadbala = shadbala_result_to_ffi(sb);
+    }
+
+    if let Some(bb) = result.bhavabala.as_ref() {
+        out.bhavabala_valid = 1;
+        out.bhavabala = bhavabala_result_to_ffi(bb);
+    }
+
+    if let Some(vm) = result.vimsopaka.as_ref() {
+        out.vimsopaka_valid = 1;
+        out.vimsopaka = vimsopaka_result_to_ffi(vm);
+    }
+
+    if let Some(av) = result.avastha.as_ref() {
+        out.avastha_valid = 1;
+        for i in 0..9 {
+            let e = &av.entries[i];
+            out.avastha.entries[i] = DhruvGrahaAvasthas {
+                baladi: e.baladi.index(),
+                jagradadi: e.jagradadi.index(),
+                deeptadi: e.deeptadi.index(),
+                deeptadi_mask: e.deeptadi_states.mask(),
+                deeptadi_count: e.deeptadi_states.count() as u8,
+                deeptadi_states: e.deeptadi_states.as_indices(),
+                lajjitadi: e.lajjitadi.map_or(u8::MAX, |a| a.index()),
+                lajjitadi_valid: u8::from(e.lajjitadi.is_some()),
+                lajjitadi_mask: e.lajjitadi_states.mask(),
+                lajjitadi_count: e.lajjitadi_states.count() as u8,
+                lajjitadi_states: e.lajjitadi_states.as_indices(),
+                sayanadi: DhruvSayanadiResult {
+                    avastha: e.sayanadi.avastha.index(),
+                    sub_states: [
+                        e.sayanadi.sub_states[0].index(),
+                        e.sayanadi.sub_states[1].index(),
+                        e.sayanadi.sub_states[2].index(),
+                        e.sayanadi.sub_states[3].index(),
+                        e.sayanadi.sub_states[4].index(),
+                    ],
+                },
+            };
+        }
+    }
+
+    if let Some(ck) = result.charakaraka.as_ref() {
+        out.charakaraka_valid = 1;
+        out.charakaraka.scheme = ck.scheme as u8;
+        out.charakaraka.used_eight_karakas = ck.used_eight_karakas as u8;
+        let count = ck.entries.len().min(DHRUV_MAX_CHARAKARAKA_ENTRIES);
+        out.charakaraka.count = count as u8;
+        for i in 0..count {
+            out.charakaraka.entries[i] = charakaraka_entry_to_ffi(&ck.entries[i]);
+        }
+    }
+
+    if let Some(p) = result.panchang.as_ref() {
+        out.panchang_valid = 1;
+        out.panchang = panchang_info_to_ffi(p);
+    }
+
+    if let Some(dasha_vec) = result.dasha.as_ref() {
+        if dasha_vec.len() > DHRUV_MAX_DASHA_SYSTEMS {
+            return DhruvStatus::InvalidSearchConfig;
+        }
+        out.dasha_count = dasha_vec.len() as u8;
+        for (i, h) in dasha_vec.iter().enumerate() {
+            let boxed = Box::new(h.clone());
+            out.dasha_handles[i] = Box::into_raw(boxed) as DhruvDashaHierarchyHandle;
+            out.dasha_systems[i] = h.system as u8;
+        }
+
+        if let Some(snap_vec) = result.dasha_snapshots.as_ref() {
+            if snap_vec.len() > DHRUV_MAX_DASHA_SYSTEMS {
+                return DhruvStatus::InvalidSearchConfig;
+            }
+            out.dasha_snapshot_count = snap_vec.len() as u8;
+            for (i, s) in snap_vec.iter().enumerate() {
+                out.dasha_snapshots[i].system = s.system as u8;
+                out.dasha_snapshots[i].query_jd = s.query_jd;
+                let count = s.periods.len().min(5);
+                out.dasha_snapshots[i].count = count as u8;
+                for j in 0..count {
+                    out.dasha_snapshots[i].periods[j] = dasha_period_to_ffi(&s.periods[j]);
+                }
+            }
+        }
+    }
+
+    DhruvStatus::Ok
+}
+
 /// Compute a full kundali in one call, reusing shared intermediates.
 ///
 /// # Safety
@@ -11418,218 +12295,7 @@ pub unsafe extern "C" fn dhruv_full_kundali_for_date(
         Ok(result) => {
             // out was zero-init'd at entry; safe to populate fields now.
             let out = unsafe { &mut *out };
-
-            out.ayanamsha_deg = result.ayanamsha_deg;
-
-            if let Some(bh) = result.bhava_cusps {
-                out.bhava_cusps_valid = 1;
-                out.bhava_cusps = bhava_result_to_ffi_with_projection(&bh, None);
-            }
-
-            if let Some(bh) = result.rashi_bhava_cusps {
-                out.rashi_bhava_cusps_valid = 1;
-                out.rashi_bhava_cusps = bhava_result_to_ffi_with_projection(&bh, None);
-            }
-
-            if let Some(g) = result.graha_positions {
-                out.graha_positions_valid = 1;
-                for i in 0..9 {
-                    out.graha_positions.grahas[i] = graha_entry_to_ffi(&g.grahas[i]);
-                }
-                out.graha_positions.lagna = graha_entry_to_ffi(&g.lagna);
-                for i in 0..3 {
-                    out.graha_positions.outer_planets[i] = graha_entry_to_ffi(&g.outer_planets[i]);
-                }
-            }
-
-            if let Some(b) = result.bindus {
-                out.bindus_valid = 1;
-                for i in 0..12 {
-                    out.bindus.arudha_padas[i] = graha_entry_to_ffi(&b.arudha_padas[i]);
-                }
-                if let Some(padas) = b.rashi_bhava_arudha_padas {
-                    out.bindus.rashi_bhava_arudha_padas_valid = 1;
-                    for (i, pada) in padas.iter().enumerate() {
-                        out.bindus.rashi_bhava_arudha_padas[i] = graha_entry_to_ffi(pada);
-                    }
-                }
-                out.bindus.bhrigu_bindu = graha_entry_to_ffi(&b.bhrigu_bindu);
-                out.bindus.pranapada_lagna = graha_entry_to_ffi(&b.pranapada_lagna);
-                out.bindus.gulika = graha_entry_to_ffi(&b.gulika);
-                out.bindus.maandi = graha_entry_to_ffi(&b.maandi);
-                out.bindus.hora_lagna = graha_entry_to_ffi(&b.hora_lagna);
-                out.bindus.ghati_lagna = graha_entry_to_ffi(&b.ghati_lagna);
-                out.bindus.sree_lagna = graha_entry_to_ffi(&b.sree_lagna);
-            }
-
-            if let Some(d) = result.drishti {
-                out.drishti_valid = 1;
-                for i in 0..9 {
-                    for j in 0..9 {
-                        out.drishti.graha_to_graha[i][j] =
-                            drishti_entry_to_ffi(&d.graha_to_graha.entries[i][j]);
-                    }
-                    out.drishti.graha_to_lagna[i] = drishti_entry_to_ffi(&d.graha_to_lagna[i]);
-                    for j in 0..12 {
-                        out.drishti.graha_to_bhava[i][j] =
-                            drishti_entry_to_ffi(&d.graha_to_bhava[i][j]);
-                        out.drishti.graha_to_rashi_bhava[i][j] =
-                            drishti_entry_to_ffi(&d.graha_to_rashi_bhava[i][j]);
-                    }
-                    for j in 0..19 {
-                        out.drishti.graha_to_bindus[i][j] =
-                            drishti_entry_to_ffi(&d.graha_to_bindus[i][j]);
-                    }
-                }
-            }
-
-            if let Some(a) = result.ashtakavarga {
-                out.ashtakavarga_valid = 1;
-                for (i, bav) in a.bavs.iter().enumerate() {
-                    out.ashtakavarga.bavs[i] = DhruvBhinnaAshtakavarga {
-                        graha_index: bav.graha_index,
-                        points: bav.points,
-                        contributors: bav.contributors,
-                    };
-                }
-                out.ashtakavarga.sav = DhruvSarvaAshtakavarga {
-                    total_points: a.sav.total_points,
-                    after_trikona: a.sav.after_trikona,
-                    after_ekadhipatya: a.sav.after_ekadhipatya,
-                };
-            }
-
-            if let Some(u) = result.upagrahas {
-                out.upagrahas_valid = 1;
-                out.upagrahas.gulika = u.gulika;
-                out.upagrahas.maandi = u.maandi;
-                out.upagrahas.kaala = u.kaala;
-                out.upagrahas.mrityu = u.mrityu;
-                out.upagrahas.artha_prahara = u.artha_prahara;
-                out.upagrahas.yama_ghantaka = u.yama_ghantaka;
-                out.upagrahas.dhooma = u.dhooma;
-                out.upagrahas.vyatipata = u.vyatipata;
-                out.upagrahas.parivesha = u.parivesha;
-                out.upagrahas.indra_chapa = u.indra_chapa;
-                out.upagrahas.upaketu = u.upaketu;
-            }
-
-            if let Some(s) = result.sphutas {
-                out.sphutas_valid = 1;
-                out.sphutas.longitudes = s.longitudes;
-            }
-
-            if let Some(s) = result.special_lagnas {
-                out.special_lagnas_valid = 1;
-                out.special_lagnas.bhava_lagna = s.bhava_lagna;
-                out.special_lagnas.hora_lagna = s.hora_lagna;
-                out.special_lagnas.ghati_lagna = s.ghati_lagna;
-                out.special_lagnas.vighati_lagna = s.vighati_lagna;
-                out.special_lagnas.varnada_lagna = s.varnada_lagna;
-                out.special_lagnas.sree_lagna = s.sree_lagna;
-                out.special_lagnas.pranapada_lagna = s.pranapada_lagna;
-                out.special_lagnas.indu_lagna = s.indu_lagna;
-            }
-
-            if let Some(ref am) = result.amshas {
-                out.amshas_valid = 1;
-                let count = am.charts.len().min(DHRUV_MAX_AMSHA_REQUESTS);
-                out.amshas_count = count as u8;
-                for i in 0..count {
-                    out.amshas[i] = amsha_chart_to_ffi(&am.charts[i]);
-                }
-            }
-
-            if let Some(ref sb) = result.shadbala {
-                out.shadbala_valid = 1;
-                out.shadbala = shadbala_result_to_ffi(sb);
-            }
-
-            if let Some(ref bb) = result.bhavabala {
-                out.bhavabala_valid = 1;
-                out.bhavabala = bhavabala_result_to_ffi(bb);
-            }
-
-            if let Some(ref vm) = result.vimsopaka {
-                out.vimsopaka_valid = 1;
-                out.vimsopaka = vimsopaka_result_to_ffi(vm);
-            }
-
-            if let Some(ref av) = result.avastha {
-                out.avastha_valid = 1;
-                for i in 0..9 {
-                    let e = &av.entries[i];
-                    out.avastha.entries[i] = DhruvGrahaAvasthas {
-                        baladi: e.baladi.index(),
-                        jagradadi: e.jagradadi.index(),
-                        deeptadi: e.deeptadi.index(),
-                        deeptadi_mask: e.deeptadi_states.mask(),
-                        deeptadi_count: e.deeptadi_states.count() as u8,
-                        deeptadi_states: e.deeptadi_states.as_indices(),
-                        lajjitadi: e.lajjitadi.map_or(u8::MAX, |a| a.index()),
-                        lajjitadi_valid: u8::from(e.lajjitadi.is_some()),
-                        lajjitadi_mask: e.lajjitadi_states.mask(),
-                        lajjitadi_count: e.lajjitadi_states.count() as u8,
-                        lajjitadi_states: e.lajjitadi_states.as_indices(),
-                        sayanadi: DhruvSayanadiResult {
-                            avastha: e.sayanadi.avastha.index(),
-                            sub_states: [
-                                e.sayanadi.sub_states[0].index(),
-                                e.sayanadi.sub_states[1].index(),
-                                e.sayanadi.sub_states[2].index(),
-                                e.sayanadi.sub_states[3].index(),
-                                e.sayanadi.sub_states[4].index(),
-                            ],
-                        },
-                    };
-                }
-            }
-
-            if let Some(ref ck) = result.charakaraka {
-                out.charakaraka_valid = 1;
-                out.charakaraka.scheme = ck.scheme as u8;
-                out.charakaraka.used_eight_karakas = ck.used_eight_karakas as u8;
-                let count = ck.entries.len().min(DHRUV_MAX_CHARAKARAKA_ENTRIES);
-                out.charakaraka.count = count as u8;
-                for i in 0..count {
-                    out.charakaraka.entries[i] = charakaraka_entry_to_ffi(&ck.entries[i]);
-                }
-            }
-
-            if let Some(ref p) = result.panchang {
-                out.panchang_valid = 1;
-                out.panchang = panchang_info_to_ffi(p);
-            }
-
-            if let Some(ref dasha_vec) = result.dasha {
-                if dasha_vec.len() > DHRUV_MAX_DASHA_SYSTEMS {
-                    return DhruvStatus::InvalidSearchConfig;
-                }
-                out.dasha_count = dasha_vec.len() as u8;
-                for (i, h) in dasha_vec.iter().enumerate() {
-                    let boxed = Box::new(h.clone());
-                    out.dasha_handles[i] = Box::into_raw(boxed) as DhruvDashaHierarchyHandle;
-                    out.dasha_systems[i] = h.system as u8;
-                }
-
-                if let Some(ref snap_vec) = result.dasha_snapshots {
-                    if snap_vec.len() > DHRUV_MAX_DASHA_SYSTEMS {
-                        return DhruvStatus::InvalidSearchConfig;
-                    }
-                    out.dasha_snapshot_count = snap_vec.len() as u8;
-                    for (i, s) in snap_vec.iter().enumerate() {
-                        out.dasha_snapshots[i].system = s.system as u8;
-                        out.dasha_snapshots[i].query_jd = s.query_jd;
-                        let count = s.periods.len().min(5);
-                        out.dasha_snapshots[i].count = count as u8;
-                        for j in 0..count {
-                            out.dasha_snapshots[i].periods[j] = dasha_period_to_ffi(&s.periods[j]);
-                        }
-                    }
-                }
-            }
-
-            DhruvStatus::Ok
+            populate_full_kundali_result(out, &result)
         }
         Err(e) => DhruvStatus::from(&e),
     }

@@ -110,6 +110,9 @@ Long-lived `CtaraDhruv.Engine` handles expose:
 Replacement swaps the full active SPK set atomically. Shared kernels are reused
 when canonical path, file size, and modified time match.
 
+The search surface now includes `CtaraDhruv.Search.gochar_events/2` for grouped
+Tajaka, Tithi Pravesha, and named transit-aspect windows around a query time.
+
 The direct Vedic bhava surface is tropical unless you provide a
 `sankranti_config`. The Elixir wrapper now exposes convenience arities for that
 explicitly:

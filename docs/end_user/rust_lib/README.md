@@ -5,7 +5,7 @@ It includes:
 
 - `DhruvContext` and request/operation APIs
 - canonical request/context-driven jyotish operations such as `upagraha_op`,
-  `avastha_op`, and `full_kundali`
+  `avastha_op`, `full_kundali`, and `gochar_events`
 - re-exported config/result types used by end users
 
 Amsha variation control is shared across the high-level jyotish surfaces:

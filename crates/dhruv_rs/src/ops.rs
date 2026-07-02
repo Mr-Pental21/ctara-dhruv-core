@@ -6,11 +6,12 @@
 use dhruv_core::Body;
 use dhruv_search::{
     AmshaSelectionConfig, ConjunctionConfig, ConjunctionOperation, ConjunctionQuery,
-    ConjunctionResult, GrahanConfig, GrahanKind, GrahanOperation, GrahanQuery, GrahanResult,
-    LunarPhaseKind, LunarPhaseOperation, LunarPhaseQuery, LunarPhaseResult, MotionKind,
-    MotionOperation, MotionQuery, MotionResult, SankrantiConfig, SankrantiOperation,
-    SankrantiQuery, SankrantiResult, SankrantiTarget, StationaryConfig,
-    all_upagrahas_for_date_with_config, avastha_for_date, avastha_for_graha, full_kundali_for_date,
+    ConjunctionResult, GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GrahanConfig,
+    GrahanKind, GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
+    LunarPhaseQuery, LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult,
+    NatalTargetLongitude, SankrantiConfig, SankrantiOperation, SankrantiQuery, SankrantiResult,
+    SankrantiTarget, StationaryConfig, all_upagrahas_for_date_with_config, avastha_for_date,
+    avastha_for_graha, full_kundali_for_date,
 };
 use dhruv_search::{FullKundaliConfig, FullKundaliResult};
 use dhruv_tara::{EarthState, TaraCatalog, TaraConfig, TaraId};
@@ -717,4 +718,45 @@ pub fn full_kundali(
         &sankranti_config,
         &config,
     )?)
+}
+
+/// Unified `gochar_events` request.
+#[derive(Debug, Clone)]
+pub struct GocharEventsRequest {
+    pub birth: TimeInput,
+    pub at: TimeInput,
+    pub location: GeoLocation,
+    pub bhava_config: Option<BhavaConfig>,
+    pub riseset_config: Option<RiseSetConfig>,
+    pub sankranti_config: Option<SankrantiConfig>,
+    pub kundali_config: Option<FullKundaliConfig>,
+    pub config: Option<GocharEventsConfig>,
+    pub transit_bodies: Vec<Body>,
+    pub natal_targets: Vec<NatalTargetLongitude>,
+}
+
+/// Compute grouped return charts and transit conjunctions through the context-first surface.
+pub fn gochar_events(
+    ctx: &DhruvContext,
+    eop: &EopKernel,
+    request: &GocharEventsRequest,
+) -> Result<GocharEventsResult, DhruvError> {
+    let bhava_config = resolve_bhava_config(ctx, request.bhava_config)?;
+    let riseset_config = resolve_riseset_config(ctx, request.riseset_config)?;
+    let sankranti_config = resolve_sankranti_config(ctx, request.sankranti_config)?;
+    let kundali_config = resolve_full_kundali_config(ctx, request.kundali_config)?;
+    let op = GocharEventsOperation {
+        birth_utc: time_input_to_utc_for_context(ctx, request.birth),
+        at_utc: time_input_to_utc_for_context(ctx, request.at),
+        location: request.location,
+        eop,
+        bhava_config,
+        riseset_config,
+        sankranti_config,
+        kundali_config,
+        config: request.config.clone().unwrap_or_default(),
+        transit_bodies: request.transit_bodies.clone(),
+        natal_targets: request.natal_targets.clone(),
+    };
+    Ok(dhruv_search::gochar_events(ctx.engine(), &op)?)
 }

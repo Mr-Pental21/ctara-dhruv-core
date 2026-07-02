@@ -49,6 +49,7 @@ Public request/query types in `ops.rs`:
 - `UpagrahaRequest`
 - `AvasthaTarget`, `AvasthaRequest`, `AvasthaResult`
 - `FullKundaliRequest`
+- `GocharEventsRequest`
 
 Request-driven functions:
 
@@ -64,6 +65,8 @@ Request-driven functions:
 - `charakaraka`
 - `upagraha_op`
 - `avastha_op`
+- `full_kundali`
+- `gochar_events`
 
 High-level time-bearing search results default to structured Gregorian UTC on
 their main result types while retaining numeric JD/TDB alongside UTC where the
@@ -72,7 +75,6 @@ numeric transport remains part of the public contract.
 The corresponding high-level search request types use `TimeInput`, so the same
 main operations accept either structured Gregorian UTC or numeric JD/TDB
 without separate `*_utc` entrypoints.
-- `full_kundali`
 
 ## Common Public Types And Configs
 
@@ -124,6 +126,15 @@ Shadbala Drik Bala and Bhava Bala Drishti Bala.
 - `GulikaMaandiPlanet`
 - `FullKundaliConfig`
 - `FullKundaliResult`
+- `GocharEventsConfig`
+- `GocharEventsResult`
+- `GocharReference`
+- `NatalTargetKind`
+- `NatalTargetLongitude`
+- `TajakaReturnBasis`
+- `TajakaReturnEvent`
+- `TithiPraveshaEvent`
+- `TransitToNatalConjunctionEvent`
 - `DashaSnapshotTime`
 - `DashaTimeExt`
 - `DashaSnapshotTimeExt`
