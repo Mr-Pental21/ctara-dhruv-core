@@ -1003,6 +1003,91 @@ struct KundaliArgs {
     bhava_behavior: BhavaBehaviorArgs,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum TajakaReturnBasisArg {
+    TropicalSolar,
+    SiderealSolar,
+}
+
+impl From<TajakaReturnBasisArg> for dhruv_search::TajakaReturnBasis {
+    fn from(value: TajakaReturnBasisArg) -> Self {
+        match value {
+            TajakaReturnBasisArg::TropicalSolar => Self::TropicalSolar,
+            TajakaReturnBasisArg::SiderealSolar => Self::SiderealSolar,
+        }
+    }
+}
+
+#[derive(clap::Args)]
+struct GocharEventsArgs {
+    /// Birth UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    birth_date: String,
+    /// Query UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+    /// Tajaka return trigger basis
+    #[arg(long, value_enum, default_value_t = TajakaReturnBasisArg::SiderealSolar)]
+    tajaka_basis: TajakaReturnBasisArg,
+    /// Number of yearly returns before and after the query time
+    #[arg(long, default_value = "2")]
+    yearly_count: usize,
+    /// Number of monthly returns before and after the query time
+    #[arg(long, default_value = "12")]
+    monthly_count: usize,
+    /// Transit event search window on each side of the query time, in days
+    #[arg(long, default_value = "365.25")]
+    transit_window_days: f64,
+    /// Embed full return-chart payloads in the result
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    include_return_charts: bool,
+    /// Solar return search step size in days
+    #[arg(long, default_value = "1.0")]
+    solar_step_size_days: f64,
+    /// Lunar return search step size in days
+    #[arg(long, default_value = "0.5")]
+    lunar_step_size_days: f64,
+    /// Solar return convergence tolerance in days
+    #[arg(long, default_value = "1e-8")]
+    solar_convergence_days: f64,
+    /// Lunar return convergence tolerance in days
+    #[arg(long, default_value = "1e-8")]
+    lunar_convergence_days: f64,
+    /// Maximum root-refinement iterations
+    #[arg(long, default_value = "50")]
+    max_iterations: u32,
+    /// Transit body names or NAIF body codes, repeat or use commas
+    #[arg(long = "transit-body", value_delimiter = ',')]
+    transit_body: Vec<String>,
+    /// Natal target spec: kind|index|longitude|name
+    #[arg(long = "natal-target")]
+    natal_target: Vec<String>,
+}
+
 #[derive(clap::Args)]
 struct AmshaChartArgs {
     /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
@@ -2446,6 +2531,8 @@ enum Commands {
     Drishti(DrishtiArgs),
     /// Compute full kundali in one call (shared intermediates across sections)
     Kundali(KundaliArgs),
+    /// Grouped Tajaka, Tithi Pravesha, and transit-to-natal gochar events
+    GocharEvents(GocharEventsArgs),
     /// Find previous Purnima (full moon)
     PrevPurnima {
         #[arg(long)]
@@ -3115,6 +3202,92 @@ fn parse_node_policy(s: &str) -> NodeDignityPolicy {
             eprintln!("Valid: sign-lord (default), sama");
             std::process::exit(1);
         }
+    }
+}
+
+fn parse_gochar_body_token(s: &str) -> Body {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "sun" | "surya" => Body::Sun,
+        "moon" | "chandra" => Body::Moon,
+        "mars" | "mangal" => Body::Mars,
+        "mercury" | "buddh" => Body::Mercury,
+        "jupiter" | "guru" => Body::Jupiter,
+        "venus" | "shukra" => Body::Venus,
+        "saturn" | "shani" => Body::Saturn,
+        "uranus" => Body::Uranus,
+        "neptune" => Body::Neptune,
+        "pluto" => Body::Pluto,
+        other => {
+            if let Ok(code) = other.parse::<i32>() {
+                if let Some(body) = Body::from_code(code) {
+                    return body;
+                }
+            }
+            eprintln!("Invalid transit body: {s}");
+            eprintln!(
+                "Valid names: sun, moon, mars, mercury, jupiter, venus, saturn, uranus, neptune, pluto; or NAIF body codes like 10, 301, 499, 599, 699."
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn body_display_name(body: Body) -> &'static str {
+    match body {
+        Body::Sun => "Sun",
+        Body::Mercury => "Mercury",
+        Body::Venus => "Venus",
+        Body::Earth => "Earth",
+        Body::Moon => "Moon",
+        Body::Mars => "Mars",
+        Body::Jupiter => "Jupiter",
+        Body::Saturn => "Saturn",
+        Body::Uranus => "Uranus",
+        Body::Neptune => "Neptune",
+        Body::Pluto => "Pluto",
+    }
+}
+
+fn parse_gochar_target_kind(s: &str) -> dhruv_search::NatalTargetKind {
+    match s.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+        "graha" => dhruv_search::NatalTargetKind::Graha,
+        "bindu" => dhruv_search::NatalTargetKind::Bindu,
+        "sphuta" => dhruv_search::NatalTargetKind::Sphuta,
+        "special-lagna" | "speciallagna" | "lagna" => dhruv_search::NatalTargetKind::SpecialLagna,
+        "arudha-pada" | "arudhapada" | "pada" => dhruv_search::NatalTargetKind::ArudhaPada,
+        "custom" => dhruv_search::NatalTargetKind::Custom,
+        other => {
+            eprintln!("Invalid natal target kind: {other}");
+            eprintln!("Valid: graha, bindu, sphuta, special-lagna, arudha-pada, custom");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn parse_gochar_target_spec(spec: &str) -> dhruv_search::NatalTargetLongitude {
+    let parts: Vec<&str> = spec.splitn(4, '|').collect();
+    if parts.len() != 4 {
+        eprintln!("Invalid --natal-target spec: {spec}");
+        eprintln!("Expected: kind|index|longitude|name");
+        std::process::exit(1);
+    }
+
+    let kind = parse_gochar_target_kind(parts[0]);
+    let index = parts[1].trim().parse::<u8>().unwrap_or_else(|_| {
+        eprintln!("Invalid natal target index in spec: {spec}");
+        std::process::exit(1);
+    });
+    let longitude_deg = parts[2].trim().parse::<f64>().unwrap_or_else(|_| {
+        eprintln!("Invalid natal target longitude in spec: {spec}");
+        std::process::exit(1);
+    });
+    let name = parts[3].trim().to_string();
+
+    dhruv_search::NatalTargetLongitude {
+        kind,
+        index,
+        name,
+        longitude_deg,
     }
 }
 
@@ -5072,6 +5245,90 @@ fn main() {
                 eprintln!("Error writing output: {e}");
                 std::process::exit(1);
             });
+        }
+        Commands::GocharEvents(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let birth_utc = parse_utc(&args.birth_date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let at_utc = parse_utc(&args.date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let bhava_config = BhavaConfig::default();
+            let rs_config = RiseSetConfig::default();
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+
+            let transit_bodies = args
+                .transit_body
+                .iter()
+                .map(|value| parse_gochar_body_token(value))
+                .collect::<Vec<_>>();
+            let natal_targets = args
+                .natal_target
+                .iter()
+                .map(|value| parse_gochar_target_spec(value))
+                .collect::<Vec<_>>();
+
+            let op = dhruv_search::GocharEventsOperation {
+                birth_utc,
+                at_utc,
+                location,
+                eop: &eop_kernel,
+                bhava_config,
+                riseset_config: rs_config,
+                sankranti_config: aya_config,
+                kundali_config: dhruv_search::FullKundaliConfig::default(),
+                config: dhruv_search::GocharEventsConfig {
+                    tajaka_return_basis: args.tajaka_basis.into(),
+                    yearly_count: args.yearly_count,
+                    monthly_count: args.monthly_count,
+                    transit_window_days: args.transit_window_days,
+                    include_return_charts: args.include_return_charts,
+                    solar_step_size_days: args.solar_step_size_days,
+                    lunar_step_size_days: args.lunar_step_size_days,
+                    solar_convergence_days: args.solar_convergence_days,
+                    lunar_convergence_days: args.lunar_convergence_days,
+                    max_iterations: args.max_iterations,
+                },
+                transit_bodies,
+                natal_targets,
+            };
+
+            let result = dhruv_search::gochar_events(&engine, &op).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+
+            println!(
+                "Gochar Events for birth {} around {} at {:.6}°N, {:.6}°E\n",
+                args.birth_date, args.date, args.lat, args.lon
+            );
+            println!("Reference:");
+            println!(
+                "  Natal tropical solar longitude: {:.6}°",
+                result.reference.natal_tropical_solar_longitude_deg
+            );
+            println!(
+                "  Natal sidereal solar longitude: {:.6}°",
+                result.reference.natal_sidereal_solar_longitude_deg
+            );
+            println!(
+                "  Natal elongation: {:.6}°",
+                result.reference.natal_elongation_deg
+            );
+            println!("  Natal masa: {}", masa_label(&result.reference.natal_masa));
+            println!();
+
+            print_tajaka_window("Yearly Tajaka", &result.yearly_tajaka);
+            print_tithi_window("Yearly Tithi Pravesha", &result.yearly_tithi_pravesha);
+            print_tajaka_window("Monthly Tajaka", &result.monthly_tajaka);
+            print_tithi_window("Monthly Tithi Pravesha", &result.monthly_tithi_pravesha);
+            print_gochar_transit_events(&result.transit_events);
         }
 
         Commands::PrevPurnima { date, bsp, lsk } => {
@@ -9812,6 +10069,101 @@ fn print_stationary_event(label: &str, ev: &dhruv_search::stationary_types::Stat
     );
 }
 
+fn masa_label(masa: &dhruv_search::MasaInfo) -> String {
+    if masa.adhika {
+        format!("{} (Adhika)", masa.masa.name())
+    } else {
+        masa.masa.name().to_string()
+    }
+}
+
+fn print_tajaka_window(
+    title: &str,
+    window: &dhruv_search::EventWindow<dhruv_search::TajakaReturnEvent>,
+) {
+    println!("{title}");
+    println!("  Before ({}):", window.before.len());
+    for event in &window.before {
+        println!(
+            "    {}  JD {:.6}  basis={}  target={:.6}  event={:.6}  chart={}",
+            event.utc,
+            event.jd_tdb,
+            event.basis.name(),
+            event.target_solar_longitude_deg,
+            event.event_solar_longitude_deg,
+            if event.chart.is_some() { "yes" } else { "no" }
+        );
+    }
+    println!("  After ({}):", window.after.len());
+    for event in &window.after {
+        println!(
+            "    {}  JD {:.6}  basis={}  target={:.6}  event={:.6}  chart={}",
+            event.utc,
+            event.jd_tdb,
+            event.basis.name(),
+            event.target_solar_longitude_deg,
+            event.event_solar_longitude_deg,
+            if event.chart.is_some() { "yes" } else { "no" }
+        );
+    }
+    println!();
+}
+
+fn print_tithi_window(
+    title: &str,
+    window: &dhruv_search::EventWindow<dhruv_search::TithiPraveshaEvent>,
+) {
+    println!("{title}");
+    println!("  Before ({}):", window.before.len());
+    for event in &window.before {
+        println!(
+            "    {}  JD {:.6}  target={:.6}  event={:.6}  masa={}  chart={}",
+            event.utc,
+            event.jd_tdb,
+            event.target_elongation_deg,
+            event.event_elongation_deg,
+            masa_label(&event.masa),
+            if event.chart.is_some() { "yes" } else { "no" }
+        );
+    }
+    println!("  After ({}):", window.after.len());
+    for event in &window.after {
+        println!(
+            "    {}  JD {:.6}  target={:.6}  event={:.6}  masa={}  chart={}",
+            event.utc,
+            event.jd_tdb,
+            event.target_elongation_deg,
+            event.event_elongation_deg,
+            masa_label(&event.masa),
+            if event.chart.is_some() { "yes" } else { "no" }
+        );
+    }
+    println!();
+}
+
+fn print_gochar_transit_events(events: &[dhruv_search::TransitToNatalAspectEvent]) {
+    println!("Transit Events ({})", events.len());
+    for event in events {
+        println!(
+            "  {} -> {} [{} / {} @ {:.0}°]",
+            body_display_name(event.transit_body),
+            event.target_name,
+            event.aspect_kind.name(),
+            event.aspect_owner.name(),
+            event.aspect_angle_deg
+        );
+        println!(
+            "    UTC {}  JD {:.6}  transit={:.6}  target={:.6}  sep={:.6}",
+            event.utc,
+            event.jd_tdb,
+            event.transit_longitude_deg,
+            event.target_longitude_deg,
+            event.actual_separation_deg
+        );
+    }
+    println!();
+}
+
 fn print_shadbala_entry(entry: &dhruv_search::ShadbalaEntry) {
     println!("  Sthana Bala:     {:>8.2}", entry.sthana.total);
     println!("    Uchcha:        {:>8.2}", entry.sthana.uchcha);
@@ -11644,5 +11996,20 @@ mod tests {
             parse_smh_future_family("st2016"),
             SmhFutureParabolaFamily::Stephenson2016
         );
+    }
+
+    #[test]
+    fn test_parse_gochar_target_spec() {
+        let target = parse_gochar_target_spec("graha|4|123.456|Natal Guru");
+        assert_eq!(target.kind, dhruv_search::NatalTargetKind::Graha);
+        assert_eq!(target.index, 4);
+        assert_eq!(target.longitude_deg, 123.456);
+        assert_eq!(target.name, "Natal Guru");
+    }
+
+    #[test]
+    fn test_parse_gochar_body_token_name_and_code() {
+        assert_eq!(parse_gochar_body_token("mars"), Body::Mars);
+        assert_eq!(parse_gochar_body_token("599"), Body::Jupiter);
     }
 }

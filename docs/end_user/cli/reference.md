@@ -158,6 +158,7 @@ Jyotish and chart building:
 - `vimsopaka`
 - `avastha`
 - `kundali`
+- `gochar-events`
 
 For `shadbala`, `vimsopaka`, `balas`, `avastha`, and `kundali`, use
 `--amsha D<n>[:variation]` to override per-amsha variation selection. When
@@ -251,6 +252,23 @@ Search:
 - `next-max-speed`
 - `prev-max-speed`
 - `search-max-speed`
+- `gochar-events`
+
+`gochar-events` is the grouped CLI surface for yearly/monthly Tajaka returns,
+yearly/monthly Tithi Pravesha returns, and transit-to-natal aspect events.
+Key inputs are:
+
+- `--birth-date` and query `--date`
+- location flags `--lat --lon --alt`
+- `--tajaka-basis tropical-solar|sidereal-solar`
+- `--yearly-count`, `--monthly-count`
+- `--transit-window-days`
+- repeated `--transit-body` names or NAIF body codes
+- repeated `--natal-target 'kind|index|longitude|name'`
+
+Natal target kinds are `graha`, `bindu`, `sphuta`, `special-lagna`,
+`arudha-pada`, and `custom`. Transit output preserves the caller-supplied name
+on each emitted target row.
 
 Dasha and tara:
 

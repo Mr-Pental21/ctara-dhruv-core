@@ -34,12 +34,13 @@ This page stays reference-oriented and should match the current CLI code in
 12. [Search: Conjunctions](#search-conjunctions)
 13. [Search: Eclipses](#search-eclipses)
 14. [Search: Stationary / Max Speed](#search-stationary--max-speed)
-15. [Individual Sphuta Formulas](#individual-sphuta-formulas)
-16. [Individual Special Lagna Formulas](#individual-special-lagna-formulas)
-17. [Utility Primitives](#utility-primitives)
-18. [Panchang Intermediates](#panchang-intermediates)
-19. [Low-Level Ashtakavarga / Drishti](#low-level-ashtakavarga--drishti)
-20. [C-Only Patterns Not in CLI](#c-only-patterns-not-in-cli)
+15. [Search: Gochar Events](#search-gochar-events)
+16. [Individual Sphuta Formulas](#individual-sphuta-formulas)
+17. [Individual Special Lagna Formulas](#individual-special-lagna-formulas)
+18. [Utility Primitives](#utility-primitives)
+19. [Panchang Intermediates](#panchang-intermediates)
+20. [Low-Level Ashtakavarga / Drishti](#low-level-ashtakavarga--drishti)
+21. [C-Only Patterns Not in CLI](#c-only-patterns-not-in-cli)
 
 ---
 
@@ -523,6 +524,44 @@ Body codes: 10=Sun, 301=Moon, 199=Mercury, 299=Venus, 499=Mars, 599=Jupiter, 699
 | `next-max-speed --date ... --body 499 --bsp ... --lsk ...` | Next max-speed event |
 | `prev-max-speed --date ... --body 499 --bsp ... --lsk ...` | Previous max-speed event |
 | `search-max-speed --start ... --end ... --body 499 --bsp ... --lsk ...` | Max-speed events in range |
+
+---
+
+## Search: Gochar Events
+
+Grouped yearly/monthly Tajaka returns, yearly/monthly Tithi Pravesha returns,
+and transit-to-natal aspect events:
+
+```bash
+dhruv gochar-events \
+  --birth-date 1990-05-17T10:30:00Z \
+  --date 2025-07-03T12:00:00Z \
+  --lat 28.6139 --lon 77.2090 --alt 216 \
+  --ayanamsha 0 --nutation \
+  --eop kernels/data/finals2000A.all \
+  --transit-body mars \
+  --natal-target 'graha|4|123.456|Natal Guru'
+```
+
+Important flags:
+
+- `--tajaka-basis tropical-solar|sidereal-solar`
+- `--yearly-count`, `--monthly-count`
+- `--transit-window-days`
+- repeated `--transit-body`
+- repeated `--natal-target 'kind|index|longitude|name'`
+- `--include-return-charts`
+
+Natal target kinds:
+
+- `graha`
+- `bindu`
+- `sphuta`
+- `special-lagna`
+- `arudha-pada`
+- `custom`
+
+The transit section preserves the caller-supplied target name on each output row.
 
 ---
 
