@@ -42,3 +42,4 @@ This feature groups:
 - The monthly Tajaka trigger is a 30-degree recurrence of the natal solar degree on the selected basis.
 - Natal target longitudes for gochara conjunctions are caller-supplied and are not back-computed inside this feature.
 - Transit event search includes exact conjunctions, oppositions, and caller-requested exact special aspect angles for Guru, Shani, and Mangal. Special angles can be owned by the moving gochar graha and, when the natal target is Guru/Shani/Mangal, by the natal target side as well.
+- Transit event sources now include physical planets plus true-node Rahu and Ketu through the shared `gochar_events` transit-body surface. Uranus, Neptune, and Pluto remain physical-body inputs on the same surface.

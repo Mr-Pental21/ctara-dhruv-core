@@ -755,7 +755,14 @@ test('gochar events wrapper preserves named natal targets and optional charts', 
     atUtc,
     location,
     config,
-    transitBodyCodes: [10],
+    transitBodyCodes: [
+      10,
+      dhruv.GOCHAR_TRANSIT_BODY.RAHU,
+      dhruv.GOCHAR_TRANSIT_BODY.KETU,
+      799,
+      899,
+      999,
+    ],
     natalTargets: [
       {
         kind: 5,

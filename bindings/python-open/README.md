@@ -5,7 +5,7 @@ canonical C ABI (`dhruv_ffi_c`) via `cffi`.
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=71`
+- ABI target: `DHRUV_API_VERSION=73`
 - Package root: `bindings/python-open`
 - Runtime dependency: `cffi`
 - Primary distribution: PyPI wheels plus sdist from unified `vX.Y.Z` tags
@@ -66,7 +66,10 @@ Dasha periods exposed by the Python wrapper now include `entity_name`, the
 exact canonical Sanskrit entity name alongside the numeric entity fields.
 
 The Python wrapper now also exposes `ctara_dhruv.gochar_events(...)` for grouped
-Tajaka, Tithi Pravesha, and named transit-aspect event windows around a query time.
+Tajaka, Tithi Pravesha, and named transit-aspect event windows around a query
+time. `transit_body_codes` accepts physical-body codes such as `499`, `599`,
+`699`, `799`, `899`, `999`, plus `ctara_dhruv.GocharTransitBody.RAHU` and
+`ctara_dhruv.GocharTransitBody.KETU`.
 
 The Python wrapper exposes configurable time-based upagrahas through:
 

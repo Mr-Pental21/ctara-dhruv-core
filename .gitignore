@@ -48,3 +48,6 @@ dist/local/
 
 # Generated local benchmark reports
 docs/elixir_wrapper_benchmarks.md
+
+# Compiled Go example binaries
+bindings/go-open/examples/basic/basic_example

@@ -5,9 +5,9 @@ use dhruv_frames::{DEFAULT_PRECESSION_MODEL, PrecessionModel, ReferencePlane};
 use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
     AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AshtakavargaResult, AyanamshaSystem,
-    BhavaBalaResult, BhavaResult, CharakarakaResult, CharakarakaScheme, Dms, DrishtiEntry, Graha,
-    GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra, NodeDignityPolicy, Rashi, ShadbalaBreakdown,
-    SthanaBalaBreakdown, TimeUpagrahaConfig,
+    BasicStates, BhavaBalaResult, BhavaResult, CharakarakaResult, CharakarakaScheme, Dms,
+    DrishtiEntry, Graha, GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra, NodeDignityPolicy,
+    Rashi, SensitivePointDistances, ShadbalaBreakdown, SthanaBalaBreakdown, TimeUpagrahaConfig,
 };
 
 /// Longitudes of all 9 grahas plus optional outer planets.
@@ -148,6 +148,24 @@ pub struct MovingOsculatingApogees {
 
 /// Configuration flags for graha_positions computation.
 #[derive(Debug, Clone, Copy)]
+pub struct BasicStatesConfig {
+    /// Compute boolean basic-state classifications.
+    pub include_basic_states: bool,
+    /// Compute minimum distances to mrityubhaga and pushkarabhaga definitions.
+    pub include_sensitive_point_distances: bool,
+}
+
+impl Default for BasicStatesConfig {
+    fn default() -> Self {
+        Self {
+            include_basic_states: false,
+            include_sensitive_point_distances: false,
+        }
+    }
+}
+
+/// Configuration flags for graha_positions computation.
+#[derive(Debug, Clone, Copy)]
 pub struct GrahaPositionsConfig {
     /// Compute nakshatra + pada for each graha.
     pub include_nakshatra: bool,
@@ -157,6 +175,8 @@ pub struct GrahaPositionsConfig {
     pub include_outer_planets: bool,
     /// Compute bhava placement for each graha.
     pub include_bhava: bool,
+    /// Compute basic graha/point state booleans and sensitive distances.
+    pub basic_states_config: BasicStatesConfig,
 }
 
 impl Default for GrahaPositionsConfig {
@@ -166,6 +186,7 @@ impl Default for GrahaPositionsConfig {
             include_lagna: false,
             include_outer_planets: true,
             include_bhava: false,
+            basic_states_config: BasicStatesConfig::default(),
         }
     }
 }
@@ -189,6 +210,14 @@ pub struct GrahaEntry {
     pub bhava_number: u8,
     /// Rashi-bhava/whole-sign bhava number (1-12), 0 if not computed.
     pub rashi_bhava_number: u8,
+    /// Whether `basic_states` was computed for this entry.
+    pub basic_states_valid: bool,
+    /// Basic state booleans for this entry.
+    pub basic_states: BasicStates,
+    /// Whether `sensitive_point_distances` was computed for this entry.
+    pub sensitive_point_distances_valid: bool,
+    /// Minimum distances to mrityubhaga and pushkarabhaga definitions.
+    pub sensitive_point_distances: SensitivePointDistances,
 }
 
 impl GrahaEntry {
@@ -203,6 +232,10 @@ impl GrahaEntry {
             pada: 0,
             bhava_number: 0,
             rashi_bhava_number: 0,
+            basic_states_valid: false,
+            basic_states: BasicStates::default(),
+            sensitive_point_distances_valid: false,
+            sensitive_point_distances: SensitivePointDistances::default(),
         }
     }
 }
@@ -697,6 +730,10 @@ pub struct FullKundaliResult {
     pub bhava_cusps: Option<BhavaResult>,
     /// Present when configured to include rashi-bhava sibling bhava cusps.
     pub rashi_bhava_cusps: Option<BhavaResult>,
+    /// Present when bhava cusps are included and sensitive distances are enabled.
+    pub bhava_cusp_sensitive_point_distances: Option<[SensitivePointDistances; 12]>,
+    /// Present when rashi-bhava cusps are included and sensitive distances are enabled.
+    pub rashi_bhava_cusp_sensitive_point_distances: Option<[SensitivePointDistances; 12]>,
     /// Present when `FullKundaliConfig::include_graha_positions` is true.
     pub graha_positions: Option<GrahaPositions>,
     /// Present when `FullKundaliConfig::include_bindus` is true.

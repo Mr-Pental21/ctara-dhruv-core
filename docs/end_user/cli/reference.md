@@ -39,6 +39,11 @@ Reusable public option groups:
   - `--other-upagraha-point`
   - `--gulika-planet`
   - `--maandi-planet`
+- Graha basic-state toggles:
+  - `graha-positions --basic-states`
+  - `graha-positions --sensitive-point-distances`
+  - `kundali --include-basic-states`
+  - `kundali --include-sensitive-point-distances`
 - Kundali amsha scope:
   - `--include-amshas`
   - `--amsha`
@@ -263,12 +268,14 @@ Key inputs are:
 - `--tajaka-basis tropical-solar|sidereal-solar`
 - `--yearly-count`, `--monthly-count`
 - `--transit-window-days`
-- repeated `--transit-body` names or NAIF body codes
+- repeated `--transit-body` names or gochar transit codes
 - repeated `--natal-target 'kind|index|longitude|name'`
 
 Natal target kinds are `graha`, `bindu`, `sphuta`, `special-lagna`,
 `arudha-pada`, and `custom`. Transit output preserves the caller-supplied name
-on each emitted target row.
+on each emitted target row. Accepted `--transit-body` names include `sun`,
+`moon`, `mars`, `mercury`, `jupiter`, `venus`, `saturn`, `rahu`, `ketu`,
+`uranus`, `neptune`, and `pluto`.
 
 Dasha and tara:
 

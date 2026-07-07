@@ -859,6 +859,25 @@ class DrishtiResult:
 
 
 @dataclass(frozen=True)
+class BasicStates:
+    exalted: bool
+    debilitated: bool
+    combust: bool
+    retrograde: bool
+    moolatrikone: bool
+    marankarak_sthana: bool
+    mrityubhaga: bool
+    pushkaramsha: bool
+    pushkarbhaga: bool
+
+
+@dataclass(frozen=True)
+class SensitivePointDistances:
+    mrityubhaga: float
+    pushkarbhaga: float
+
+
+@dataclass(frozen=True)
 class GrahaEntry:
     """Single graha position entry.
 
@@ -876,6 +895,10 @@ class GrahaEntry:
     pada: int
     bhava_number: int
     rashi_bhava_number: int = 0
+    basic_states_valid: bool = False
+    basic_states: Optional[BasicStates] = None
+    sensitive_point_distances_valid: bool = False
+    sensitive_point_distances: Optional[SensitivePointDistances] = None
 
 
 @dataclass(frozen=True)
@@ -1312,6 +1335,8 @@ class FullKundaliResult:
     ayanamsha_deg: float
     bhava_cusps: Optional[BhavaResult] = None
     rashi_bhava_cusps: Optional[BhavaResult] = None
+    bhava_cusp_sensitive_point_distances: Optional[list[SensitivePointDistances]] = None
+    rashi_bhava_cusp_sensitive_point_distances: Optional[list[SensitivePointDistances]] = None
     graha_positions: Optional[GrahaPositions] = None
     bindus: Optional[BindusResult] = None
     drishti: Optional[DrishtiResult] = None

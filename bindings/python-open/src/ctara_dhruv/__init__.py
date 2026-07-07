@@ -32,6 +32,7 @@ from ctara_dhruv.engine import (
 # Enums
 from ctara_dhruv.enums import (
     Body,
+    GocharTransitBody,
     DhruvStatus,
     AyanamshaSystem,
     AyanamshaMode,
@@ -179,7 +180,7 @@ __all__ = [
     # Engine
     "Engine", "init", "engine", "lsk", "eop",
     # Enums
-    "Body", "DhruvStatus", "AyanamshaSystem", "AyanamshaMode",
+    "Body", "GocharTransitBody", "DhruvStatus", "AyanamshaSystem", "AyanamshaMode",
     "BhavaSystem", "Graha",
     "SunLimb", "RiseSetEvent", "RiseSetResultType",
     "StationType", "MaxSpeedType", "DashaSystem", "ReferencePlane", "PrecessionModel",

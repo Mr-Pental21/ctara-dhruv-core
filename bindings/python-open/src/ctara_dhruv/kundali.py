@@ -17,6 +17,7 @@ from .types import (
     AllGrahaAvasthas,
     AllUpagrahas,
     AyanaInfo,
+    BasicStates,
     BhavaEntry,
     BhavaBalaEntry,
     BhavaBalaResult,
@@ -45,6 +46,7 @@ from .types import (
     PanchangNakshatraInfo,
     SarvaAshtakavarga,
     SayanadiResult,
+    SensitivePointDistances,
     ShadbalaEntry,
     ShadbalaResult,
     SpecialLagnas,
@@ -168,6 +170,25 @@ def _make_graha_longitudes_config(config):
 
 def _graha_entry_from_ffi(e):
     """Convert a DhruvGrahaEntry to a GrahaEntry dataclass."""
+    basic_states = None
+    if e.basic_states_valid:
+        basic_states = BasicStates(
+            exalted=bool(e.basic_states.exalted),
+            debilitated=bool(e.basic_states.debilitated),
+            combust=bool(e.basic_states.combust),
+            retrograde=bool(e.basic_states.retrograde),
+            moolatrikone=bool(e.basic_states.moolatrikone),
+            marankarak_sthana=bool(e.basic_states.marankarak_sthana),
+            mrityubhaga=bool(e.basic_states.mrityubhaga),
+            pushkaramsha=bool(e.basic_states.pushkaramsha),
+            pushkarbhaga=bool(e.basic_states.pushkarbhaga),
+        )
+    sensitive_point_distances = None
+    if e.sensitive_point_distances_valid:
+        sensitive_point_distances = SensitivePointDistances(
+            mrityubhaga=e.sensitive_point_distances.mrityubhaga,
+            pushkarbhaga=e.sensitive_point_distances.pushkarbhaga,
+        )
     return GrahaEntry(
         sidereal_longitude=e.sidereal_longitude,
         rashi_index=e.rashi_index,
@@ -175,6 +196,10 @@ def _graha_entry_from_ffi(e):
         pada=e.pada,
         bhava_number=e.bhava_number,
         rashi_bhava_number=e.rashi_bhava_number,
+        basic_states_valid=bool(e.basic_states_valid),
+        basic_states=basic_states,
+        sensitive_point_distances_valid=bool(e.sensitive_point_distances_valid),
+        sensitive_point_distances=sensitive_point_distances,
     )
 
 
@@ -315,6 +340,13 @@ def graha_positions(
         cfg.include_lagna = config.get("include_lagna", 0)
         cfg.include_outer_planets = config.get("include_outer_planets", 1)
         cfg.include_bhava = config.get("include_bhava", 0)
+        basic_states_config = config.get("basic_states_config", {})
+        cfg.basic_states_config.include_basic_states = basic_states_config.get(
+            "include_basic_states", 0
+        )
+        cfg.basic_states_config.include_sensitive_point_distances = basic_states_config.get(
+            "include_sensitive_point_distances", 0
+        )
     else:
         cfg = ffi.NULL
 
@@ -815,6 +847,24 @@ def full_kundali(
     try:
         # Extract all sections
         ayanamsha_deg = out.ayanamsha_deg
+        bhava_cusp_sensitive_point_distances = None
+        if out.bhava_cusp_sensitive_point_distances_valid:
+            bhava_cusp_sensitive_point_distances = [
+                SensitivePointDistances(
+                    mrityubhaga=out.bhava_cusp_sensitive_point_distances[i].mrityubhaga,
+                    pushkarbhaga=out.bhava_cusp_sensitive_point_distances[i].pushkarbhaga,
+                )
+                for i in range(12)
+            ]
+        rashi_bhava_cusp_sensitive_point_distances = None
+        if out.rashi_bhava_cusp_sensitive_point_distances_valid:
+            rashi_bhava_cusp_sensitive_point_distances = [
+                SensitivePointDistances(
+                    mrityubhaga=out.rashi_bhava_cusp_sensitive_point_distances[i].mrityubhaga,
+                    pushkarbhaga=out.rashi_bhava_cusp_sensitive_point_distances[i].pushkarbhaga,
+                )
+                for i in range(12)
+            ]
 
         # Bhava cusps
         bhava_cusps = None
@@ -1039,6 +1089,8 @@ def full_kundali(
             ayanamsha_deg=ayanamsha_deg,
             bhava_cusps=bhava_cusps,
             rashi_bhava_cusps=rashi_bhava_cusps,
+            bhava_cusp_sensitive_point_distances=bhava_cusp_sensitive_point_distances,
+            rashi_bhava_cusp_sensitive_point_distances=rashi_bhava_cusp_sensitive_point_distances,
             graha_positions=graha_pos,
             bindus=bindus,
             drishti=drishti,
@@ -1062,6 +1114,24 @@ def full_kundali(
 
 def _extract_full_kundali_result_ffi(out) -> FullKundaliResult:
     ayanamsha_deg = out.ayanamsha_deg
+    bhava_cusp_sensitive_point_distances = None
+    if out.bhava_cusp_sensitive_point_distances_valid:
+        bhava_cusp_sensitive_point_distances = [
+            SensitivePointDistances(
+                mrityubhaga=out.bhava_cusp_sensitive_point_distances[i].mrityubhaga,
+                pushkarbhaga=out.bhava_cusp_sensitive_point_distances[i].pushkarbhaga,
+            )
+            for i in range(12)
+        ]
+    rashi_bhava_cusp_sensitive_point_distances = None
+    if out.rashi_bhava_cusp_sensitive_point_distances_valid:
+        rashi_bhava_cusp_sensitive_point_distances = [
+            SensitivePointDistances(
+                mrityubhaga=out.rashi_bhava_cusp_sensitive_point_distances[i].mrityubhaga,
+                pushkarbhaga=out.rashi_bhava_cusp_sensitive_point_distances[i].pushkarbhaga,
+            )
+            for i in range(12)
+        ]
 
     bhava_cusps = None
     if out.bhava_cusps_valid:
@@ -1269,6 +1339,8 @@ def _extract_full_kundali_result_ffi(out) -> FullKundaliResult:
         ayanamsha_deg=ayanamsha_deg,
         bhava_cusps=bhava_cusps,
         rashi_bhava_cusps=rashi_bhava_cusps,
+        bhava_cusp_sensitive_point_distances=bhava_cusp_sensitive_point_distances,
+        rashi_bhava_cusp_sensitive_point_distances=rashi_bhava_cusp_sensitive_point_distances,
         graha_positions=graha_pos,
         bindus=bindus,
         drishti=drishti,

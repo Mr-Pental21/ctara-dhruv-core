@@ -112,6 +112,8 @@ when canonical path, file size, and modified time match.
 
 The search surface now includes `CtaraDhruv.Search.gochar_events/2` for grouped
 Tajaka, Tithi Pravesha, and named transit-aspect windows around a query time.
+`transit_bodies` now accepts Rahu, Ketu, and the outer planets on the same
+surface as the classical body names/codes.
 
 The direct Vedic bhava surface is tropical unless you provide a
 `sankranti_config`. The Elixir wrapper now exposes convenience arities for that

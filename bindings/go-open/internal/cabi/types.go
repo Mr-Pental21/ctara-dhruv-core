@@ -734,11 +734,17 @@ type DrishtiConfig struct {
 	IncludeBindus bool
 }
 
+type BasicStatesConfig struct {
+	IncludeBasicStates             bool
+	IncludeSensitivePointDistances bool
+}
+
 type GrahaPositionsConfig struct {
 	IncludeNakshatra    bool
 	IncludeLagna        bool
 	IncludeOuterPlanets bool
 	IncludeBhava        bool
+	BasicStatesConfig   BasicStatesConfig
 }
 
 type TimeUpagrahaConfig struct {
@@ -892,12 +898,33 @@ type DrishtiResult struct {
 }
 
 type GrahaEntry struct {
-	SiderealLongitude float64
-	RashiIndex        uint8
-	NakshatraIndex    uint8
-	Pada              uint8
-	BhavaNumber       uint8
-	RashiBhavaNumber  uint8
+	SiderealLongitude            float64
+	RashiIndex                   uint8
+	NakshatraIndex               uint8
+	Pada                         uint8
+	BhavaNumber                  uint8
+	RashiBhavaNumber             uint8
+	BasicStatesValid             bool
+	BasicStates                  BasicStates
+	SensitivePointDistancesValid bool
+	SensitivePointDistances      SensitivePointDistances
+}
+
+type BasicStates struct {
+	Exalted          bool
+	Debilitated      bool
+	Combust          bool
+	Retrograde       bool
+	Moolatrikone     bool
+	MarankarakSthana bool
+	Mrityubhaga      bool
+	Pushkaramsha     bool
+	Pushkarbhaga     bool
+}
+
+type SensitivePointDistances struct {
+	Mrityubhaga  float64
+	Pushkarbhaga float64
 }
 
 type GrahaPositions struct {
@@ -1307,25 +1334,27 @@ type FullKundaliDashaHierarchy struct {
 }
 
 type FullKundaliResult struct {
-	AyanamshaDeg    float64
-	BhavaCusps      *BhavaResult
-	RashiBhavaCusps *BhavaResult
-	GrahaPositions  *GrahaPositions
-	Bindus          *BindusResult
-	Drishti         *DrishtiResult
-	Ashtakavarga    *AshtakavargaResult
-	Upagrahas       *AllUpagrahas
-	Sphutas         *SphutalResult
-	SpecialLagnas   *SpecialLagnas
-	Amshas          []AmshaChart
-	Shadbala        *ShadbalaResult
-	BhavaBala       *BhavaBalaResult
-	Vimsopaka       *VimsopakaResult
-	Avastha         *AllGrahaAvasthas
-	Charakaraka     *CharakarakaResult
-	Panchang        *FullPanchangInfo
-	Dasha           []FullKundaliDashaHierarchy
-	DashaSnapshots  []DashaSnapshot
+	AyanamshaDeg                          float64
+	BhavaCusps                            *BhavaResult
+	RashiBhavaCusps                       *BhavaResult
+	BhavaCuspSensitivePointDistances      []SensitivePointDistances
+	RashiBhavaCuspSensitivePointDistances []SensitivePointDistances
+	GrahaPositions                        *GrahaPositions
+	Bindus                                *BindusResult
+	Drishti                               *DrishtiResult
+	Ashtakavarga                          *AshtakavargaResult
+	Upagrahas                             *AllUpagrahas
+	Sphutas                               *SphutalResult
+	SpecialLagnas                         *SpecialLagnas
+	Amshas                                []AmshaChart
+	Shadbala                              *ShadbalaResult
+	BhavaBala                             *BhavaBalaResult
+	Vimsopaka                             *VimsopakaResult
+	Avastha                               *AllGrahaAvasthas
+	Charakaraka                           *CharakarakaResult
+	Panchang                              *FullPanchangInfo
+	Dasha                                 []FullKundaliDashaHierarchy
+	DashaSnapshots                        []DashaSnapshot
 }
 
 const (
@@ -1335,6 +1364,11 @@ const (
 	GocharNatalTargetSpecialLagna = 3
 	GocharNatalTargetArudhaPada   = 4
 	GocharNatalTargetCustom       = 5
+)
+
+const (
+	GocharTransitRahu = 10007
+	GocharTransitKetu = 10008
 )
 
 const (

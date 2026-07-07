@@ -2933,6 +2933,10 @@ fn ffi_full_kundali_result_free_double_free_same_pointer() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3032,6 +3036,10 @@ fn ffi_full_kundali_error_path_free_safety() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3121,6 +3129,10 @@ fn ffi_full_kundali_dasha_overflow_rejection() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3220,6 +3232,10 @@ fn ffi_full_kundali_dasha_partial_success_contract() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3330,6 +3346,10 @@ fn ffi_full_kundali_panchang_only() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3420,6 +3440,10 @@ fn ffi_full_kundali_panchang_disabled() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3506,6 +3530,10 @@ fn ffi_full_kundali_calendar_implies_panchang() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3599,6 +3627,10 @@ fn ffi_full_kundali_panchang_and_calendar() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3693,6 +3725,10 @@ fn ffi_full_kundali_bhava_cusps_enabled() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3790,6 +3826,10 @@ fn ffi_full_kundali_bhava_cusps_disabled() {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,

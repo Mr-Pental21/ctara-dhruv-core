@@ -8,6 +8,7 @@ from enum import IntEnum
 
 __all__ = [
     "Body",
+    "GocharTransitBody",
     "DhruvStatus",
     "AyanamshaSystem",
     "BhavaSystem",
@@ -71,6 +72,13 @@ class Body(IntEnum):
     MARS = 4
     JUPITER = 5
     SATURN = 6
+
+
+class GocharTransitBody(IntEnum):
+    """Transit-point codes accepted by gochar_events transit_body_codes."""
+
+    RAHU = 10007
+    KETU = 10008
 
 
 # ---------------------------------------------------------------------------

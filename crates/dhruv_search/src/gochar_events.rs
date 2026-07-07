@@ -2,13 +2,16 @@
 
 use dhruv_core::{Body, Engine};
 use dhruv_time::UtcTime;
-use dhruv_vedic_base::{BhavaConfig, GeoLocation, RiseSetConfig, jd_tdb_to_centuries};
+use dhruv_vedic_base::{
+    BhavaConfig, GeoLocation, NodeMode, RiseSetConfig, jd_tdb_to_centuries,
+    lunar_node_deg_for_epoch_on_plane,
+};
 
 use crate::conjunction::body_ecliptic_lon_lat;
 use crate::error::SearchError;
 use crate::gochar_events_types::{
     EventWindow, GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
-    TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
+    GocharTransitBody, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
     TransitAspectOwner, TransitToNatalAspectEvent,
 };
 use crate::jyotish::full_kundali_for_date;
@@ -22,6 +25,7 @@ const MONTHLY_SOLAR_MAX_SCAN_DAYS: f64 = 45.0;
 const YEARLY_SOLAR_MAX_SCAN_DAYS: f64 = 410.0;
 const MONTHLY_LUNAR_MAX_SCAN_DAYS: f64 = 40.0;
 const SAME_MASA_MAX_ATTEMPTS: usize = 18;
+const FIXED_LONGITUDE_EVENT_TOLERANCE_DEG: f64 = 1e-3;
 
 /// Compute grouped Tajaka, Tithi Pravesha, and gochara conjunction events.
 pub fn gochar_events(
@@ -360,14 +364,13 @@ fn collect_transit_events(
                     }
                 };
                 while let Some(event_jd) = find_fixed_longitude_event(
-                    engine,
                     cursor,
                     end_jd,
                     fixed_longitude,
                     step_size_days,
                     op.config.max_iterations,
                     op.config.solar_convergence_days,
-                    &|jd| sidereal_body_longitude(engine, body, jd, &op.sankranti_config),
+                    &|jd| sidereal_transit_longitude(engine, body, jd, &op.sankranti_config),
                     360.0,
                     SearchDirection::Forward,
                 )? {
@@ -375,7 +378,7 @@ fn collect_transit_events(
                         break;
                     }
                     let transit_longitude_deg =
-                        sidereal_body_longitude(engine, body, event_jd, &op.sankranti_config)?;
+                        sidereal_transit_longitude(engine, body, event_jd, &op.sankranti_config)?;
                     events.push(TransitToNatalAspectEvent {
                         transit_body: body,
                         target: target.clone(),
@@ -578,7 +581,6 @@ fn find_tithi_pravesha_return(
 
 #[allow(clippy::too_many_arguments)]
 fn find_fixed_longitude_event(
-    _engine: &Engine,
     start_jd: f64,
     end_jd: f64,
     target_deg: f64,
@@ -595,7 +597,7 @@ fn find_fixed_longitude_event(
     };
     let total_days = (end_jd - start_jd).abs();
     let max_steps = (total_days / step_size_days).ceil() as usize + 1;
-    find_periodic_return(
+    let candidate = find_periodic_return(
         start_jd,
         step,
         max_steps,
@@ -613,7 +615,17 @@ fn find_fixed_longitude_event(
             let longitude = longitude_fn(jd)?;
             Ok(normalize_to_half_period(longitude - target_deg, period_deg))
         },
-    )
+    )?;
+    let Some(event_jd) = candidate else {
+        return Ok(None);
+    };
+    let residual_deg =
+        normalize_to_half_period(longitude_fn(event_jd)? - target_deg, period_deg).abs();
+    if residual_deg <= FIXED_LONGITUDE_EVENT_TOLERANCE_DEG {
+        Ok(Some(event_jd))
+    } else {
+        Ok(None)
+    }
 }
 
 fn find_periodic_return(
@@ -703,14 +715,44 @@ fn sidereal_body_longitude(
     Ok((lon - ayanamsha_deg).rem_euclid(360.0))
 }
 
-fn transit_step_size_days(body: Body) -> f64 {
+fn sidereal_transit_longitude(
+    engine: &Engine,
+    transit_body: GocharTransitBody,
+    jd_tdb: f64,
+    sankranti_config: &SankrantiConfig,
+) -> Result<f64, SearchError> {
+    match transit_body {
+        GocharTransitBody::Body(body) => {
+            sidereal_body_longitude(engine, body, jd_tdb, sankranti_config)
+        }
+        GocharTransitBody::Rahu | GocharTransitBody::Ketu => {
+            let node = transit_body
+                .lunar_node()
+                .expect("Rahu/Ketu variants always carry a node");
+            let lon = lunar_node_deg_for_epoch_on_plane(
+                engine,
+                node,
+                jd_tdb,
+                NodeMode::True,
+                sankranti_config.precession_model,
+                sankranti_config.reference_plane,
+            )?;
+            let t = jd_tdb_to_centuries(jd_tdb);
+            let ayanamsha_deg = sankranti_config.ayanamsha_deg_at_centuries(t);
+            Ok((lon - ayanamsha_deg).rem_euclid(360.0))
+        }
+    }
+}
+
+fn transit_step_size_days(body: GocharTransitBody) -> f64 {
     match body {
-        Body::Moon => 0.25,
-        Body::Mercury | Body::Venus => 0.5,
-        Body::Sun | Body::Mars => 1.0,
-        Body::Jupiter | Body::Saturn => 2.0,
-        Body::Uranus | Body::Neptune | Body::Pluto => 5.0,
-        _ => 1.0,
+        GocharTransitBody::Body(Body::Moon) => 0.25,
+        GocharTransitBody::Body(Body::Mercury | Body::Venus) => 0.5,
+        GocharTransitBody::Body(Body::Sun | Body::Mars) => 1.0,
+        GocharTransitBody::Body(Body::Jupiter | Body::Saturn) => 2.0,
+        GocharTransitBody::Body(Body::Uranus | Body::Neptune | Body::Pluto) => 5.0,
+        GocharTransitBody::Rahu | GocharTransitBody::Ketu => 2.0,
+        GocharTransitBody::Body(_) => 1.0,
     }
 }
 
@@ -728,7 +770,7 @@ struct AspectSearchSpec {
 }
 
 fn aspect_specs_for_pair(
-    transit_body: Body,
+    transit_body: GocharTransitBody,
     target: &crate::gochar_events_types::NatalTargetLongitude,
 ) -> Vec<AspectSearchSpec> {
     let mut specs = vec![
@@ -744,12 +786,14 @@ fn aspect_specs_for_pair(
         },
     ];
 
-    for angle_deg in special_angles_for_body(transit_body) {
-        specs.push(AspectSearchSpec {
-            kind: TransitAspectKind::Special,
-            owner: TransitAspectOwner::GocharBody,
-            angle_deg: *angle_deg,
-        });
+    if let Some(transit_body) = transit_body.body() {
+        for angle_deg in special_angles_for_body(transit_body) {
+            specs.push(AspectSearchSpec {
+                kind: TransitAspectKind::Special,
+                owner: TransitAspectOwner::GocharBody,
+                angle_deg: *angle_deg,
+            });
+        }
     }
 
     if let Some(natal_body) = natal_graha_body(target) {
@@ -788,5 +832,31 @@ fn special_angles_for_body(body: Body) -> &'static [f64] {
         Body::Saturn => &[90.0, 270.0],
         Body::Mars => &[90.0, 210.0],
         _ => &[],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FIXED_LONGITUDE_EVENT_TOLERANCE_DEG, SearchDirection, find_fixed_longitude_event};
+
+    #[test]
+    fn fixed_longitude_search_rejects_boundary_false_positive() {
+        let result = find_fixed_longitude_event(
+            0.0,
+            1.0,
+            20.0,
+            2.0,
+            32,
+            1e-8,
+            &|jd| Ok(10.0 + jd),
+            360.0,
+            SearchDirection::Forward,
+        )
+        .expect("search should not error");
+
+        assert!(
+            result.is_none(),
+            "expected no event within tolerance {FIXED_LONGITUDE_EVENT_TOLERANCE_DEG}"
+        );
     }
 }

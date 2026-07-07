@@ -27,20 +27,24 @@ use dhruv_vedic_base::{
     ArudhaResult, AshtakavargaResult, AvasthaInputs, Bhava, BhavaBalaBirthPeriod, BhavaBalaInputs,
     BhavaBalaResult, BhavaConfig, BhavaResult, CharakarakaResult, CharakarakaScheme,
     DIG_BALA_BHAVA, Dignity, DrishtiEntry, Graha, GrahaAvasthas, GrahaDrishtiMatrix,
-    KalaBalaInputs, LajjitadiInputs, LunarNode, NodeDignityPolicy, NodeMode, SAPTA_GRAHAS,
-    SayanadiInputs, SayanadiResult, ShadbalaInputs, TimeUpagrahaConfig, all_avasthas,
-    all_combustion_status, all_shadbalas_from_inputs, all_sphutas, amsha_longitude, baladi_avastha,
-    bhava_bala_entry, bhrigu_bindu, calculate_ashtakavarga, calculate_bhava_bala,
-    charakarakas_from_longitudes, compound_dignity_in_rashi, compute_bhavas,
-    deeptadi_avasthas_with_dynamic_nature, default_amsha_variation,
-    dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise, graha_drishti,
-    graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord, is_valid_amsha_variation,
-    jagradadi_avastha, jd_tdb_to_centuries, kala_abda_lord, kala_masa_lord, lagna_longitude_rad,
-    lajjitadi_avasthas_with_dynamic_nature, lost_planetary_war, lunar_node_deg_for_epoch_on_plane,
+    KalaBalaInputs, LajjitadiInputs, LunarNode, MrityubhagaSubject, NodeDignityPolicy, NodeMode,
+    SAPTA_GRAHAS, SayanadiInputs, SayanadiResult, SensitivePointDistances, ShadbalaInputs,
+    TimeUpagrahaConfig, all_avasthas, all_combustion_status, all_shadbalas_from_inputs,
+    all_sphutas, amsha_longitude, baladi_avastha, bhava_bala_entry, bhrigu_bindu,
+    calculate_ashtakavarga, calculate_bhava_bala, charakarakas_from_longitudes,
+    compound_dignity_in_rashi, compute_bhavas, deeptadi_avasthas_with_dynamic_nature,
+    default_amsha_variation, dignity_in_rashi_with_positions, ghati_lagna, ghatikas_since_sunrise,
+    graha_drishti, graha_drishti_matrix, hora_lagna, hora_lord as graha_hora_lord,
+    is_debilitated_at_longitude, is_exalted_at_longitude, is_in_moolatrikone_at_longitude,
+    is_in_mrityubhaga, is_marankarak_sthana, is_pushkarabhaga, is_pushkaramsha,
+    is_valid_amsha_variation, jagradadi_avastha, jd_tdb_to_centuries, kala_abda_lord,
+    kala_masa_lord, lagna_longitude_rad, lajjitadi_avasthas_with_dynamic_nature,
+    lost_planetary_war, lunar_node_deg_for_epoch_on_plane, mrityubhaga_distance_from_center,
     nakshatra_from_longitude, node_dignity_in_rashi, node_dignity_in_rashi_with_temporal_context,
-    normalize_360, nth_rashi_from, own_signs, pranapada_lagna, rashi_from_longitude,
-    rashi_lord_by_index, sayanadi_all_sub_states, sayanadi_avastha, shadbala_from_inputs,
-    sree_lagna, sun_based_upagrahas, time_upagraha_jd_with_config, vaar_lord as graha_vaar_lord,
+    normalize_360, nth_rashi_from, own_signs, pranapada_lagna, pushkarabhaga_distance_from_degree,
+    rashi_from_longitude, rashi_lord_by_index, sayanadi_all_sub_states, sayanadi_avastha,
+    shadbala_from_inputs, sree_lagna, sun_based_upagrahas, time_upagraha_jd_with_config,
+    vaar_lord as graha_vaar_lord,
 };
 
 use crate::conjunction::{body_ecliptic_lon_lat, body_ecliptic_state, body_lon_lat_on_plane};
@@ -1834,24 +1838,36 @@ fn graha_positions_with_ctx(
     } else {
         None
     };
+    let mut is_retrograde = [false; 9];
+    let mut is_combust = [false; 9];
+    if config.basic_states_config.include_basic_states {
+        let speeds = ctx.graha_speeds(engine)?;
+        for i in 0..7 {
+            is_retrograde[i] = speeds[i] < 0.0;
+        }
+        is_combust = all_combustion_status(&graha_lons.longitudes, &is_retrograde);
+    }
 
     // Build GrahaEntry for each of the 9 grahas.
     let mut grahas = [GrahaEntry::sentinel(); 9];
     for graha in ALL_GRAHAS {
         let idx = graha.index() as usize;
         let sid_lon = graha_lons.longitude(graha);
-        grahas[idx] = make_graha_entry(
+        grahas[idx] = make_graha_entry_for_graha(
+            graha,
             sid_lon,
             config,
             bhava_result.as_ref(),
             rashi_bhava_lagna_sid,
+            is_retrograde[idx],
+            is_combust[idx],
             aya,
             plane,
         );
     }
 
     let lagna = if config.include_lagna {
-        make_graha_entry(
+        make_graha_entry_for_point(
             lagna_sid.expect("include_lagna implies lagna_sid"),
             config,
             bhava_result.as_ref(),
@@ -1867,7 +1883,7 @@ fn graha_positions_with_ctx(
         let mut entries = [GrahaEntry::sentinel(); 3];
         let outer_lons = ctx.outer_planet_lons(engine, aya_config)?;
         for (i, &sid_lon) in outer_lons.iter().enumerate() {
-            entries[i] = make_graha_entry(
+            entries[i] = make_graha_entry_for_point(
                 sid_lon,
                 config,
                 bhava_result.as_ref(),
@@ -1889,11 +1905,15 @@ fn graha_positions_with_ctx(
 }
 
 /// Build a GrahaEntry from a sidereal longitude, applying optional computations.
-fn make_graha_entry(
+fn make_graha_entry_common(
     sid_lon: f64,
     config: &GrahaPositionsConfig,
     bhava_result: Option<&dhruv_vedic_base::BhavaResult>,
     rashi_bhava_lagna_sid: Option<f64>,
+    basic_states_valid: bool,
+    basic_states: dhruv_vedic_base::BasicStates,
+    sensitive_point_distances_valid: bool,
+    sensitive_point_distances: SensitivePointDistances,
     aya: f64,
     plane: ReferencePlane,
 ) -> GrahaEntry {
@@ -1924,7 +1944,129 @@ fn make_graha_entry(
         pada,
         bhava_number,
         rashi_bhava_number,
+        basic_states_valid,
+        basic_states,
+        sensitive_point_distances_valid,
+        sensitive_point_distances,
     }
+}
+
+fn make_graha_entry_for_graha(
+    graha: Graha,
+    sid_lon: f64,
+    config: &GrahaPositionsConfig,
+    bhava_result: Option<&dhruv_vedic_base::BhavaResult>,
+    rashi_bhava_lagna_sid: Option<f64>,
+    retrograde: bool,
+    combust: bool,
+    aya: f64,
+    plane: ReferencePlane,
+) -> GrahaEntry {
+    let basic_states_valid = config.basic_states_config.include_basic_states;
+    let bhava_number = bhava_result
+        .map(|result| find_bhava_number(sidereal_to_ecliptic_tropical(sid_lon, aya, plane), result))
+        .unwrap_or(0);
+    let basic_states = if basic_states_valid {
+        dhruv_vedic_base::BasicStates {
+            exalted: is_exalted_at_longitude(graha, sid_lon),
+            debilitated: is_debilitated_at_longitude(graha, sid_lon),
+            combust,
+            retrograde,
+            moolatrikone: is_in_moolatrikone_at_longitude(graha, sid_lon),
+            marankarak_sthana: is_marankarak_sthana(graha, bhava_number),
+            mrityubhaga: is_in_mrityubhaga(MrityubhagaSubject::Graha(graha), sid_lon),
+            pushkaramsha: is_pushkaramsha(sid_lon),
+            pushkarbhaga: is_pushkarabhaga(sid_lon),
+        }
+    } else {
+        dhruv_vedic_base::BasicStates::default()
+    };
+    let sensitive_point_distances_valid =
+        config.basic_states_config.include_sensitive_point_distances;
+    let sensitive_point_distances = if sensitive_point_distances_valid {
+        SensitivePointDistances {
+            mrityubhaga: mrityubhaga_distance_from_center(
+                MrityubhagaSubject::Graha(graha),
+                sid_lon,
+            ),
+            pushkarbhaga: pushkarabhaga_distance_from_degree(sid_lon),
+        }
+    } else {
+        SensitivePointDistances::default()
+    };
+    make_graha_entry_common(
+        sid_lon,
+        config,
+        bhava_result,
+        rashi_bhava_lagna_sid,
+        basic_states_valid,
+        basic_states,
+        sensitive_point_distances_valid,
+        sensitive_point_distances,
+        aya,
+        plane,
+    )
+}
+
+fn make_graha_entry_for_point(
+    sid_lon: f64,
+    config: &GrahaPositionsConfig,
+    bhava_result: Option<&dhruv_vedic_base::BhavaResult>,
+    rashi_bhava_lagna_sid: Option<f64>,
+    aya: f64,
+    plane: ReferencePlane,
+) -> GrahaEntry {
+    let basic_states_valid = config.basic_states_config.include_basic_states;
+    let basic_states = if basic_states_valid {
+        dhruv_vedic_base::BasicStates {
+            mrityubhaga: is_in_mrityubhaga(MrityubhagaSubject::Point, sid_lon),
+            pushkaramsha: is_pushkaramsha(sid_lon),
+            pushkarbhaga: is_pushkarabhaga(sid_lon),
+            ..dhruv_vedic_base::BasicStates::default()
+        }
+    } else {
+        dhruv_vedic_base::BasicStates::default()
+    };
+    let sensitive_point_distances_valid =
+        config.basic_states_config.include_sensitive_point_distances;
+    let sensitive_point_distances = if sensitive_point_distances_valid {
+        SensitivePointDistances {
+            mrityubhaga: mrityubhaga_distance_from_center(MrityubhagaSubject::Point, sid_lon),
+            pushkarbhaga: pushkarabhaga_distance_from_degree(sid_lon),
+        }
+    } else {
+        SensitivePointDistances::default()
+    };
+    make_graha_entry_common(
+        sid_lon,
+        config,
+        bhava_result,
+        rashi_bhava_lagna_sid,
+        basic_states_valid,
+        basic_states,
+        sensitive_point_distances_valid,
+        sensitive_point_distances,
+        aya,
+        plane,
+    )
+}
+
+fn make_graha_entry(
+    sid_lon: f64,
+    config: &GrahaPositionsConfig,
+    bhava_result: Option<&dhruv_vedic_base::BhavaResult>,
+    rashi_bhava_lagna_sid: Option<f64>,
+    aya: f64,
+    plane: ReferencePlane,
+) -> GrahaEntry {
+    make_graha_entry_for_point(
+        sid_lon,
+        config,
+        bhava_result,
+        rashi_bhava_lagna_sid,
+        aya,
+        plane,
+    )
 }
 
 /// Find which bhava (1-12) a tropical ecliptic longitude falls in.
@@ -1945,6 +2087,20 @@ fn find_bhava_number(tropical_deg: f64, result: &dhruv_vedic_base::BhavaResult) 
     }
     // Fallback: should not happen, but assign to bhava 1
     1
+}
+
+fn cusp_sensitive_point_distances(result: &BhavaResult) -> [SensitivePointDistances; 12] {
+    let mut out = [SensitivePointDistances::default(); 12];
+    for (i, bhava) in result.bhavas.iter().enumerate() {
+        out[i] = SensitivePointDistances {
+            mrityubhaga: mrityubhaga_distance_from_center(
+                MrityubhagaSubject::Point,
+                bhava.cusp_deg,
+            ),
+            pushkarbhaga: pushkarabhaga_distance_from_degree(bhava.cusp_deg),
+        };
+    }
+    out
 }
 
 /// Compute complete Ashtakavarga (BAV + SAV + Sodhana) for a given date and location.
@@ -1974,6 +2130,7 @@ fn ashtakavarga_with_ctx(
         include_lagna: true,
         include_outer_planets: false,
         include_bhava: false,
+        basic_states_config: Default::default(),
     };
     let bhava_config = BhavaConfig::default();
     let positions = graha_positions_with_ctx(
@@ -2062,6 +2219,7 @@ fn core_bindus_with_ctx(
         include_lagna: false,
         include_outer_planets: false,
         include_bhava: config.include_bhava,
+        basic_states_config: Default::default(),
     };
 
     let graha_lons = *ctx.graha_lons(engine, aya_config)?;
@@ -2411,6 +2569,28 @@ pub fn full_kundali_for_date(
         } else {
             None
         };
+    let bhava_cusp_sensitive_point_distances = if config.include_bhava_cusps
+        && config
+            .graha_positions_config
+            .basic_states_config
+            .include_sensitive_point_distances
+    {
+        bhava_cusps.as_ref().map(cusp_sensitive_point_distances)
+    } else {
+        None
+    };
+    let rashi_bhava_cusp_sensitive_point_distances = if config.include_bhava_cusps
+        && config
+            .graha_positions_config
+            .basic_states_config
+            .include_sensitive_point_distances
+    {
+        rashi_bhava_cusps
+            .as_ref()
+            .map(cusp_sensitive_point_distances)
+    } else {
+        None
+    };
 
     let graha_positions = if config.include_graha_positions {
         Some(graha_positions_with_ctx(
@@ -2655,6 +2835,8 @@ pub fn full_kundali_for_date(
         ayanamsha_deg: ayanamsha,
         bhava_cusps,
         rashi_bhava_cusps,
+        bhava_cusp_sensitive_point_distances,
+        rashi_bhava_cusp_sensitive_point_distances,
         graha_positions,
         bindus,
         drishti,

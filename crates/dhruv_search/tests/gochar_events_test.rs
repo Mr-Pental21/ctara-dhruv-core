@@ -6,8 +6,8 @@ use std::path::Path;
 
 use dhruv_core::{Body, Engine, EngineConfig};
 use dhruv_search::{
-    GocharEventsConfig, GocharEventsOperation, NatalTargetKind, NatalTargetLongitude,
-    SankrantiConfig, TajakaReturnBasis, gochar_events,
+    GocharEventsConfig, GocharEventsOperation, GocharTransitBody, NatalTargetKind,
+    NatalTargetLongitude, SankrantiConfig, TajakaReturnBasis, gochar_events,
 };
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{BhavaConfig, GeoLocation, RiseSetConfig};
@@ -66,7 +66,7 @@ fn gochar_events_returns_windowed_results_and_same_masa_yearly_tithi() {
         sankranti_config: SankrantiConfig::default_lahiri(),
         kundali_config: Default::default(),
         config,
-        transit_bodies: vec![Body::Sun],
+        transit_bodies: vec![GocharTransitBody::Body(Body::Sun)],
         natal_targets: vec![NatalTargetLongitude {
             kind: NatalTargetKind::Custom,
             index: 0,
@@ -174,7 +174,7 @@ fn gochar_events_includes_special_aspects_from_gochar_and_natal_mars() {
         sankranti_config: SankrantiConfig::default_lahiri(),
         kundali_config: Default::default(),
         config,
-        transit_bodies: vec![Body::Mars],
+        transit_bodies: vec![GocharTransitBody::Body(Body::Mars)],
         natal_targets: vec![NatalTargetLongitude {
             kind: NatalTargetKind::Graha,
             index: 2,
@@ -195,4 +195,57 @@ fn gochar_events_includes_special_aspects_from_gochar_and_natal_mars() {
             && event.aspect_owner == dhruv_search::TransitAspectOwner::NatalTarget
             && event.aspect_angle_deg == 210.0
     }));
+}
+
+#[test]
+fn gochar_events_accepts_rahu_ketu_and_outer_planets_as_transit_bodies() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+
+    let mut config = GocharEventsConfig::default();
+    config.yearly_count = 1;
+    config.monthly_count = 1;
+    config.include_return_charts = false;
+    config.transit_window_days = 120.0;
+
+    let op = GocharEventsOperation {
+        birth_utc: birth_utc(),
+        at_utc: at_utc(),
+        location: new_delhi(),
+        eop: &eop,
+        bhava_config: BhavaConfig::default(),
+        riseset_config: RiseSetConfig::default(),
+        sankranti_config: SankrantiConfig::default_lahiri(),
+        kundali_config: Default::default(),
+        config,
+        transit_bodies: vec![
+            GocharTransitBody::Rahu,
+            GocharTransitBody::Ketu,
+            GocharTransitBody::Body(Body::Uranus),
+            GocharTransitBody::Body(Body::Neptune),
+            GocharTransitBody::Body(Body::Pluto),
+        ],
+        natal_targets: vec![NatalTargetLongitude {
+            kind: NatalTargetKind::Custom,
+            index: 0,
+            name: "Transit Probe".to_string(),
+            longitude_deg: 180.0,
+        }],
+    };
+
+    let result = gochar_events(&engine, &op).expect("gochar_events should succeed");
+
+    assert!(!result.transit_events.is_empty());
+    assert!(
+        result
+            .transit_events
+            .iter()
+            .any(|event| event.transit_body == GocharTransitBody::Rahu)
+    );
+    assert!(
+        result
+            .transit_events
+            .iter()
+            .any(|event| event.transit_body == GocharTransitBody::Ketu)
+    );
 }

@@ -540,6 +540,7 @@ dhruv gochar-events \
   --ayanamsha 0 --nutation \
   --eop kernels/data/finals2000A.all \
   --transit-body mars \
+  --transit-body rahu \
   --natal-target 'graha|4|123.456|Natal Guru'
 ```
 
@@ -548,7 +549,9 @@ Important flags:
 - `--tajaka-basis tropical-solar|sidereal-solar`
 - `--yearly-count`, `--monthly-count`
 - `--transit-window-days`
-- repeated `--transit-body`
+- repeated `--transit-body` names or gochar transit codes (`rahu`, `ketu`,
+  `uranus`, `neptune`, and `pluto` are accepted alongside the classical
+  planets)
 - repeated `--natal-target 'kind|index|longitude|name'`
 - `--include-return-charts`
 

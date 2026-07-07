@@ -1,6 +1,6 @@
 'use strict';
 
-const EXPECTED_API_VERSION = 71;
+const EXPECTED_API_VERSION = 73;
 
 const STATUS = {
   OK: 0,
@@ -134,6 +134,11 @@ const GRAHA_GENDER = {
   NEUTER: 2,
 };
 
+const GOCHAR_TRANSIT_BODY = {
+  RAHU: 10007,
+  KETU: 10008,
+};
+
 function statusName(code) {
   return STATUS_NAME.get(code) || `UNKNOWN_${code}`;
 }
@@ -146,6 +151,7 @@ module.exports = {
   DELTA_T_MODEL,
   DIGNITY,
   FUTURE_DELTA_T_TRANSITION,
+  GOCHAR_TRANSIT_BODY,
   GRAHA_GENDER,
   NAISARGIKA,
   NODE_DIGNITY_POLICY,

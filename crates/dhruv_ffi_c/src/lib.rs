@@ -13,22 +13,23 @@ use dhruv_core::{
 use dhruv_frames::PrecessionModel;
 use dhruv_search::{
     ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, EventWindow,
-    GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
-    GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent,
-    MaxSpeedType, NatalTargetKind, NatalTargetLongitude, SankrantiConfig, SearchError, StationType,
-    StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanType, TajakaReturnBasis,
-    TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner,
-    TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date, ayana_for_date,
-    balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat, charakaraka_for_date,
-    dasha_child_period_with_inputs, dasha_children_with_inputs, dasha_complete_level_with_inputs,
-    dasha_hierarchy_with_inputs, dasha_level0_entity_with_inputs, dasha_level0_with_inputs,
-    dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date, ghatika_for_date,
-    ghatika_from_sunrises, gochar_events, graha_longitudes, hora_for_date, hora_from_sunrises,
-    karana_at, karana_for_date, masa_for_date, moving_osculating_apogees_for_date, nakshatra_at,
-    nakshatra_for_date, next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed,
-    next_purnima, next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan,
-    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
-    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
+    GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig, GocharEventsOperation,
+    GocharEventsResult, GocharReference, GocharTransitBody, GrahaLongitudeKind,
+    GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent, MaxSpeedType, NatalTargetKind,
+    NatalTargetLongitude, SankrantiConfig, SearchError, StationType, StationaryConfig,
+    StationaryEvent, SuryaGrahan, SuryaGrahanType, TajakaReturnBasis, TajakaReturnEvent,
+    TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
+    amsha_charts_for_date, avastha_for_date, ayana_for_date, balas_for_date, bhavabala_for_date,
+    body_ecliptic_lon_lat, charakaraka_for_date, dasha_child_period_with_inputs,
+    dasha_children_with_inputs, dasha_complete_level_with_inputs, dasha_hierarchy_with_inputs,
+    dasha_level0_entity_with_inputs, dasha_level0_with_inputs, dasha_snapshot_with_inputs,
+    elongation_at, full_kundali_for_date, ghatika_for_date, ghatika_from_sunrises, gochar_events,
+    graha_longitudes, hora_for_date, hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
+    moving_osculating_apogees_for_date, nakshatra_at, nakshatra_for_date, next_amavasya,
+    next_chandra_grahan, next_conjunction, next_max_speed, next_purnima, next_sankranti,
+    next_specific_sankranti, next_stationary, next_surya_grahan, prev_amavasya,
+    prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima, prev_sankranti,
+    prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
     search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
     search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date, sidereal_sum_at,
     siderealize_bhava_result, special_lagnas_for_date, tithi_at, tithi_for_date,
@@ -64,7 +65,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 71;
+pub const DHRUV_API_VERSION: u32 = 73;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -83,6 +84,10 @@ pub const DHRUV_AMSHA_VARIATION_LABEL_CAPACITY: usize = 64;
 pub const DHRUV_AMSHA_VARIATION_DESCRIPTION_CAPACITY: usize = 160;
 /// Fixed UTF-8 buffer size for gochar target names.
 pub const DHRUV_GOCHAR_NAME_CAPACITY: usize = 128;
+/// Gochar transit code for Rahu (true ascending node).
+pub const DHRUV_GOCHAR_TRANSIT_RAHU: i32 = GOCHAR_TRANSIT_CODE_RAHU;
+/// Gochar transit code for Ketu (true descending node).
+pub const DHRUV_GOCHAR_TRANSIT_KETU: i32 = GOCHAR_TRANSIT_CODE_KETU;
 
 /// C-facing status codes.
 #[repr(i32)]
@@ -970,6 +975,13 @@ fn graha_positions_config_from_ffi(
         include_lagna: cfg.include_lagna != 0,
         include_outer_planets: cfg.include_outer_planets != 0,
         include_bhava: cfg.include_bhava != 0,
+        basic_states_config: dhruv_search::BasicStatesConfig {
+            include_basic_states: cfg.basic_states_config.include_basic_states != 0,
+            include_sensitive_point_distances: cfg
+                .basic_states_config
+                .include_sensitive_point_distances
+                != 0,
+        },
     }
 }
 
@@ -1033,6 +1045,7 @@ fn resolve_graha_positions_config_ptr(
         include_lagna: false,
         include_outer_planets: true,
         include_bhava: false,
+        basic_states_config: dhruv_search::BasicStatesConfig::default(),
     })
 }
 
@@ -5124,7 +5137,10 @@ pub struct DhruvGocharEventsRequest {
     pub sankranti_config: DhruvSankrantiConfig,
     pub kundali_config: DhruvFullKundaliConfig,
     pub config: DhruvGocharEventsConfig,
-    /// Pointer to `transit_body_count` Body codes (`Body::code()` values).
+    /// Pointer to `transit_body_count` gochar transit codes.
+    ///
+    /// Physical bodies use `Body::code()` values. Rahu and Ketu use
+    /// `DHRUV_GOCHAR_TRANSIT_RAHU` and `DHRUV_GOCHAR_TRANSIT_KETU`.
     pub transit_body_codes: *const u32,
     pub transit_body_count: u32,
     /// Pointer to `natal_target_count` target rows.
@@ -5179,6 +5195,7 @@ pub struct DhruvTithiPraveshaEventRow {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DhruvTransitToNatalAspectEventRow {
+    /// Physical body `Body::code()` value, or a `DHRUV_GOCHAR_TRANSIT_*` code.
     pub transit_body_code: u32,
     pub target_kind: i32,
     pub target_index: u8,
@@ -5818,7 +5835,10 @@ pub unsafe extern "C" fn dhruv_gochar_events(
         };
         let mut transit_bodies = Vec::with_capacity(transit_body_codes.len());
         for &code in transit_body_codes {
-            let body = match i32::try_from(code).ok().and_then(Body::from_code) {
+            let body = match i32::try_from(code)
+                .ok()
+                .and_then(GocharTransitBody::from_code)
+            {
                 Some(value) => value,
                 None => return DhruvStatus::InvalidInput,
             };
@@ -10656,11 +10676,43 @@ pub unsafe extern "C" fn dhruv_ashtakavarga_for_date(
 /// C-compatible graha positions configuration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
+pub struct DhruvBasicStatesConfig {
+    pub include_basic_states: u8,
+    pub include_sensitive_point_distances: u8,
+}
+
+/// C-compatible basic-state booleans.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DhruvBasicStates {
+    pub exalted: u8,
+    pub debilitated: u8,
+    pub combust: u8,
+    pub retrograde: u8,
+    pub moolatrikone: u8,
+    pub marankarak_sthana: u8,
+    pub mrityubhaga: u8,
+    pub pushkaramsha: u8,
+    pub pushkarbhaga: u8,
+}
+
+/// C-compatible minimum distances to sensitive-point definitions.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct DhruvSensitivePointDistances {
+    pub mrityubhaga: f64,
+    pub pushkarbhaga: f64,
+}
+
+/// C-compatible graha positions configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct DhruvGrahaPositionsConfig {
     pub include_nakshatra: u8,
     pub include_lagna: u8,
     pub include_outer_planets: u8,
     pub include_bhava: u8,
+    pub basic_states_config: DhruvBasicStatesConfig,
 }
 
 /// C-compatible single graha entry.
@@ -10678,6 +10730,10 @@ pub struct DhruvGrahaEntry {
     pub bhava_number: u8,
     /// Rashi-bhava number (1-12), 0 if not computed.
     pub rashi_bhava_number: u8,
+    pub basic_states_valid: u8,
+    pub basic_states: DhruvBasicStates,
+    pub sensitive_point_distances_valid: u8,
+    pub sensitive_point_distances: DhruvSensitivePointDistances,
 }
 
 /// C-compatible graha positions result.
@@ -10692,6 +10748,29 @@ pub struct DhruvGrahaPositions {
     pub outer_planets: [DhruvGrahaEntry; 3],
 }
 
+fn basic_states_to_ffi(states: &dhruv_vedic_base::BasicStates) -> DhruvBasicStates {
+    DhruvBasicStates {
+        exalted: if states.exalted { 1 } else { 0 },
+        debilitated: if states.debilitated { 1 } else { 0 },
+        combust: if states.combust { 1 } else { 0 },
+        retrograde: if states.retrograde { 1 } else { 0 },
+        moolatrikone: if states.moolatrikone { 1 } else { 0 },
+        marankarak_sthana: if states.marankarak_sthana { 1 } else { 0 },
+        mrityubhaga: if states.mrityubhaga { 1 } else { 0 },
+        pushkaramsha: if states.pushkaramsha { 1 } else { 0 },
+        pushkarbhaga: if states.pushkarbhaga { 1 } else { 0 },
+    }
+}
+
+fn sensitive_point_distances_to_ffi(
+    distances: &dhruv_vedic_base::SensitivePointDistances,
+) -> DhruvSensitivePointDistances {
+    DhruvSensitivePointDistances {
+        mrityubhaga: distances.mrityubhaga,
+        pushkarbhaga: distances.pushkarbhaga,
+    }
+}
+
 fn graha_entry_to_ffi(entry: &dhruv_search::GrahaEntry) -> DhruvGrahaEntry {
     DhruvGrahaEntry {
         sidereal_longitude: entry.sidereal_longitude,
@@ -10700,6 +10779,16 @@ fn graha_entry_to_ffi(entry: &dhruv_search::GrahaEntry) -> DhruvGrahaEntry {
         pada: entry.pada,
         bhava_number: entry.bhava_number,
         rashi_bhava_number: entry.rashi_bhava_number,
+        basic_states_valid: if entry.basic_states_valid { 1 } else { 0 },
+        basic_states: basic_states_to_ffi(&entry.basic_states),
+        sensitive_point_distances_valid: if entry.sensitive_point_distances_valid {
+            1
+        } else {
+            0
+        },
+        sensitive_point_distances: sensitive_point_distances_to_ffi(
+            &entry.sensitive_point_distances,
+        ),
     }
 }
 
@@ -11866,6 +11955,12 @@ pub struct DhruvFullKundaliResult {
     /// 1 when rashi-bhava cusps were requested and computed; 0 otherwise.
     pub rashi_bhava_cusps_valid: u8,
     pub rashi_bhava_cusps: DhruvBhavaResult,
+    /// 1 when bhava cusp sensitive distances were requested and computed; 0 otherwise.
+    pub bhava_cusp_sensitive_point_distances_valid: u8,
+    pub bhava_cusp_sensitive_point_distances: [DhruvSensitivePointDistances; 12],
+    /// 1 when rashi-bhava cusp sensitive distances were requested and computed; 0 otherwise.
+    pub rashi_bhava_cusp_sensitive_point_distances_valid: u8,
+    pub rashi_bhava_cusp_sensitive_point_distances: [DhruvSensitivePointDistances; 12],
     pub graha_positions_valid: u8,
     pub graha_positions: DhruvGrahaPositions,
     pub bindus_valid: u8,
@@ -11977,6 +12072,10 @@ pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig 
             include_lagna: 1,
             include_outer_planets: 1,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -12022,6 +12121,22 @@ fn populate_full_kundali_result(
     if let Some(bh) = result.rashi_bhava_cusps.as_ref() {
         out.rashi_bhava_cusps_valid = 1;
         out.rashi_bhava_cusps = bhava_result_to_ffi_with_projection(bh, None);
+    }
+
+    if let Some(distances) = result.bhava_cusp_sensitive_point_distances.as_ref() {
+        out.bhava_cusp_sensitive_point_distances_valid = 1;
+        for (i, distance) in distances.iter().enumerate() {
+            out.bhava_cusp_sensitive_point_distances[i] =
+                sensitive_point_distances_to_ffi(distance);
+        }
+    }
+
+    if let Some(distances) = result.rashi_bhava_cusp_sensitive_point_distances.as_ref() {
+        out.rashi_bhava_cusp_sensitive_point_distances_valid = 1;
+        for (i, distance) in distances.iter().enumerate() {
+            out.rashi_bhava_cusp_sensitive_point_distances[i] =
+                sensitive_point_distances_to_ffi(distance);
+        }
     }
 
     if let Some(g) = result.graha_positions.as_ref() {
@@ -17876,6 +17991,10 @@ mod tests {
             include_lagna: 0,
             include_outer_planets: 0,
             include_bhava: 0,
+            basic_states_config: DhruvBasicStatesConfig {
+                include_basic_states: 0,
+                include_sensitive_point_distances: 0,
+            },
         };
         let bhava_cfg = dhruv_bhava_config_default();
         let s = unsafe {

@@ -102,7 +102,7 @@ Total runtime functions documented here: **58**.
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `gochar_events` | `engine`, `operation` | `Result<GocharEventsResult, SearchError>` | Grouped yearly/monthly Tajaka returns, yearly/monthly Tithi Pravesha returns, and transit graha conjunctions to caller-supplied natal target longitudes around a query time. |
+| `gochar_events` | `engine`, `operation` | `Result<GocharEventsResult, SearchError>` | Grouped yearly/monthly Tajaka returns, yearly/monthly Tithi Pravesha returns, and transit conjunction/opposition/special-aspect searches from physical bodies plus Rahu/Ketu to caller-supplied natal target longitudes around a query time. |
 
 ## Related Detailed Docs
 

@@ -18,9 +18,9 @@ use dhruv_search::operations::{
 };
 use dhruv_search::{
     GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
-    NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_AYANA,
-    PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_VARSHA, SankrantiConfig, StationaryConfig,
-    TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
+    GocharTransitBody, NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL,
+    PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_VARSHA, SankrantiConfig,
+    StationaryConfig, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
     TransitAspectOwner, TransitToNatalAspectEvent, ayanamsha, body_ecliptic_lon_lat, conjunction,
     dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
     dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
@@ -423,11 +423,18 @@ struct SearchConfigInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct BasicStatesConfigInput {
+    include_basic_states: Option<bool>,
+    include_sensitive_point_distances: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct GrahaPositionsConfigInput {
     include_nakshatra: Option<bool>,
     include_lagna: Option<bool>,
     include_outer_planets: Option<bool>,
     include_bhava: Option<bool>,
+    basic_states_config: Option<BasicStatesConfigInput>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1017,6 +1024,23 @@ fn parse_body(input: &EnumInput) -> Result<Body, Value> {
             .ok_or_else(|| error_payload("invalid_request", "unknown body code")),
         EnumInput::Str(value) => parse_named(value, &BODY_VARIANTS)
             .ok_or_else(|| error_payload("invalid_request", "unknown body name")),
+    }
+}
+
+fn parse_gochar_transit_body(input: &EnumInput) -> Result<GocharTransitBody, Value> {
+    match input {
+        EnumInput::Int(code) => GocharTransitBody::from_code(*code as i32)
+            .ok_or_else(|| error_payload("invalid_request", "unknown gochar transit code")),
+        EnumInput::Str(value) => {
+            let normalized = value.trim().to_ascii_lowercase().replace('_', "-");
+            match normalized.as_str() {
+                "rahu" => Ok(GocharTransitBody::Rahu),
+                "ketu" => Ok(GocharTransitBody::Ketu),
+                _ => parse_named(value, &BODY_VARIANTS)
+                    .map(GocharTransitBody::Body)
+                    .ok_or_else(|| error_payload("invalid_request", "unknown gochar transit body")),
+            }
+        }
     }
 }
 
@@ -1836,6 +1860,17 @@ fn to_graha_positions_config(
         }
         if let Some(include_bhava) = input.include_bhava {
             config.include_bhava = include_bhava;
+        }
+        if let Some(basic_states_config) = input.basic_states_config.as_ref() {
+            if let Some(include_basic_states) = basic_states_config.include_basic_states {
+                config.basic_states_config.include_basic_states = include_basic_states;
+            }
+            if let Some(include_sensitive_point_distances) =
+                basic_states_config.include_sensitive_point_distances
+            {
+                config.basic_states_config.include_sensitive_point_distances =
+                    include_sensitive_point_distances;
+            }
         }
     }
     Ok(config)
@@ -2756,7 +2791,22 @@ fn graha_entry_json(entry: dhruv_search::GrahaEntry, graha: Option<Graha>) -> Va
         "nakshatra_index": entry.nakshatra_index,
         "pada": entry.pada,
         "bhava_number": entry.bhava_number,
-        "rashi_bhava_number": entry.rashi_bhava_number
+        "rashi_bhava_number": entry.rashi_bhava_number,
+        "basic_states": entry.basic_states_valid.then_some(json!({
+            "exalted": entry.basic_states.exalted,
+            "debilitated": entry.basic_states.debilitated,
+            "combust": entry.basic_states.combust,
+            "retrograde": entry.basic_states.retrograde,
+            "moolatrikone": entry.basic_states.moolatrikone,
+            "marankarak_sthana": entry.basic_states.marankarak_sthana,
+            "mrityubhaga": entry.basic_states.mrityubhaga,
+            "pushkaramsha": entry.basic_states.pushkaramsha,
+            "pushkarbhaga": entry.basic_states.pushkarbhaga
+        })),
+        "sensitive_point_distances": entry.sensitive_point_distances_valid.then_some(json!({
+            "mrityubhaga": entry.sensitive_point_distances.mrityubhaga,
+            "pushkarbhaga": entry.sensitive_point_distances.pushkarbhaga
+        }))
     })
 }
 
@@ -3083,6 +3133,18 @@ fn full_kundali_json(result: dhruv_search::FullKundaliResult) -> Value {
         "ayanamsha_deg": result.ayanamsha_deg,
         "bhava_cusps": result.bhava_cusps.map(bhava_result_json),
         "rashi_bhava_cusps": result.rashi_bhava_cusps.map(bhava_result_json),
+        "bhava_cusp_sensitive_point_distances": result
+            .bhava_cusp_sensitive_point_distances
+            .map(|items| items.into_iter().map(|item| json!({
+                "mrityubhaga": item.mrityubhaga,
+                "pushkarbhaga": item.pushkarbhaga
+            })).collect::<Vec<_>>()),
+        "rashi_bhava_cusp_sensitive_point_distances": result
+            .rashi_bhava_cusp_sensitive_point_distances
+            .map(|items| items.into_iter().map(|item| json!({
+                "mrityubhaga": item.mrityubhaga,
+                "pushkarbhaga": item.pushkarbhaga
+            })).collect::<Vec<_>>()),
         "graha_positions": result.graha_positions.map(graha_positions_json),
         "bindus": result.bindus.map(bindus_json),
         "drishti": result.drishti.map(drishti_json),
@@ -3149,7 +3211,8 @@ fn tithi_pravesha_event_json(event: TithiPraveshaEvent) -> Value {
 
 fn transit_to_natal_aspect_event_json(event: TransitToNatalAspectEvent) -> Value {
     json!({
-        "transit_body": debug_name(event.transit_body),
+        "transit_body": event.transit_body.name(),
+        "transit_body_code": event.transit_body.code(),
         "target_name": event.target_name,
         "target": {
             "kind": match event.target.kind {
@@ -4003,7 +4066,7 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                     .clone()
                     .unwrap_or_default()
                     .into_iter()
-                    .map(|input| parse_body(&input))
+                    .map(|input| parse_gochar_transit_body(&input))
                     .collect::<Result<Vec<_>, _>>()?;
                 let natal_targets = request
                     .natal_targets

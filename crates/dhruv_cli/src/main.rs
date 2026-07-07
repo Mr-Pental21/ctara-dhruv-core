@@ -618,8 +618,25 @@ struct GrahaPositionsArgs {
     /// Include bhava placement
     #[arg(long)]
     bhava: bool,
+    /// Include basic graha state booleans
+    #[arg(long)]
+    basic_states: bool,
+    /// Include minimum distances from mrityubhaga and pushkarbhaga
+    #[arg(long)]
+    sensitive_point_distances: bool,
     /// Output tropical (ecliptic-of-date) longitudes instead of sidereal
-    #[arg(long, conflicts_with_all = ["nakshatra", "lagna", "outer", "no_outer", "bhava"])]
+    #[arg(
+        long,
+        conflicts_with_all = [
+            "nakshatra",
+            "lagna",
+            "outer",
+            "no_outer",
+            "bhava",
+            "basic_states",
+            "sensitive_point_distances"
+        ]
+    )]
     tropical: bool,
     /// Precession model: vondrak2011 (default), iau2006, lieske1977, newcomb1895
     #[arg(long, default_value = "vondrak2011")]
@@ -943,6 +960,12 @@ struct KundaliArgs {
     /// Suppress outer planets in root graha positions
     #[arg(long = "no-outer")]
     no_outer: bool,
+    /// Include basic graha state booleans on graha positions
+    #[arg(long)]
+    include_basic_states: bool,
+    /// Include minimum distances from mrityubhaga and pushkarbhaga
+    #[arg(long)]
+    include_sensitive_point_distances: bool,
     /// Include amsha (divisional charts)
     #[arg(long)]
     include_amshas: bool,
@@ -1080,7 +1103,7 @@ struct GocharEventsArgs {
     /// Maximum root-refinement iterations
     #[arg(long, default_value = "50")]
     max_iterations: u32,
-    /// Transit body names or NAIF body codes, repeat or use commas
+    /// Transit body names or gochar transit codes, repeat or use commas
     #[arg(long = "transit-body", value_delimiter = ',')]
     transit_body: Vec<String>,
     /// Natal target spec: kind|index|longitude|name
@@ -3205,47 +3228,37 @@ fn parse_node_policy(s: &str) -> NodeDignityPolicy {
     }
 }
 
-fn parse_gochar_body_token(s: &str) -> Body {
+fn parse_gochar_body_token(s: &str) -> dhruv_search::GocharTransitBody {
     match s.trim().to_ascii_lowercase().as_str() {
-        "sun" | "surya" => Body::Sun,
-        "moon" | "chandra" => Body::Moon,
-        "mars" | "mangal" => Body::Mars,
-        "mercury" | "buddh" => Body::Mercury,
-        "jupiter" | "guru" => Body::Jupiter,
-        "venus" | "shukra" => Body::Venus,
-        "saturn" | "shani" => Body::Saturn,
-        "uranus" => Body::Uranus,
-        "neptune" => Body::Neptune,
-        "pluto" => Body::Pluto,
+        "sun" | "surya" => dhruv_search::GocharTransitBody::Body(Body::Sun),
+        "moon" | "chandra" => dhruv_search::GocharTransitBody::Body(Body::Moon),
+        "mars" | "mangal" => dhruv_search::GocharTransitBody::Body(Body::Mars),
+        "mercury" | "buddh" => dhruv_search::GocharTransitBody::Body(Body::Mercury),
+        "jupiter" | "guru" => dhruv_search::GocharTransitBody::Body(Body::Jupiter),
+        "venus" | "shukra" => dhruv_search::GocharTransitBody::Body(Body::Venus),
+        "saturn" | "shani" => dhruv_search::GocharTransitBody::Body(Body::Saturn),
+        "uranus" => dhruv_search::GocharTransitBody::Body(Body::Uranus),
+        "neptune" => dhruv_search::GocharTransitBody::Body(Body::Neptune),
+        "pluto" => dhruv_search::GocharTransitBody::Body(Body::Pluto),
+        "rahu" => dhruv_search::GocharTransitBody::Rahu,
+        "ketu" => dhruv_search::GocharTransitBody::Ketu,
         other => {
             if let Ok(code) = other.parse::<i32>() {
-                if let Some(body) = Body::from_code(code) {
+                if let Some(body) = dhruv_search::GocharTransitBody::from_code(code) {
                     return body;
                 }
             }
             eprintln!("Invalid transit body: {s}");
             eprintln!(
-                "Valid names: sun, moon, mars, mercury, jupiter, venus, saturn, uranus, neptune, pluto; or NAIF body codes like 10, 301, 499, 599, 699."
+                "Valid names: sun, moon, mars, mercury, jupiter, venus, saturn, rahu, ketu, uranus, neptune, pluto; or gochar transit codes like 10, 301, 499, 599, 699, 799, 899, 999, 10007, 10008."
             );
             std::process::exit(1);
         }
     }
 }
 
-fn body_display_name(body: Body) -> &'static str {
-    match body {
-        Body::Sun => "Sun",
-        Body::Mercury => "Mercury",
-        Body::Venus => "Venus",
-        Body::Earth => "Earth",
-        Body::Moon => "Moon",
-        Body::Mars => "Mars",
-        Body::Jupiter => "Jupiter",
-        Body::Saturn => "Saturn",
-        Body::Uranus => "Uranus",
-        Body::Neptune => "Neptune",
-        Body::Pluto => "Pluto",
-    }
+fn gochar_body_display_name(body: dhruv_search::GocharTransitBody) -> &'static str {
+    body.name()
 }
 
 fn parse_gochar_target_kind(s: &str) -> dhruv_search::NatalTargetKind {
@@ -4834,6 +4847,10 @@ fn main() {
                     include_lagna: args.lagna,
                     include_outer_planets: args.outer || !args.no_outer,
                     include_bhava: args.bhava,
+                    basic_states_config: dhruv_search::BasicStatesConfig {
+                        include_basic_states: args.basic_states,
+                        include_sensitive_point_distances: args.sensitive_point_distances,
+                    },
                 };
 
                 let result = dhruv_search::graha_positions(
@@ -4895,6 +4912,12 @@ fn main() {
                             print!("  {:>5}", if bh > 0 { bh.to_string() } else { "-".into() },);
                         }
                         println!();
+                        if let Some(states) = format_basic_states(entry) {
+                            println!("             States: {states}");
+                        }
+                        if let Some(distances) = format_sensitive_point_distances(entry) {
+                            println!("             Distances: {distances}");
+                        }
                     };
 
                 for (i, entry) in result.grahas.iter().enumerate() {
@@ -5200,6 +5223,12 @@ fn main() {
             if requested_amsha_selection.is_some() || has_amsha_scope(&requested_amsha_scope) {
                 resolved.include_amshas = true;
             }
+            if args.include_basic_states || args.include_sensitive_point_distances {
+                resolved.include_graha = true;
+            }
+            if args.include_sensitive_point_distances {
+                resolved.include_bhava_cusps = true;
+            }
 
             let snapshot_time = args.dasha_snapshot_date.as_ref().map(|d| {
                 let snap_utc = parse_utc(d).unwrap_or_else(|e| {
@@ -5220,6 +5249,8 @@ fn main() {
                 &requested_amsha_scope,
                 build_time_upagraha_config(&args.upagraha),
                 !args.no_outer,
+                args.include_basic_states,
+                args.include_sensitive_point_distances,
             );
 
             let result = dhruv_search::full_kundali_for_date(
@@ -10146,7 +10177,7 @@ fn print_gochar_transit_events(events: &[dhruv_search::TransitToNatalAspectEvent
     for event in events {
         println!(
             "  {} -> {} [{} / {} @ {:.0}°]",
-            body_display_name(event.transit_body),
+            gochar_body_display_name(event.transit_body),
             event.target_name,
             event.aspect_kind.name(),
             event.aspect_owner.name(),
@@ -10419,6 +10450,8 @@ fn build_kundali_config(
     requested_amsha_scope: &dhruv_search::AmshaChartScope,
     upagraha_config: TimeUpagrahaConfig,
     include_outer_planets: bool,
+    include_basic_states: bool,
+    include_sensitive_point_distances: bool,
 ) -> dhruv_search::FullKundaliConfig {
     // Compute-vs-print: force graha_positions + lagna when amshas need it
     let compute_graha = resolved.include_graha || resolved.include_amshas;
@@ -10428,6 +10461,7 @@ fn build_kundali_config(
             include_lagna: true,
             include_outer_planets,
             include_bhava: true,
+            basic_states_config: Default::default(),
         }
     } else {
         dhruv_search::GrahaPositionsConfig::default()
@@ -10435,6 +10469,10 @@ fn build_kundali_config(
     if resolved.include_amshas {
         gp_config.include_lagna = true;
     }
+    gp_config.basic_states_config.include_basic_states = include_basic_states;
+    gp_config
+        .basic_states_config
+        .include_sensitive_point_distances = include_sensitive_point_distances;
 
     // Dasha: controlled solely by dasha_systems presence
     let (include_dasha, dasha_config) = if let Some(sys_str) = dasha_systems {
@@ -10542,6 +10580,42 @@ fn format_rashi_dms(sidereal_lon: f64) -> String {
     }
 
     format!("{:<10} {:02}°{:02}'{:02.0}\"", rashi_name, degs, mins, secs)
+}
+
+fn format_basic_states(entry: &dhruv_search::GrahaEntry) -> Option<String> {
+    if !entry.basic_states_valid {
+        return None;
+    }
+    let states = [
+        ("exalted", entry.basic_states.exalted),
+        ("debilitated", entry.basic_states.debilitated),
+        ("combust", entry.basic_states.combust),
+        ("retrograde", entry.basic_states.retrograde),
+        ("moolatrikone", entry.basic_states.moolatrikone),
+        ("marankarak-sthana", entry.basic_states.marankarak_sthana),
+        ("mrityubhaga", entry.basic_states.mrityubhaga),
+        ("pushkaramsha", entry.basic_states.pushkaramsha),
+        ("pushkarbhaga", entry.basic_states.pushkarbhaga),
+    ]
+    .into_iter()
+    .filter_map(|(name, enabled)| enabled.then_some(name))
+    .collect::<Vec<_>>();
+
+    Some(if states.is_empty() {
+        "none".to_string()
+    } else {
+        states.join(", ")
+    })
+}
+
+fn format_sensitive_point_distances(entry: &dhruv_search::GrahaEntry) -> Option<String> {
+    if !entry.sensitive_point_distances_valid {
+        return None;
+    }
+    Some(format!(
+        "mrityubhaga={:.6}° pushkarbhaga={:.6}°",
+        entry.sensitive_point_distances.mrityubhaga, entry.sensitive_point_distances.pushkarbhaga
+    ))
 }
 
 fn write_amsha_chart(
@@ -10731,6 +10805,12 @@ fn print_kundali(
             if entry.rashi_bhava_number > 0 {
                 writeln!(w, "           Rashi-Bhava: {}", entry.rashi_bhava_number)?;
             }
+            if let Some(states) = format_basic_states(entry) {
+                writeln!(w, "           States: {states}")?;
+            }
+            if let Some(distances) = format_sensitive_point_distances(entry) {
+                writeln!(w, "           Distances: {distances}")?;
+            }
         }
         writeln!(
             w,
@@ -10743,6 +10823,12 @@ fn print_kundali(
         )?;
         if g.lagna.rashi_bhava_number > 0 {
             writeln!(w, "           Rashi-Bhava: {}", g.lagna.rashi_bhava_number)?;
+        }
+        if let Some(states) = format_basic_states(&g.lagna) {
+            writeln!(w, "           States: {states}")?;
+        }
+        if let Some(distances) = format_sensitive_point_distances(&g.lagna) {
+            writeln!(w, "           Distances: {distances}")?;
         }
         if g.outer_planets
             .iter()
@@ -10762,6 +10848,12 @@ fn print_kundali(
                 )?;
                 if entry.rashi_bhava_number > 0 {
                     writeln!(w, "             Rashi-Bhava: {}", entry.rashi_bhava_number)?;
+                }
+                if let Some(states) = format_basic_states(entry) {
+                    writeln!(w, "             States: {states}")?;
+                }
+                if let Some(distances) = format_sensitive_point_distances(entry) {
+                    writeln!(w, "             Distances: {distances}")?;
                 }
             }
         }
@@ -10785,6 +10877,17 @@ fn print_kundali(
                 nk.pada,
             )?;
         }
+        if let Some(ref distances) = result.bhava_cusp_sensitive_point_distances {
+            for (index, entry) in distances.iter().enumerate() {
+                writeln!(
+                    w,
+                    "           Bhava {:>2} Distances: mrityubhaga={:.6}° pushkarbhaga={:.6}°",
+                    index + 1,
+                    entry.mrityubhaga,
+                    entry.pushkarbhaga
+                )?;
+            }
+        }
         let mc_sid = (bh.mc_deg - aya).rem_euclid(360.0);
         writeln!(w, "  MC        {}", format_rashi_dms(mc_sid))?;
         writeln!(w)?;
@@ -10804,6 +10907,17 @@ fn print_kundali(
                 nk.nakshatra.name(),
                 nk.pada,
             )?;
+        }
+        if let Some(ref distances) = result.rashi_bhava_cusp_sensitive_point_distances {
+            for (index, entry) in distances.iter().enumerate() {
+                writeln!(
+                    w,
+                    "           Bhava {:>2} Distances: mrityubhaga={:.6}° pushkarbhaga={:.6}°",
+                    index + 1,
+                    entry.mrityubhaga,
+                    entry.pushkarbhaga
+                )?;
+            }
         }
         writeln!(w, "  Synthetic MC {}", format_rashi_dms(bh.mc_deg))?;
         writeln!(w)?;
@@ -11390,6 +11504,8 @@ mod tests {
             &dhruv_search::AmshaChartScope::default(),
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         assert!(cfg.include_bhava_cusps);
         assert!(cfg.include_graha_positions);
@@ -11423,6 +11539,8 @@ mod tests {
             &dhruv_search::AmshaChartScope::default(),
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         assert!(!cfg.include_bhava_cusps);
         assert!(cfg.include_panchang);
@@ -11446,6 +11564,8 @@ mod tests {
             &dhruv_search::AmshaChartScope::default(),
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         assert!(cfg.include_graha_positions);
         assert!(!cfg.include_bindus);
@@ -11469,6 +11589,8 @@ mod tests {
             &dhruv_search::AmshaChartScope::default(),
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         assert!(cfg.include_graha_positions);
         assert!(cfg.include_panchang);
@@ -11495,6 +11617,8 @@ mod tests {
             &dhruv_search::AmshaChartScope::default(),
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         assert!(!cfg.include_dasha);
         assert_eq!(cfg.dasha_config.count, 0);
@@ -11520,6 +11644,8 @@ mod tests {
             &dhruv_search::AmshaChartScope::default(),
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         // Graha must be force-computed for amshas
         assert!(cfg.include_graha_positions);
@@ -11545,6 +11671,8 @@ mod tests {
             &dhruv_search::AmshaChartScope::default(),
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         assert_eq!(cfg.node_dignity_policy, NodeDignityPolicy::AlwaysSama);
     }
@@ -11589,6 +11717,8 @@ mod tests {
             &scope,
             TimeUpagrahaConfig::default(),
             true,
+            false,
+            false,
         );
         assert_eq!(cfg.amsha_selection.count, 2);
         assert_eq!(cfg.amsha_selection.codes[0], 9);
@@ -11683,6 +11813,8 @@ mod tests {
             ayanamsha_deg: 24.0,
             bhava_cusps: None,
             rashi_bhava_cusps: None,
+            bhava_cusp_sensitive_point_distances: None,
+            rashi_bhava_cusp_sensitive_point_distances: None,
             graha_positions: None,
             bindus: None,
             drishti: None,
@@ -12009,7 +12141,29 @@ mod tests {
 
     #[test]
     fn test_parse_gochar_body_token_name_and_code() {
-        assert_eq!(parse_gochar_body_token("mars"), Body::Mars);
-        assert_eq!(parse_gochar_body_token("599"), Body::Jupiter);
+        assert_eq!(
+            parse_gochar_body_token("mars"),
+            dhruv_search::GocharTransitBody::Body(Body::Mars)
+        );
+        assert_eq!(
+            parse_gochar_body_token("599"),
+            dhruv_search::GocharTransitBody::Body(Body::Jupiter)
+        );
+        assert_eq!(
+            parse_gochar_body_token("rahu"),
+            dhruv_search::GocharTransitBody::Rahu
+        );
+        assert_eq!(
+            parse_gochar_body_token("ketu"),
+            dhruv_search::GocharTransitBody::Ketu
+        );
+        assert_eq!(
+            parse_gochar_body_token("uranus"),
+            dhruv_search::GocharTransitBody::Body(Body::Uranus)
+        );
+        assert_eq!(
+            parse_gochar_body_token("10008"),
+            dhruv_search::GocharTransitBody::Ketu
+        );
     }
 }

@@ -27,7 +27,7 @@ Primary source files:
 
 Current ABI constants relevant to amsha:
 
-- `DHRUV_API_VERSION = 70`
+- `DHRUV_API_VERSION = 72`
 - `DHRUV_MAX_AMSHA_REQUESTS = 40`
 
 ## Canonical Concepts

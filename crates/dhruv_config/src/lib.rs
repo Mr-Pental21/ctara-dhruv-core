@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 use dhruv_core::{Body, EngineConfig};
 use dhruv_frames::{PrecessionModel, ReferencePlane};
 use dhruv_search::{
-    AmshaSelectionConfig, BindusConfig, ConjunctionConfig, DashaSelectionConfig, DashaSnapshotTime,
-    DrishtiConfig, FullKundaliConfig, GrahaPositionsConfig, GrahanConfig, SankrantiConfig,
-    StationaryConfig,
+    AmshaSelectionConfig, BasicStatesConfig, BindusConfig, ConjunctionConfig, DashaSelectionConfig,
+    DashaSnapshotTime, DrishtiConfig, FullKundaliConfig, GrahaPositionsConfig, GrahanConfig,
+    SankrantiConfig, StationaryConfig,
 };
 use dhruv_tara::{TaraAccuracy, TaraConfig};
 use dhruv_time::UtcTime;
@@ -238,6 +238,14 @@ pub struct GrahaPositionsConfigPatch {
     pub include_lagna: Option<bool>,
     pub include_outer_planets: Option<bool>,
     pub include_bhava: Option<bool>,
+    pub basic_states: Option<BasicStatesConfigPatch>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BasicStatesConfigPatch {
+    pub include_basic_states: Option<bool>,
+    pub include_sensitive_point_distances: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -921,12 +929,33 @@ impl ConfigResolver {
             recommended(self.defaults_mode, false),
             "graha_positions.include_bhava",
         )?;
+        let explicit_basic = explicit.basic_states.unwrap_or_default();
+        let op_basic = op.basic_states.clone().unwrap_or_default();
+        let (include_basic_states, s5) = choose_copy(
+            explicit_basic.include_basic_states,
+            op_basic.include_basic_states,
+            None,
+            recommended(self.defaults_mode, false),
+            "graha_positions.basic_states.include_basic_states",
+        )?;
+        let (include_sensitive_point_distances, s6) = choose_copy(
+            explicit_basic.include_sensitive_point_distances,
+            op_basic.include_sensitive_point_distances,
+            None,
+            recommended(self.defaults_mode, false),
+            "graha_positions.basic_states.include_sensitive_point_distances",
+        )?;
 
         let mut source = BTreeMap::new();
         source.insert("include_nakshatra".to_string(), s1);
         source.insert("include_lagna".to_string(), s2);
         source.insert("include_outer_planets".to_string(), s3);
         source.insert("include_bhava".to_string(), s4);
+        source.insert("basic_states.include_basic_states".to_string(), s5);
+        source.insert(
+            "basic_states.include_sensitive_point_distances".to_string(),
+            s6,
+        );
 
         Ok(EffectiveConfig {
             value: GrahaPositionsConfig {
@@ -934,6 +963,10 @@ impl ConfigResolver {
                 include_lagna,
                 include_outer_planets,
                 include_bhava,
+                basic_states_config: BasicStatesConfig {
+                    include_basic_states,
+                    include_sensitive_point_distances,
+                },
             },
             source_by_field: source,
         })

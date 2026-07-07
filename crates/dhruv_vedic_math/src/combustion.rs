@@ -32,7 +32,7 @@ pub fn combustion_threshold(graha: Graha, is_retrograde: bool) -> Option<f64> {
                 Some(10.0)
             }
         }
-        Graha::Shani => Some(15.0),
+        Graha::Shani => Some(16.0),
     }
 }
 
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn threshold_saturn() {
-        assert_eq!(combustion_threshold(Graha::Shani, false), Some(15.0));
+        assert_eq!(combustion_threshold(Graha::Shani, false), Some(16.0));
     }
 
     #[test]

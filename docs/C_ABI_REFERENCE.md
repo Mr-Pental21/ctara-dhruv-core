@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 70`
+**ABI version:** `DHRUV_API_VERSION = 73`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -2247,6 +2247,11 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v73**: `gochar_events` transit-body codes now accept Rahu and Ketu through
+`DHRUV_GOCHAR_TRANSIT_RAHU` and `DHRUV_GOCHAR_TRANSIT_KETU`, while continuing
+to accept physical-body codes such as `799`, `899`, and `999` for Uranus,
+Neptune, and Pluto.
 
 **v70**: Added copy-on-write runtime SPK replacement for long-lived engine
 handles. New types: `DhruvSpkSetConfig`, `DhruvSpkReplaceReport`,

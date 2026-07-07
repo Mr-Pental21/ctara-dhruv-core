@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 71
+const ExpectedAPIVersion = 73
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -81,6 +81,11 @@ const (
 	GocharNatalTargetSpecialLagna = cabi.GocharNatalTargetSpecialLagna
 	GocharNatalTargetArudhaPada   = cabi.GocharNatalTargetArudhaPada
 	GocharNatalTargetCustom       = cabi.GocharNatalTargetCustom
+)
+
+const (
+	GocharTransitRahu = cabi.GocharTransitRahu
+	GocharTransitKetu = cabi.GocharTransitKetu
 )
 
 const (

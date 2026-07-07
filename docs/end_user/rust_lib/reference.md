@@ -50,6 +50,7 @@ Public request/query types in `ops.rs`:
 - `AvasthaTarget`, `AvasthaRequest`, `AvasthaResult`
 - `FullKundaliRequest`
 - `GocharEventsRequest`
+- `GocharTransitBody`
 
 Request-driven functions:
 
@@ -97,6 +98,8 @@ Frequently used config and result families re-exported from `dhruv_rs::*`:
 - `GrahaPositionsConfig`
   Defaults `include_outer_planets=true`; returned `grahas` stay the 9
   navagrahas and `outer_planets` carries `[Uranus, Neptune, Pluto]`.
+  `basic_states_config` controls optional `basic_states` and
+  `sensitive_point_distances` output on entries.
 - `GrahaLongitudesConfig`
   Defaults `include_outer_planets=true`; `graha_longitudes` returns the 9
   navagraha `longitudes` plus sibling `outer_planets`. Use
@@ -129,6 +132,7 @@ Shadbala Drik Bala and Bhava Bala Drishti Bala.
 - `GocharEventsConfig`
 - `GocharEventsResult`
 - `GocharReference`
+- `GocharTransitBody`
 - `NatalTargetKind`
 - `NatalTargetLongitude`
 - `TajakaReturnBasis`
@@ -161,6 +165,9 @@ types for Rust callers, including:
 The standalone shadbala, vimsopaka, balas, and avastha surfaces now share
 `AmshaSelectionConfig`, and embedded `full_kundali(...).amshas` returns the
 resolved amsha union used by the call.
+
+`full_kundali(...)` also forwards `graha_positions_config.basic_states_config`,
+and sensitive-point distance mode may return bhava-cusp distance arrays.
 
 `GrahaAvasthas.deeptadi` is the primary compatibility Deeptadi state.
 `GrahaAvasthas.deeptadi_states` is the authoritative full set of Deeptadi

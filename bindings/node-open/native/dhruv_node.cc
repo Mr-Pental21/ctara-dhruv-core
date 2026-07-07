@@ -437,6 +437,8 @@ bool ReadDrishtiConfig(napi_env env, napi_value obj, DhruvDrishtiConfig* out) {
 bool ReadGrahaPositionsConfig(napi_env env, napi_value obj, DhruvGrahaPositionsConfig* out) {
     napi_value v;
     bool b = false;
+    bool has = false;
+    *out = DhruvGrahaPositionsConfig{};
     if (!GetNamedProperty(env, obj, "includeNakshatra", &v) || !GetBool(env, v, &b)) return false;
     out->include_nakshatra = b ? 1 : 0;
     if (!GetNamedProperty(env, obj, "includeLagna", &v) || !GetBool(env, v, &b)) return false;
@@ -445,6 +447,14 @@ bool ReadGrahaPositionsConfig(napi_env env, napi_value obj, DhruvGrahaPositionsC
     out->include_outer_planets = b ? 1 : 0;
     if (!GetNamedProperty(env, obj, "includeBhava", &v) || !GetBool(env, v, &b)) return false;
     out->include_bhava = b ? 1 : 0;
+    if (!GetOptionalNamedProperty(env, obj, "basicStatesConfig", &v, &has)) return false;
+    if (has) {
+        napi_value basic_value;
+        if (!GetNamedProperty(env, v, "includeBasicStates", &basic_value) || !GetBool(env, basic_value, &b)) return false;
+        out->basic_states_config.include_basic_states = b ? 1 : 0;
+        if (!GetNamedProperty(env, v, "includeSensitivePointDistances", &basic_value) || !GetBool(env, basic_value, &b)) return false;
+        out->basic_states_config.include_sensitive_point_distances = b ? 1 : 0;
+    }
     return true;
 }
 
@@ -1426,6 +1436,30 @@ int32_t WriteFullKundaliResultObject(
     SetNamed(env, obj, "ayanamshaDeg", MakeDouble(env, result.ayanamsha_deg));
     if (result.bhava_cusps_valid != 0) SetNamed(env, obj, "bhavaCusps", WriteBhavaResult(env, result.bhava_cusps));
     if (result.rashi_bhava_cusps_valid != 0) SetNamed(env, obj, "rashiBhavaCusps", WriteBhavaResult(env, result.rashi_bhava_cusps));
+    if (result.bhava_cusp_sensitive_point_distances_valid != 0) {
+        napi_value distances;
+        napi_create_array_with_length(env, 12, &distances);
+        for (uint32_t i = 0; i < 12; ++i) {
+            napi_value item;
+            napi_create_object(env, &item);
+            SetNamed(env, item, "mrityubhaga", MakeDouble(env, result.bhava_cusp_sensitive_point_distances[i].mrityubhaga));
+            SetNamed(env, item, "pushkarbhaga", MakeDouble(env, result.bhava_cusp_sensitive_point_distances[i].pushkarbhaga));
+            napi_set_element(env, distances, i, item);
+        }
+        SetNamed(env, obj, "bhavaCuspSensitivePointDistances", distances);
+    }
+    if (result.rashi_bhava_cusp_sensitive_point_distances_valid != 0) {
+        napi_value distances;
+        napi_create_array_with_length(env, 12, &distances);
+        for (uint32_t i = 0; i < 12; ++i) {
+            napi_value item;
+            napi_create_object(env, &item);
+            SetNamed(env, item, "mrityubhaga", MakeDouble(env, result.rashi_bhava_cusp_sensitive_point_distances[i].mrityubhaga));
+            SetNamed(env, item, "pushkarbhaga", MakeDouble(env, result.rashi_bhava_cusp_sensitive_point_distances[i].pushkarbhaga));
+            napi_set_element(env, distances, i, item);
+        }
+        SetNamed(env, obj, "rashiBhavaCuspSensitivePointDistances", distances);
+    }
     if (result.graha_positions_valid != 0) SetNamed(env, obj, "grahaPositions", WriteGrahaPositions(env, result.graha_positions));
     if (result.bindus_valid != 0) SetNamed(env, obj, "bindus", WriteBindusResult(env, result.bindus));
     if (result.drishti_valid != 0) SetNamed(env, obj, "drishti", WriteDrishtiResult(env, result.drishti));
@@ -1942,6 +1976,29 @@ napi_value WriteGrahaEntry(napi_env env, const DhruvGrahaEntry& g) {
     SetNamed(env, obj, "pada", MakeUint32(env, g.pada));
     SetNamed(env, obj, "bhavaNumber", MakeUint32(env, g.bhava_number));
     SetNamed(env, obj, "rashiBhavaNumber", MakeUint32(env, g.rashi_bhava_number));
+    SetNamed(env, obj, "basicStatesValid", MakeBool(env, g.basic_states_valid != 0));
+    if (g.basic_states_valid != 0) {
+        napi_value basic_states;
+        napi_create_object(env, &basic_states);
+        SetNamed(env, basic_states, "exalted", MakeBool(env, g.basic_states.exalted != 0));
+        SetNamed(env, basic_states, "debilitated", MakeBool(env, g.basic_states.debilitated != 0));
+        SetNamed(env, basic_states, "combust", MakeBool(env, g.basic_states.combust != 0));
+        SetNamed(env, basic_states, "retrograde", MakeBool(env, g.basic_states.retrograde != 0));
+        SetNamed(env, basic_states, "moolatrikone", MakeBool(env, g.basic_states.moolatrikone != 0));
+        SetNamed(env, basic_states, "marankarakSthana", MakeBool(env, g.basic_states.marankarak_sthana != 0));
+        SetNamed(env, basic_states, "mrityubhaga", MakeBool(env, g.basic_states.mrityubhaga != 0));
+        SetNamed(env, basic_states, "pushkaramsha", MakeBool(env, g.basic_states.pushkaramsha != 0));
+        SetNamed(env, basic_states, "pushkarbhaga", MakeBool(env, g.basic_states.pushkarbhaga != 0));
+        SetNamed(env, obj, "basicStates", basic_states);
+    }
+    SetNamed(env, obj, "sensitivePointDistancesValid", MakeBool(env, g.sensitive_point_distances_valid != 0));
+    if (g.sensitive_point_distances_valid != 0) {
+        napi_value distances;
+        napi_create_object(env, &distances);
+        SetNamed(env, distances, "mrityubhaga", MakeDouble(env, g.sensitive_point_distances.mrityubhaga));
+        SetNamed(env, distances, "pushkarbhaga", MakeDouble(env, g.sensitive_point_distances.pushkarbhaga));
+        SetNamed(env, obj, "sensitivePointDistances", distances);
+    }
     return obj;
 }
 
@@ -6585,6 +6642,11 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, graha_cfg, "includeLagna", MakeBool(env, cfg.graha_positions_config.include_lagna != 0));
     SetNamed(env, graha_cfg, "includeOuterPlanets", MakeBool(env, cfg.graha_positions_config.include_outer_planets != 0));
     SetNamed(env, graha_cfg, "includeBhava", MakeBool(env, cfg.graha_positions_config.include_bhava != 0));
+    napi_value basic_states_cfg;
+    napi_create_object(env, &basic_states_cfg);
+    SetNamed(env, basic_states_cfg, "includeBasicStates", MakeBool(env, cfg.graha_positions_config.basic_states_config.include_basic_states != 0));
+    SetNamed(env, basic_states_cfg, "includeSensitivePointDistances", MakeBool(env, cfg.graha_positions_config.basic_states_config.include_sensitive_point_distances != 0));
+    SetNamed(env, graha_cfg, "basicStatesConfig", basic_states_cfg);
     SetNamed(env, obj, "grahaPositionsConfig", graha_cfg);
 
     napi_value bindus_cfg;

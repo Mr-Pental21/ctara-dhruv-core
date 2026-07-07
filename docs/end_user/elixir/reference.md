@@ -140,6 +140,9 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
   and Pluto in sibling `:outer_planets`.
 - `moving_osculating_apogees/2`
 - `graha_positions/2`
+  request `:graha_positions_config` may include nested
+  `:basic_states_config` with `:include_basic_states` and
+  `:include_sensitive_point_distances`
   Keeps `:grahas` as the 9 navagrahas and exposes positional-only outer grahas
   separately as `:outer_planets`.
 - `special_lagnas/2`
@@ -156,6 +159,9 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
 - `avastha/2`
 - `full_kundali/2`
 - `full_kundali/3`
+  nested `:graha_positions_config[:basic_states_config]` flows through to the
+  same entry/state outputs, and sensitive-point distance mode can also surface
+  bhava-cusp distance arrays
 - `amsha/2`
 
 `CtaraDhruv.Search`:

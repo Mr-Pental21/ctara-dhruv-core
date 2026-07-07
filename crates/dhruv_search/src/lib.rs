@@ -48,9 +48,10 @@ pub use dhruv_vedic_base::{
 pub use error::SearchError;
 pub use gochar_events::gochar_events;
 pub use gochar_events_types::{
-    EventWindow, GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
-    NatalTargetKind, NatalTargetLongitude, TajakaReturnBasis, TajakaReturnEvent,
-    TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
+    EventWindow, GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig,
+    GocharEventsOperation, GocharEventsResult, GocharReference, GocharTransitBody, NatalTargetKind,
+    NatalTargetLongitude, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
+    TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
 };
 pub use grahan::{
     next_chandra_grahan, next_surya_grahan, prev_chandra_grahan, prev_surya_grahan,
@@ -72,9 +73,9 @@ pub use jyotish::{
 };
 pub use jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BalaBundleResult,
-    BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime,
-    DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
-    GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
+    BasicStatesConfig, BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig,
+    DashaSnapshotTime, DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult,
+    GrahaEntry, GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
     GrahaPositionsConfig, MAX_AMSHA_REQUESTS, MovingOsculatingApogeeEntry, MovingOsculatingApogees,
     ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
 };

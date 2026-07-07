@@ -53,6 +53,23 @@ func goGrahaEntry(v C.DhruvGrahaEntry) GrahaEntry {
 		Pada:              uint8(v.pada),
 		BhavaNumber:       uint8(v.bhava_number),
 		RashiBhavaNumber:  uint8(v.rashi_bhava_number),
+		BasicStatesValid:  v.basic_states_valid != 0,
+		BasicStates: BasicStates{
+			Exalted:          v.basic_states.exalted != 0,
+			Debilitated:      v.basic_states.debilitated != 0,
+			Combust:          v.basic_states.combust != 0,
+			Retrograde:       v.basic_states.retrograde != 0,
+			Moolatrikone:     v.basic_states.moolatrikone != 0,
+			MarankarakSthana: v.basic_states.marankarak_sthana != 0,
+			Mrityubhaga:      v.basic_states.mrityubhaga != 0,
+			Pushkaramsha:     v.basic_states.pushkaramsha != 0,
+			Pushkarbhaga:     v.basic_states.pushkarbhaga != 0,
+		},
+		SensitivePointDistancesValid: v.sensitive_point_distances_valid != 0,
+		SensitivePointDistances: SensitivePointDistances{
+			Mrityubhaga: float64(v.sensitive_point_distances.mrityubhaga),
+			Pushkarbhaga: float64(v.sensitive_point_distances.pushkarbhaga),
+		},
 	}
 }
 
@@ -746,6 +763,12 @@ func cGrahaPositionsConfig(cfg GrahaPositionsConfig) C.DhruvGrahaPositionsConfig
 		include_lagna:         boolU8(cfg.IncludeLagna),
 		include_outer_planets: boolU8(cfg.IncludeOuterPlanets),
 		include_bhava:         boolU8(cfg.IncludeBhava),
+		basic_states_config: C.DhruvBasicStatesConfig{
+			include_basic_states: boolU8(cfg.BasicStatesConfig.IncludeBasicStates),
+			include_sensitive_point_distances: boolU8(
+				cfg.BasicStatesConfig.IncludeSensitivePointDistances,
+			),
+		},
 	}
 }
 

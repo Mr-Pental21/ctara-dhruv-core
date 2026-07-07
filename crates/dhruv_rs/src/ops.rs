@@ -6,12 +6,12 @@
 use dhruv_core::Body;
 use dhruv_search::{
     AmshaSelectionConfig, ConjunctionConfig, ConjunctionOperation, ConjunctionQuery,
-    ConjunctionResult, GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GrahanConfig,
-    GrahanKind, GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
-    LunarPhaseQuery, LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult,
-    NatalTargetLongitude, SankrantiConfig, SankrantiOperation, SankrantiQuery, SankrantiResult,
-    SankrantiTarget, StationaryConfig, all_upagrahas_for_date_with_config, avastha_for_date,
-    avastha_for_graha, full_kundali_for_date,
+    ConjunctionResult, GocharEventsConfig, GocharEventsOperation, GocharEventsResult,
+    GocharTransitBody, GrahanConfig, GrahanKind, GrahanOperation, GrahanQuery, GrahanResult,
+    LunarPhaseKind, LunarPhaseOperation, LunarPhaseQuery, LunarPhaseResult, MotionKind,
+    MotionOperation, MotionQuery, MotionResult, NatalTargetLongitude, SankrantiConfig,
+    SankrantiOperation, SankrantiQuery, SankrantiResult, SankrantiTarget, StationaryConfig,
+    all_upagrahas_for_date_with_config, avastha_for_date, avastha_for_graha, full_kundali_for_date,
 };
 use dhruv_search::{FullKundaliConfig, FullKundaliResult};
 use dhruv_tara::{EarthState, TaraCatalog, TaraConfig, TaraId};
@@ -731,7 +731,7 @@ pub struct GocharEventsRequest {
     pub sankranti_config: Option<SankrantiConfig>,
     pub kundali_config: Option<FullKundaliConfig>,
     pub config: Option<GocharEventsConfig>,
-    pub transit_bodies: Vec<Body>,
+    pub transit_bodies: Vec<GocharTransitBody>,
     pub natal_targets: Vec<NatalTargetLongitude>,
 }
 

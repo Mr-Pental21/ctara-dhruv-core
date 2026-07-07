@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       71
+#define DHRUV_API_VERSION       73
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -50,6 +50,8 @@ extern "C" {
 #define DHRUV_AMSHA_VARIATION_LABEL_CAPACITY 64
 #define DHRUV_AMSHA_VARIATION_DESCRIPTION_CAPACITY 160
 #define DHRUV_GOCHAR_NAME_CAPACITY 128
+#define DHRUV_GOCHAR_TRANSIT_RAHU 10007
+#define DHRUV_GOCHAR_TRANSIT_KETU 10008
 
 /* DhruvStatus (repr(i32)) */
 typedef int32_t DhruvStatus;
@@ -981,6 +983,7 @@ typedef struct {
 } DhruvTithiPraveshaEventRow;
 
 typedef struct {
+    /* Physical body Body::code(), or DHRUV_GOCHAR_TRANSIT_RAHU/KETU. */
     uint32_t transit_body_code;
     int32_t  target_kind;
     uint8_t  target_index;
@@ -1203,10 +1206,33 @@ typedef struct {
 /* --- Graha positions --- */
 
 typedef struct {
+    uint8_t include_basic_states;
+    uint8_t include_sensitive_point_distances;
+} DhruvBasicStatesConfig;
+
+typedef struct {
+    uint8_t exalted;
+    uint8_t debilitated;
+    uint8_t combust;
+    uint8_t retrograde;
+    uint8_t moolatrikone;
+    uint8_t marankarak_sthana;
+    uint8_t mrityubhaga;
+    uint8_t pushkaramsha;
+    uint8_t pushkarbhaga;
+} DhruvBasicStates;
+
+typedef struct {
+    double mrityubhaga;
+    double pushkarbhaga;
+} DhruvSensitivePointDistances;
+
+typedef struct {
     uint8_t include_nakshatra;
     uint8_t include_lagna;
     uint8_t include_outer_planets;
     uint8_t include_bhava;
+    DhruvBasicStatesConfig basic_states_config;
 } DhruvGrahaPositionsConfig;
 
 typedef struct {
@@ -1216,6 +1242,10 @@ typedef struct {
     uint8_t pada;
     uint8_t bhava_number;
     uint8_t rashi_bhava_number;
+    uint8_t basic_states_valid;
+    DhruvBasicStates basic_states;
+    uint8_t sensitive_point_distances_valid;
+    DhruvSensitivePointDistances sensitive_point_distances;
 } DhruvGrahaEntry;
 
 typedef struct {
@@ -1646,6 +1676,7 @@ typedef struct {
     DhruvSankrantiConfig     sankranti_config;
     DhruvFullKundaliConfig   kundali_config;
     DhruvGocharEventsConfig  config;
+    /* Physical body Body::code(), or DHRUV_GOCHAR_TRANSIT_RAHU/KETU. */
     const uint32_t           *transit_body_codes;
     uint32_t                 transit_body_count;
     const DhruvGocharNatalTarget *natal_targets;
@@ -1658,6 +1689,10 @@ typedef struct {
     DhruvBhavaResult          bhava_cusps;
     uint8_t                   rashi_bhava_cusps_valid;
     DhruvBhavaResult          rashi_bhava_cusps;
+    uint8_t                   bhava_cusp_sensitive_point_distances_valid;
+    DhruvSensitivePointDistances bhava_cusp_sensitive_point_distances[12];
+    uint8_t                   rashi_bhava_cusp_sensitive_point_distances_valid;
+    DhruvSensitivePointDistances rashi_bhava_cusp_sensitive_point_distances[12];
     uint8_t                   graha_positions_valid;
     DhruvGrahaPositions       graha_positions;
     uint8_t                   bindus_valid;

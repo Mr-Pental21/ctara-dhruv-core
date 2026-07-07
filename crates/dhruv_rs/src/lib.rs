@@ -44,9 +44,10 @@ pub use dhruv_core::{
 pub use dhruv_frames::{ReferencePlane, SphericalCoords, SphericalState};
 pub use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 pub use dhruv_search::gochar_events_types::{
-    EventWindow, GocharEventsConfig, GocharEventsResult, GocharReference, NatalTargetKind,
-    NatalTargetLongitude, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
-    TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
+    EventWindow, GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig,
+    GocharEventsResult, GocharReference, GocharTransitBody, NatalTargetKind, NatalTargetLongitude,
+    TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
+    TransitAspectOwner, TransitToNatalAspectEvent,
 };
 pub use dhruv_search::grahan_types::{
     ChandraGrahan, ChandraGrahanType, GrahanConfig, SuryaGrahan, SuryaGrahanType,

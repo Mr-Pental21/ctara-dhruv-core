@@ -86,7 +86,9 @@ functions instead of introducing `*UtcSearch` variants.
 `transitEvents`, with caller-supplied natal target names preserved on emitted
 transit aspect rows. `gocharEventsConfigDefault()` exposes the typed defaults
 for Tajaka basis, yearly/monthly window sizes, transit window, search steps,
-and optional embedded return charts.
+and optional embedded return charts. `request.transitBodyCodes` accepts
+physical-body codes such as `499`, `599`, `699`, `799`, `899`, `999`, plus
+`GOCHAR_TRANSIT_BODY.RAHU` and `GOCHAR_TRANSIT_BODY.KETU`.
 
 `panchang.js` exports:
 
@@ -324,8 +326,14 @@ Common config objects:
 - search configs
 - drishti config
 - graha positions config
+  supports nested `basicStatesConfig.includeBasicStates` and
+  `basicStatesConfig.includeSensitivePointDistances`; graha entries then expose
+  `basicStates` and `sensitivePointDistances`
 - bindus config
 - full-kundali config
+  forwards the same nested graha-position settings and may return
+  `bhavaCuspSensitivePointDistances` plus
+  `rashiBhavaCuspSensitivePointDistances`
 - dasha selection and variation configs
 
 `fullKundaliConfig.dashaConfig` supports:

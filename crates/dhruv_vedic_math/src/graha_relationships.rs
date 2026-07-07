@@ -238,7 +238,7 @@ pub enum Dignity {
 }
 
 /// Check if sidereal longitude falls in the exaltation zone.
-fn is_exalted(graha: Graha, sidereal_lon: f64) -> bool {
+pub fn is_exalted_at_longitude(graha: Graha, sidereal_lon: f64) -> bool {
     let Some(exalt) = exaltation_degree(graha) else {
         return false;
     };
@@ -259,7 +259,7 @@ fn is_exalted(graha: Graha, sidereal_lon: f64) -> bool {
 }
 
 /// Check if sidereal longitude falls in the debilitation rashi.
-fn is_debilitated(graha: Graha, sidereal_lon: f64) -> bool {
+pub fn is_debilitated_at_longitude(graha: Graha, sidereal_lon: f64) -> bool {
     if let Some(deb) = debilitation_degree(graha) {
         let deb_rashi = (deb / 30.0) as u8;
         let lon_rashi = (normalize_360_inner(sidereal_lon) / 30.0).floor() as u8;
@@ -270,7 +270,7 @@ fn is_debilitated(graha: Graha, sidereal_lon: f64) -> bool {
 }
 
 /// Check if sidereal longitude falls in the moolatrikone range.
-fn is_in_moolatrikone(graha: Graha, sidereal_lon: f64) -> bool {
+pub fn is_in_moolatrikone_at_longitude(graha: Graha, sidereal_lon: f64) -> bool {
     if let Some((mt_rashi, start, end)) = moolatrikone_range(graha) {
         let lon = normalize_360_inner(sidereal_lon);
         let lon_rashi = (lon / 30.0).floor() as u8;
@@ -317,13 +317,13 @@ pub fn dignity_in_rashi(graha: Graha, sidereal_lon: f64, rashi_index: u8) -> Dig
         return Dignity::Sama;
     }
 
-    if is_exalted(graha, sidereal_lon) {
+    if is_exalted_at_longitude(graha, sidereal_lon) {
         return Dignity::Exalted;
     }
-    if is_debilitated(graha, sidereal_lon) {
+    if is_debilitated_at_longitude(graha, sidereal_lon) {
         return Dignity::Debilitated;
     }
-    if is_in_moolatrikone(graha, sidereal_lon) {
+    if is_in_moolatrikone_at_longitude(graha, sidereal_lon) {
         return Dignity::Moolatrikone;
     }
     if is_own_sign_at_longitude(graha, sidereal_lon, rashi_index) {
@@ -357,13 +357,13 @@ pub fn dignity_in_rashi_with_positions(
         return Dignity::Sama;
     }
 
-    if is_exalted(graha, sidereal_lon) {
+    if is_exalted_at_longitude(graha, sidereal_lon) {
         return Dignity::Exalted;
     }
-    if is_debilitated(graha, sidereal_lon) {
+    if is_debilitated_at_longitude(graha, sidereal_lon) {
         return Dignity::Debilitated;
     }
-    if is_in_moolatrikone(graha, sidereal_lon) {
+    if is_in_moolatrikone_at_longitude(graha, sidereal_lon) {
         return Dignity::Moolatrikone;
     }
     if is_own_sign_at_longitude(graha, sidereal_lon, rashi_index) {

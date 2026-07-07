@@ -268,7 +268,10 @@ replacement.
   reference-plane longitude.
 - `graha_positions`
   Results keep `grahas` as the 9 navagrahas and expose positional-only
-  Uranus, Neptune, and Pluto separately as `outer_planets`.
+  Uranus, Neptune, and Pluto separately as `outer_planets`. Optional
+  `config["basic_states_config"]` accepts `include_basic_states` and
+  `include_sensitive_point_distances`; entries then expose `basic_states` and
+  `sensitive_point_distances`.
 - `core_bindus`
 - `charakaraka_for_date`
 - `full_kundali_config_default`
@@ -399,6 +402,9 @@ Common dict-style or struct-style config inputs:
   - `stationary_config_default`
   - `sankranti_config_default`
 - full-kundali config returned by `full_kundali_config_default`
+  `graha_positions_config.basic_states_config` accepts `include_basic_states`
+  and `include_sensitive_point_distances`. When the distance flag is enabled,
+  full-kundali results can also expose bhava-cusp distance arrays.
 - dasha configs returned by `dasha_selection_config_default` and `dasha_variation_config_default`
 
 For embedded full-kundali dasha snapshots, the CFFI dasha selection config now

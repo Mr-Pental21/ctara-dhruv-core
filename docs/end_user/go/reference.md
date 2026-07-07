@@ -33,12 +33,16 @@ Core inputs and configs:
 - `GrahaPositionsConfig`
   `IncludeOuterPlanets` defaults on through the high-level defaults. Returned
   `Grahas` stay the 9 navagrahas; `OuterPlanets` is `[Uranus, Neptune, Pluto]`.
+  `BasicStatesConfig` controls optional `BasicStates` and
+  `SensitivePointDistances` output on entries.
 - `BindusConfig`
 - `DrishtiConfig`
 - `TimeUpagrahaConfig`
 - `AmshaChartScope`
 - `AmshaSelectionConfig`
 - `FullKundaliConfig`
+  forwards `GrahaPositionsConfig.BasicStatesConfig`, and full-kundali results
+  may also include bhava-cusp sensitive-point distance arrays
 - `DashaSelectionConfig`
 - `DashaVariationConfig`
 - `TaraConfig`

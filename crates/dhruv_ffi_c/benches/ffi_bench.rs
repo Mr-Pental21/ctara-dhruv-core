@@ -2199,12 +2199,14 @@ fn ffi_orchestrators_bench(c: &mut Criterion) {
         include_lagna: true,
         include_outer_planets: false,
         include_bhava: true,
+        basic_states_config: Default::default(),
     };
     let gp_cfg_ffi = dhruv_ffi_c::DhruvGrahaPositionsConfig {
         include_nakshatra: 1,
         include_lagna: 1,
         include_outer_planets: 0,
         include_bhava: 1,
+        basic_states_config: Default::default(),
     };
     let mut gp_out: dhruv_ffi_c::DhruvGrahaPositions = zeroed();
     bench_pair(

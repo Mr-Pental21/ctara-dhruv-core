@@ -1622,6 +1622,10 @@ func FullKundaliConfigDefault() FullKundaliConfig {
 			IncludeLagna:        cfg.graha_positions_config.include_lagna != 0,
 			IncludeOuterPlanets: cfg.graha_positions_config.include_outer_planets != 0,
 			IncludeBhava:        cfg.graha_positions_config.include_bhava != 0,
+			BasicStatesConfig: BasicStatesConfig{
+				IncludeBasicStates: cfg.graha_positions_config.basic_states_config.include_basic_states != 0,
+				IncludeSensitivePointDistances: cfg.graha_positions_config.basic_states_config.include_sensitive_point_distances != 0,
+			},
 		},
 		BindusConfig: BindusConfig{
 			IncludeNakshatra: cfg.bindus_config.include_nakshatra != 0,
@@ -1673,6 +1677,12 @@ func cFullKundaliConfig(cfg FullKundaliConfig) C.DhruvFullKundaliConfig {
 		include_lagna:         boolU8(cfg.GrahaPositionsConfig.IncludeLagna),
 		include_outer_planets: boolU8(cfg.GrahaPositionsConfig.IncludeOuterPlanets),
 		include_bhava:         boolU8(cfg.GrahaPositionsConfig.IncludeBhava),
+		basic_states_config: C.DhruvBasicStatesConfig{
+			include_basic_states: boolU8(cfg.GrahaPositionsConfig.BasicStatesConfig.IncludeBasicStates),
+			include_sensitive_point_distances: boolU8(
+				cfg.GrahaPositionsConfig.BasicStatesConfig.IncludeSensitivePointDistances,
+			),
+		},
 	}
 	out.bindus_config = C.DhruvBindusConfig{
 		include_nakshatra: boolU8(cfg.BindusConfig.IncludeNakshatra),
@@ -2379,6 +2389,24 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 	if out.rashi_bhava_cusps_valid != 0 {
 		v := goBhavaResult(out.rashi_bhava_cusps)
 		res.RashiBhavaCusps = &v
+	}
+	if out.bhava_cusp_sensitive_point_distances_valid != 0 {
+		res.BhavaCuspSensitivePointDistances = make([]SensitivePointDistances, 12)
+		for i := 0; i < 12; i++ {
+			res.BhavaCuspSensitivePointDistances[i] = SensitivePointDistances{
+				Mrityubhaga: float64(out.bhava_cusp_sensitive_point_distances[i].mrityubhaga),
+				Pushkarbhaga: float64(out.bhava_cusp_sensitive_point_distances[i].pushkarbhaga),
+			}
+		}
+	}
+	if out.rashi_bhava_cusp_sensitive_point_distances_valid != 0 {
+		res.RashiBhavaCuspSensitivePointDistances = make([]SensitivePointDistances, 12)
+		for i := 0; i < 12; i++ {
+			res.RashiBhavaCuspSensitivePointDistances[i] = SensitivePointDistances{
+				Mrityubhaga: float64(out.rashi_bhava_cusp_sensitive_point_distances[i].mrityubhaga),
+				Pushkarbhaga: float64(out.rashi_bhava_cusp_sensitive_point_distances[i].pushkarbhaga),
+			}
+		}
 	}
 	if out.graha_positions_valid != 0 {
 		v := GrahaPositions{Lagna: goGrahaEntry(out.graha_positions.lagna)}
