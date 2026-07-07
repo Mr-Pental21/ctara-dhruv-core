@@ -17,7 +17,7 @@ fn vimshottari_moon_at_zero() {
     let birth_jd = 2451545.0; // J2000
     let moon_lon = 0.0; // 0° = Ashwini, pad 1, start of nakshatra
 
-    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg);
+    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg, &DashaVariationConfig::default());
     assert_eq!(level0.len(), 9);
 
     // First period should be Ketu (Ashwini → Ketu in Vimshottari)
@@ -53,7 +53,7 @@ fn vimshottari_moon_at_40() {
     let birth_jd = 2451545.0;
     let moon_lon = 40.0;
 
-    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg);
+    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg, &DashaVariationConfig::default());
     assert_eq!(level0.len(), 9);
 
     // Nakshatra index = floor(40 / (360/27)) = floor(40/13.3333) = floor(3.0) = 3
@@ -81,7 +81,7 @@ fn vimshottari_total_span_120y_at_zero() {
     let birth_jd = 2451545.0;
     let moon_lon = 0.0; // At start of nakshatra, balance = full period
 
-    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg);
+    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg, &DashaVariationConfig::default());
     let total_span = level0.last().unwrap().end_jd - level0.first().unwrap().start_jd;
     let expected = 120.0 * 365.25;
 
@@ -98,7 +98,7 @@ fn vimshottari_total_span_partial_balance() {
     let birth_jd = 2451545.0;
     let moon_lon = 123.456; // Mid-nakshatra
 
-    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg);
+    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg, &DashaVariationConfig::default());
     let total_span = level0.last().unwrap().end_jd - level0.first().unwrap().start_jd;
     let max_span = 120.0 * 365.25;
 
@@ -282,7 +282,7 @@ fn verify_nakshatra_system(
     let variation = DashaVariationConfig::default();
 
     // Level 0: correct count of mahadashas
-    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg);
+    let level0 = nakshatra_level0(birth_jd, moon_lon, &cfg, &DashaVariationConfig::default());
     let expected_count = expected_grahas * cycle_count;
     assert_eq!(
         level0.len(),
@@ -317,7 +317,7 @@ fn verify_nakshatra_system(
     // For most systems: entry_period = graha_period, so total = full cycle * cycle_count
     // For Shashtihayani: entry_period = graha_period / nak_count, so total < full
     let nak_start = 5.0 * (360.0 / 27.0); // Ardra start
-    let level0_full = nakshatra_level0(birth_jd, nak_start, &cfg);
+    let level0_full = nakshatra_level0(birth_jd, nak_start, &cfg, &DashaVariationConfig::default());
     let total_full_days: f64 = level0_full.iter().map(|p| p.duration_days()).sum();
     if !cfg.divide_period_by_nakshatra_count {
         let expected_full_years = expected_total_years * cycle_count as f64;
@@ -414,7 +414,7 @@ fn yogini_level0_valid() {
     let cfg = yogini_config();
     let birth_jd = 2451545.0;
     let ardra_start = 5.0 * (360.0 / 27.0);
-    let level0 = yogini_level0(birth_jd, ardra_start, &cfg);
+    let level0 = yogini_level0(birth_jd, ardra_start, &cfg, &DashaVariationConfig::default());
 
     assert_eq!(level0.len(), 8);
     assert_eq!(level0[0].entity, DashaEntity::Yogini(0)); // Mangala
@@ -431,7 +431,7 @@ fn yogini_level0_valid() {
 #[test]
 fn yogini_contiguous() {
     let cfg = yogini_config();
-    let level0 = yogini_level0(2451545.0, 200.0, &cfg);
+    let level0 = yogini_level0(2451545.0, 200.0, &cfg, &DashaVariationConfig::default());
     for i in 1..level0.len() {
         assert!(
             (level0[i].start_jd - level0[i - 1].end_jd).abs() < 1e-10,

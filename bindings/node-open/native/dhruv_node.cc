@@ -556,6 +556,15 @@ bool ReadDashaSelectionConfig(napi_env env, napi_value obj, DhruvDashaSelectionC
     out->yogini_scheme = static_cast<uint8_t>(count);
     if (!GetNamedProperty(env, obj, "useAbhijit", &v) || !GetBool(env, v, &b)) return false;
     out->use_abhijit = b ? 1 : 0;
+    if (!GetOptionalNamedProperty(env, obj, "cycles", &v, &has)) return false;
+    if (has) {
+        if (!GetUint32(env, v, &count)) return false;
+        out->cycles = static_cast<uint8_t>(count);
+    }
+    if (!GetOptionalNamedProperty(env, obj, "minSpanYears", &v, &has)) return false;
+    if (has) {
+        if (!GetDouble(env, v, &out->min_span_years)) return false;
+    }
     if (!GetOptionalNamedProperty(env, obj, "snapshotUtc", &v, &has)) return false;
     if (has) {
         napi_valuetype snapshot_type;
@@ -589,6 +598,16 @@ bool ReadDashaVariationConfig(napi_env env, napi_value obj, DhruvDashaVariationC
         bool value = false;
         if (!GetBool(env, v, &value)) return false;
         out->use_abhijit = value ? 1 : 0;
+    }
+    if (!GetOptionalNamedProperty(env, obj, "cycles", &v, &has)) return false;
+    if (has) {
+        uint32_t value = 0;
+        if (!GetUint32(env, v, &value)) return false;
+        out->cycles = static_cast<uint8_t>(value);
+    }
+    if (!GetOptionalNamedProperty(env, obj, "minSpanYears", &v, &has)) return false;
+    if (has) {
+        if (!GetDouble(env, v, &out->min_span_years)) return false;
     }
     return true;
 }
@@ -1382,6 +1401,8 @@ napi_value WriteDashaVariationConfig(napi_env env, const DhruvDashaVariationConf
     SetNamed(env, obj, "levelMethods", methods);
     SetNamed(env, obj, "yoginiScheme", MakeUint32(env, cfg.yogini_scheme));
     SetNamed(env, obj, "useAbhijit", MakeBool(env, cfg.use_abhijit != 0));
+    SetNamed(env, obj, "cycles", MakeUint32(env, cfg.cycles));
+    SetNamed(env, obj, "minSpanYears", MakeDouble(env, cfg.min_span_years));
     return obj;
 }
 
@@ -6714,6 +6735,8 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, dasha_cfg, "levelMethods", methods);
     SetNamed(env, dasha_cfg, "yoginiScheme", MakeUint32(env, cfg.dasha_config.yogini_scheme));
     SetNamed(env, dasha_cfg, "useAbhijit", MakeBool(env, cfg.dasha_config.use_abhijit != 0));
+    SetNamed(env, dasha_cfg, "cycles", MakeUint32(env, cfg.dasha_config.cycles));
+    SetNamed(env, dasha_cfg, "minSpanYears", MakeDouble(env, cfg.dasha_config.min_span_years));
     if (cfg.dasha_config.snapshot_time.time_kind == DHRUV_DASHA_TIME_UTC) {
         SetNamed(env, dasha_cfg, "snapshotUtc", WriteUtcTime(env, cfg.dasha_config.snapshot_time.utc));
     } else {
@@ -6773,6 +6796,8 @@ napi_value DashaSelectionConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, obj, "levelMethods", methods);
     SetNamed(env, obj, "yoginiScheme", MakeUint32(env, cfg.yogini_scheme));
     SetNamed(env, obj, "useAbhijit", MakeBool(env, cfg.use_abhijit != 0));
+    SetNamed(env, obj, "cycles", MakeUint32(env, cfg.cycles));
+    SetNamed(env, obj, "minSpanYears", MakeDouble(env, cfg.min_span_years));
     if (cfg.snapshot_time.time_kind == DHRUV_DASHA_TIME_UTC) {
         SetNamed(env, obj, "snapshotUtc", WriteUtcTime(env, cfg.snapshot_time.utc));
     } else {
@@ -7259,6 +7284,14 @@ napi_value DashaLevel0(napi_env env, napi_callback_info info) {
         return MakeStatusResult(env, STATUS_INVALID_INPUT);
     }
     request.system = static_cast<uint8_t>(system);
+    request.variation = dhruv_dasha_variation_config_default();
+    bool has_variation = false;
+    if (!GetOptionalNamedProperty(env, args[2], "variationConfig", &v, &has_variation)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    if (has_variation && !ReadDashaVariationConfig(env, v, &request.variation)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
 
     DhruvDashaPeriodListHandle handle = nullptr;
     int32_t status = dhruv_dasha_level0(
@@ -7316,6 +7349,14 @@ napi_value DashaLevel0Entity(napi_env env, napi_callback_info info) {
     request.system = static_cast<uint8_t>(system);
     request.entity_type = static_cast<uint8_t>(entity_type);
     request.entity_index = static_cast<uint8_t>(entity_index);
+    request.variation = dhruv_dasha_variation_config_default();
+    bool has_variation = false;
+    if (!GetOptionalNamedProperty(env, args[2], "variationConfig", &v, &has_variation)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    if (has_variation && !ReadDashaVariationConfig(env, v, &request.variation)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
 
     uint8_t found = 0;
     DhruvDashaPeriod period{};

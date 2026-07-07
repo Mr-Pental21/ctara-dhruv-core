@@ -23,10 +23,17 @@ use super::variation::{DashaVariationConfig, SubPeriodMethod};
 // ── Tier 0: Level-0 (Mahadasha) generation ───────────────────────────
 
 /// Generate all level-0 (mahadasha) periods from birth inputs.
+///
+/// The number of whole-cycle repetitions defaults to the system's
+/// `cycle_count` and can be overridden through `variation.cycles` or
+/// `variation.min_span_years` (see [`DashaVariationConfig`]). Each cycle
+/// repeats the full sequence in the same rotation; `order` runs globally
+/// across cycles, so `cycle = (order - 1) / sequence_len + 1`.
 pub fn nakshatra_level0(
     birth_jd: f64,
     moon_sidereal_lon: f64,
     config: &NakshatraDashaConfig,
+    variation: &DashaVariationConfig,
 ) -> Vec<DashaPeriod> {
     let nak_idx = {
         let lon = crate::util::normalize_360(moon_sidereal_lon);
@@ -39,7 +46,15 @@ pub fn nakshatra_level0(
     let (_nak, balance_days, _frac) = nakshatra_birth_balance(moon_sidereal_lon, entry_period);
 
     let n = config.graha_sequence.len();
-    let total_entries = n * config.cycle_count as usize;
+    // First cycle covers the birth balance plus the remaining n-1 full periods.
+    let first_cycle_span_days =
+        balance_days + (config.total_period_days - config.periods_days[start_graha_idx]);
+    let cycle_count = variation.effective_cycle_count(
+        config.cycle_count,
+        first_cycle_span_days,
+        config.total_period_days,
+    );
+    let total_entries = (n * cycle_count as usize).min(MAX_PERIODS_PER_LEVEL);
     let mut periods = Vec::with_capacity(total_entries);
     let mut cursor = birth_jd;
 
@@ -74,9 +89,10 @@ pub fn nakshatra_level0_entity(
     birth_jd: f64,
     moon_sidereal_lon: f64,
     config: &NakshatraDashaConfig,
+    variation: &DashaVariationConfig,
     entity: DashaEntity,
 ) -> Option<DashaPeriod> {
-    let periods = nakshatra_level0(birth_jd, moon_sidereal_lon, config);
+    let periods = nakshatra_level0(birth_jd, moon_sidereal_lon, config, variation);
     periods.into_iter().find(|p| p.entity == entity)
 }
 
@@ -165,7 +181,7 @@ pub fn nakshatra_hierarchy(
     variation: &DashaVariationConfig,
 ) -> Result<DashaHierarchy, VedicError> {
     let max_level = max_level.min(MAX_DASHA_LEVEL);
-    let level0 = nakshatra_level0(birth_jd, moon_sidereal_lon, config);
+    let level0 = nakshatra_level0(birth_jd, moon_sidereal_lon, config, variation);
     let mut levels: Vec<Vec<DashaPeriod>> = vec![level0];
 
     for depth in 1..=max_level {
@@ -201,7 +217,7 @@ pub fn nakshatra_snapshot(
     variation: &DashaVariationConfig,
 ) -> DashaSnapshot {
     let max_level = max_level.min(MAX_DASHA_LEVEL);
-    let level0 = nakshatra_level0(birth_jd, moon_sidereal_lon, config);
+    let level0 = nakshatra_level0(birth_jd, moon_sidereal_lon, config, variation);
     let mut active_periods: Vec<DashaPeriod> = Vec::with_capacity((max_level + 1) as usize);
 
     // Find active mahadasha
@@ -250,7 +266,7 @@ mod tests {
         // Moon at 0 deg (Ashwini start) → Ketu mahadasha, full 7y, no balance deduction
         let cfg = vimshottari_config();
         let birth_jd = 2451545.0; // J2000
-        let periods = nakshatra_level0(birth_jd, 0.0, &cfg);
+        let periods = nakshatra_level0(birth_jd, 0.0, &cfg, &DashaVariationConfig::default());
 
         assert_eq!(periods.len(), 9);
         assert_eq!(periods[0].entity, DashaEntity::Graha(Graha::Ketu));
@@ -268,7 +284,7 @@ mod tests {
         // Moon at 40 deg = start of Rohini → Chandra mahadasha with full balance
         let cfg = vimshottari_config();
         let birth_jd = 2451545.0;
-        let periods = nakshatra_level0(birth_jd, 40.0, &cfg);
+        let periods = nakshatra_level0(birth_jd, 40.0, &cfg, &DashaVariationConfig::default());
 
         assert_eq!(periods[0].entity, DashaEntity::Graha(Graha::Chandra));
         // Rohini starts at exactly 40.0 deg, so full 10y balance
@@ -282,7 +298,7 @@ mod tests {
         let cfg = vimshottari_config();
         let birth_jd = 2451545.0;
         let mid_rohini = 40.0 + crate::nakshatra::NAKSHATRA_SPAN_27 / 2.0;
-        let periods = nakshatra_level0(birth_jd, mid_rohini, &cfg);
+        let periods = nakshatra_level0(birth_jd, mid_rohini, &cfg, &DashaVariationConfig::default());
 
         assert_eq!(periods[0].entity, DashaEntity::Graha(Graha::Chandra));
         let chandra_years = periods[0].duration_days() / DAYS_PER_YEAR;
@@ -292,7 +308,7 @@ mod tests {
     #[test]
     fn vimshottari_adjacent_periods_no_gaps() {
         let cfg = vimshottari_config();
-        let periods = nakshatra_level0(2451545.0, 100.0, &cfg);
+        let periods = nakshatra_level0(2451545.0, 100.0, &cfg, &DashaVariationConfig::default());
         for i in 1..periods.len() {
             assert!(
                 (periods[i].start_jd - periods[i - 1].end_jd).abs() < 1e-10,
@@ -306,7 +322,7 @@ mod tests {
     #[test]
     fn vimshottari_children_count() {
         let cfg = vimshottari_config();
-        let periods = nakshatra_level0(2451545.0, 0.0, &cfg);
+        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &DashaVariationConfig::default());
         let children =
             nakshatra_children(&periods[0], &cfg, SubPeriodMethod::ProportionalFromParent);
         assert_eq!(children.len(), 9);
@@ -317,7 +333,7 @@ mod tests {
     #[test]
     fn vimshottari_children_sum_to_parent() {
         let cfg = vimshottari_config();
-        let periods = nakshatra_level0(2451545.0, 0.0, &cfg);
+        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &DashaVariationConfig::default());
         let parent = &periods[0];
         let children = nakshatra_children(parent, &cfg, SubPeriodMethod::ProportionalFromParent);
 
@@ -386,10 +402,86 @@ mod tests {
     fn vimshottari_level0_entity_lookup() {
         let cfg = vimshottari_config();
         let birth_jd = 2451545.0;
-        let result = nakshatra_level0_entity(birth_jd, 0.0, &cfg, DashaEntity::Graha(Graha::Ketu));
+        let result = nakshatra_level0_entity(
+            birth_jd,
+            0.0,
+            &cfg,
+            &DashaVariationConfig::default(),
+            DashaEntity::Graha(Graha::Ketu),
+        );
         assert!(result.is_some());
         let period = result.unwrap();
         assert_eq!(period.entity, DashaEntity::Graha(Graha::Ketu));
+    }
+
+    #[test]
+    fn vimshottari_explicit_cycles() {
+        let cfg = vimshottari_config();
+        let var = DashaVariationConfig {
+            cycles: Some(2),
+            ..DashaVariationConfig::default()
+        };
+        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &var);
+
+        assert_eq!(periods.len(), 18);
+        // Second cycle repeats the same rotation with full periods.
+        assert_eq!(periods[9].entity, periods[0].entity);
+        assert_eq!(periods[17].entity, periods[8].entity);
+        // Orders are global and contiguous.
+        assert_eq!(periods[17].order, 18);
+        // No gaps across the cycle boundary.
+        assert!((periods[9].start_jd - periods[8].end_jd).abs() < 1e-10);
+        // Second-cycle first entry is the full period (7y Ketu), not the balance.
+        let years = periods[9].duration_days() / DAYS_PER_YEAR;
+        assert!((years - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn vimshottari_min_span_years() {
+        let cfg = vimshottari_config();
+        // Moon mid-Rohini: balance cuts the first cycle short of 120y, so
+        // 200y target needs 2 cycles.
+        let mid_rohini = 40.0 + crate::nakshatra::NAKSHATRA_SPAN_27 / 2.0;
+        let var = DashaVariationConfig {
+            min_span_years: Some(200.0),
+            ..DashaVariationConfig::default()
+        };
+        let periods = nakshatra_level0(2451545.0, mid_rohini, &cfg, &var);
+
+        assert_eq!(periods.len(), 18);
+        let birth_jd = 2451545.0;
+        let span_years = (periods.last().unwrap().end_jd - birth_jd) / DAYS_PER_YEAR;
+        assert!(span_years >= 200.0, "span {span_years} should cover target");
+    }
+
+    #[test]
+    fn vimshottari_min_span_within_default_is_unchanged() {
+        let cfg = vimshottari_config();
+        let var = DashaVariationConfig {
+            min_span_years: Some(100.0),
+            ..DashaVariationConfig::default()
+        };
+        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &var);
+        // 120y first cycle already covers 100y.
+        assert_eq!(periods.len(), 9);
+    }
+
+    #[test]
+    fn cycles_propagate_to_hierarchy_and_snapshot() {
+        let cfg = vimshottari_config();
+        let var = DashaVariationConfig {
+            cycles: Some(2),
+            ..DashaVariationConfig::default()
+        };
+        let h = nakshatra_hierarchy(2451545.0, 0.0, &cfg, 1, &var).unwrap();
+        assert_eq!(h.levels[0].len(), 18);
+        assert_eq!(h.levels[1].len(), 162);
+
+        // Snapshot inside the second cycle finds active periods.
+        let query_jd = 2451545.0 + 130.0 * DAYS_PER_YEAR;
+        let snap = nakshatra_snapshot(2451545.0, 0.0, &cfg, query_jd, 1, &var);
+        assert_eq!(snap.periods.len(), 2);
+        assert!(snap.periods[0].order > 9, "active mahadasha is in cycle 2");
     }
 
     #[test]

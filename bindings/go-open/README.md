@@ -86,6 +86,16 @@ symbols from `dhruv.h` (ABI v72).
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
 
+`DashaVariationConfig` and `DashaSelectionConfig` support level-0 cycle
+repetition through `Cycles` (explicit whole-cycle count, 0 = system default)
+and `MinSpanYears` (repeat whole cycles until level-0 coverage from birth
+reaches at least that many years; the final cycle completes past the target,
+0 disables). `Cycles` wins when both are set. These apply to nakshatra-based
+and Yogini dasha systems only; other systems ignore them. The level-0 requests
+(`DashaLevel0Request`, `DashaLevel0EntityRequest`) now accept a `Variation`
+like the hierarchy/children requests. For a repeated entry, derive its cycle
+as `(Order-1)/sequenceLen + 1`.
+
 The public `dhruv` package includes wrappers for:
 
 - engine/config/LSK/EOP lifecycle

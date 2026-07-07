@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       73
+#define DHRUV_API_VERSION       74
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -1547,6 +1547,12 @@ typedef struct {
     uint8_t level_methods[5];
     uint8_t yogini_scheme;
     uint8_t use_abhijit;
+    /* Level-0 whole-cycle repetition count (0 = system default).
+       Nakshatra-based and Yogini systems only; wins over min_span_years. */
+    uint8_t cycles;
+    /* Repeat level-0 whole cycles until coverage from birth reaches this
+       many years (0.0 or negative = disabled). */
+    double  min_span_years;
     DhruvDashaSnapshotTime snapshot_time;
 } DhruvDashaSelectionConfig;
 
@@ -1554,6 +1560,12 @@ typedef struct {
     uint8_t level_methods[5];
     uint8_t yogini_scheme;
     uint8_t use_abhijit;
+    /* Level-0 whole-cycle repetition count (0 = system default).
+       Nakshatra-based and Yogini systems only; wins over min_span_years. */
+    uint8_t cycles;
+    /* Repeat level-0 whole cycles until coverage from birth reaches this
+       many years (0.0 or negative = disabled). */
+    double  min_span_years;
 } DhruvDashaVariationConfig;
 
 typedef struct {
@@ -1602,15 +1614,17 @@ typedef struct {
 } DhruvDashaSnapshotRequest;
 
 typedef struct {
-    DhruvDashaBirthContext birth;
-    uint8_t                system;
+    DhruvDashaBirthContext   birth;
+    uint8_t                  system;
+    DhruvDashaVariationConfig variation;
 } DhruvDashaLevel0Request;
 
 typedef struct {
-    DhruvDashaBirthContext birth;
-    uint8_t                system;
-    uint8_t                entity_type;
-    uint8_t                entity_index;
+    DhruvDashaBirthContext   birth;
+    uint8_t                  system;
+    uint8_t                  entity_type;
+    uint8_t                  entity_index;
+    DhruvDashaVariationConfig variation;
 } DhruvDashaLevel0EntityRequest;
 
 typedef struct {

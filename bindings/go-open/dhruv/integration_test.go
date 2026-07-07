@@ -635,6 +635,16 @@ func TestLowTierDashaWrappers(t *testing.T) {
 		t.Fatalf("unexpected level0 entity lookup: found=%v same=%+v first=%+v", found, same, first)
 	}
 
+	cycleVariation := DashaVariationConfigDefault()
+	cycleVariation.Cycles = 2
+	level0Cycles, err := eng.DashaLevel0(eop, DashaLevel0Request{Birth: birth, System: 0, Variation: cycleVariation})
+	if err != nil {
+		t.Fatalf("DashaLevel0 with cycles: %v", err)
+	}
+	if len(level0Cycles) != 2*len(level0) {
+		t.Fatalf("expected %d level0 periods with cycles=2, got=%d", 2*len(level0), len(level0Cycles))
+	}
+
 	variation := DashaVariationConfigDefault()
 	children, err := eng.DashaChildren(eop, DashaChildrenRequest{
 		Birth:     birth,

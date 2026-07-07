@@ -65,6 +65,24 @@ file size, and modified time match.
 Dasha periods exposed by the Python wrapper now include `entity_name`, the
 exact canonical Sanskrit entity name alongside the numeric entity fields.
 
+Dasha `variation_config` dicts (accepted by `dasha_hierarchy`,
+`dasha_snapshot`, `dasha_level0`, `dasha_level0_entity`, `dasha_children`,
+`dasha_child_period`, and `dasha_complete_level`) support level-0 cycle
+repetition:
+
+- `cycles`: explicit level-0 whole-cycle repetition count. `0` (default) means
+  the system default of one cycle. Wins over `min_span_years`.
+- `min_span_years`: repeat whole cycles until level-0 coverage from birth
+  reaches at least this many years; the final cycle completes past the target.
+  `0.0` or negative (default) disables this.
+
+Both options apply to nakshatra-based and Yogini dasha systems only; other
+systems ignore them. The `order` field of returned periods is global across
+cycles, so the cycle number of an entry is
+`(order - 1) // sequence_len + 1`. The same two fields exist on the CFFI
+dasha selection config used for embedded full-kundali dashas
+(`config.dasha_config.cycles`, `config.dasha_config.min_span_years`).
+
 The Python wrapper now also exposes `ctara_dhruv.gochar_events(...)` for grouped
 Tajaka, Tithi Pravesha, and named transit-aspect event windows around a query
 time. `transit_body_codes` accepts physical-body codes such as `499`, `599`,

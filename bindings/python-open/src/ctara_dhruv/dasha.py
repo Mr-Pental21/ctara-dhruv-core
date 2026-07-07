@@ -164,6 +164,8 @@ def _make_variation_config(variation_config):
     cfg.level_methods = default.level_methods
     cfg.yogini_scheme = default.yogini_scheme
     cfg.use_abhijit = default.use_abhijit
+    cfg.cycles = default.cycles
+    cfg.min_span_years = default.min_span_years
     for idx, method in enumerate(variation_config.get("level_methods", [])):
         if idx >= 5:
             break
@@ -172,6 +174,10 @@ def _make_variation_config(variation_config):
         cfg.yogini_scheme = variation_config["yogini_scheme"]
     if "use_abhijit" in variation_config:
         cfg.use_abhijit = 1 if variation_config["use_abhijit"] else 0
+    if "cycles" in variation_config:
+        cfg.cycles = variation_config["cycles"]
+    if "min_span_years" in variation_config:
+        cfg.min_span_years = variation_config["min_span_years"]
     return cfg
 
 
@@ -351,6 +357,14 @@ def dasha_hierarchy(
         use_nutation: 1=yes, 0=no.
         bhava_config: Optional bhava config dict.
         riseset_config: Optional riseset config dict.
+        variation_config: Optional variation dict (``level_methods``,
+            ``yogini_scheme``, ``use_abhijit``, ``cycles``,
+            ``min_span_years``). ``cycles`` sets an explicit level-0
+            whole-cycle repetition count (0 = system default, wins over
+            ``min_span_years``); ``min_span_years`` repeats whole cycles
+            until level-0 coverage from birth reaches at least that many
+            years (0.0 or negative = disabled). Both apply to
+            nakshatra-based and Yogini systems only.
 
     Returns:
         DashaHierarchy with all periods extracted.
@@ -453,6 +467,14 @@ def dasha_snapshot(
         use_nutation: 1=yes, 0=no.
         bhava_config: Optional bhava config dict.
         riseset_config: Optional riseset config dict.
+        variation_config: Optional variation dict (``level_methods``,
+            ``yogini_scheme``, ``use_abhijit``, ``cycles``,
+            ``min_span_years``). ``cycles`` sets an explicit level-0
+            whole-cycle repetition count (0 = system default, wins over
+            ``min_span_years``); ``min_span_years`` repeats whole cycles
+            until level-0 coverage from birth reaches at least that many
+            years (0.0 or negative = disabled). Both apply to
+            nakshatra-based and Yogini systems only.
 
     Returns:
         DashaSnapshot with active periods.
@@ -508,6 +530,7 @@ def dasha_level0(
     use_nutation=1,
     bhava_config=None,
     riseset_config=None,
+    variation_config=None,
     *,
     birth_jd=None,
     inputs=None,
@@ -524,6 +547,7 @@ def dasha_level0(
         inputs,
     )[0]
     request.system = system
+    request.variation = _make_variation_config(variation_config)[0]
     handle = ffi.new("void **")
     check(
         lib.dhruv_dasha_level0(
@@ -549,6 +573,7 @@ def dasha_level0_entity(
     use_nutation=1,
     bhava_config=None,
     riseset_config=None,
+    variation_config=None,
     *,
     birth_jd=None,
     inputs=None,
@@ -570,6 +595,7 @@ def dasha_level0_entity(
     request.system = system
     request.entity_type = entity_type
     request.entity_index = entity_index
+    request.variation = _make_variation_config(variation_config)[0]
     found = ffi.new("uint8_t *")
     out = ffi.new("DhruvDashaPeriod *")
     check(

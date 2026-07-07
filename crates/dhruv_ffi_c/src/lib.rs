@@ -65,7 +65,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 73;
+pub const DHRUV_API_VERSION: u32 = 74;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -13509,6 +13509,7 @@ pub struct DhruvDashaSnapshotRequest {
 pub struct DhruvDashaLevel0Request {
     pub birth: DhruvDashaBirthContext,
     pub system: u8,
+    pub variation: DhruvDashaVariationConfig,
 }
 
 #[repr(C)]
@@ -13518,6 +13519,7 @@ pub struct DhruvDashaLevel0EntityRequest {
     pub system: u8,
     pub entity_type: u8,
     pub entity_index: u8,
+    pub variation: DhruvDashaVariationConfig,
 }
 
 #[repr(C)]
@@ -13835,6 +13837,14 @@ pub struct DhruvDashaVariationConfig {
     pub yogini_scheme: u8,
     /// For Ashtottari: use Abhijit in birth-balance detection.
     pub use_abhijit: u8,
+    /// Level-0 whole-cycle repetition count (0 = system default).
+    /// Applies to nakshatra-based and Yogini systems; wins over
+    /// `min_span_years` when both are set.
+    pub cycles: u8,
+    /// Repeat level-0 whole cycles until coverage from birth reaches this
+    /// many years (0.0 or negative = disabled). Applies to nakshatra-based
+    /// and Yogini systems.
+    pub min_span_years: f64,
 }
 
 fn dasha_variation_from_ffi(
@@ -13852,10 +13862,23 @@ fn dasha_variation_from_ffi(
     }
     let yogini_scheme = dhruv_vedic_base::dasha::YoginiScheme::from_u8(cfg.yogini_scheme)
         .ok_or(DhruvStatus::InvalidSearchConfig)?;
+    if !cfg.min_span_years.is_finite() || cfg.min_span_years < 0.0 {
+        return Err(DhruvStatus::InvalidSearchConfig);
+    }
     Ok(dhruv_vedic_base::dasha::DashaVariationConfig {
         level_methods,
         yogini_scheme,
         use_abhijit: cfg.use_abhijit != 0,
+        cycles: if cfg.cycles == 0 {
+            None
+        } else {
+            Some(cfg.cycles)
+        },
+        min_span_years: if cfg.min_span_years > 0.0 {
+            Some(cfg.min_span_years)
+        } else {
+            None
+        },
     })
 }
 
@@ -13866,6 +13889,8 @@ pub extern "C" fn dhruv_dasha_variation_config_default() -> DhruvDashaVariationC
         level_methods: [0xFF; 5],
         yogini_scheme: 0,
         use_abhijit: 1,
+        cycles: 0,
+        min_span_years: 0.0,
     }
 }
 
@@ -13900,6 +13925,14 @@ pub struct DhruvDashaSelectionConfig {
     pub yogini_scheme: u8,
     /// Use Abhijit for Ashtottari (1=yes, 0=no).
     pub use_abhijit: u8,
+    /// Level-0 whole-cycle repetition count (0 = system default).
+    /// Applies to nakshatra-based and Yogini systems; wins over
+    /// `min_span_years` when both are set.
+    pub cycles: u8,
+    /// Repeat level-0 whole cycles until coverage from birth reaches this
+    /// many years (0.0 or negative = disabled). Applies to nakshatra-based
+    /// and Yogini systems.
+    pub min_span_years: f64,
     /// Optional discriminated snapshot-time selector.
     pub snapshot_time: DhruvDashaSnapshotTime,
 }
@@ -13930,6 +13963,8 @@ fn dasha_selection_from_ffi(
         level_methods: c.level_methods,
         yogini_scheme: c.yogini_scheme,
         use_abhijit: c.use_abhijit,
+        cycles: c.cycles,
+        min_span_years: c.min_span_years,
         snapshot_time: dasha_snapshot_time_from_ffi(&c.snapshot_time)?,
     })
 }
@@ -13947,6 +13982,8 @@ pub extern "C" fn dhruv_dasha_selection_config_default() -> DhruvDashaSelectionC
         level_methods: [0xFF; 5],
         yogini_scheme: 0,
         use_abhijit: 1,
+        cycles: 0,
+        min_span_years: 0.0,
         snapshot_time: DhruvDashaSnapshotTime {
             time_kind: DHRUV_DASHA_TIME_NONE,
             jd_utc: 0.0,
@@ -14283,13 +14320,17 @@ pub unsafe extern "C" fn dhruv_dasha_level0(
         Some(value) => value,
         None => return DhruvStatus::InvalidInput,
     };
+    let variation = match dasha_variation_from_ffi(&request.variation) {
+        Ok(value) => value,
+        Err(status) => return status,
+    };
     let birth = match resolve_dasha_birth_context(engine, eop, request.birth, system) {
         Ok(value) => value,
         Err(status) => return status,
     };
     let inputs = birth.inputs.borrowed();
 
-    match dasha_level0_with_inputs(birth.birth_jd, system, &inputs) {
+    match dasha_level0_with_inputs(birth.birth_jd, system, &variation, &inputs) {
         Ok(periods) => {
             let boxed = Box::new(periods);
             unsafe { *out = Box::into_raw(boxed) as DhruvDashaPeriodListHandle };
@@ -14325,13 +14366,17 @@ pub unsafe extern "C" fn dhruv_dasha_level0_entity(
         Ok(value) => value,
         Err(status) => return status,
     };
+    let variation = match dasha_variation_from_ffi(&request.variation) {
+        Ok(value) => value,
+        Err(status) => return status,
+    };
     let birth = match resolve_dasha_birth_context(engine, eop, request.birth, system) {
         Ok(value) => value,
         Err(status) => return status,
     };
     let inputs = birth.inputs.borrowed();
 
-    match dasha_level0_entity_with_inputs(birth.birth_jd, system, entity, &inputs) {
+    match dasha_level0_entity_with_inputs(birth.birth_jd, system, entity, &variation, &inputs) {
         Ok(Some(period)) => {
             unsafe {
                 *out_found = 1;

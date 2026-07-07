@@ -1179,6 +1179,15 @@ type DashaSelectionConfig struct {
 	LevelMethods [5]uint8
 	YoginiScheme uint8
 	UseAbhijit   bool
+	// Cycles is the explicit level-0 whole-cycle repetition count
+	// (0 = system default). Applies to nakshatra-based and Yogini dasha
+	// systems only; wins over MinSpanYears when non-zero.
+	Cycles uint8
+	// MinSpanYears repeats level-0 whole cycles until coverage from birth
+	// reaches at least this many years; the final cycle completes past the
+	// target (0.0 or negative = disabled). Nakshatra-based and Yogini
+	// systems only.
+	MinSpanYears float64
 	SnapshotTime *DashaSnapshotTime
 }
 
@@ -1192,6 +1201,15 @@ type DashaVariationConfig struct {
 	LevelMethods [5]uint8
 	YoginiScheme uint8
 	UseAbhijit   bool
+	// Cycles is the explicit level-0 whole-cycle repetition count
+	// (0 = system default). Applies to nakshatra-based and Yogini dasha
+	// systems only; wins over MinSpanYears when non-zero.
+	Cycles uint8
+	// MinSpanYears repeats level-0 whole cycles until coverage from birth
+	// reaches at least this many years; the final cycle completes past the
+	// target (0.0 or negative = disabled). Nakshatra-based and Yogini
+	// systems only.
+	MinSpanYears float64
 }
 
 type RashiDashaInputs struct {
@@ -1240,8 +1258,9 @@ type DashaSnapshotRequest struct {
 }
 
 type DashaLevel0Request struct {
-	Birth  DashaBirthContext
-	System uint8
+	Birth     DashaBirthContext
+	System    uint8
+	Variation DashaVariationConfig
 }
 
 type DashaLevel0EntityRequest struct {
@@ -1249,6 +1268,7 @@ type DashaLevel0EntityRequest struct {
 	System      uint8
 	EntityType  uint8
 	EntityIndex uint8
+	Variation   DashaVariationConfig
 }
 
 type DashaChildrenRequest struct {

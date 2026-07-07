@@ -505,6 +505,8 @@ struct DashaSelectionConfigInput {
     systems: Option<Vec<EnumInput>>,
     max_level: Option<u8>,
     max_levels: Option<Vec<u8>>,
+    cycles: Option<u8>,
+    min_span_years: Option<f64>,
     snapshot_utc: Option<UtcInput>,
 }
 
@@ -519,6 +521,8 @@ struct DashaVariationInput {
     level_methods: Option<Vec<EnumInput>>,
     yogini_scheme: Option<EnumInput>,
     use_abhijit: Option<bool>,
+    cycles: Option<u8>,
+    min_span_years: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2111,6 +2115,12 @@ fn to_full_kundali_config(
             if let Some(max_level) = dasha_config.max_level {
                 config.dasha_config.max_level = max_level;
             }
+            if let Some(cycles) = dasha_config.cycles {
+                config.dasha_config.cycles = cycles;
+            }
+            if let Some(min_span_years) = dasha_config.min_span_years {
+                config.dasha_config.min_span_years = min_span_years;
+            }
             if let Some(max_levels) = dasha_config.max_levels.as_ref() {
                 if max_levels.len() > config.dasha_config.max_levels.len() {
                     return Err(error_payload(
@@ -2155,6 +2165,21 @@ fn to_dasha_variation(input: Option<&DashaVariationInput>) -> Result<DashaVariat
     if let Some(input) = input {
         if let Some(use_abhijit) = input.use_abhijit {
             config.use_abhijit = use_abhijit;
+        }
+        if let Some(cycles) = input.cycles {
+            if cycles == 0 {
+                return Err(error_payload("invalid_request", "cycles must be >= 1"));
+            }
+            config.cycles = Some(cycles);
+        }
+        if let Some(min_span_years) = input.min_span_years {
+            if !min_span_years.is_finite() || min_span_years <= 0.0 {
+                return Err(error_payload(
+                    "invalid_request",
+                    "min_span_years must be a positive number",
+                ));
+            }
+            config.min_span_years = Some(min_span_years);
         }
         if let Some(scheme) = input.yogini_scheme.as_ref() {
             config.yogini_scheme = match scheme {
@@ -4539,7 +4564,7 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
             "level0" => {
                 if let Some(inputs) = raw_inputs.as_ref() {
                     let inputs = inputs.borrowed();
-                    dasha_level0_with_inputs(birth_jd, system, &inputs)
+                    dasha_level0_with_inputs(birth_jd, system, &variation, &inputs)
                         .map(|periods| {
                             json!(
                                 periods
@@ -4570,6 +4595,7 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                         &bhava_config,
                         &riseset_config,
                         &sankranti_config,
+                        &variation,
                     )
                     .map(|periods| {
                         json!(
@@ -4591,7 +4617,7 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                 )?;
                 if let Some(inputs) = raw_inputs.as_ref() {
                     let inputs = inputs.borrowed();
-                    dasha_level0_entity_with_inputs(birth_jd, system, entity, &inputs)
+                    dasha_level0_entity_with_inputs(birth_jd, system, entity, &variation, &inputs)
                         .map(|period| period.map(dasha_period_json).unwrap_or(Value::Null))
                         .map_err(|err| map_error("search_error", err))
                 } else {
@@ -4616,6 +4642,7 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                         &bhava_config,
                         &riseset_config,
                         &sankranti_config,
+                        &variation,
                     )
                     .map(|period| period.map(dasha_period_json).unwrap_or(Value::Null))
                     .map_err(|err| map_error("search_error", err))
@@ -5776,6 +5803,8 @@ mod tests {
                     systems: Some(too_many),
                     max_level: None,
                     max_levels: None,
+                    cycles: None,
+                    min_span_years: None,
                     snapshot_utc: None,
                 }),
             }),
@@ -5827,6 +5856,8 @@ mod tests {
                     systems: None,
                     max_level: None,
                     max_levels: Some(too_many),
+                    cycles: None,
+                    min_span_years: None,
                     snapshot_utc: None,
                 }),
             }),

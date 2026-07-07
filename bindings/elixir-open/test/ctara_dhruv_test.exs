@@ -99,6 +99,34 @@ defmodule CtaraDhruvTest do
           assert length(level0) > 0
           first = hd(level0)
 
+          assert {:ok, level0_two_cycles} =
+                   Dasha.level0(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     variation: %{cycles: 2}
+                   })
+
+          assert length(level0_two_cycles) == 2 * length(level0)
+
+          assert {:ok, level0_span} =
+                   Dasha.level0(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     variation: %{min_span_years: 200.0}
+                   })
+
+          assert length(level0_span) == 2 * length(level0)
+
+          assert {:error, %CtaraDhruv.Error{kind: :invalid_request}} =
+                   Dasha.level0(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     system: :vimshottari,
+                     variation: %{cycles: 0}
+                   })
+
           assert {:ok, level0_entity} =
                    Dasha.level0_entity(engine, %{
                      birth_utc: utc,

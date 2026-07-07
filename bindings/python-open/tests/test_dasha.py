@@ -9,6 +9,35 @@ BIRTH_UTC = (2024, 1, 15, 6, 0, 0.0)
 BIRTH_LOC = (28.6139, 77.2090)
 
 
+class TestDashaVariationConfigStruct:
+    def test_cycles_and_min_span_years_fields(self):
+        """Variation/selection configs expose level-0 cycle repetition fields."""
+        try:
+            from ctara_dhruv.dasha import (
+                _make_variation_config,
+                dasha_selection_config_default,
+                dasha_variation_config_default,
+            )
+        except Exception:
+            pytest.skip("native library not available")
+
+        default = dasha_variation_config_default()
+        assert default.cycles == 0
+        assert default.min_span_years == 0.0
+
+        selection = dasha_selection_config_default()
+        assert selection.cycles == 0
+        assert selection.min_span_years == 0.0
+
+        cfg = _make_variation_config({"cycles": 3, "min_span_years": 250.0})
+        assert cfg.cycles == 3
+        assert cfg.min_span_years == 250.0
+
+        cfg = _make_variation_config({"use_abhijit": True})
+        assert cfg.cycles == default.cycles
+        assert cfg.min_span_years == default.min_span_years
+
+
 @skip_no_kernels
 @skip_no_eop
 class TestDashaHierarchy:
@@ -156,6 +185,44 @@ class TestLowTierDasha:
             system=0,
         )
         assert len(complete) == len(level0) * len(children)
+
+    def test_level0_cycle_repetition(self, engine_handles):
+        """cycles=2 should repeat the Vimshottari level-0 sequence twice."""
+        from ctara_dhruv.dasha import dasha_level0
+        from ctara_dhruv.engine import engine, lsk, eop
+
+        repeated = dasha_level0(
+            engine(), lsk(), eop(),
+            jd_utc_birth=BIRTH_UTC,
+            location=BIRTH_LOC,
+            system=0,
+            variation_config={"cycles": 2},
+        )
+        assert len(repeated) == 18
+        # Second cycle repeats the same entity sequence, contiguously.
+        for i in range(9):
+            assert repeated[i + 9].entity_index == repeated[i].entity_index
+        for i in range(len(repeated) - 1):
+            assert abs(repeated[i].end_jd - repeated[i + 1].start_jd) < 0.01
+        # Cycle number derives from the global order field.
+        assert (repeated[0].order - 1) // 9 + 1 == 1
+        assert (repeated[17].order - 1) // 9 + 1 == 2
+
+    def test_level0_min_span_years(self, engine_handles):
+        """min_span_years should extend level-0 coverage past the target."""
+        from ctara_dhruv.dasha import dasha_level0
+        from ctara_dhruv.engine import engine, lsk, eop
+
+        periods = dasha_level0(
+            engine(), lsk(), eop(),
+            jd_utc_birth=BIRTH_UTC,
+            location=BIRTH_LOC,
+            system=0,
+            variation_config={"min_span_years": 150.0},
+        )
+        # Vimshottari cycle is 120y, so 150y coverage needs two whole cycles.
+        assert len(periods) == 18
+        assert (periods[-1].end_jd - periods[0].start_jd) / 365.25 >= 150.0
 
 
 @skip_no_kernels

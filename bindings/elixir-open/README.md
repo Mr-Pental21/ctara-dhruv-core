@@ -212,6 +212,25 @@ Standalone bala request maps also accept `:amsha_selection` with the same
 internally by the call. Variation codes remain numeric on input, but each code
 is now interpreted in the namespace of that request's amsha code.
 
+## Dasha Cycle Options
+
+Standalone dasha request maps accept an optional `:variation` map with
+`:level_methods`, `:yogini_scheme`, `:use_abhijit`, `:cycles`, and
+`:min_span_years`. `full_kundali_config[:dasha_config]` accepts the same
+`:cycles` and `:min_span_years` keys alongside `:systems`, `:max_level`,
+`:max_levels`, and `:snapshot_utc`.
+
+- `:cycles` (integer >= 1): explicit level-0 whole-cycle repetition count.
+  When omitted, the system default applies. Wins over `:min_span_years` when
+  both are set.
+- `:min_span_years` (positive number): repeat whole mahadasha cycles until
+  level-0 coverage from birth reaches at least that many years; the final
+  cycle completes past the target.
+
+Both options apply to nakshatra-based and Yogini dasha systems only; other
+systems ignore them. A period's cycle number is
+`(order - 1) / sequence_len + 1`, where `order` is global across cycles.
+
 ## Coverage
 
 Public modules included in this wrapper:

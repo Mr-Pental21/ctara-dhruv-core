@@ -936,6 +936,14 @@ struct KundaliArgs {
     /// Max dasha hierarchy depth (0-4, default 2)
     #[arg(long, default_value = "2")]
     dasha_max_level: u8,
+    /// Level-0 whole-cycle repetition count (>=1). Applies to
+    /// nakshatra-based and Yogini systems; wins over --dasha-min-span-years.
+    #[arg(long)]
+    dasha_cycles: Option<u8>,
+    /// Repeat level-0 whole cycles until coverage from birth reaches this
+    /// many years. Applies to nakshatra-based and Yogini systems.
+    #[arg(long)]
+    dasha_min_span_years: Option<f64>,
     /// UTC datetime for dasha snapshot query
     #[arg(long)]
     dasha_snapshot_date: Option<String>,
@@ -2190,6 +2198,14 @@ struct DashaArgs {
     /// Maximum dasha depth (0-4, default 2)
     #[arg(long, default_value = "2")]
     max_level: u8,
+    /// Level-0 whole-cycle repetition count (>=1). Applies to
+    /// nakshatra-based and Yogini systems; wins over --min-span-years.
+    #[arg(long)]
+    cycles: Option<u8>,
+    /// Repeat level-0 whole cycles until coverage from birth reaches this
+    /// many years. Applies to nakshatra-based and Yogini systems.
+    #[arg(long)]
+    min_span_years: Option<f64>,
     /// Parent level index for children/child-period/complete-level (0-4)
     #[arg(long)]
     parent_level: Option<u8>,
@@ -5238,7 +5254,7 @@ fn main() {
                 dhruv_search::DashaSnapshotTime::Utc(snap_utc)
             });
 
-            let full_config = build_kundali_config(
+            let mut full_config = build_kundali_config(
                 &resolved,
                 args.dasha_systems.as_deref(),
                 args.dasha_max_level,
@@ -5252,6 +5268,20 @@ fn main() {
                 args.include_basic_states,
                 args.include_sensitive_point_distances,
             );
+            if let Some(cycles) = args.dasha_cycles {
+                if cycles == 0 {
+                    eprintln!("--dasha-cycles must be >= 1");
+                    std::process::exit(1);
+                }
+                full_config.dasha_config.cycles = cycles;
+            }
+            if let Some(min_span_years) = args.dasha_min_span_years {
+                if !min_span_years.is_finite() || min_span_years <= 0.0 {
+                    eprintln!("--dasha-min-span-years must be a positive number");
+                    std::process::exit(1);
+                }
+                full_config.dasha_config.min_span_years = min_span_years;
+            }
 
             let result = dhruv_search::full_kundali_for_date(
                 &engine,
@@ -8853,7 +8883,21 @@ fn main() {
             let rs_config = RiseSetConfig::default();
             let aya_config = SankrantiConfig::new(aya_system, args.nutation);
             let dasha_system = parse_dasha_system(&args.system);
-            let variation = dhruv_vedic_base::dasha::DashaVariationConfig::default();
+            let mut variation = dhruv_vedic_base::dasha::DashaVariationConfig::default();
+            if let Some(cycles) = args.cycles {
+                if cycles == 0 {
+                    eprintln!("--cycles must be >= 1");
+                    std::process::exit(1);
+                }
+                variation.cycles = Some(cycles);
+            }
+            if let Some(min_span_years) = args.min_span_years {
+                if !min_span_years.is_finite() || min_span_years <= 0.0 {
+                    eprintln!("--min-span-years must be a positive number");
+                    std::process::exit(1);
+                }
+                variation.min_span_years = Some(min_span_years);
+            }
             let clamped_level = args.max_level.min(dhruv_vedic_base::dasha::MAX_DASHA_LEVEL);
             let mode = args.mode.as_deref().unwrap_or(
                 if args.query_date.is_some() || args.query_jd.is_some() {
@@ -9061,7 +9105,12 @@ fn main() {
                 }
                 "level0" => {
                     let periods = if raw_inputs_requested {
-                        dhruv_search::dasha_level0_with_inputs(birth_jd, dasha_system, &raw_inputs)
+                        dhruv_search::dasha_level0_with_inputs(
+                            birth_jd,
+                            dasha_system,
+                            &variation,
+                            &raw_inputs,
+                        )
                     } else {
                         let birth_utc = birth_utc.as_ref().unwrap_or_else(|| {
                             eprintln!("--birth-date is required for --mode level0");
@@ -9080,6 +9129,7 @@ fn main() {
                             &bhava_config,
                             &rs_config,
                             &aya_config,
+                            &variation,
                         )
                     }
                     .unwrap_or_else(|e| {
@@ -9104,6 +9154,7 @@ fn main() {
                             birth_jd,
                             dasha_system,
                             entity,
+                            &variation,
                             &raw_inputs,
                         )
                     } else {
@@ -9125,6 +9176,7 @@ fn main() {
                             &bhava_config,
                             &rs_config,
                             &aya_config,
+                            &variation,
                         )
                     }
                     .unwrap_or_else(|e| {

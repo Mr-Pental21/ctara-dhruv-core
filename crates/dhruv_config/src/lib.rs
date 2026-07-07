@@ -309,6 +309,8 @@ pub struct DashaSelectionConfigPatch {
     pub level_methods: Option<Vec<u8>>,
     pub yogini_scheme: Option<u8>,
     pub use_abhijit: Option<u8>,
+    pub cycles: Option<u8>,
+    pub min_span_years: Option<f64>,
     pub snapshot_utc: Option<UtcTimeConfigValue>,
     pub snapshot_jd_utc: Option<f64>,
 }
@@ -1777,6 +1779,17 @@ fn apply_dasha_selection_patch(
     }
     if let Some(v) = patch.use_abhijit {
         base.use_abhijit = v;
+    }
+    if let Some(v) = patch.cycles {
+        base.cycles = v;
+    }
+    if let Some(v) = patch.min_span_years {
+        if !v.is_finite() || v < 0.0 {
+            return Err(ConfigError::InvalidConfig(
+                "dasha.min_span_years must be a non-negative finite number".to_string(),
+            ));
+        }
+        base.min_span_years = v;
     }
     if patch.snapshot_utc.is_some() && patch.snapshot_jd_utc.is_some() {
         return Err(ConfigError::InvalidConfig(

@@ -18,10 +18,16 @@ use super::yogini_data::YoginiDashaConfig;
 // ── Tier 0: Level-0 (Mahadasha) generation ───────────────────────────
 
 /// Generate all level-0 (mahadasha) periods for Yogini dasha.
+///
+/// A single 36-year cycle by default; whole-cycle repetition can be
+/// requested through `variation.cycles` or `variation.min_span_years`
+/// (see [`DashaVariationConfig`]). `order` runs globally across cycles,
+/// so `cycle = (order - 1) / sequence_len + 1`.
 pub fn yogini_level0(
     birth_jd: f64,
     moon_sidereal_lon: f64,
     config: &YoginiDashaConfig,
+    variation: &DashaVariationConfig,
 ) -> Vec<DashaPeriod> {
     let nak_idx = {
         let lon = crate::util::normalize_360(moon_sidereal_lon);
@@ -34,10 +40,16 @@ pub fn yogini_level0(
     let (_nak, balance_days, _frac) = nakshatra_birth_balance(moon_sidereal_lon, entry_period);
 
     let n = config.yogini_sequence.len();
-    let mut periods = Vec::with_capacity(n);
+    // First cycle covers the birth balance plus the remaining n-1 full periods.
+    let first_cycle_span_days =
+        balance_days + (config.total_period_days - config.periods_days[start_yogini_idx]);
+    let cycle_count =
+        variation.effective_cycle_count(1, first_cycle_span_days, config.total_period_days);
+    let total_entries = (n * cycle_count as usize).min(MAX_PERIODS_PER_LEVEL);
+    let mut periods = Vec::with_capacity(total_entries);
     let mut cursor = birth_jd;
 
-    for offset in 0..n {
+    for offset in 0..total_entries {
         let seq_idx = (start_yogini_idx + offset) % n;
         let entity = config.yogini_sequence[seq_idx];
         let full_period = config.periods_days[seq_idx];
@@ -68,9 +80,10 @@ pub fn yogini_level0_entity(
     birth_jd: f64,
     moon_sidereal_lon: f64,
     config: &YoginiDashaConfig,
+    variation: &DashaVariationConfig,
     entity: super::types::DashaEntity,
 ) -> Option<DashaPeriod> {
-    let periods = yogini_level0(birth_jd, moon_sidereal_lon, config);
+    let periods = yogini_level0(birth_jd, moon_sidereal_lon, config, variation);
     periods.into_iter().find(|p| p.entity == entity)
 }
 
@@ -159,7 +172,7 @@ pub fn yogini_hierarchy(
     variation: &DashaVariationConfig,
 ) -> Result<DashaHierarchy, VedicError> {
     let max_level = max_level.min(MAX_DASHA_LEVEL);
-    let level0 = yogini_level0(birth_jd, moon_sidereal_lon, config);
+    let level0 = yogini_level0(birth_jd, moon_sidereal_lon, config, variation);
     let mut levels: Vec<Vec<DashaPeriod>> = vec![level0];
 
     for depth in 1..=max_level {
@@ -192,7 +205,7 @@ pub fn yogini_snapshot(
     variation: &DashaVariationConfig,
 ) -> DashaSnapshot {
     let max_level = max_level.min(MAX_DASHA_LEVEL);
-    let level0 = yogini_level0(birth_jd, moon_sidereal_lon, config);
+    let level0 = yogini_level0(birth_jd, moon_sidereal_lon, config, variation);
     let mut active_periods: Vec<DashaPeriod> = Vec::with_capacity((max_level + 1) as usize);
 
     let active_idx = match find_active_period(&level0, query_jd) {
@@ -239,7 +252,12 @@ mod tests {
         let cfg = yogini_config();
         let birth_jd = 2451545.0;
         let ardra_start = 5.0 * crate::nakshatra::NAKSHATRA_SPAN_27;
-        let periods = yogini_level0(birth_jd, ardra_start, &cfg);
+        let periods = yogini_level0(
+            birth_jd,
+            ardra_start,
+            &cfg,
+            &DashaVariationConfig::default(),
+        );
 
         assert_eq!(periods.len(), 8);
         assert_eq!(periods[0].entity, DashaEntity::Yogini(0)); // Mangala
@@ -255,7 +273,12 @@ mod tests {
         let cfg = yogini_config();
         let birth_jd = 2451545.0;
         let ardra_start = 5.0 * crate::nakshatra::NAKSHATRA_SPAN_27;
-        let periods = yogini_level0(birth_jd, ardra_start, &cfg);
+        let periods = yogini_level0(
+            birth_jd,
+            ardra_start,
+            &cfg,
+            &DashaVariationConfig::default(),
+        );
 
         let total_days: f64 = periods.iter().map(|p| p.duration_days()).sum();
         let total_years = total_days / DAYS_PER_YEAR;
@@ -302,7 +325,7 @@ mod tests {
     #[test]
     fn yogini_adjacent_no_gaps() {
         let cfg = yogini_config();
-        let periods = yogini_level0(2451545.0, 150.0, &cfg);
+        let periods = yogini_level0(2451545.0, 150.0, &cfg, &DashaVariationConfig::default());
         for i in 1..periods.len() {
             assert!(
                 (periods[i].start_jd - periods[i - 1].end_jd).abs() < 1e-10,
@@ -316,13 +339,47 @@ mod tests {
     #[test]
     fn yogini_children_sum_to_parent() {
         let cfg = yogini_config();
-        let periods = yogini_level0(2451545.0, 0.0, &cfg);
+        let periods = yogini_level0(2451545.0, 0.0, &cfg, &DashaVariationConfig::default());
         let parent = &periods[0];
         let children = yogini_children(parent, &cfg, SubPeriodMethod::ProportionalFromParent);
 
         assert_eq!(children.len(), 8);
         assert!((children.last().unwrap().end_jd - parent.end_jd).abs() < 1e-10);
         assert!((children[0].start_jd - parent.start_jd).abs() < 1e-10);
+    }
+
+    #[test]
+    fn yogini_min_span_years_repeats_whole_cycles() {
+        let cfg = yogini_config();
+        let birth_jd = 2451545.0;
+        let ardra_start = 5.0 * crate::nakshatra::NAKSHATRA_SPAN_27;
+        let var = DashaVariationConfig {
+            min_span_years: Some(100.0),
+            ..DashaVariationConfig::default()
+        };
+        let periods = yogini_level0(birth_jd, ardra_start, &cfg, &var);
+
+        // 36y cycles from a nakshatra start: 36 + 36 + 36 = 108 >= 100 → 3 cycles.
+        assert_eq!(periods.len(), 24);
+        let span_years = (periods.last().unwrap().end_jd - birth_jd) / DAYS_PER_YEAR;
+        assert!(span_years >= 100.0, "span {span_years} should cover target");
+        // Rotation repeats: entry 8 is the same yogini as entry 0, full period.
+        assert_eq!(periods[8].entity, periods[0].entity);
+        assert!((periods[8].start_jd - periods[7].end_jd).abs() < 1e-10);
+        // Orders are global and contiguous.
+        assert_eq!(periods[23].order, 24);
+    }
+
+    #[test]
+    fn yogini_explicit_cycles_in_hierarchy() {
+        let cfg = yogini_config();
+        let var = DashaVariationConfig {
+            cycles: Some(2),
+            ..DashaVariationConfig::default()
+        };
+        let h = yogini_hierarchy(2451545.0, 100.0, &cfg, 1, &var).unwrap();
+        assert_eq!(h.levels[0].len(), 16);
+        assert_eq!(h.levels[1].len(), 128);
     }
 
     #[test]

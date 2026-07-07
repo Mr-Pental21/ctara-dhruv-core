@@ -318,13 +318,19 @@ fn dispatch_level0(
     moon_sid_lon: f64,
     rashi_inputs: Option<&RashiDashaInputs>,
     sunrise_sunset: Option<(f64, f64)>,
+    variation: &DashaVariationConfig,
 ) -> Result<Vec<DashaPeriod>, SearchError> {
     if let Some(cfg) = nakshatra_config_for_system(system) {
-        return Ok(nakshatra_level0(birth_jd, moon_sid_lon, &cfg));
+        return Ok(nakshatra_level0(birth_jd, moon_sid_lon, &cfg, variation));
     }
 
     match system {
-        DashaSystem::Yogini => Ok(yogini_level0(birth_jd, moon_sid_lon, &yogini_config())),
+        DashaSystem::Yogini => Ok(yogini_level0(
+            birth_jd,
+            moon_sid_lon,
+            &yogini_config(),
+            variation,
+        )),
         DashaSystem::Chara => Ok(chara_level0(
             birth_jd,
             rashi_inputs.ok_or(SearchError::InvalidConfig("rashi inputs required"))?,
@@ -1055,6 +1061,7 @@ pub fn dasha_level0_for_birth(
     _bhava_config: &BhavaConfig,
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
+    variation: &DashaVariationConfig,
 ) -> Result<Vec<DashaPeriod>, SearchError> {
     let birth_jd = utc_to_jd_utc(birth_utc);
     let inputs = compute_dasha_inputs_for_birth(
@@ -1072,6 +1079,7 @@ pub fn dasha_level0_for_birth(
         inputs.moon_sid_lon.unwrap_or(0.0),
         inputs.rashi_inputs.as_ref(),
         inputs.sunrise_sunset,
+        variation,
     )
 }
 
@@ -1087,6 +1095,7 @@ pub fn dasha_level0_entity_for_birth(
     bhava_config: &BhavaConfig,
     riseset_config: &RiseSetConfig,
     aya_config: &SankrantiConfig,
+    variation: &DashaVariationConfig,
 ) -> Result<Option<DashaPeriod>, SearchError> {
     let periods = dasha_level0_for_birth(
         engine,
@@ -1097,6 +1106,7 @@ pub fn dasha_level0_entity_for_birth(
         bhava_config,
         riseset_config,
         aya_config,
+        variation,
     )?;
     Ok(periods.into_iter().find(|p| p.entity == entity))
 }
@@ -1259,6 +1269,7 @@ pub fn dasha_snapshot_with_inputs(
 pub fn dasha_level0_with_inputs(
     birth_jd: f64,
     system: DashaSystem,
+    variation: &DashaVariationConfig,
     inputs: &DashaInputs<'_>,
 ) -> Result<Vec<DashaPeriod>, SearchError> {
     let moon_sid_lon = inputs.moon_sid_lon.unwrap_or(0.0);
@@ -1268,6 +1279,7 @@ pub fn dasha_level0_with_inputs(
         moon_sid_lon,
         inputs.rashi_inputs,
         inputs.sunrise_sunset,
+        variation,
     )
 }
 
@@ -1276,9 +1288,10 @@ pub fn dasha_level0_entity_with_inputs(
     birth_jd: f64,
     system: DashaSystem,
     entity: DashaEntity,
+    variation: &DashaVariationConfig,
     inputs: &DashaInputs<'_>,
 ) -> Result<Option<DashaPeriod>, SearchError> {
-    let periods = dasha_level0_with_inputs(birth_jd, system, inputs)?;
+    let periods = dasha_level0_with_inputs(birth_jd, system, variation, inputs)?;
     Ok(periods.into_iter().find(|period| period.entity == entity))
 }
 
@@ -1330,6 +1343,85 @@ pub fn dasha_complete_level_with_inputs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jyotish_types::DashaSelectionConfig;
+
+    // --- level-0 cycle policy tests ---
+
+    #[test]
+    fn test_level0_with_inputs_cycles() {
+        let inputs = DashaInputs {
+            moon_sid_lon: Some(0.0),
+            ..DashaInputs::default()
+        };
+        let variation = DashaVariationConfig {
+            cycles: Some(2),
+            ..DashaVariationConfig::default()
+        };
+        let periods =
+            dasha_level0_with_inputs(2451545.0, DashaSystem::Vimshottari, &variation, &inputs)
+                .unwrap();
+        assert_eq!(periods.len(), 18);
+        assert_eq!(periods[9].entity, periods[0].entity);
+    }
+
+    #[test]
+    fn test_level0_with_inputs_min_span_years_yogini() {
+        let inputs = DashaInputs {
+            moon_sid_lon: Some(0.0),
+            ..DashaInputs::default()
+        };
+        let variation = DashaVariationConfig {
+            min_span_years: Some(100.0),
+            ..DashaVariationConfig::default()
+        };
+        let periods =
+            dasha_level0_with_inputs(2451545.0, DashaSystem::Yogini, &variation, &inputs).unwrap();
+        // 36y cycles: coverage must reach >= 100y with whole cycles.
+        let span_years = (periods.last().unwrap().end_jd - 2451545.0) / 365.25;
+        assert!(span_years >= 100.0);
+        assert_eq!(periods.len() % 8, 0);
+    }
+
+    #[test]
+    fn test_level0_cycle_policy_ignored_for_non_cyclic_systems() {
+        // KaalChakra ignores the policy: same output with and without it.
+        let inputs = DashaInputs {
+            moon_sid_lon: Some(123.456),
+            ..DashaInputs::default()
+        };
+        let with_policy = DashaVariationConfig {
+            cycles: Some(3),
+            ..DashaVariationConfig::default()
+        };
+        let base = dasha_level0_with_inputs(
+            2451545.0,
+            DashaSystem::KaalChakra,
+            &DashaVariationConfig::default(),
+            &inputs,
+        )
+        .unwrap();
+        let extended =
+            dasha_level0_with_inputs(2451545.0, DashaSystem::KaalChakra, &with_policy, &inputs)
+                .unwrap();
+        assert_eq!(base.len(), extended.len());
+    }
+
+    #[test]
+    fn test_selection_config_cycle_fields_to_variation() {
+        let mut selection = DashaSelectionConfig {
+            cycles: 2,
+            min_span_years: 150.0,
+            ..DashaSelectionConfig::default()
+        };
+        selection.sanitize();
+        let variation = selection.to_variation_config();
+        assert_eq!(variation.cycles, Some(2));
+        assert_eq!(variation.min_span_years, Some(150.0));
+
+        let defaults = DashaSelectionConfig::default().to_variation_config();
+        assert_eq!(defaults.cycles, None);
+        assert_eq!(defaults.min_span_years, None);
+    }
 
     // --- needs_moon_lon tests (Phase A1) ---
 

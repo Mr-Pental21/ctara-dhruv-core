@@ -327,6 +327,16 @@ entity name, plus structured `start_utc` / `end_utc` alongside `start_jd` /
 Python dasha calls can use either UTC/location birth context or `birth_jd` plus
 precomputed `inputs` on the same main functions.
 
+`variation_config` dicts accept `cycles` and `min_span_years` for level-0
+cycle repetition. `cycles` is an explicit whole-cycle repetition count
+(`0` = system default; wins over `min_span_years`). `min_span_years` repeats
+whole cycles until level-0 coverage from birth reaches at least that many
+years, with the final cycle completing past the target (`0.0` or negative =
+disabled). Both apply to nakshatra-based and Yogini systems only; the `order`
+field is global across cycles, so an entry's cycle number is
+`(order - 1) // sequence_len + 1`. The same fields exist on the dasha
+selection config used by embedded full-kundali dashas.
+
 Chara-style dasha periods use dual lordship for Kumbha (`Shani`/`Rahu`) and
 Vrischika (`Mangal`/`Ketu`). Rahu owns Kumbha and Ketu owns Vrischika for the
 default sign-lord-based node dignity policy.

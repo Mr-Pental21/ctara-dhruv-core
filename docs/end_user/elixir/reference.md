@@ -190,6 +190,16 @@ on the main operations instead of splitting out separate UTC-specific APIs.
 - `child_period/2`
 - `complete_level/2`
 
+Dasha request maps accept an optional `:variation` map with `:level_methods`,
+`:yogini_scheme`, `:use_abhijit`, `:cycles`, and `:min_span_years`.
+`:cycles` (integer >= 1) sets an explicit level-0 whole-cycle repetition count
+(system default when omitted) and wins over `:min_span_years` when both are
+set. `:min_span_years` (positive number) repeats whole mahadasha cycles until
+level-0 coverage from birth reaches at least that many years; the final cycle
+completes past the target. Both apply to nakshatra-based and Yogini dasha
+systems only; other systems ignore them. A period's cycle number is
+`(order - 1) / sequence_len + 1`, where `order` is global across cycles.
+
 Returned dasha entity maps include `:name` with the exact canonical Sanskrit
 entity name.
 
@@ -269,7 +279,9 @@ Accepted enum-style string values:
 - `full_kundali/3`, `lagna/3`, `mc/3`, and `bhavas/3` are convenience arities that inject `:sankranti_config`.
 - Enum-like strings are normalized through the NIF boundary and usually come back as atoms in results.
 - `full_kundali_config[:dasha_config]` supports `:systems`, `:max_level`,
-  `:max_levels`, and `:snapshot_utc`.
+  `:max_levels`, `:snapshot_utc`, `:cycles`, and `:min_span_years`. The
+  `:cycles` / `:min_span_years` semantics match the standalone dasha
+  `:variation` map.
 - Dasha period results now include `:start_utc` / `:end_utc` alongside
   `:start_jd` / `:end_jd`, and dasha snapshots include `:query_utc`
   alongside `:query_jd`.

@@ -150,6 +150,18 @@ Systems with `cycle_count > 1` repeat the full graha sequence multiple times to
 fill the total period. For example, Chaturashiti (84y, 7 grahas, 2 cycles) generates
 14 mahadasha periods (7 × 2), each 12 years.
 
+The per-system default can be overridden at request time through
+`DashaVariationConfig` (`cycles` for an explicit whole-cycle count, or
+`min_span_years` to append whole cycles until level-0 coverage from birth
+reaches a target span; the final cycle completes even if it overshoots).
+The override applies to nakshatra-based systems and Yogini (which defaults
+to a single 36-year cycle); rashi-based, Kala, and Kaal Chakra systems have
+no fixed-cycle repetition semantics and ignore it. Repetition is pure
+arithmetic on the same rotation — cycle N ≥ 2 starts where cycle N−1 ended,
+every entry uses its full period (only cycle 1's first entry carries the
+birth balance), and `order` runs globally so
+`cycle = (order - 1) / sequence_len + 1`.
+
 ### Shashtihayani Special Balance
 
 Unlike other systems where `entry_period = graha_full_period`, Shashtihayani divides

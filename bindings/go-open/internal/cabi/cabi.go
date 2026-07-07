@@ -1484,6 +1484,8 @@ func goDashaSelectionConfig(v C.DhruvDashaSelectionConfig) DashaSelectionConfig 
 	out.MaxLevel = uint8(v.max_level)
 	out.YoginiScheme = uint8(v.yogini_scheme)
 	out.UseAbhijit = v.use_abhijit != 0
+	out.Cycles = uint8(v.cycles)
+	out.MinSpanYears = float64(v.min_span_years)
 	for i := 0; i < MaxDashaSystems; i++ {
 		out.Systems[i] = uint8(v.systems[i])
 		out.MaxLevels[i] = uint8(v.max_levels[i])
@@ -1507,6 +1509,8 @@ func cDashaSelectionConfig(cfg DashaSelectionConfig) C.DhruvDashaSelectionConfig
 	out.max_level = C.uint8_t(cfg.MaxLevel)
 	out.yogini_scheme = C.uint8_t(cfg.YoginiScheme)
 	out.use_abhijit = boolU8(cfg.UseAbhijit)
+	out.cycles = C.uint8_t(cfg.Cycles)
+	out.min_span_years = C.double(cfg.MinSpanYears)
 	for i := 0; i < MaxDashaSystems; i++ {
 		out.systems[i] = C.uint8_t(cfg.Systems[i])
 		out.max_levels[i] = C.uint8_t(cfg.MaxLevels[i])
@@ -1531,6 +1535,8 @@ func goDashaVariationConfig(v C.DhruvDashaVariationConfig) DashaVariationConfig 
 	var out DashaVariationConfig
 	out.YoginiScheme = uint8(v.yogini_scheme)
 	out.UseAbhijit = v.use_abhijit != 0
+	out.Cycles = uint8(v.cycles)
+	out.MinSpanYears = float64(v.min_span_years)
 	for i := 0; i < len(out.LevelMethods); i++ {
 		out.LevelMethods[i] = uint8(v.level_methods[i])
 	}
@@ -1541,6 +1547,8 @@ func cDashaVariationConfig(cfg DashaVariationConfig) C.DhruvDashaVariationConfig
 	var out C.DhruvDashaVariationConfig
 	out.yogini_scheme = C.uint8_t(cfg.YoginiScheme)
 	out.use_abhijit = boolU8(cfg.UseAbhijit)
+	out.cycles = C.uint8_t(cfg.Cycles)
+	out.min_span_years = C.double(cfg.MinSpanYears)
 	for i := 0; i < len(cfg.LevelMethods); i++ {
 		out.level_methods[i] = C.uint8_t(cfg.LevelMethods[i])
 	}
@@ -1830,8 +1838,9 @@ func goDashaPeriodList(handle DashaPeriodListHandle) ([]DashaPeriod, Status) {
 
 func DashaLevel0(engine EngineHandle, eop EopHandle, request DashaLevel0Request) ([]DashaPeriod, Status) {
 	crequest := C.DhruvDashaLevel0Request{
-		birth:  cDashaBirthContext(request.Birth),
-		system: C.uint8_t(request.System),
+		birth:     cDashaBirthContext(request.Birth),
+		system:    C.uint8_t(request.System),
+		variation: cDashaVariationConfig(request.Variation),
 	}
 	var handle C.DhruvDashaPeriodListHandle
 	st := Status(C.dhruv_dasha_level0(engine.ptr, eop.ptr, &crequest, &handle))
@@ -1847,6 +1856,7 @@ func DashaLevel0Entity(engine EngineHandle, eop EopHandle, request DashaLevel0En
 		system:       C.uint8_t(request.System),
 		entity_type:  C.uint8_t(request.EntityType),
 		entity_index: C.uint8_t(request.EntityIndex),
+		variation:    cDashaVariationConfig(request.Variation),
 	}
 	var found C.uint8_t
 	var out C.DhruvDashaPeriod

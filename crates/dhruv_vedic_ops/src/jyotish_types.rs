@@ -404,6 +404,14 @@ pub struct DashaSelectionConfig {
     pub yogini_scheme: u8,
     /// Whether to use Abhijit for Ashtottari (1=yes, 0=no).
     pub use_abhijit: u8,
+    /// Level-0 whole-cycle repetition count (0 = system default).
+    /// Applies to nakshatra-based and Yogini systems; wins over
+    /// `min_span_years` when both are set.
+    pub cycles: u8,
+    /// Repeat level-0 whole cycles until coverage from birth reaches this
+    /// many years (0.0 or negative = disabled). Applies to nakshatra-based
+    /// and Yogini systems.
+    pub min_span_years: f64,
     /// Optional snapshot time for full-kundali dasha snapshots.
     /// None = skip snapshots, only compute hierarchy.
     pub snapshot_time: Option<DashaSnapshotTime>,
@@ -419,6 +427,8 @@ impl Default for DashaSelectionConfig {
             level_methods: [0xFF; 5],
             yogini_scheme: 0,
             use_abhijit: 1,
+            cycles: 0,
+            min_span_years: 0.0,
             snapshot_time: None,
         }
     }
@@ -434,6 +444,9 @@ impl DashaSelectionConfig {
             if *max_level != 0xFF && *max_level > dhruv_vedic_base::dasha::MAX_DASHA_LEVEL {
                 *max_level = dhruv_vedic_base::dasha::MAX_DASHA_LEVEL;
             }
+        }
+        if !self.min_span_years.is_finite() || self.min_span_years < 0.0 {
+            self.min_span_years = 0.0;
         }
     }
 
@@ -506,6 +519,16 @@ impl DashaSelectionConfig {
             yogini_scheme: dhruv_vedic_base::dasha::YoginiScheme::from_u8(self.yogini_scheme)
                 .unwrap_or_default(),
             use_abhijit: self.use_abhijit != 0,
+            cycles: if self.cycles == 0 {
+                None
+            } else {
+                Some(self.cycles)
+            },
+            min_span_years: if self.min_span_years > 0.0 && self.min_span_years.is_finite() {
+                Some(self.min_span_years)
+            } else {
+                None
+            },
         }
     }
 }

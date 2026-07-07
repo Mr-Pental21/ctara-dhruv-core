@@ -60,6 +60,32 @@ test('low-tier dasha wrappers smoke', { skip: !(hasKernels() && hasEop()) }, () 
   });
   assert.ok(level0.length > 0);
 
+  const defaults = dhruv.dashaVariationConfigDefault();
+  assert.equal(defaults.cycles, 0);
+  assert.equal(defaults.minSpanYears, 0);
+
+  const repeated = dhruv.dashaLevel0(engine, eop, {
+    birthUtc,
+    location: loc,
+    ayanamshaSystem: 0,
+    useNutation: true,
+    system: 0,
+    variationConfig: { cycles: 2 },
+  });
+  assert.equal(repeated.length, level0.length * 2);
+  assert.equal(repeated[level0.length].entityIndex, level0[0].entityIndex);
+
+  const spanned = dhruv.dashaLevel0(engine, eop, {
+    birthUtc,
+    location: loc,
+    ayanamshaSystem: 0,
+    useNutation: true,
+    system: 0,
+    variationConfig: { minSpanYears: 200 },
+  });
+  assert.ok(spanned.length > level0.length);
+  assert.ok(spanned[spanned.length - 1].endJd - spanned[0].startJd >= 200 * 365.25);
+
   const first = level0[0];
   const same = dhruv.dashaLevel0Entity(engine, eop, {
     birthUtc,

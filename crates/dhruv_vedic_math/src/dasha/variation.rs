@@ -64,6 +64,16 @@ pub struct DashaVariationConfig {
     pub yogini_scheme: YoginiScheme,
     /// For Ashtottari: use 28-nakshatra Abhijit detection.
     pub use_abhijit: bool,
+    /// Level-0 cycle repetition: explicit whole-cycle count (1-255).
+    /// None = use the system's default cycle count. Takes precedence over
+    /// `min_span_years`. Applies to nakshatra-based and Yogini systems only;
+    /// other systems ignore it.
+    pub cycles: Option<u8>,
+    /// Level-0 cycle repetition: repeat whole cycles until level-0 coverage
+    /// from birth reaches at least this many years (the final cycle completes
+    /// even if it overshoots). None = use the system's default cycle count.
+    /// Applies to nakshatra-based and Yogini systems only.
+    pub min_span_years: Option<f64>,
 }
 
 impl Default for DashaVariationConfig {
@@ -72,6 +82,8 @@ impl Default for DashaVariationConfig {
             level_methods: [None; 5],
             yogini_scheme: YoginiScheme::Default,
             use_abhijit: true,
+            cycles: None,
+            min_span_years: None,
         }
     }
 }
@@ -84,6 +96,37 @@ impl DashaVariationConfig {
         } else {
             system_default
         }
+    }
+
+    /// Resolve the effective level-0 cycle count for a cyclic system.
+    ///
+    /// `default_count` is the system's built-in cycle count.
+    /// `first_cycle_span_days` is the level-0 coverage of the first cycle
+    /// (birth balance plus the remaining periods of that cycle) and
+    /// `full_cycle_days` the coverage of every subsequent cycle.
+    /// Explicit `cycles` wins over `min_span_years`; both absent (or
+    /// non-positive/non-finite span inputs) fall back to `default_count`.
+    pub fn effective_cycle_count(
+        &self,
+        default_count: u8,
+        first_cycle_span_days: f64,
+        full_cycle_days: f64,
+    ) -> u8 {
+        if let Some(cycles) = self.cycles {
+            return cycles.max(1);
+        }
+        if let Some(years) = self.min_span_years {
+            let target_days = years * super::types::DAYS_PER_YEAR;
+            if !target_days.is_finite() || target_days <= 0.0 || full_cycle_days <= 0.0 {
+                return default_count.max(1);
+            }
+            if first_cycle_span_days >= target_days {
+                return 1;
+            }
+            let extra = ((target_days - first_cycle_span_days) / full_cycle_days).ceil();
+            return (1.0 + extra).min(u8::MAX as f64) as u8;
+        }
+        default_count.max(1)
     }
 }
 
@@ -113,6 +156,75 @@ mod tests {
             cfg.method_for_level(0, SubPeriodMethod::ProportionalFromParent),
             SubPeriodMethod::ProportionalFromParent,
         );
+    }
+
+    #[test]
+    fn effective_cycle_count_default() {
+        let cfg = DashaVariationConfig::default();
+        assert_eq!(cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 2);
+    }
+
+    #[test]
+    fn effective_cycle_count_explicit_cycles_win() {
+        let cfg = DashaVariationConfig {
+            cycles: Some(4),
+            min_span_years: Some(1000.0),
+            ..DashaVariationConfig::default()
+        };
+        assert_eq!(cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25), 4);
+    }
+
+    #[test]
+    fn effective_cycle_count_zero_cycles_clamps_to_one() {
+        let cfg = DashaVariationConfig {
+            cycles: Some(0),
+            ..DashaVariationConfig::default()
+        };
+        assert_eq!(cfg.effective_cycle_count(3, 30.0 * 365.25, 36.0 * 365.25), 1);
+    }
+
+    #[test]
+    fn effective_cycle_count_min_span() {
+        // 36y cycles, first cycle covers 30y (partial balance). Target 100y:
+        // 30 + 2*36 = 102 >= 100 → 3 cycles.
+        let cfg = DashaVariationConfig {
+            min_span_years: Some(100.0),
+            ..DashaVariationConfig::default()
+        };
+        assert_eq!(cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25), 3);
+    }
+
+    #[test]
+    fn effective_cycle_count_min_span_within_first_cycle() {
+        let cfg = DashaVariationConfig {
+            min_span_years: Some(20.0),
+            ..DashaVariationConfig::default()
+        };
+        assert_eq!(cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 1);
+    }
+
+    #[test]
+    fn effective_cycle_count_min_span_exact_boundary() {
+        // 30 + 1*36 = 66 exactly → 2 cycles.
+        let cfg = DashaVariationConfig {
+            min_span_years: Some(66.0),
+            ..DashaVariationConfig::default()
+        };
+        assert_eq!(cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25), 2);
+    }
+
+    #[test]
+    fn effective_cycle_count_invalid_span_falls_back() {
+        let cfg = DashaVariationConfig {
+            min_span_years: Some(-5.0),
+            ..DashaVariationConfig::default()
+        };
+        assert_eq!(cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 2);
+        let nan = DashaVariationConfig {
+            min_span_years: Some(f64::NAN),
+            ..DashaVariationConfig::default()
+        };
+        assert_eq!(nan.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 2);
     }
 
     #[test]

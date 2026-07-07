@@ -290,6 +290,19 @@ The `dasha` command now uses one surface for both invocation styles:
   `--moon-sid-lon`, `--graha-sidereal-lons`, `--lagna-sidereal-lon`,
   `--sunrise-jd`, and `--sunset-jd`
 
+Level-0 cycle repetition (nakshatra-based and Yogini systems only; other
+systems ignore these):
+
+- `--cycles N` — emit exactly N whole mahadasha cycles (default: the
+  system's built-in cycle count). Wins over `--min-span-years`.
+- `--min-span-years Y` — append whole cycles until level-0 coverage from
+  birth reaches at least Y years; the final cycle completes even if it
+  overshoots.
+
+On `kundali`, the same knobs are `--dasha-cycles` and
+`--dasha-min-span-years`. A period's cycle number can be derived from its
+global `order`: `cycle = (order - 1) / sequence_len + 1`.
+
 Chara-style dasha periods use dual lordship for Kumbha (`Shani`/`Rahu`) and
 Vrischika (`Mangal`/`Ketu`). Rahu owns Kumbha and Ketu owns Vrischika for the
 default sign-lord-based node dignity policy.

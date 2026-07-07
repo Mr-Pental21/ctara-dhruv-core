@@ -90,6 +90,7 @@ Public modules included in this wrapper:
 - low-level graha relationship/combustion/dignity helpers in `extras`
 - shadbala/vimsopaka/avastha and full-kundali summary
 - dasha hierarchy and snapshot, with `entityName` on returned period objects for the exact canonical Sanskrit entity name
+- dasha level-0 cycle repetition through `variationConfig.cycles` and `variationConfig.minSpanYears`
 - tara catalog load/compute helpers plus low-level propagation/correction primitives
 
 ## Time-Based Upagraha Config
@@ -111,6 +112,26 @@ Value mappings are numeric:
 
 - points: `0=start`, `1=middle`, `2=end`
 - planets: `0=rahu`, `1=saturn`
+
+## Dasha Variation Config
+
+Dasha request functions (`dashaHierarchy`, `dashaSnapshot`, `dashaLevel0`,
+`dashaLevel0Entity`, `dashaChildren`, `dashaChildPeriod`, `dashaCompleteLevel`)
+accept an optional `variationConfig` object with:
+
+- `levelMethods`
+- `yoginiScheme`
+- `useAbhijit`
+- `cycles`: explicit level-0 whole-cycle repetition count; `0` (default) keeps
+  the system default. Takes precedence over `minSpanYears`.
+- `minSpanYears`: repeat whole level-0 cycles until coverage from birth reaches
+  at least this many years; the final cycle completes past the target. `0` or
+  negative (default) disables it.
+
+`cycles` and `minSpanYears` apply to nakshatra-based and Yogini dasha systems
+only; other systems ignore them. For repeated cycles, each period's cycle can
+be derived from its `order` as `cycle = floor((order - 1) / sequenceLength) + 1`.
+The same two fields are also accepted on `fullKundaliConfig.dashaConfig`.
 
 ## Amsha Notes
 

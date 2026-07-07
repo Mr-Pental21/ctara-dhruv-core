@@ -181,6 +181,25 @@ sign-lord-based policy. Chara-style dasha period selection uses dual lordship
 for Kumbha (`Shani`/`Rahu`) and Vrischika (`Mangal`/`Ketu`); ordinary primary
 rashi-lord helpers remain visible-lord based.
 
+## Dasha Level-0 Cycle Repetition
+
+`DashaVariationConfig` carries two optional level-0 cycle knobs for
+nakshatra-based and Yogini systems (other systems ignore them):
+
+- `cycles: Option<u8>` — emit exactly N whole mahadasha cycles; wins over
+  `min_span_years`.
+- `min_span_years: Option<f64>` — append whole cycles until level-0
+  coverage from birth reaches at least N years; the final cycle completes
+  even if it overshoots.
+
+The variation config is accepted by the level-0 entrypoints
+(`dasha_level0_for_birth`, `dasha_level0_entity_for_birth`,
+`dasha_level0_with_inputs`, `dasha_level0_entity_with_inputs`) in addition
+to the hierarchy/snapshot/children surfaces. In full-kundali requests the
+same knobs live on `DashaSelectionConfig` (`cycles: u8`, 0 = system
+default; `min_span_years: f64`, 0.0 = disabled). A period's cycle number
+is `(order - 1) / sequence_len + 1` — `order` is global across cycles.
+
 For low-level engine, time, frame, and extension-trait surfaces that are not
 explicitly re-exported here, depend on the source crates directly:
 

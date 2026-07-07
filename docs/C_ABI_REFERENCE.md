@@ -1993,9 +1993,20 @@ struct DhruvDashaSelectionConfig {
     uint8_t level_methods[5]; // per-level sub-period method (0xFF = default)
     uint8_t yogini_scheme;   // 0 = default
     uint8_t use_abhijit;     // 1 = yes, 0 = no
+    uint8_t cycles;          // level-0 whole-cycle repetitions (0 = system default)
+    double  min_span_years;  // repeat whole cycles until >= N years covered (<= 0 = off)
     DhruvDashaSnapshotTime snapshot_time;
 };
 ```
+
+`cycles` and `min_span_years` control level-0 cycle repetition for
+nakshatra-based and Yogini systems (other systems ignore them). `cycles`
+wins when both are set. With `min_span_years`, whole mahadasha cycles are
+appended until coverage from birth reaches the target; the final cycle
+completes even if it overshoots. The same two fields exist on
+`DhruvDashaVariationConfig` for the standalone dasha entrypoints. A
+period's cycle number is `(order - 1) / sequence_len + 1` (`order` is
+global across cycles).
 
 ### `DhruvDashaInputs`
 

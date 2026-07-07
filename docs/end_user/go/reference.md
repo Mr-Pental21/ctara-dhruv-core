@@ -354,6 +354,8 @@ Go dasha period structs expose `EntityName` with the exact canonical Sanskrit
 entity name.
 Go dasha requests now accept either UTC/location birth context or precomputed
 raw dasha inputs through the shared request structs.
+All dasha requests, including `DashaLevel0Request` and
+`DashaLevel0EntityRequest`, carry a `Variation` (`DashaVariationConfig`).
 
 Search:
 
@@ -398,6 +400,19 @@ Lajjitadi condition applies.
 `DashaSelectionConfig` supports per-system hierarchy depth through `MaxLevels`
 and optional full-kundali snapshots through `SnapshotTime`, typically with
 `TimeKind = DashaTimeUTC` plus `UTC`.
+
+`DashaVariationConfig` and `DashaSelectionConfig` control level-0 cycle
+repetition:
+
+- `Cycles`: explicit whole-cycle repetition count (0 = system default).
+  Wins over `MinSpanYears` when non-zero.
+- `MinSpanYears`: repeat whole cycles until level-0 coverage from birth
+  reaches at least this many years; the final cycle completes past the target
+  (0 or negative disables).
+
+Both apply to nakshatra-based and Yogini dasha systems only; other systems
+ignore them. For any returned period, derive its cycle number as
+`(Order-1)/sequenceLen + 1`.
 
 Defaults preserved by `TimeUpagrahaConfigDefault()`:
 

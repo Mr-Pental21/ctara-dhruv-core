@@ -300,6 +300,16 @@ accept either:
 
 `dashaSnapshot` similarly accepts either `queryUtc` or `queryJd`.
 
+All dasha request functions accept an optional `variationConfig` object
+(`levelMethods`, `yoginiScheme`, `useAbhijit`, `cycles`, `minSpanYears`).
+`cycles` sets an explicit level-0 whole-cycle repetition count (`0` = system
+default) and wins over `minSpanYears`. `minSpanYears` repeats whole level-0
+cycles until coverage from birth reaches at least that many years, with the
+final cycle completing past the target (`0` or negative = disabled). Both
+apply to nakshatra-based and Yogini systems only; other systems ignore them.
+With repeated cycles, a period's cycle number is
+`floor((order - 1) / sequenceLength) + 1`.
+
 Returned dasha period objects include `entityName`, the exact canonical
 Sanskrit entity name, plus `startUtc` / `endUtc` alongside `startJd` /
 `endJd`. Dasha snapshots expose `queryUtc` alongside `queryJd`.
@@ -341,6 +351,8 @@ Common config objects:
 - `systems`
 - `maxLevels`
 - `maxLevel`
+- `cycles` (level-0 whole-cycle repetition count, `0` = system default)
+- `minSpanYears` (repeat level-0 cycles to cover at least N years from birth)
 - `snapshotUtc`
 
 Time-based upagraha config object:

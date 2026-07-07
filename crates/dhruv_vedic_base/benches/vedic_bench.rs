@@ -219,7 +219,14 @@ fn dasha_bench(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("dasha");
     group.bench_function("vimshottari_level0", |b| {
-        b.iter(|| nakshatra_level0(black_box(birth_jd), black_box(moon_lon), black_box(&cfg)))
+        b.iter(|| {
+            nakshatra_level0(
+                black_box(birth_jd),
+                black_box(moon_lon),
+                black_box(&cfg),
+                black_box(&variation),
+            )
+        })
     });
     group.bench_function("vimshottari_hierarchy_2", |b| {
         b.iter(|| {
@@ -292,6 +299,7 @@ fn dasha_bench(c: &mut Criterion) {
                 black_box(birth_jd),
                 black_box(moon_lon),
                 black_box(&yog_cfg),
+                black_box(&variation),
             )
         })
     });
