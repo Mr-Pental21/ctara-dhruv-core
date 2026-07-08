@@ -313,6 +313,9 @@ struct JyotishRequest {
     op: String,
     jd_tdb: Option<f64>,
     utc: Option<UtcInput>,
+    from_utc: Option<UtcInput>,
+    to_utc: Option<UtcInput>,
+    step_minutes: Option<u32>,
     location: Option<GeoLocationInput>,
     kind: Option<EnumInput>,
     system: Option<EnumInput>,
@@ -434,6 +437,7 @@ struct GrahaPositionsConfigInput {
     include_lagna: Option<bool>,
     include_outer_planets: Option<bool>,
     include_bhava: Option<bool>,
+    include_equatorial: Option<bool>,
     basic_states_config: Option<BasicStatesConfigInput>,
 }
 
@@ -1865,6 +1869,9 @@ fn to_graha_positions_config(
         if let Some(include_bhava) = input.include_bhava {
             config.include_bhava = include_bhava;
         }
+        if let Some(include_equatorial) = input.include_equatorial {
+            config.include_equatorial = include_equatorial;
+        }
         if let Some(basic_states_config) = input.basic_states_config.as_ref() {
             if let Some(include_basic_states) = basic_states_config.include_basic_states {
                 config.basic_states_config.include_basic_states = include_basic_states;
@@ -2708,7 +2715,11 @@ fn chandra_grahan_json(event: dhruv_search::ChandraGrahan) -> Value {
         "u4_utc": event.u4_utc.map(utc_json),
         "u4_jd": event.u4_jd,
         "p4_utc": utc_json(event.p4_utc),
-        "p4_jd": event.p4_jd
+        "p4_jd": event.p4_jd,
+        "moon_ecliptic_lat_deg": event.moon_ecliptic_lat_deg,
+        "angular_separation_deg": event.angular_separation_deg,
+        "moon_right_ascension_deg": event.moon_right_ascension_deg,
+        "moon_declination_deg": event.moon_declination_deg
     })
 }
 
@@ -2725,7 +2736,11 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
         "c3_utc": event.c3_utc.map(utc_json),
         "c3_jd": event.c3_jd,
         "c4_utc": event.c4_utc.map(utc_json),
-        "c4_jd": event.c4_jd
+        "c4_jd": event.c4_jd,
+        "moon_ecliptic_lat_deg": event.moon_ecliptic_lat_deg,
+        "angular_separation_deg": event.angular_separation_deg,
+        "sun_right_ascension_deg": event.sun_right_ascension_deg,
+        "sun_declination_deg": event.sun_declination_deg
     })
 }
 
@@ -2817,6 +2832,10 @@ fn graha_entry_json(entry: dhruv_search::GrahaEntry, graha: Option<Graha>) -> Va
         "pada": entry.pada,
         "bhava_number": entry.bhava_number,
         "rashi_bhava_number": entry.rashi_bhava_number,
+        "equatorial_valid": entry.equatorial_valid,
+        "right_ascension_deg": entry.right_ascension_deg,
+        "declination_deg": entry.declination_deg,
+        "ecliptic_latitude_deg": entry.ecliptic_latitude_deg,
         "basic_states": entry.basic_states_valid.then_some(json!({
             "exalted": entry.basic_states.exalted,
             "debilitated": entry.basic_states.debilitated,
@@ -2879,7 +2898,10 @@ fn graha_positions_json(result: dhruv_search::GrahaPositions) -> Value {
             graha_entry_json(result.outer_planets[0], None),
             graha_entry_json(result.outer_planets[1], None),
             graha_entry_json(result.outer_planets[2], None)
-        ]
+        ],
+        "earth_orientation_valid": result.earth_orientation_valid,
+        "gmst_deg": result.gmst_deg,
+        "gast_deg": result.gast_deg
     })
 }
 
@@ -4215,6 +4237,46 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
                 )
                 .map_err(|err| map_error("search_error", err))?;
                 Ok(graha_positions_json(positions))
+            }
+            "graha_positions_series" => {
+                let from_utc = parse_utc(request.from_utc.clone().ok_or_else(|| {
+                    error_payload("invalid_request", "from_utc is required")
+                })?)?;
+                let to_utc = parse_utc(
+                    request
+                        .to_utc
+                        .clone()
+                        .ok_or_else(|| error_payload("invalid_request", "to_utc is required"))?,
+                )?;
+                let step_minutes = request.step_minutes.ok_or_else(|| {
+                    error_payload("invalid_request", "step_minutes is required")
+                })?;
+                let series = dhruv_search::graha_positions_series(
+                    engine,
+                    eop,
+                    &from_utc,
+                    &to_utc,
+                    step_minutes,
+                    &location
+                        .ok_or_else(|| error_payload("invalid_request", "location is required"))?,
+                    &bhava_config,
+                    &sankranti_config,
+                    &to_graha_positions_config(state, request.graha_positions_config.as_ref())?,
+                )
+                .map_err(|err| map_error("search_error", err))?;
+                Ok(json!({
+                    "points": series
+                        .points
+                        .into_iter()
+                        .map(|point| {
+                            json!({
+                                "utc": utc_json(point.utc),
+                                "jd_utc": point.jd_utc,
+                                "positions": graha_positions_json(point.positions),
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                }))
             }
             "special_lagnas" => special_lagnas_for_date(
                 engine,

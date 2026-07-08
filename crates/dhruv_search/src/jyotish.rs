@@ -6,11 +6,12 @@
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
 use dhruv_frames::{
-    ReferencePlane, cartesian_to_spherical, ecliptic_lon_to_invariable_lon, icrf_to_ecliptic,
-    icrf_to_invariable, invariable_lon_to_ecliptic_lon, mean_obliquity_of_date_rad,
+    ReferencePlane, cartesian_to_spherical, ecliptic_lon_to_invariable_lon,
+    equation_of_equinoxes_and_true_obliquity, icrf_to_ecliptic, icrf_to_invariable,
+    invariable_lon_to_ecliptic_lon, mean_obliquity_of_date_rad, nutation_iau2000b,
     precess_ecliptic_j2000_to_date_with_model,
 };
-use dhruv_time::{EopKernel, UtcTime, jd_to_tdb_seconds, tdb_seconds_to_jd};
+use dhruv_time::{EopKernel, UtcTime, gmst_rad, jd_to_tdb_seconds, tdb_seconds_to_jd};
 use dhruv_vedic_base::arudha::all_arudha_padas;
 use dhruv_vedic_base::riseset::compute_rise_set;
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig, RiseSetEvent, RiseSetResult};
@@ -47,7 +48,10 @@ use dhruv_vedic_base::{
     vaar_lord as graha_vaar_lord,
 };
 
-use crate::conjunction::{body_ecliptic_lon_lat, body_ecliptic_state, body_lon_lat_on_plane};
+use crate::conjunction::{
+    body_ecliptic_lon_lat, body_ecliptic_lon_lat_with_model, body_ecliptic_state,
+    body_lon_lat_on_plane,
+};
 use crate::dasha::{
     DashaInputs, dasha_hierarchy_with_inputs, dasha_snapshot_with_inputs, is_rashi_system,
     needs_moon_lon, needs_sunrise_sunset,
@@ -58,8 +62,10 @@ use crate::jyotish_types::{
     BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime,
     DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
     GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
-    GrahaPositionsConfig, MAX_AMSHA_REQUESTS, MovingOsculatingApogeeEntry, MovingOsculatingApogees,
-    ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
+    GrahaPositionsConfig, GrahaPositionsPoint, GrahaPositionsSeries,
+    MAX_AMSHA_REQUESTS, MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry,
+    MovingOsculatingApogees, ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry,
+    VimsopakaResult,
 };
 use crate::panchang::{
     hora_from_sunrises, masa_for_date_with_eop, panchang_for_date, varsha_for_date_with_eop,
@@ -1808,6 +1814,213 @@ pub fn graha_positions(
     )
 }
 
+/// Convert a JD UTC value back to a Gregorian `UtcTime`.
+///
+/// Rounds to the nearest millisecond so grid epochs produced by repeated
+/// floating-point addition come back as clean calendar instants.
+fn jd_utc_to_utc(jd_utc: f64) -> UtcTime {
+    let (year, month, day_frac) = dhruv_time::jd_to_calendar(jd_utc);
+    let day = day_frac.floor() as u32;
+    let mut total_ms = ((day_frac - day as f64) * 86_400_000.0).round() as u64;
+    if total_ms >= 86_400_000 {
+        // The instant rounds to midnight of the next day: take the date one
+        // millisecond later and zero the time-of-day.
+        let (y2, m2, df2) = dhruv_time::jd_to_calendar(jd_utc + 1.0 / 86_400_000.0);
+        return UtcTime::new(y2, m2, df2.floor() as u32, 0, 0, 0.0);
+    }
+    let hour = (total_ms / 3_600_000) as u32;
+    total_ms %= 3_600_000;
+    let minute = (total_ms / 60_000) as u32;
+    total_ms %= 60_000;
+    let second = total_ms as f64 / 1000.0;
+    UtcTime::new(year, month, day, hour, minute, second)
+}
+
+/// Sample `graha_positions` at a fixed cadence over `[from_utc, to_utc]`.
+///
+/// Produces one point per `step_minutes` starting at `from_utc`; the last
+/// point is the final grid epoch at or before `to_utc` (endpoints inclusive
+/// when they fall on the grid). Each point carries the same entry shape as
+/// the single-epoch op, including equatorial fields and per-point
+/// `gmst_deg`/`gast_deg` when `config.include_equatorial` is set.
+///
+/// Errors: `step_minutes == 0`, `to_utc` not after `from_utc`, or a grid
+/// larger than [`MAX_GRAHA_POSITIONS_SERIES_POINTS`].
+#[allow(clippy::too_many_arguments)]
+pub fn graha_positions_series(
+    engine: &Engine,
+    eop: &EopKernel,
+    from_utc: &UtcTime,
+    to_utc: &UtcTime,
+    step_minutes: u32,
+    location: &GeoLocation,
+    bhava_config: &BhavaConfig,
+    aya_config: &SankrantiConfig,
+    config: &GrahaPositionsConfig,
+) -> Result<GrahaPositionsSeries, SearchError> {
+    if step_minutes == 0 {
+        return Err(SearchError::InvalidConfig("step_minutes must be >= 1"));
+    }
+    let from_jd = utc_to_jd_utc(from_utc);
+    let to_jd = utc_to_jd_utc(to_utc);
+    if to_jd <= from_jd {
+        return Err(SearchError::InvalidConfig(
+            "to_utc must be after from_utc",
+        ));
+    }
+    let step_days = step_minutes as f64 / 1440.0;
+    // Inclusive grid: epochs from from_jd stepping by step_days, up to to_jd.
+    let count = (((to_jd - from_jd) / step_days) + 1e-9).floor() as usize + 1;
+    if count > MAX_GRAHA_POSITIONS_SERIES_POINTS {
+        return Err(SearchError::InvalidConfig(
+            "series would exceed MAX_GRAHA_POSITIONS_SERIES_POINTS",
+        ));
+    }
+
+    let mut points = Vec::with_capacity(count);
+    for i in 0..count {
+        let jd_utc = from_jd + i as f64 * step_days;
+        let utc = jd_utc_to_utc(jd_utc);
+        let mut ctx = JyotishContext::new(engine, Some(eop), &utc, aya_config);
+        let positions = graha_positions_with_ctx(
+            engine,
+            eop,
+            location,
+            bhava_config,
+            aya_config,
+            config,
+            &mut ctx,
+        )?;
+        points.push(GrahaPositionsPoint {
+            utc,
+            jd_utc,
+            positions,
+        });
+    }
+
+    Ok(GrahaPositionsSeries { points })
+}
+
+/// Per-epoch data for equatorial output: nutation, obliquity, sidereal time,
+/// and geometric ecliptic-of-date (lon, lat) per body.
+struct EquatorialEpochData {
+    /// Nutation in longitude (degrees); 0 when nutation is disabled.
+    dpsi_deg: f64,
+    /// Obliquity used for the rotation (true when nutation is on, else mean).
+    eps_rad: f64,
+    gmst_deg: f64,
+    gast_deg: f64,
+    /// Ecliptic-of-date geometric (lon, lat) per graha (nodes carry lat = 0).
+    graha_lon_lat: [(f64, f64); 9],
+    /// Ecliptic-of-date geometric (lon, lat) for [Uranus, Neptune, Pluto].
+    outer_lon_lat: [(f64, f64); 3],
+}
+
+/// Rotate apparent/mean ecliptic-of-date coordinates to the equator of date.
+///
+/// Standard spherical rotation about the equinox (Explanatory Supplement):
+///   tan(alpha) = (sin(lon)*cos(eps) - tan(lat)*sin(eps)) / cos(lon)
+///   sin(delta) = sin(lat)*cos(eps) + cos(lat)*sin(eps)*sin(lon)
+///
+/// Returns (right_ascension_deg in [0, 360), declination_deg).
+fn equatorial_from_ecliptic_deg(lon_deg: f64, lat_deg: f64, eps_rad: f64) -> (f64, f64) {
+    let lon = lon_deg.to_radians();
+    let lat = lat_deg.to_radians();
+    let (sin_eps, cos_eps) = (eps_rad.sin(), eps_rad.cos());
+    let ra = (lon.sin() * cos_eps - lat.tan() * sin_eps).atan2(lon.cos());
+    let sin_dec = lat.sin() * cos_eps + lat.cos() * sin_eps * lon.sin();
+    let dec = sin_dec.clamp(-1.0, 1.0).asin();
+    (ra.to_degrees().rem_euclid(360.0), dec.to_degrees())
+}
+
+/// Gather everything needed for equatorial output at the context epoch.
+///
+/// Positions are geocentric and geometric (no light-time or aberration);
+/// nutation in longitude/obliquity is applied downstream per the request's
+/// `use_nutation` flag so the frame matches apparent sidereal time.
+fn equatorial_epoch_data(
+    engine: &Engine,
+    eop: &EopKernel,
+    aya_config: &SankrantiConfig,
+    include_outer_planets: bool,
+    ctx: &JyotishContext,
+) -> Result<EquatorialEpochData, SearchError> {
+    let t = jd_tdb_to_centuries(ctx.jd_tdb);
+    let (dpsi_arcsec, deps_arcsec) = nutation_iau2000b(t);
+    let eps_mean = mean_obliquity_of_date_rad(t);
+    let (dpsi_deg, eps_rad) = if aya_config.use_nutation {
+        (
+            dpsi_arcsec / 3600.0,
+            eps_mean + (deps_arcsec / 3600.0).to_radians(),
+        )
+    } else {
+        (0.0, eps_mean)
+    };
+
+    let jd_ut1 = eop
+        .utc_to_ut1_jd(ctx.jd_utc)
+        .map_err(|_| SearchError::InvalidConfig("UTC to UT1 conversion failed for sidereal time"))?;
+    let gmst_deg = gmst_rad(jd_ut1).to_degrees();
+    let (ee_rad, _eps_true) = equation_of_equinoxes_and_true_obliquity(t);
+    let gast_deg = (gmst_deg + ee_rad.to_degrees()).rem_euclid(360.0);
+
+    let mut graha_lon_lat = [(0.0f64, 0.0f64); 9];
+    let rahu_ecl = lunar_node_deg_for_epoch_on_plane(
+        engine,
+        LunarNode::Rahu,
+        ctx.jd_tdb,
+        NodeMode::True,
+        aya_config.precession_model,
+        ReferencePlane::Ecliptic,
+    )?;
+    for graha in ALL_GRAHAS {
+        let idx = graha.index() as usize;
+        graha_lon_lat[idx] = match graha {
+            Graha::Rahu => (rahu_ecl, 0.0),
+            Graha::Ketu => (normalize_360(rahu_ecl + 180.0), 0.0),
+            _ => {
+                let body = graha_to_body(graha).expect("sapta graha has body");
+                body_ecliptic_lon_lat_with_model(
+                    engine,
+                    body,
+                    ctx.jd_tdb,
+                    aya_config.precession_model,
+                )?
+            }
+        };
+    }
+
+    let mut outer_lon_lat = [(0.0f64, 0.0f64); 3];
+    if include_outer_planets {
+        for (i, body) in [Body::Uranus, Body::Neptune, Body::Pluto].iter().enumerate() {
+            outer_lon_lat[i] = body_ecliptic_lon_lat_with_model(
+                engine,
+                *body,
+                ctx.jd_tdb,
+                aya_config.precession_model,
+            )?;
+        }
+    }
+
+    Ok(EquatorialEpochData {
+        dpsi_deg,
+        eps_rad,
+        gmst_deg,
+        gast_deg,
+        graha_lon_lat,
+        outer_lon_lat,
+    })
+}
+
+/// Fill the equatorial fields of an entry from ecliptic-of-date coordinates.
+fn fill_entry_equatorial(entry: &mut GrahaEntry, lon_deg: f64, lat_deg: f64, dpsi_deg: f64, eps_rad: f64) {
+    let (ra, dec) = equatorial_from_ecliptic_deg(lon_deg + dpsi_deg, lat_deg, eps_rad);
+    entry.equatorial_valid = true;
+    entry.right_ascension_deg = ra;
+    entry.declination_deg = dec;
+    entry.ecliptic_latitude_deg = lat_deg;
+}
+
 fn graha_positions_with_ctx(
     engine: &Engine,
     eop: &EopKernel,
@@ -1848,6 +2061,18 @@ fn graha_positions_with_ctx(
         is_combust = all_combustion_status(&graha_lons.longitudes, &is_retrograde);
     }
 
+    let equatorial = if config.include_equatorial {
+        Some(equatorial_epoch_data(
+            engine,
+            eop,
+            aya_config,
+            config.include_outer_planets,
+            ctx,
+        )?)
+    } else {
+        None
+    };
+
     // Build GrahaEntry for each of the 9 grahas.
     let mut grahas = [GrahaEntry::sentinel(); 9];
     for graha in ALL_GRAHAS {
@@ -1864,17 +2089,30 @@ fn graha_positions_with_ctx(
             aya,
             plane,
         );
+        if let Some(eq) = &equatorial {
+            let (lon, lat) = eq.graha_lon_lat[idx];
+            fill_entry_equatorial(&mut grahas[idx], lon, lat, eq.dpsi_deg, eq.eps_rad);
+        }
     }
 
     let lagna = if config.include_lagna {
-        make_graha_entry_for_point(
-            lagna_sid.expect("include_lagna implies lagna_sid"),
+        let lagna_sid = lagna_sid.expect("include_lagna implies lagna_sid");
+        let mut entry = make_graha_entry_for_point(
+            lagna_sid,
             config,
             bhava_result.as_ref(),
             rashi_bhava_lagna_sid,
             aya,
             plane,
-        )
+        );
+        if let Some(eq) = &equatorial {
+            // Lagna is computed from apparent sidereal time and true
+            // obliquity, so its reconstructed tropical longitude is already
+            // in the target frame: no extra nutation shift.
+            let lagna_tropical = sidereal_to_ecliptic_tropical(lagna_sid, aya, plane);
+            fill_entry_equatorial(&mut entry, lagna_tropical, 0.0, 0.0, eq.eps_rad);
+        }
+        entry
     } else {
         GrahaEntry::sentinel()
     };
@@ -1891,16 +2129,28 @@ fn graha_positions_with_ctx(
                 aya,
                 plane,
             );
+            if let Some(eq) = &equatorial {
+                let (lon, lat) = eq.outer_lon_lat[i];
+                fill_entry_equatorial(&mut entries[i], lon, lat, eq.dpsi_deg, eq.eps_rad);
+            }
         }
         entries
     } else {
         [GrahaEntry::sentinel(); 3]
     };
 
+    let (earth_orientation_valid, gmst_deg, gast_deg) = match &equatorial {
+        Some(eq) => (true, eq.gmst_deg, eq.gast_deg),
+        None => (false, 0.0, 0.0),
+    };
+
     Ok(GrahaPositions {
         grahas,
         lagna,
         outer_planets,
+        earth_orientation_valid,
+        gmst_deg,
+        gast_deg,
     })
 }
 
@@ -1948,6 +2198,10 @@ fn make_graha_entry_common(
         basic_states,
         sensitive_point_distances_valid,
         sensitive_point_distances,
+        equatorial_valid: false,
+        right_ascension_deg: 0.0,
+        declination_deg: 0.0,
+        ecliptic_latitude_deg: 0.0,
     }
 }
 
@@ -2131,6 +2385,7 @@ fn ashtakavarga_with_ctx(
         include_outer_planets: false,
         include_bhava: false,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
     let bhava_config = BhavaConfig::default();
     let positions = graha_positions_with_ctx(
@@ -2220,6 +2475,7 @@ fn core_bindus_with_ctx(
         include_outer_planets: false,
         include_bhava: config.include_bhava,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let graha_lons = *ctx.graha_lons(engine, aya_config)?;
@@ -4798,6 +5054,45 @@ fn all_special_lagna_lons(s: &AllSpecialLagnas) -> [f64; 8] {
 mod tests {
     use super::*;
     use dhruv_vedic_base::DEFAULT_AMSHA_VARIATION_CODE;
+
+    #[test]
+    fn equatorial_from_ecliptic_equinox_points() {
+        let eps = 23.44f64.to_radians();
+        // Vernal equinox: lon 0, lat 0 → RA 0, dec 0.
+        let (ra, dec) = equatorial_from_ecliptic_deg(0.0, 0.0, eps);
+        assert!(ra.abs() < 1e-12 || (ra - 360.0).abs() < 1e-12);
+        assert!(dec.abs() < 1e-12);
+        // Autumnal equinox: lon 180 → RA 180, dec 0.
+        let (ra, dec) = equatorial_from_ecliptic_deg(180.0, 0.0, eps);
+        assert!((ra - 180.0).abs() < 1e-12);
+        assert!(dec.abs() < 1e-12);
+    }
+
+    #[test]
+    fn equatorial_from_ecliptic_solstice_points() {
+        let eps_deg = 23.44f64;
+        let eps = eps_deg.to_radians();
+        // Summer solstice point: lon 90, lat 0 → RA 90, dec +eps.
+        let (ra, dec) = equatorial_from_ecliptic_deg(90.0, 0.0, eps);
+        assert!((ra - 90.0).abs() < 1e-9);
+        assert!((dec - eps_deg).abs() < 1e-9);
+        // Winter solstice point: lon 270 → RA 270, dec -eps.
+        let (ra, dec) = equatorial_from_ecliptic_deg(270.0, 0.0, eps);
+        assert!((ra - 270.0).abs() < 1e-9);
+        assert!((dec + eps_deg).abs() < 1e-9);
+    }
+
+    #[test]
+    fn equatorial_from_ecliptic_latitude_moves_declination() {
+        let eps = 23.44f64.to_radians();
+        // At lon 0 with positive ecliptic latitude, dec = lat * cos(eps) rotated:
+        // sin(dec) = sin(lat)cos(eps) → dec < lat but positive.
+        let (_, dec) = equatorial_from_ecliptic_deg(0.0, 5.0, eps);
+        assert!(dec > 0.0 && dec < 5.0);
+        // Symmetric for negative latitude.
+        let (_, dec_neg) = equatorial_from_ecliptic_deg(0.0, -5.0, eps);
+        assert!((dec + dec_neg).abs() < 1e-12);
+    }
 
     #[test]
     fn graha_to_body_mapping() {

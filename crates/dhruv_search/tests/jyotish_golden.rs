@@ -65,6 +65,7 @@ fn base_all_flags_off() {
         include_outer_planets: false,
         include_bhava: false,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -132,6 +133,7 @@ fn include_nakshatra_populates_nak_and_pada() {
         include_outer_planets: false,
         include_bhava: false,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -189,6 +191,7 @@ fn include_lagna_populates_lagna_entry() {
         include_outer_planets: false,
         include_bhava: false,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -247,6 +250,7 @@ fn include_outer_planets_populates_uranus_neptune_pluto() {
         include_outer_planets: true,
         include_bhava: false,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -310,6 +314,7 @@ fn include_bhava_populates_bhava_numbers() {
         include_outer_planets: false,
         include_bhava: true,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -355,6 +360,7 @@ fn all_flags_on() {
         include_outer_planets: true,
         include_bhava: true,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -439,6 +445,7 @@ fn nakshatra_and_lagna_combined() {
         include_outer_planets: false,
         include_bhava: false,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -565,6 +572,7 @@ fn graha_positions_july_2024() {
         include_outer_planets: true,
         include_bhava: true,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -624,6 +632,7 @@ fn bhava_and_outer_planets_combined() {
         include_outer_planets: true,
         include_bhava: true,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -1024,6 +1033,7 @@ fn lagna_is_rising_in_graha_positions() {
         include_outer_planets: false,
         include_bhava: false,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
 
     let result = graha_positions(
@@ -1079,5 +1089,276 @@ fn lagna_is_rising_in_graha_positions() {
         "H = {:.4} rad ({:.2} deg) — lagna should be rising (H < 0)",
         h,
         h.to_degrees()
+    );
+}
+
+// ===== Equatorial output =====
+
+#[test]
+fn equatorial_output_consistency() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let aya_config = default_aya_config();
+    let config = GrahaPositionsConfig {
+        include_nakshatra: false,
+        include_lagna: true,
+        include_outer_planets: true,
+        include_bhava: false,
+        basic_states_config: Default::default(),
+        include_equatorial: true,
+    };
+
+    let result = graha_positions(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &aya_config,
+        &config,
+    )
+    .expect("graha_positions should succeed");
+
+    // Every entry carries valid equatorial fields in range.
+    for (i, entry) in result
+        .grahas
+        .iter()
+        .chain(std::iter::once(&result.lagna))
+        .chain(result.outer_planets.iter())
+        .enumerate()
+    {
+        assert!(entry.equatorial_valid, "entry[{i}] equatorial_valid");
+        assert!(
+            entry.right_ascension_deg >= 0.0 && entry.right_ascension_deg < 360.0,
+            "entry[{i}] RA out of range: {}",
+            entry.right_ascension_deg,
+        );
+        assert!(
+            entry.declination_deg.abs() <= 90.0,
+            "entry[{i}] declination out of range: {}",
+            entry.declination_deg,
+        );
+    }
+
+    let sun = &result.grahas[0];
+    let moon = &result.grahas[1];
+    let rahu = &result.grahas[7];
+    let ketu = &result.grahas[8];
+
+    // 2024-01-15 12:00 UTC golden bands (Sun near tropical 295°).
+    assert!(
+        (-21.6..=-20.8).contains(&sun.declination_deg),
+        "Sun declination {} outside golden band",
+        sun.declination_deg,
+    );
+    assert!(
+        (294.0..=299.0).contains(&sun.right_ascension_deg),
+        "Sun RA {} outside golden band",
+        sun.right_ascension_deg,
+    );
+
+    // Sun stays within ~arcseconds of the ecliptic; Moon within ±5.5°.
+    assert!(
+        sun.ecliptic_latitude_deg.abs() < 0.01,
+        "Sun ecliptic latitude too large: {}",
+        sun.ecliptic_latitude_deg,
+    );
+    assert!(
+        moon.ecliptic_latitude_deg.abs() <= 5.5,
+        "Moon ecliptic latitude out of range: {}",
+        moon.ecliptic_latitude_deg,
+    );
+
+    // Sun self-consistency: with beta ~ 0, tan(dec) = tan(eps) * sin(RA).
+    let eps = 23.437f64.to_radians();
+    let expected_tan_dec = eps.tan() * sun.right_ascension_deg.to_radians().sin();
+    let actual_tan_dec = sun.declination_deg.to_radians().tan();
+    assert!(
+        (expected_tan_dec - actual_tan_dec).abs() < 1e-3,
+        "Sun RA/dec not self-consistent: expected tan(dec) {expected_tan_dec}, got {actual_tan_dec}",
+    );
+
+    // Nodes lie exactly on the ecliptic; lagna is a point.
+    assert_eq!(rahu.ecliptic_latitude_deg, 0.0);
+    assert_eq!(ketu.ecliptic_latitude_deg, 0.0);
+    assert_eq!(result.lagna.ecliptic_latitude_deg, 0.0);
+    // Ketu is diametrically opposite Rahu: declinations mirror.
+    assert!(
+        (rahu.declination_deg + ketu.declination_deg).abs() < 1e-9,
+        "node declinations should mirror: {} vs {}",
+        rahu.declination_deg,
+        ketu.declination_deg,
+    );
+
+    // Earth orientation present and consistent with dhruv_time's GMST.
+    assert!(result.earth_orientation_valid);
+    assert!(result.gmst_deg >= 0.0 && result.gmst_deg < 360.0);
+    assert!(result.gast_deg >= 0.0 && result.gast_deg < 360.0);
+    let jd_utc = dhruv_time::calendar_to_jd(
+        utc.year,
+        utc.month,
+        utc.day as f64 + utc.hour as f64 / 24.0 + utc.minute as f64 / 1440.0 + utc.second / 86400.0,
+    );
+    let jd_ut1 = eop.utc_to_ut1_jd(jd_utc).expect("EOP lookup");
+    let expected_gmst = gmst_rad(jd_ut1).to_degrees();
+    assert!(
+        (result.gmst_deg - expected_gmst).abs() < 1e-9,
+        "GMST mismatch: {} vs {}",
+        result.gmst_deg,
+        expected_gmst,
+    );
+    // Equation of the equinoxes is under ~0.005 deg in magnitude.
+    let mut ee = result.gast_deg - result.gmst_deg;
+    if ee > 180.0 {
+        ee -= 360.0;
+    } else if ee < -180.0 {
+        ee += 360.0;
+    }
+    assert!(ee.abs() < 0.01, "GAST-GMST too large: {ee}");
+}
+
+#[test]
+fn equatorial_disabled_leaves_sentinels() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let aya_config = default_aya_config();
+    let config = GrahaPositionsConfig {
+        include_equatorial: false,
+        ..GrahaPositionsConfig::default()
+    };
+
+    let result = graha_positions(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &aya_config,
+        &config,
+    )
+    .expect("graha_positions should succeed");
+
+    assert!(!result.earth_orientation_valid);
+    assert_eq!(result.gmst_deg, 0.0);
+    assert_eq!(result.gast_deg, 0.0);
+    for entry in &result.grahas {
+        assert!(!entry.equatorial_valid);
+        assert_eq!(entry.right_ascension_deg, 0.0);
+    }
+}
+
+// ===== Positions series =====
+
+#[test]
+fn series_matches_single_epoch_calls() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let from = utc_2024_jan_15();
+    let to = UtcTime::new(2024, 1, 15, 14, 0, 0.0);
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let aya_config = default_aya_config();
+    let config = GrahaPositionsConfig {
+        include_equatorial: true,
+        ..GrahaPositionsConfig::default()
+    };
+
+    let series = dhruv_search::graha_positions_series(
+        &engine,
+        &eop,
+        &from,
+        &to,
+        60,
+        &location,
+        &bhava_config,
+        &aya_config,
+        &config,
+    )
+    .expect("series should succeed");
+
+    // 12:00, 13:00, 14:00 inclusive.
+    assert_eq!(series.points.len(), 3);
+    assert_eq!(series.points[0].utc.hour, 12);
+    assert_eq!(series.points[2].utc.hour, 14);
+
+    // First point must match a direct single-epoch call bit-for-bit.
+    let single = graha_positions(
+        &engine,
+        &eop,
+        &from,
+        &location,
+        &bhava_config,
+        &aya_config,
+        &config,
+    )
+    .expect("single call should succeed");
+    for i in 0..9 {
+        assert_eq!(
+            series.points[0].positions.grahas[i].sidereal_longitude,
+            single.grahas[i].sidereal_longitude,
+            "graha[{i}] longitude mismatch between series and single call",
+        );
+        assert_eq!(
+            series.points[0].positions.grahas[i].right_ascension_deg,
+            single.grahas[i].right_ascension_deg,
+        );
+    }
+    assert_eq!(series.points[0].positions.gmst_deg, single.gmst_deg);
+
+    // GMST advances ~15°/hour between consecutive points.
+    let dg = (series.points[1].positions.gmst_deg - series.points[0].positions.gmst_deg)
+        .rem_euclid(360.0);
+    assert!(
+        (dg - 15.04).abs() < 0.1,
+        "GMST should advance ~15°/hour, got {dg}",
+    );
+
+    // The Moon moves measurably over two hours; the series must not repeat.
+    let moon0 = series.points[0].positions.grahas[1].sidereal_longitude;
+    let moon2 = series.points[2].positions.grahas[1].sidereal_longitude;
+    assert!(
+        (moon2 - moon0).rem_euclid(360.0) > 0.5,
+        "Moon should move > 0.5° in 2h",
+    );
+}
+
+#[test]
+fn series_rejects_invalid_requests() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let from = utc_2024_jan_15();
+    let to = UtcTime::new(2024, 1, 16, 12, 0, 0.0);
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let aya_config = default_aya_config();
+    let config = GrahaPositionsConfig::default();
+
+    // Zero step.
+    assert!(
+        dhruv_search::graha_positions_series(
+            &engine, &eop, &from, &to, 0, &location, &bhava_config, &aya_config, &config,
+        )
+        .is_err()
+    );
+    // Reversed range.
+    assert!(
+        dhruv_search::graha_positions_series(
+            &engine, &eop, &to, &from, 60, &location, &bhava_config, &aya_config, &config,
+        )
+        .is_err()
+    );
+    // Too many points: 1 year at 1-minute cadence.
+    let far = UtcTime::new(2025, 1, 15, 12, 0, 0.0);
+    assert!(
+        dhruv_search::graha_positions_series(
+            &engine, &eop, &from, &far, 1, &location, &bhava_config, &aya_config, &config,
+        )
+        .is_err()
     );
 }

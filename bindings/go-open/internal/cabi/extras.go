@@ -70,6 +70,10 @@ func goGrahaEntry(v C.DhruvGrahaEntry) GrahaEntry {
 			Mrityubhaga: float64(v.sensitive_point_distances.mrityubhaga),
 			Pushkarbhaga: float64(v.sensitive_point_distances.pushkarbhaga),
 		},
+		EquatorialValid:     v.equatorial_valid != 0,
+		RightAscensionDeg:   float64(v.right_ascension_deg),
+		DeclinationDeg:      float64(v.declination_deg),
+		EclipticLatitudeDeg: float64(v.ecliptic_latitude_deg),
 	}
 }
 
@@ -769,14 +773,11 @@ func cGrahaPositionsConfig(cfg GrahaPositionsConfig) C.DhruvGrahaPositionsConfig
 				cfg.BasicStatesConfig.IncludeSensitivePointDistances,
 			),
 		},
+		include_equatorial: boolU8(cfg.IncludeEquatorial),
 	}
 }
 
-func GrahaPositionsForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, ayanamshaSystem uint32, useNutation bool, cfg GrahaPositionsConfig) (GrahaPositions, Status) {
-	cutc, cloc := cUTC(utc), cGeo(loc)
-	cbhava, ccfg := cBhavaConfig(bhavaCfg), cGrahaPositionsConfig(cfg)
-	var out C.DhruvGrahaPositions
-	st := Status(C.dhruv_graha_positions(engine.ptr, eop.ptr, &cutc, &cloc, &cbhava, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &ccfg, &out))
+func goGrahaPositions(out C.DhruvGrahaPositions) GrahaPositions {
 	var res GrahaPositions
 	for i := 0; i < GrahaCount; i++ {
 		res.Grahas[i] = goGrahaEntry(out.grahas[i])
@@ -785,7 +786,46 @@ func GrahaPositionsForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc 
 	for i := 0; i < 3; i++ {
 		res.OuterPlanets[i] = goGrahaEntry(out.outer_planets[i])
 	}
-	return res, st
+	res.EarthOrientationValid = out.earth_orientation_valid != 0
+	res.GmstDeg = float64(out.gmst_deg)
+	res.GastDeg = float64(out.gast_deg)
+	return res
+}
+
+func GrahaPositionsForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, ayanamshaSystem uint32, useNutation bool, cfg GrahaPositionsConfig) (GrahaPositions, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
+	cbhava, ccfg := cBhavaConfig(bhavaCfg), cGrahaPositionsConfig(cfg)
+	var out C.DhruvGrahaPositions
+	st := Status(C.dhruv_graha_positions(engine.ptr, eop.ptr, &cutc, &cloc, &cbhava, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &ccfg, &out))
+	return goGrahaPositions(out), st
+}
+
+func GrahaPositionsSeriesForDate(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, stepMinutes uint32, loc GeoLocation, bhavaCfg BhavaConfig, ayanamshaSystem uint32, useNutation bool, cfg GrahaPositionsConfig) ([]GrahaPositionsPoint, Status) {
+	cfrom, cto, cloc := cUTC(fromUTC), cUTC(toUTC), cGeo(loc)
+	cbhava, ccfg := cBhavaConfig(bhavaCfg), cGrahaPositionsConfig(cfg)
+	var handle C.DhruvGrahaPositionsSeriesHandle
+	st := Status(C.dhruv_graha_positions_series(engine.ptr, eop.ptr, &cfrom, &cto, C.uint32_t(stepMinutes), &cloc, &cbhava, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &ccfg, &handle))
+	if st != StatusOK {
+		return nil, st
+	}
+	defer C.dhruv_graha_positions_series_free(handle)
+	var count C.uint32_t
+	if st := Status(C.dhruv_graha_positions_series_count(handle, &count)); st != StatusOK {
+		return nil, st
+	}
+	points := make([]GrahaPositionsPoint, int(count))
+	for i := 0; i < int(count); i++ {
+		var cpt C.DhruvGrahaPositionsPoint
+		if st := Status(C.dhruv_graha_positions_series_at(handle, C.uint32_t(i), &cpt)); st != StatusOK {
+			return nil, st
+		}
+		points[i] = GrahaPositionsPoint{
+			Utc:       goUTC(cpt.utc),
+			JdUtc:     float64(cpt.jd_utc),
+			Positions: goGrahaPositions(cpt.positions),
+		}
+	}
+	return points, StatusOK
 }
 
 func cBindusConfig(cfg BindusConfig) C.DhruvBindusConfig {

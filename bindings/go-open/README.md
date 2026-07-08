@@ -168,6 +168,25 @@ separate `OuterPlanets` fields. These outer planets are positional display
 entities only and are not used by bala, avastha, dasha, drishti, or lordship
 calculations.
 
+Setting `GrahaPositionsConfig.IncludeEquatorial` adds geocentric equatorial
+output: each entry carries `EquatorialValid`, `RightAscensionDeg` ([0, 360)),
+`DeclinationDeg` ([-90, +90]), and `EclipticLatitudeDeg` (equinox of date,
+nutation per the request's `useNutation` flag, geometric with no
+light-time/aberration correction; lagna and Rahu/Ketu report ecliptic latitude
+exactly 0). The `GrahaPositions` result also carries `EarthOrientationValid`,
+`GmstDeg`, and `GastDeg` (Greenwich mean/apparent sidereal time in degrees).
+
+`Engine.GrahaPositionsSeriesForDate(eop, fromUTC, toUTC, stepMinutes, ...)`
+samples the same op at a fixed cadence (endpoints inclusive when they fall on
+the grid, at most 10,000 points; stepMinutes must be >= 1 and toUTC after
+fromUTC). Each `GrahaPositionsPoint` carries `Utc`, `JdUtc`, and a `Positions`
+value with the identical single-epoch shape.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `ChandraGrahanResult.MoonRightAscensionDeg`/`MoonDeclinationDeg`
+and `SuryaGrahanResult.SunRightAscensionDeg`/`SunDeclinationDeg`
+(degrees, equinox of date, nutation applied).
+
 For embedded amsha charts in `FullKundaliForDate`, the relevant root sections
 must also be enabled in the full-kundali config, or the wrapper caller must use
 a higher-level helper that promotes those dependencies. Returned

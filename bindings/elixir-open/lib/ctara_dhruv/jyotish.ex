@@ -25,6 +25,22 @@ defmodule CtaraDhruv.Jyotish do
   def graha_positions(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :graha_positions))
 
+  @doc """
+  Fixed-cadence sampling of `graha_positions/2` over `[from_utc, to_utc]`.
+
+  The request takes `:from_utc`, `:to_utc`, and `:step_minutes` instead of
+  `:utc` (endpoints inclusive when on the grid, at most 10,000 points) and
+  returns `%{"points" => [%{"utc" => ..., "jd_utc" => ..., "positions" => ...}]}`
+  where each `positions` value has the same shape as the single-epoch op.
+  """
+  def graha_positions_series(engine, request),
+    do:
+      Native.call_engine(
+        &Native.jyotish_run/2,
+        engine,
+        Map.put(request, :op, :graha_positions_series)
+      )
+
   def special_lagnas(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :special_lagnas))
 

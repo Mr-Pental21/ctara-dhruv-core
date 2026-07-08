@@ -387,6 +387,10 @@ class ChandraGrahanResult:
     p4_jd: float
     moon_ecliptic_lat_deg: float
     angular_separation_deg: float
+    # Moon's apparent geocentric RA/declination at greatest grahan, degrees
+    # (equinox of date, nutation applied).
+    moon_right_ascension_deg: float = 0.0
+    moon_declination_deg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -410,6 +414,10 @@ class SuryaGrahanResult:
     c4_jd: float
     moon_ecliptic_lat_deg: float
     angular_separation_deg: float
+    # Sun's apparent geocentric RA/declination at greatest grahan, degrees
+    # (equinox of date, nutation applied).
+    sun_right_ascension_deg: float = 0.0
+    sun_declination_deg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -887,6 +895,13 @@ class GrahaEntry:
     ``pada``: 1-4, 0 if not computed.
     ``bhava_number``: 1-12, 0 if not computed.
     ``rashi_bhava_number``: 1-12, 0 if not computed.
+    ``equatorial_valid``: True when equatorial output was requested; then
+    ``right_ascension_deg`` (geocentric RA, degrees [0, 360)),
+    ``declination_deg`` (geocentric declination, degrees [-90, +90]) and
+    ``ecliptic_latitude_deg`` (geocentric ecliptic latitude, degrees) are
+    populated. Equinox of date, nutation per the request's ``use_nutation``
+    flag; geometric (no light-time/aberration). Lagna and Rahu/Ketu report
+    ecliptic latitude exactly 0.
     """
 
     sidereal_longitude: float
@@ -899,6 +914,10 @@ class GrahaEntry:
     basic_states: Optional[BasicStates] = None
     sensitive_point_distances_valid: bool = False
     sensitive_point_distances: Optional[SensitivePointDistances] = None
+    equatorial_valid: bool = False
+    right_ascension_deg: float = 0.0
+    declination_deg: float = 0.0
+    ecliptic_latitude_deg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -908,11 +927,32 @@ class GrahaPositions:
     ``grahas``: 9 Vedic grahas indexed by graha index 0-8.
     ``lagna``: lagna entry (sentinel if not computed).
     ``outer_planets``: [Uranus, Neptune, Pluto].
+    ``earth_orientation_valid``: True when equatorial output was requested
+    and ``gmst_deg``/``gast_deg`` are populated.
+    ``gmst_deg``/``gast_deg``: Greenwich mean/apparent sidereal time in
+    degrees [0, 360) at the request instant.
     """
 
     grahas: list[GrahaEntry]
     lagna: GrahaEntry
     outer_planets: list[GrahaEntry]
+    earth_orientation_valid: bool = False
+    gmst_deg: float = 0.0
+    gast_deg: float = 0.0
+
+
+@dataclass(frozen=True)
+class GrahaPositionsPoint:
+    """One epoch of a fixed-cadence graha-positions series.
+
+    ``utc``: epoch as a (year, month, day, hour, minute, second) tuple.
+    ``jd_utc``: epoch as JD UTC.
+    ``positions``: same shape as the single-epoch ``GrahaPositions``.
+    """
+
+    utc: tuple
+    jd_utc: float
+    positions: GrahaPositions
 
 
 # ---------------------------------------------------------------------------

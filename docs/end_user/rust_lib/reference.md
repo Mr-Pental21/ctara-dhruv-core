@@ -200,6 +200,39 @@ same knobs live on `DashaSelectionConfig` (`cycles: u8`, 0 = system
 default; `min_span_years: f64`, 0.0 = disabled). A period's cycle number
 is `(order - 1) / sequence_len + 1` — `order` is global across cycles.
 
+## Equatorial Output on Graha Positions
+
+`GrahaPositionsConfig.include_equatorial` (default false) adds per-entry
+geocentric equatorial data to `GrahaEntry`: `equatorial_valid`,
+`right_ascension_deg` (0..360), `declination_deg` (−90..+90), and
+`ecliptic_latitude_deg`. The `GrahaPositions` result additionally carries
+`earth_orientation_valid`, `gmst_deg`, and `gast_deg` (Greenwich
+mean/apparent sidereal time, degrees).
+
+Conventions: equinox of date; nutation in longitude and true obliquity are
+applied when the request's `use_nutation` flag is set (pair apparent RA
+with `gast_deg`, mean RA with `gmst_deg`); geocentric, geometric positions
+(no light-time or aberration); lagna and the lunar nodes lie on the
+ecliptic so their `ecliptic_latitude_deg` is exactly 0; outer planets
+carry true latitudes. Also available through `full_kundali` via
+`graha_positions_config.include_equatorial`. See
+`docs/clean_room_equatorial_output.md` for provenance.
+
+`graha_positions_series(engine, eop, from_utc, to_utc, step_minutes,
+location, bhava_config, aya_config, config)` samples the same op at a
+fixed cadence (endpoints inclusive on the grid; at most
+`MAX_GRAHA_POSITIONS_SERIES_POINTS` = 10,000 points). Each
+`GrahaPositionsPoint` carries `utc`, `jd_utc`, and a `positions` value
+with the identical single-epoch shape, including per-point
+`gmst_deg`/`gast_deg` when equatorial output is enabled. The graha
+positions family (`graha_positions`, `graha_positions_series`, and their
+config/result types) is re-exported from `dhruv_rs`.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `ChandraGrahan.moon_right_ascension_deg`/`moon_declination_deg`
+and `SuryaGrahan.sun_right_ascension_deg`/`sun_declination_deg`
+(degrees, true equator/equinox of date, IAU 2000B nutation applied).
+
 For low-level engine, time, frame, and extension-trait surfaces that are not
 explicitly re-exported here, depend on the source crates directly:
 

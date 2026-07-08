@@ -67,6 +67,82 @@ class TestGrahaPositions:
         # Lagna should have a valid longitude
         assert 0 <= result.lagna.sidereal_longitude < 360
 
+    def test_graha_positions_equatorial(self, engine_handles):
+        """include_equatorial exposes RA/dec/ecliptic latitude and GMST/GAST."""
+        from ctara_dhruv.kundali import graha_positions
+        from ctara_dhruv.engine import engine, lsk, eop
+        result = graha_positions(
+            engine(), lsk(), eop(),
+            jd_utc=(2024, 1, 15, 6, 0, 0.0),
+            location=(28.6139, 77.2090),
+            config={"include_equatorial": True},
+        )
+        for g in result.grahas:
+            assert g.equatorial_valid
+            assert 0 <= g.right_ascension_deg < 360
+            assert abs(g.declination_deg) <= 90
+        # Rahu (7) and Ketu (8) report ecliptic latitude exactly 0.
+        assert result.grahas[7].ecliptic_latitude_deg == 0.0
+        assert result.grahas[8].ecliptic_latitude_deg == 0.0
+        assert result.earth_orientation_valid
+        assert 0 <= result.gmst_deg < 360
+        assert 0 <= result.gast_deg < 360
+
+    def test_graha_positions_no_equatorial_by_default(self, engine_handles):
+        """Without include_equatorial the fields stay invalid."""
+        from ctara_dhruv.kundali import graha_positions
+        from ctara_dhruv.engine import engine, lsk, eop
+        result = graha_positions(
+            engine(), lsk(), eop(),
+            jd_utc=(2024, 1, 15, 6, 0, 0.0),
+            location=(28.6139, 77.2090),
+            config={"include_lagna": 1},
+        )
+        assert not result.grahas[0].equatorial_valid
+        assert not result.earth_orientation_valid
+
+    def test_graha_positions_series(self, engine_handles):
+        """Series sampling matches the single-epoch call on the first point."""
+        from ctara_dhruv.kundali import graha_positions, graha_positions_series
+        from ctara_dhruv.engine import engine, lsk, eop
+        points = graha_positions_series(
+            engine(), lsk(), eop(),
+            from_utc=(2024, 1, 15, 12, 0, 0.0),
+            to_utc=(2024, 1, 15, 14, 0, 0.0),
+            step_minutes=60,
+            location=(28.6139, 77.2090),
+            config={"include_equatorial": True},
+        )
+        assert len(points) == 3
+        assert points[0].utc[3] == 12
+        assert points[2].utc[3] == 14
+        single = graha_positions(
+            engine(), lsk(), eop(),
+            jd_utc=(2024, 1, 15, 12, 0, 0.0),
+            location=(28.6139, 77.2090),
+            config={"include_equatorial": True},
+        )
+        for i in range(9):
+            assert (
+                points[0].positions.grahas[i].sidereal_longitude
+                == single.grahas[i].sidereal_longitude
+            )
+        assert points[0].positions.gmst_deg == single.gmst_deg
+
+    def test_graha_positions_series_rejects_zero_step(self, engine_handles):
+        """step_minutes == 0 raises."""
+        import pytest
+        from ctara_dhruv.kundali import graha_positions_series
+        from ctara_dhruv.engine import engine, lsk, eop
+        with pytest.raises(Exception):
+            graha_positions_series(
+                engine(), lsk(), eop(),
+                from_utc=(2024, 1, 15, 12, 0, 0.0),
+                to_utc=(2024, 1, 15, 14, 0, 0.0),
+                step_minutes=0,
+                location=(28.6139, 77.2090),
+            )
+
 
 @skip_no_kernels
 @skip_no_eop

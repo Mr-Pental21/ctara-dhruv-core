@@ -105,6 +105,11 @@ pub struct ChandraGrahan {
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation between Moon center and shadow axis at greatest grahan, in degrees.
     pub angular_separation_deg: f64,
+    /// Moon's apparent geocentric right ascension at greatest grahan, in
+    /// degrees [0, 360) (equinox of date, IAU 2000B nutation applied).
+    pub moon_right_ascension_deg: f64,
+    /// Moon's apparent geocentric declination at greatest grahan, in degrees.
+    pub moon_declination_deg: f64,
 }
 
 /// Surya grahan (solar eclipse) type classification (geocentric).
@@ -151,4 +156,9 @@ pub struct SuryaGrahan {
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation between Sun and Moon centers at greatest grahan, in degrees.
     pub angular_separation_deg: f64,
+    /// Sun's apparent geocentric right ascension at greatest grahan, in
+    /// degrees [0, 360) (equinox of date, IAU 2000B nutation applied).
+    pub sun_right_ascension_deg: f64,
+    /// Sun's apparent geocentric declination at greatest grahan, in degrees.
+    pub sun_declination_deg: f64,
 }

@@ -77,6 +77,24 @@ fn chandra_grahan_2025_mar_total() {
         "total chandra grahan magnitude = {}, expected > 1",
         grahan.magnitude
     );
+
+    // Moon apparent equatorial position at maximum. 2025-Mar-14 the eclipsed
+    // Moon sits near the Leo/Virgo border: RA ~ 170-175°, dec ~ +2..+7°.
+    assert!(
+        grahan.moon_right_ascension_deg >= 0.0 && grahan.moon_right_ascension_deg < 360.0,
+        "moon RA out of range: {}",
+        grahan.moon_right_ascension_deg
+    );
+    assert!(
+        (168.0..=178.0).contains(&grahan.moon_right_ascension_deg),
+        "moon RA {} outside golden band",
+        grahan.moon_right_ascension_deg
+    );
+    assert!(
+        (0.0..=9.0).contains(&grahan.moon_declination_deg),
+        "moon declination {} outside golden band",
+        grahan.moon_declination_deg
+    );
 }
 
 /// Search for chandra grahan in 2024 — should find 2 (Mar and Sep).
@@ -165,6 +183,19 @@ fn surya_grahan_2024_apr() {
         grahan.magnitude > 0.90,
         "surya grahan magnitude = {}, expected > 0.90",
         grahan.magnitude
+    );
+
+    // Sun apparent equatorial position at maximum. On 2024-Apr-08 the Sun
+    // is in Aries: RA ~ 17.4°, dec ~ +7.4°.
+    assert!(
+        (14.0..=21.0).contains(&grahan.sun_right_ascension_deg),
+        "sun RA {} outside golden band",
+        grahan.sun_right_ascension_deg
+    );
+    assert!(
+        (5.5..=9.5).contains(&grahan.sun_declination_deg),
+        "sun declination {} outside golden band",
+        grahan.sun_declination_deg
     );
 }
 

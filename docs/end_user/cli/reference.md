@@ -303,6 +303,30 @@ On `kundali`, the same knobs are `--dasha-cycles` and
 `--dasha-min-span-years`. A period's cycle number can be derived from its
 global `order`: `cycle = (order - 1) / sequence_len + 1`.
 
+## Equatorial Output
+
+`graha-positions --equatorial` (and `kundali --include-equatorial`) adds,
+per entry, geocentric right ascension, declination, and ecliptic latitude
+in degrees (equinox of date; nutation applied when `--nutation` is set),
+plus Greenwich mean/apparent sidereal time (`GMST`/`GAST`) for the request
+instant. Positions are geometric (no light-time or aberration). Point-like
+entries — lagna, Rahu, Ketu — lie on the ecliptic, so their ecliptic
+latitude is exactly 0.
+
+## Positions Series
+
+`graha-positions --to-date <UTC> --step-minutes <N>` switches to series
+mode: positions are sampled from `--date` to `--to-date` every N minutes
+(endpoints inclusive when they fall on the grid, at most 10,000 points).
+Each point prints the epoch, optional `GMST`/`GAST`, and one line per
+entry with the sidereal longitude plus RA/declination/ecliptic latitude
+when `--equatorial` is set. All other flags behave as in single-epoch
+mode.
+
+Grahan output also reports the Moon's (chandra) or Sun's (surya)
+apparent right ascension and declination at greatest grahan (degrees,
+equinox of date, nutation applied).
+
 Chara-style dasha periods use dual lordship for Kumbha (`Shani`/`Rahu`) and
 Vrischika (`Mangal`/`Ketu`). Rahu owns Kumbha and Ketu owns Vrischika for the
 default sign-lord-based node dignity policy.

@@ -74,3 +74,15 @@ Found by bisection on the Sun-Moon angular separation:
 - Contact time refinement: bisection (standard numerical method)
 - No Swiss Ephemeris or GPL code referenced
 - No copyleft sources consulted
+
+## Equatorial Output at Greatest Grahan (2026-07)
+
+`ChandraGrahan` carries the Moon's apparent geocentric right ascension and
+declination at greatest grahan (`moon_right_ascension_deg`,
+`moon_declination_deg`); `SuryaGrahan` carries the Sun's
+(`sun_right_ascension_deg`, `sun_declination_deg`). Both are degrees on the
+true equator/equinox of date with IAU 2000B nutation applied, computed from
+the body's ecliptic-of-date coordinates via the standard spherical rotation
+documented in `docs/clean_room_equatorial_output.md`. Positions remain
+geometric (no light-time or aberration), consistent with the rest of the
+grahan geometry.

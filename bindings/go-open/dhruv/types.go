@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 74
+const ExpectedAPIVersion = 75
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -343,9 +343,10 @@ type (
 	GrahaDrishtiMatrix = cabi.GrahaDrishtiMatrix
 	DrishtiResult      = cabi.DrishtiResult
 
-	GrahaEntry     = cabi.GrahaEntry
-	GrahaPositions = cabi.GrahaPositions
-	BindusResult   = cabi.BindusResult
+	GrahaEntry          = cabi.GrahaEntry
+	GrahaPositions      = cabi.GrahaPositions
+	GrahaPositionsPoint = cabi.GrahaPositionsPoint
+	BindusResult        = cabi.BindusResult
 
 	BhinnaAshtakavarga = cabi.BhinnaAshtakavarga
 	SarvaAshtakavarga  = cabi.SarvaAshtakavarga

@@ -21,7 +21,10 @@
 //! IAU 2015 nominal radii). See docs/clean_room_grahan.md.
 
 use dhruv_core::{Body, Engine, Frame, Observer, Query};
-use dhruv_frames::{cartesian_to_spherical, icrf_to_ecliptic, precess_ecliptic_j2000_to_date};
+use dhruv_frames::{
+    cartesian_to_spherical, icrf_to_ecliptic, mean_obliquity_of_date_rad, nutation_iau2000b,
+    precess_ecliptic_j2000_to_date,
+};
 use dhruv_time::UtcTime;
 
 use crate::conjunction::{next_conjunction, prev_conjunction, search_conjunctions};
@@ -67,10 +70,14 @@ const CONTACT_MAX_ITER: u32 = 50;
 // Internal geometry helpers
 // ---------------------------------------------------------------------------
 
-/// Query Moon's ecliptic-of-date longitude, latitude (deg), and distance (km).
-fn moon_ecliptic(engine: &Engine, jd_tdb: f64) -> Result<(f64, f64, f64), SearchError> {
+/// Query a body's ecliptic-of-date longitude, latitude (deg), and distance (km).
+fn body_ecliptic_of_date(
+    engine: &Engine,
+    body: Body,
+    jd_tdb: f64,
+) -> Result<(f64, f64, f64), SearchError> {
     let query = Query {
-        target: Body::Moon,
+        target: body,
         observer: Observer::Body(Body::Earth),
         frame: Frame::IcrfJ2000,
         epoch_tdb_jd: jd_tdb,
@@ -81,6 +88,35 @@ fn moon_ecliptic(engine: &Engine, jd_tdb: f64) -> Result<(f64, f64, f64), Search
     let ecl_date = precess_ecliptic_j2000_to_date(&ecl_j2000, t);
     let sph = cartesian_to_spherical(&ecl_date);
     Ok((sph.lon_deg.rem_euclid(360.0), sph.lat_deg, sph.distance_km))
+}
+
+/// Query Moon's ecliptic-of-date longitude, latitude (deg), and distance (km).
+fn moon_ecliptic(engine: &Engine, jd_tdb: f64) -> Result<(f64, f64, f64), SearchError> {
+    body_ecliptic_of_date(engine, Body::Moon, jd_tdb)
+}
+
+/// Apparent geocentric equatorial coordinates for a body at an epoch.
+///
+/// Converts the body's ecliptic-of-date (lon, lat) to right ascension and
+/// declination on the true equator/equinox of date (IAU 2000B nutation in
+/// longitude and obliquity applied). Returns degrees, RA in [0, 360).
+/// Standard spherical rotation; see docs/clean_room_equatorial_output.md.
+fn apparent_equatorial_deg(
+    engine: &Engine,
+    body: Body,
+    jd_tdb: f64,
+) -> Result<(f64, f64), SearchError> {
+    let (lon_deg, lat_deg, _) = body_ecliptic_of_date(engine, body, jd_tdb)?;
+    let t = (jd_tdb - 2_451_545.0) / 36525.0;
+    let (dpsi_arcsec, deps_arcsec) = nutation_iau2000b(t);
+    let eps = mean_obliquity_of_date_rad(t) + (deps_arcsec / 3600.0).to_radians();
+    let lon = (lon_deg + dpsi_arcsec / 3600.0).to_radians();
+    let lat = lat_deg.to_radians();
+    let (sin_eps, cos_eps) = (eps.sin(), eps.cos());
+    let ra = (lon.sin() * cos_eps - lat.tan() * sin_eps).atan2(lon.cos());
+    let sin_dec = lat.sin() * cos_eps + lat.cos() * sin_eps * lon.sin();
+    let dec = sin_dec.clamp(-1.0, 1.0).asin();
+    Ok((ra.to_degrees().rem_euclid(360.0), dec.to_degrees()))
 }
 
 /// Query Sun's distance from Earth in km.
@@ -347,6 +383,7 @@ fn compute_chandra_grahan(
     };
 
     let angular_sep = sun_moon_angular_separation(engine, full_moon_jd)?;
+    let (moon_ra, moon_dec) = apparent_equatorial_deg(engine, Body::Moon, full_moon_jd)?;
 
     Ok(Some(ChandraGrahan {
         grahan_type,
@@ -368,6 +405,8 @@ fn compute_chandra_grahan(
         p4_utc: UtcTime::from_jd_tdb(p4_jd, engine.lsk()),
         moon_ecliptic_lat_deg: moon_lat,
         angular_separation_deg: angular_sep,
+        moon_right_ascension_deg: moon_ra,
+        moon_declination_deg: moon_dec,
     }))
 }
 
@@ -573,6 +612,8 @@ fn compute_surya_grahan(
         (None, None)
     };
 
+    let (sun_ra, sun_dec) = apparent_equatorial_deg(engine, Body::Sun, new_moon_jd)?;
+
     Ok(Some(SuryaGrahan {
         grahan_type,
         magnitude,
@@ -588,6 +629,8 @@ fn compute_surya_grahan(
         c4_utc: c4_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         moon_ecliptic_lat_deg: moon_lat,
         angular_separation_deg: min_sep,
+        sun_right_ascension_deg: sun_ra,
+        sun_declination_deg: sun_dec,
     }))
 }
 

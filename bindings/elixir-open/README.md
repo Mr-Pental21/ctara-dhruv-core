@@ -145,6 +145,40 @@ Notes:
   including returned `bhava_cusps`.
 - `full_kundali` now includes `graha_positions.lagna` by default.
 
+## Equatorial Graha Output
+
+`Jyotish.graha_positions/2` (and the embedded `full_kundali`
+`graha_positions` block) can also report geocentric equatorial coordinates.
+Enable it via `graha_positions_config`:
+
+```elixir
+{:ok, positions} =
+  Jyotish.graha_positions(engine, %{
+    utc: utc,
+    location: location,
+    graha_positions_config: %{include_equatorial: true}
+  })
+```
+
+Each entry then carries `equatorial_valid`, `right_ascension_deg`,
+`declination_deg`, and `ecliptic_latitude_deg` — degrees, equinox of date,
+nutation per the request's `use_nutation` flag, geometric (no light-time or
+aberration). Lagna and Rahu/Ketu report ecliptic latitude exactly `0.0`. The
+result additionally carries `earth_orientation_valid`, `gmst_deg`, and
+`gast_deg` (Greenwich mean/apparent sidereal time in degrees), populated when
+equatorial output is requested.
+
+`CtaraDhruv.Jyotish.graha_positions_series/2` samples the same op at a
+fixed cadence: pass `:from_utc`, `:to_utc`, and `:step_minutes` instead
+of `:utc` (endpoints inclusive when on the grid, at most 10,000 points).
+The result is `%{points: [%{utc: ..., jd_utc: ..., positions: ...}]}`
+where each `positions` value has the single-epoch shape.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `moon_right_ascension_deg`/`moon_declination_deg` on chandra
+grahan results and `sun_right_ascension_deg`/`sun_declination_deg` on
+surya grahan results (degrees, equinox of date, nutation applied).
+
 ## Amsha Notes
 
 The Elixir wrapper exposes amsha-related behavior through

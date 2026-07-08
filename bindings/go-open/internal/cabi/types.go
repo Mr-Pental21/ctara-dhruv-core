@@ -464,6 +464,10 @@ type ChandraGrahanResult struct {
 	P4Jd                 float64
 	MoonEclipticLatDeg   float64
 	AngularSeparationDeg float64
+	// Moon's apparent geocentric RA/declination at greatest grahan, degrees
+	// (equinox of date, nutation applied).
+	MoonRightAscensionDeg float64
+	MoonDeclinationDeg    float64
 }
 
 type SuryaGrahanResult struct {
@@ -481,6 +485,10 @@ type SuryaGrahanResult struct {
 	C4Jd                 float64
 	MoonEclipticLatDeg   float64
 	AngularSeparationDeg float64
+	// Sun's apparent geocentric RA/declination at greatest grahan, degrees
+	// (equinox of date, nutation applied).
+	SunRightAscensionDeg float64
+	SunDeclinationDeg    float64
 }
 
 type StationaryConfig struct {
@@ -745,6 +753,11 @@ type GrahaPositionsConfig struct {
 	IncludeOuterPlanets bool
 	IncludeBhava        bool
 	BasicStatesConfig   BasicStatesConfig
+	// IncludeEquatorial requests geocentric equatorial coordinates
+	// (right ascension, declination, ecliptic latitude) per entry plus
+	// Greenwich sidereal time on the result. Equinox of date; nutation is
+	// applied per the request's useNutation flag.
+	IncludeEquatorial bool
 }
 
 type TimeUpagrahaConfig struct {
@@ -908,6 +921,18 @@ type GrahaEntry struct {
 	BasicStates                  BasicStates
 	SensitivePointDistancesValid bool
 	SensitivePointDistances      SensitivePointDistances
+	// EquatorialValid reports whether the equatorial fields below are
+	// populated (requires GrahaPositionsConfig.IncludeEquatorial).
+	EquatorialValid bool
+	// RightAscensionDeg is the geocentric right ascension in degrees
+	// [0, 360), equinox of date. Geometric (no light-time/aberration).
+	RightAscensionDeg float64
+	// DeclinationDeg is the geocentric declination in degrees [-90, +90],
+	// equinox of date.
+	DeclinationDeg float64
+	// EclipticLatitudeDeg is the geocentric ecliptic latitude in degrees.
+	// Point-like entries (lagna, Rahu/Ketu) report exactly 0.
+	EclipticLatitudeDeg float64
 }
 
 type BasicStates struct {
@@ -931,6 +956,22 @@ type GrahaPositions struct {
 	Grahas       [GrahaCount]GrahaEntry
 	Lagna        GrahaEntry
 	OuterPlanets [3]GrahaEntry
+	// EarthOrientationValid reports whether GmstDeg/GastDeg are populated
+	// (requires GrahaPositionsConfig.IncludeEquatorial).
+	EarthOrientationValid bool
+	// GmstDeg is Greenwich Mean Sidereal Time in degrees [0, 360).
+	GmstDeg float64
+	// GastDeg is Greenwich Apparent Sidereal Time in degrees [0, 360).
+	GastDeg float64
+}
+
+// GrahaPositionsPoint is one epoch of a fixed-cadence positions series:
+// the epoch as Gregorian UTC and JD UTC, plus the same positions shape as
+// the single-epoch call.
+type GrahaPositionsPoint struct {
+	Utc       UtcTime
+	JdUtc     float64
+	Positions GrahaPositions
 }
 
 type BindusResult struct {

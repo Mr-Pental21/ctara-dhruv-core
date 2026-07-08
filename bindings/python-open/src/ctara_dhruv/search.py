@@ -147,6 +147,8 @@ def _chandra_grahan(r) -> ChandraGrahanResult:
         p4_jd=r.p4_jd,
         moon_ecliptic_lat_deg=r.moon_ecliptic_lat_deg,
         angular_separation_deg=r.angular_separation_deg,
+        moon_right_ascension_deg=r.moon_right_ascension_deg,
+        moon_declination_deg=r.moon_declination_deg,
     )
 
 
@@ -166,6 +168,8 @@ def _surya_grahan(r) -> SuryaGrahanResult:
         c4_jd=r.c4_jd,
         moon_ecliptic_lat_deg=r.moon_ecliptic_lat_deg,
         angular_separation_deg=r.angular_separation_deg,
+        sun_right_ascension_deg=r.sun_right_ascension_deg,
+        sun_declination_deg=r.sun_declination_deg,
     )
 
 

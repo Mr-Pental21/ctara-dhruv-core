@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       74
+#define DHRUV_API_VERSION       75
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -695,6 +695,10 @@ typedef struct {
     DhruvUtcTime p4_utc;
     double  moon_ecliptic_lat_deg;
     double  angular_separation_deg;
+    /* Moon's apparent geocentric RA/declination at greatest grahan, degrees
+       (equinox of date, nutation applied). */
+    double  moon_right_ascension_deg;
+    double  moon_declination_deg;
 } DhruvChandraGrahanResult;
 
 typedef struct {
@@ -712,6 +716,10 @@ typedef struct {
     DhruvUtcTime c4_utc;
     double  moon_ecliptic_lat_deg;
     double  angular_separation_deg;
+    /* Sun's apparent geocentric RA/declination at greatest grahan, degrees
+       (equinox of date, nutation applied). */
+    double  sun_right_ascension_deg;
+    double  sun_declination_deg;
 } DhruvSuryaGrahanResult;
 
 /* --- Stationary / max-speed --- */
@@ -1233,6 +1241,10 @@ typedef struct {
     uint8_t include_outer_planets;
     uint8_t include_bhava;
     DhruvBasicStatesConfig basic_states_config;
+    /* Compute geocentric equatorial coordinates per entry plus Greenwich
+       sidereal time on the result (1 = yes). Equinox of date; nutation
+       applied per the request's use_nutation flag. */
+    uint8_t include_equatorial;
 } DhruvGrahaPositionsConfig;
 
 typedef struct {
@@ -1246,12 +1258,24 @@ typedef struct {
     DhruvBasicStates basic_states;
     uint8_t sensitive_point_distances_valid;
     DhruvSensitivePointDistances sensitive_point_distances;
+    uint8_t equatorial_valid;
+    /* Geocentric right ascension in degrees [0, 360), equinox of date. */
+    double  right_ascension_deg;
+    /* Geocentric declination in degrees [-90, +90], equinox of date. */
+    double  declination_deg;
+    /* Geocentric ecliptic latitude in degrees (0 for point-like entries). */
+    double  ecliptic_latitude_deg;
 } DhruvGrahaEntry;
 
 typedef struct {
     DhruvGrahaEntry grahas[9];
     DhruvGrahaEntry lagna;
     DhruvGrahaEntry outer_planets[3];
+    uint8_t earth_orientation_valid;
+    /* Greenwich Mean Sidereal Time in degrees [0, 360). */
+    double  gmst_deg;
+    /* Greenwich Apparent Sidereal Time in degrees [0, 360). */
+    double  gast_deg;
 } DhruvGrahaPositions;
 
 /* --- Core Bindus --- */
@@ -2541,6 +2565,39 @@ DhruvStatus dhruv_graha_positions(
     uint8_t use_nutation,
     const DhruvGrahaPositionsConfig *config,
     DhruvGrahaPositions *out);
+
+/* Fixed-cadence sampling of graha positions over [from_utc, to_utc].
+   One point per step_minutes (endpoints inclusive when on the grid).
+   Rejects step_minutes == 0, reversed ranges, and grids over 10000 points.
+   The returned handle must be freed with dhruv_graha_positions_series_free. */
+typedef void *DhruvGrahaPositionsSeriesHandle;
+
+typedef struct {
+    DhruvUtcTime        utc;      /* epoch as Gregorian UTC */
+    double              jd_utc;   /* epoch as JD UTC */
+    DhruvGrahaPositions positions;
+} DhruvGrahaPositionsPoint;
+
+DhruvStatus dhruv_graha_positions_series(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *from_utc,
+    const DhruvUtcTime *to_utc,
+    uint32_t step_minutes,
+    const DhruvGeoLocation *location,
+    const DhruvBhavaConfig *bhava_config,
+    uint32_t ayanamsha_system,
+    uint8_t use_nutation,
+    const DhruvGrahaPositionsConfig *config,
+    DhruvGrahaPositionsSeriesHandle *out);
+DhruvStatus dhruv_graha_positions_series_count(
+    DhruvGrahaPositionsSeriesHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_graha_positions_series_at(
+    DhruvGrahaPositionsSeriesHandle handle,
+    uint32_t idx,
+    DhruvGrahaPositionsPoint *out);
+void dhruv_graha_positions_series_free(DhruvGrahaPositionsSeriesHandle handle);
 
 /* --- Core Bindus --- */
 DhruvStatus dhruv_core_bindus(

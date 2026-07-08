@@ -392,6 +392,15 @@ func (e *Engine) GrahaPositionsForDate(ep *EOP, utc UtcTime, loc GeoLocation, bh
 	return out, statusErr("graha_positions", st)
 }
 
+// GrahaPositionsSeriesForDate samples GrahaPositionsForDate at a fixed
+// cadence from fromUTC to toUTC every stepMinutes (endpoints inclusive when
+// on the grid, at most 10000 points). Rejects stepMinutes == 0 and reversed
+// ranges.
+func (e *Engine) GrahaPositionsSeriesForDate(ep *EOP, fromUTC, toUTC UtcTime, stepMinutes uint32, loc GeoLocation, bhavaCfg BhavaConfig, ayanamshaSystem uint32, useNutation bool, cfg GrahaPositionsConfig) ([]GrahaPositionsPoint, error) {
+	out, st := cabi.GrahaPositionsSeriesForDate(e.h, ep.h, fromUTC, toUTC, stepMinutes, loc, bhavaCfg, ayanamshaSystem, useNutation, cfg)
+	return out, statusErr("graha_positions_series", st)
+}
+
 func (e *Engine) CoreBindusForDate(ep *EOP, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool, cfg BindusConfig) (BindusResult, error) {
 	out, st := cabi.CoreBindusForDate(e.h, ep.h, utc, loc, bhavaCfg, riseCfg, ayanamshaSystem, useNutation, cfg)
 	return out, statusErr("core_bindus", st)

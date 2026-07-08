@@ -34,7 +34,13 @@ Core inputs and configs:
   `IncludeOuterPlanets` defaults on through the high-level defaults. Returned
   `Grahas` stay the 9 navagrahas; `OuterPlanets` is `[Uranus, Neptune, Pluto]`.
   `BasicStatesConfig` controls optional `BasicStates` and
-  `SensitivePointDistances` output on entries.
+  `SensitivePointDistances` output on entries. `IncludeEquatorial` adds
+  geocentric `RightAscensionDeg`/`DeclinationDeg`/`EclipticLatitudeDeg`
+  (with `EquatorialValid`) per entry — equinox of date, nutation per the
+  request's `useNutation` flag, geometric (no light-time/aberration); lagna
+  and Rahu/Ketu report ecliptic latitude exactly 0 — plus
+  `EarthOrientationValid`, `GmstDeg`, and `GastDeg` (Greenwich mean/apparent
+  sidereal time in degrees) on the `GrahaPositions` result.
 - `BindusConfig`
 - `DrishtiConfig`
 - `TimeUpagrahaConfig`
@@ -318,6 +324,8 @@ Jyotish and charts:
 - `(*Engine).CharakarakaForDate`
 - `(*Engine).GrahaPositionsForDate`
   Returns outer planets in a sibling field without changing the 9-graha list.
+  With `GrahaPositionsConfig.IncludeEquatorial`, entries also carry geocentric
+  equatorial coordinates and the result carries Greenwich sidereal time.
 - `(*Engine).CoreBindusForDate`
 - `(*Engine).DrishtiForDate`
 - `(*Engine).AshtakavargaForDate`
@@ -325,6 +333,17 @@ Jyotish and charts:
 - `(*Engine).FullKundaliForDate`
 - `(*Engine).TimeUpagrahaJDUTC`
 - `(*Engine).TimeUpagrahaJDUTCWithConfig`
+
+- `Engine.GrahaPositionsSeriesForDate(eop, fromUTC, toUTC, stepMinutes, ...)`
+  samples the same op at a fixed cadence (endpoints inclusive when on the
+  grid, at most 10,000 points; `stepMinutes >= 1`, `toUTC` after `fromUTC`).
+  Each `GrahaPositionsPoint` carries `Utc`, `JdUtc`, and a `Positions`
+  value with the identical single-epoch shape.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `ChandraGrahanResult.MoonRightAscensionDeg`/`MoonDeclinationDeg`
+and `SuryaGrahanResult.SunRightAscensionDeg`/`SunDeclinationDeg`
+(degrees, equinox of date, nutation applied).
 
 Strength, dasha, amsha, and tara:
 

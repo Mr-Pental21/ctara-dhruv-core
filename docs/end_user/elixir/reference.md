@@ -142,9 +142,19 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
 - `graha_positions/2`
   request `:graha_positions_config` may include nested
   `:basic_states_config` with `:include_basic_states` and
-  `:include_sensitive_point_distances`
+  `:include_sensitive_point_distances`, plus `:include_equatorial` (default
+  `false`).
   Keeps `:grahas` as the 9 navagrahas and exposes positional-only outer grahas
   separately as `:outer_planets`.
+  With `:include_equatorial` enabled, each entry carries
+  `:equatorial_valid`, `:right_ascension_deg`, `:declination_deg`, and
+  `:ecliptic_latitude_deg` — geocentric coordinates in degrees, equinox of
+  date, nutation per the request's `:use_nutation` flag, geometric (no
+  light-time or aberration). Lagna and Rahu/Ketu report ecliptic latitude
+  exactly `0.0`. The result also carries `:earth_orientation_valid`,
+  `:gmst_deg`, and `:gast_deg` (Greenwich mean/apparent sidereal time in
+  degrees), populated when equatorial output is requested. The same fields
+  appear in the embedded `full_kundali` `:graha_positions` block.
 - `special_lagnas/2`
 - `arudha/2`
 - `upagrahas/2`
@@ -163,6 +173,16 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
   same entry/state outputs, and sensitive-point distance mode can also surface
   bhava-cusp distance arrays
 - `amsha/2`
+
+- `CtaraDhruv.Jyotish.graha_positions_series/2` — fixed-cadence sampling
+  of `graha_positions/2` via `:from_utc`, `:to_utc`, `:step_minutes`
+  (endpoints inclusive on the grid, max 10,000 points); returns
+  `%{points: [%{utc: ..., jd_utc: ..., positions: ...}]}`.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `moon_right_ascension_deg`/`moon_declination_deg` on chandra
+grahan results and `sun_right_ascension_deg`/`sun_declination_deg` on
+surya grahan results (degrees, equinox of date, nutation applied).
 
 `CtaraDhruv.Search`:
 

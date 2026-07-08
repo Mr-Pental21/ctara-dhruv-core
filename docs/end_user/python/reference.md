@@ -271,11 +271,28 @@ replacement.
   Uranus, Neptune, and Pluto separately as `outer_planets`. Optional
   `config["basic_states_config"]` accepts `include_basic_states` and
   `include_sensitive_point_distances`; entries then expose `basic_states` and
-  `sensitive_point_distances`.
+  `sensitive_point_distances`. Optional `config["include_equatorial"]` (0/1)
+  adds geocentric equatorial coordinates per entry: `equatorial_valid`,
+  `right_ascension_deg` ([0, 360)), `declination_deg` ([-90, +90]), and
+  `ecliptic_latitude_deg` in degrees — equinox of date, nutation per the
+  request's `use_nutation` flag, geometric (no light-time or aberration).
+  Lagna and Rahu/Ketu report ecliptic latitude exactly 0. The result also
+  exposes `earth_orientation_valid`, `gmst_deg`, and `gast_deg` (Greenwich
+  mean/apparent sidereal time in degrees at the request instant).
 - `core_bindus`
 - `charakaraka_for_date`
 - `full_kundali_config_default`
 - `full_kundali`
+
+- `graha_positions_series(engine, lsk, eop, from_utc, to_utc,
+  step_minutes, location, ...)` — fixed-cadence sampling of
+  `graha_positions` (endpoints inclusive on the grid, max 10,000 points);
+  returns a list of `GrahaPositionsPoint` (`utc`, `jd_utc`, `positions`).
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `ChandraGrahanResult.moon_right_ascension_deg` /
+`moon_declination_deg` and `SuryaGrahanResult.sun_right_ascension_deg` /
+`sun_declination_deg` (degrees, equinox of date, nutation applied).
 
 `shadbala`:
 
@@ -415,6 +432,9 @@ Common dict-style or struct-style config inputs:
   `graha_positions_config.basic_states_config` accepts `include_basic_states`
   and `include_sensitive_point_distances`. When the distance flag is enabled,
   full-kundali results can also expose bhava-cusp distance arrays.
+  `graha_positions_config.include_equatorial` enables per-entry equatorial
+  output and result-level `gmst_deg`/`gast_deg` on the embedded
+  `graha_positions` section.
 - dasha configs returned by `dasha_selection_config_default` and `dasha_variation_config_default`
 
 For embedded full-kundali dasha snapshots, the CFFI dasha selection config now

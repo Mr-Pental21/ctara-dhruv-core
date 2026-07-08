@@ -478,6 +478,60 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 	if len(kundaliWithAmshas.Amshas[0].Sphutas) != SphutaCount {
 		t.Fatalf("expected scoped amsha sphutas in full kundali, got %d", len(kundaliWithAmshas.Amshas[0].Sphutas))
 	}
+
+	gpCfg := GrahaPositionsConfig{
+		IncludeLagna:        true,
+		IncludeOuterPlanets: true,
+		IncludeEquatorial:   true,
+	}
+	gp, err := eng.GrahaPositionsForDate(eop, utc, loc, bhava, 0, true, gpCfg)
+	if err != nil {
+		t.Fatalf("GrahaPositionsForDate (equatorial): %v", err)
+	}
+	for i, entry := range gp.Grahas {
+		if !entry.EquatorialValid {
+			t.Fatalf("graha %d: expected EquatorialValid", i)
+		}
+		if entry.RightAscensionDeg < 0 || entry.RightAscensionDeg >= 360 {
+			t.Fatalf("graha %d: RA out of [0,360): %v", i, entry.RightAscensionDeg)
+		}
+		if math.Abs(entry.DeclinationDeg) > 90 {
+			t.Fatalf("graha %d: declination out of [-90,90]: %v", i, entry.DeclinationDeg)
+		}
+	}
+	// Rahu (7) and Ketu (8) are ecliptic points; latitude must be exactly 0.
+	if gp.Grahas[7].EclipticLatitudeDeg != 0 || gp.Grahas[8].EclipticLatitudeDeg != 0 {
+		t.Fatalf(
+			"expected zero node ecliptic latitude, got %v/%v",
+			gp.Grahas[7].EclipticLatitudeDeg, gp.Grahas[8].EclipticLatitudeDeg,
+		)
+	}
+	if !gp.EarthOrientationValid {
+		t.Fatalf("expected EarthOrientationValid with IncludeEquatorial")
+	}
+	if gp.GmstDeg < 0 || gp.GmstDeg >= 360 {
+		t.Fatalf("GMST out of [0,360): %v", gp.GmstDeg)
+	}
+
+	// Series: 2h at 60-minute cadence yields 3 points; the first must match
+	// the single-epoch call exactly.
+	toUTC := utc
+	toUTC.Hour += 2
+	series, err := eng.GrahaPositionsSeriesForDate(eop, utc, toUTC, 60, loc, bhava, 0, true, gpCfg)
+	if err != nil {
+		t.Fatalf("GrahaPositionsSeriesForDate: %v", err)
+	}
+	if len(series) != 3 {
+		t.Fatalf("expected 3 series points, got %d", len(series))
+	}
+	for i := range gp.Grahas {
+		if series[0].Positions.Grahas[i].SiderealLongitude != gp.Grahas[i].SiderealLongitude {
+			t.Fatalf("series point 0 graha %d longitude mismatch", i)
+		}
+	}
+	if _, err := eng.GrahaPositionsSeriesForDate(eop, utc, toUTC, 0, loc, bhava, 0, true, gpCfg); err == nil {
+		t.Fatalf("expected error for stepMinutes == 0")
+	}
 }
 
 func TestAmshaSelectionFlowsThroughBalaWrappers(t *testing.T) {

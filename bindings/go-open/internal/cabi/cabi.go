@@ -1011,11 +1011,13 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			U3UTC:                goOptionalUTC(float64(v.u3_jd) != -1.0, v.u3_utc),
 			U3Jd:                 float64(v.u3_jd),
 			U4UTC:                goOptionalUTC(float64(v.u4_jd) != -1.0, v.u4_utc),
-			U4Jd:                 float64(v.u4_jd),
-			P4UTC:                goUTC(v.p4_utc),
-			P4Jd:                 float64(v.p4_jd),
-			MoonEclipticLatDeg:   float64(v.moon_ecliptic_lat_deg),
-			AngularSeparationDeg: float64(v.angular_separation_deg),
+			U4Jd:                  float64(v.u4_jd),
+			P4UTC:                 goUTC(v.p4_utc),
+			P4Jd:                  float64(v.p4_jd),
+			MoonEclipticLatDeg:    float64(v.moon_ecliptic_lat_deg),
+			AngularSeparationDeg:  float64(v.angular_separation_deg),
+			MoonRightAscensionDeg: float64(v.moon_right_ascension_deg),
+			MoonDeclinationDeg:    float64(v.moon_declination_deg),
 		}
 	}
 	toS := func(v C.DhruvSuryaGrahanResult) SuryaGrahanResult {
@@ -1034,6 +1036,8 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			C4Jd:                 float64(v.c4_jd),
 			MoonEclipticLatDeg:   float64(v.moon_ecliptic_lat_deg),
 			AngularSeparationDeg: float64(v.angular_separation_deg),
+			SunRightAscensionDeg: float64(v.sun_right_ascension_deg),
+			SunDeclinationDeg:    float64(v.sun_declination_deg),
 		}
 	}
 	count := int(outCount)
@@ -1634,6 +1638,7 @@ func FullKundaliConfigDefault() FullKundaliConfig {
 				IncludeBasicStates: cfg.graha_positions_config.basic_states_config.include_basic_states != 0,
 				IncludeSensitivePointDistances: cfg.graha_positions_config.basic_states_config.include_sensitive_point_distances != 0,
 			},
+			IncludeEquatorial: cfg.graha_positions_config.include_equatorial != 0,
 		},
 		BindusConfig: BindusConfig{
 			IncludeNakshatra: cfg.bindus_config.include_nakshatra != 0,
@@ -1691,6 +1696,7 @@ func cFullKundaliConfig(cfg FullKundaliConfig) C.DhruvFullKundaliConfig {
 				cfg.GrahaPositionsConfig.BasicStatesConfig.IncludeSensitivePointDistances,
 			),
 		},
+		include_equatorial: boolU8(cfg.GrahaPositionsConfig.IncludeEquatorial),
 	}
 	out.bindus_config = C.DhruvBindusConfig{
 		include_nakshatra: boolU8(cfg.BindusConfig.IncludeNakshatra),
@@ -2426,6 +2432,9 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 		for i := 0; i < len(v.OuterPlanets); i++ {
 			v.OuterPlanets[i] = goGrahaEntry(out.graha_positions.outer_planets[i])
 		}
+		v.EarthOrientationValid = out.graha_positions.earth_orientation_valid != 0
+		v.GmstDeg = float64(out.graha_positions.gmst_deg)
+		v.GastDeg = float64(out.graha_positions.gast_deg)
 		res.GrahaPositions = &v
 	}
 	if out.bindus_valid != 0 {

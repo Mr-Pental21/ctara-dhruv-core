@@ -455,6 +455,11 @@ bool ReadGrahaPositionsConfig(napi_env env, napi_value obj, DhruvGrahaPositionsC
         if (!GetNamedProperty(env, v, "includeSensitivePointDistances", &basic_value) || !GetBool(env, basic_value, &b)) return false;
         out->basic_states_config.include_sensitive_point_distances = b ? 1 : 0;
     }
+    if (!GetOptionalNamedProperty(env, obj, "includeEquatorial", &v, &has)) return false;
+    if (has) {
+        if (!GetBool(env, v, &b)) return false;
+        out->include_equatorial = b ? 1 : 0;
+    }
     return true;
 }
 
@@ -2020,6 +2025,12 @@ napi_value WriteGrahaEntry(napi_env env, const DhruvGrahaEntry& g) {
         SetNamed(env, distances, "pushkarbhaga", MakeDouble(env, g.sensitive_point_distances.pushkarbhaga));
         SetNamed(env, obj, "sensitivePointDistances", distances);
     }
+    SetNamed(env, obj, "equatorialValid", MakeBool(env, g.equatorial_valid != 0));
+    if (g.equatorial_valid != 0) {
+        SetNamed(env, obj, "rightAscensionDeg", MakeDouble(env, g.right_ascension_deg));
+        SetNamed(env, obj, "declinationDeg", MakeDouble(env, g.declination_deg));
+        SetNamed(env, obj, "eclipticLatitudeDeg", MakeDouble(env, g.ecliptic_latitude_deg));
+    }
     return obj;
 }
 
@@ -2290,6 +2301,11 @@ napi_value WriteGrahaPositions(napi_env env, const DhruvGrahaPositions& p) {
         napi_set_element(env, outer, i, WriteGrahaEntry(env, p.outer_planets[i]));
     }
     SetNamed(env, obj, "outerPlanets", outer);
+    SetNamed(env, obj, "earthOrientationValid", MakeBool(env, p.earth_orientation_valid != 0));
+    if (p.earth_orientation_valid != 0) {
+        SetNamed(env, obj, "gmstDeg", MakeDouble(env, p.gmst_deg));
+        SetNamed(env, obj, "gastDeg", MakeDouble(env, p.gast_deg));
+    }
     return obj;
 }
 
@@ -2395,6 +2411,8 @@ napi_value WriteChandraGrahanResult(napi_env env, const DhruvChandraGrahanResult
     SetNamed(env, obj, "p4Jd", MakeDouble(env, g.p4_jd));
     SetNamed(env, obj, "moonEclipticLatDeg", MakeDouble(env, g.moon_ecliptic_lat_deg));
     SetNamed(env, obj, "angularSeparationDeg", MakeDouble(env, g.angular_separation_deg));
+    SetNamed(env, obj, "moonRightAscensionDeg", MakeDouble(env, g.moon_right_ascension_deg));
+    SetNamed(env, obj, "moonDeclinationDeg", MakeDouble(env, g.moon_declination_deg));
     return obj;
 }
 
@@ -2417,6 +2435,8 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
     SetNamed(env, obj, "c4Jd", MakeDouble(env, g.c4_jd));
     SetNamed(env, obj, "moonEclipticLatDeg", MakeDouble(env, g.moon_ecliptic_lat_deg));
     SetNamed(env, obj, "angularSeparationDeg", MakeDouble(env, g.angular_separation_deg));
+    SetNamed(env, obj, "sunRightAscensionDeg", MakeDouble(env, g.sun_right_ascension_deg));
+    SetNamed(env, obj, "sunDeclinationDeg", MakeDouble(env, g.sun_declination_deg));
     return obj;
 }
 
@@ -6074,6 +6094,70 @@ napi_value GrahaPositionsForDate(napi_env env, napi_callback_info info) {
     return out;
 }
 
+napi_value GrahaPositionsSeriesForDate(napi_env env, napi_callback_info info) {
+    size_t argc = 10;
+    napi_value args[10];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 10) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime from_utc{};
+    DhruvUtcTime to_utc{};
+    uint32_t step_minutes = 0;
+    DhruvGeoLocation loc{};
+    DhruvBhavaConfig bhava_cfg{};
+    uint32_t ayanamsha = 0;
+    bool use_nutation = false;
+    DhruvGrahaPositionsConfig cfg{};
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) ||
+        !ReadUtcTime(env, args[2], &from_utc) || !ReadUtcTime(env, args[3], &to_utc) ||
+        !GetUint32(env, args[4], &step_minutes) || !ReadGeoLocation(env, args[5], &loc) ||
+        !ReadBhavaConfig(env, args[6], &bhava_cfg) || !GetUint32(env, args[7], &ayanamsha) ||
+        !GetBool(env, args[8], &use_nutation) || !ReadGrahaPositionsConfig(env, args[9], &cfg)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvGrahaPositionsSeriesHandle handle = nullptr;
+    int32_t status = dhruv_graha_positions_series(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &from_utc,
+        &to_utc,
+        step_minutes,
+        &loc,
+        &bhava_cfg,
+        ayanamsha,
+        use_nutation ? 1 : 0,
+        &cfg,
+        &handle);
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) return out;
+    uint32_t count = 0;
+    status = dhruv_graha_positions_series_count(handle, &count);
+    if (status != STATUS_OK) {
+        dhruv_graha_positions_series_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_value points;
+    napi_create_array_with_length(env, count, &points);
+    for (uint32_t i = 0; i < count; i++) {
+        DhruvGrahaPositionsPoint point{};
+        status = dhruv_graha_positions_series_at(handle, i, &point);
+        if (status != STATUS_OK) {
+            dhruv_graha_positions_series_free(handle);
+            return MakeStatusResult(env, status);
+        }
+        napi_value obj;
+        napi_create_object(env, &obj);
+        SetNamed(env, obj, "utc", WriteUtcTime(env, point.utc));
+        SetNamed(env, obj, "jdUtc", MakeDouble(env, point.jd_utc));
+        SetNamed(env, obj, "positions", WriteGrahaPositions(env, point.positions));
+        napi_set_element(env, points, i, obj);
+    }
+    dhruv_graha_positions_series_free(handle);
+    SetNamed(env, out, "result", points);
+    return out;
+}
+
 napi_value CoreBindusForDate(napi_env env, napi_callback_info info) {
     size_t argc = 9;
     napi_value args[9];
@@ -6668,6 +6752,7 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, basic_states_cfg, "includeBasicStates", MakeBool(env, cfg.graha_positions_config.basic_states_config.include_basic_states != 0));
     SetNamed(env, basic_states_cfg, "includeSensitivePointDistances", MakeBool(env, cfg.graha_positions_config.basic_states_config.include_sensitive_point_distances != 0));
     SetNamed(env, graha_cfg, "basicStatesConfig", basic_states_cfg);
+    SetNamed(env, graha_cfg, "includeEquatorial", MakeBool(env, cfg.graha_positions_config.include_equatorial != 0));
     SetNamed(env, obj, "grahaPositionsConfig", graha_cfg);
 
     napi_value bindus_cfg;
@@ -8019,6 +8104,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"grahaDrishtiMatrix", nullptr, GrahaDrishtiMatrix, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"drishtiForDate", nullptr, DrishtiForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"grahaPositionsForDate", nullptr, GrahaPositionsForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"grahaPositionsSeriesForDate", nullptr, GrahaPositionsSeriesForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"coreBindusForDate", nullptr, CoreBindusForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaLongitude", nullptr, AmshaLongitude, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaRashiInfo", nullptr, AmshaRashiInfo, nullptr, nullptr, nullptr, napi_default, nullptr},

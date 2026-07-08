@@ -37,6 +37,7 @@ from .types import (
     GrahaLongitudes,
     GrahaLongitudesConfig,
     GrahaPositions,
+    GrahaPositionsPoint,
     MovingOsculatingApogeeEntry,
     MovingOsculatingApogees,
     HoraInfo,
@@ -200,6 +201,10 @@ def _graha_entry_from_ffi(e):
         basic_states=basic_states,
         sensitive_point_distances_valid=bool(e.sensitive_point_distances_valid),
         sensitive_point_distances=sensitive_point_distances,
+        equatorial_valid=bool(e.equatorial_valid),
+        right_ascension_deg=e.right_ascension_deg,
+        declination_deg=e.declination_deg,
+        ecliptic_latitude_deg=e.ecliptic_latitude_deg,
     )
 
 
@@ -300,6 +305,38 @@ def moving_osculating_apogees_for_date(
 # ---------------------------------------------------------------------------
 
 
+def _make_graha_positions_config(config):
+    """Build a DhruvGrahaPositionsConfig pointer from an options dict."""
+    if config is None:
+        return ffi.NULL
+    cfg = ffi.new("DhruvGrahaPositionsConfig *")
+    cfg.include_nakshatra = config.get("include_nakshatra", 0)
+    cfg.include_lagna = config.get("include_lagna", 0)
+    cfg.include_outer_planets = config.get("include_outer_planets", 1)
+    cfg.include_bhava = config.get("include_bhava", 0)
+    basic_states_config = config.get("basic_states_config", {})
+    cfg.basic_states_config.include_basic_states = basic_states_config.get(
+        "include_basic_states", 0
+    )
+    cfg.basic_states_config.include_sensitive_point_distances = basic_states_config.get(
+        "include_sensitive_point_distances", 0
+    )
+    cfg.include_equatorial = 1 if config.get("include_equatorial", 0) else 0
+    return cfg
+
+
+def _graha_positions_from_ffi(out):
+    """Convert a DhruvGrahaPositions C struct into the Python dataclass."""
+    return GrahaPositions(
+        grahas=[_graha_entry_from_ffi(out.grahas[i]) for i in range(9)],
+        lagna=_graha_entry_from_ffi(out.lagna),
+        outer_planets=[_graha_entry_from_ffi(out.outer_planets[i]) for i in range(3)],
+        earth_orientation_valid=bool(out.earth_orientation_valid),
+        gmst_deg=out.gmst_deg,
+        gast_deg=out.gast_deg,
+    )
+
+
 def graha_positions(
     engine,
     lsk,
@@ -323,7 +360,12 @@ def graha_positions(
         ayanamsha_system: Ayanamsha system code.
         use_nutation: 1=apply nutation, 0=skip.
         config: Optional dict with keys include_nakshatra, include_lagna,
-                include_outer_planets, include_bhava (all u8 0/1).
+                include_outer_planets, include_bhava, include_equatorial
+                (all u8 0/1) plus optional basic_states_config dict.
+                include_equatorial adds geocentric equatorial coordinates
+                (RA/declination/ecliptic latitude, equinox of date, nutation
+                per use_nutation, geometric) per entry and Greenwich
+                mean/apparent sidereal time (gmst_deg/gast_deg) on the result.
         bhava_config: Optional dict for bhava system config.
         sankranti_config: Optional dict for sankranti config.
 
@@ -333,22 +375,7 @@ def graha_positions(
     utc = _make_utc(jd_utc)
     loc = _make_location(location)
     bhava_cfg = _make_bhava_config(bhava_config)
-
-    if config is not None:
-        cfg = ffi.new("DhruvGrahaPositionsConfig *")
-        cfg.include_nakshatra = config.get("include_nakshatra", 0)
-        cfg.include_lagna = config.get("include_lagna", 0)
-        cfg.include_outer_planets = config.get("include_outer_planets", 1)
-        cfg.include_bhava = config.get("include_bhava", 0)
-        basic_states_config = config.get("basic_states_config", {})
-        cfg.basic_states_config.include_basic_states = basic_states_config.get(
-            "include_basic_states", 0
-        )
-        cfg.basic_states_config.include_sensitive_point_distances = basic_states_config.get(
-            "include_sensitive_point_distances", 0
-        )
-    else:
-        cfg = ffi.NULL
+    cfg = _make_graha_positions_config(config)
 
     out = ffi.new("DhruvGrahaPositions *")
     check(
@@ -366,10 +393,95 @@ def graha_positions(
         "graha_positions",
     )
 
-    grahas = [_graha_entry_from_ffi(out.grahas[i]) for i in range(9)]
-    lagna = _graha_entry_from_ffi(out.lagna)
-    outer_planets = [_graha_entry_from_ffi(out.outer_planets[i]) for i in range(3)]
-    return GrahaPositions(grahas=grahas, lagna=lagna, outer_planets=outer_planets)
+    return _graha_positions_from_ffi(out)
+
+
+def graha_positions_series(
+    engine,
+    lsk,
+    eop,
+    from_utc,
+    to_utc,
+    step_minutes,
+    location,
+    ayanamsha_system=0,
+    use_nutation=1,
+    config=None,
+    bhava_config=None,
+    sankranti_config=None,
+):
+    """Sample graha_positions at a fixed cadence over [from_utc, to_utc].
+
+    Produces one point per step_minutes (endpoints inclusive when they fall
+    on the grid, at most 10,000 points). Each point carries the epoch as a
+    UTC tuple and JD UTC plus a GrahaPositions value with the same shape as
+    the single-epoch call, including equatorial fields and gmst_deg/gast_deg
+    when include_equatorial is set.
+
+    Args:
+        engine: Engine instance.
+        lsk: LSK handle (unused by this FFI call but kept for API uniformity).
+        eop: EOP handle.
+        from_utc: Range start as (year, month, day[, hour, min, sec]) tuple.
+        to_utc: Range end tuple (must be after from_utc).
+        step_minutes: Sampling cadence in minutes (>= 1).
+        location: (lat_deg, lon_deg[, alt_m]) tuple.
+        ayanamsha_system: Ayanamsha system code.
+        use_nutation: 1=apply nutation, 0=skip.
+        config: Same options dict as graha_positions.
+        bhava_config: Optional dict for bhava system config.
+        sankranti_config: Optional dict for sankranti config.
+
+    Returns:
+        List of GrahaPositionsPoint dataclasses.
+    """
+    from_c = _make_utc(from_utc)
+    to_c = _make_utc(to_utc)
+    loc = _make_location(location)
+    bhava_cfg = _make_bhava_config(bhava_config)
+    cfg = _make_graha_positions_config(config)
+
+    handle = ffi.new("DhruvGrahaPositionsSeriesHandle *")
+    check(
+        lib.dhruv_graha_positions_series(
+            engine._ptr,
+            eop,
+            from_c,
+            to_c,
+            step_minutes,
+            loc,
+            bhava_cfg,
+            ayanamsha_system,
+            use_nutation,
+            cfg,
+            handle,
+        ),
+        "graha_positions_series",
+    )
+    try:
+        count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_graha_positions_series_count(handle[0], count),
+            "graha_positions_series_count",
+        )
+        points = []
+        point = ffi.new("DhruvGrahaPositionsPoint *")
+        for i in range(count[0]):
+            check(
+                lib.dhruv_graha_positions_series_at(handle[0], i, point),
+                "graha_positions_series_at",
+            )
+            utc = point.utc
+            points.append(
+                GrahaPositionsPoint(
+                    utc=(utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second),
+                    jd_utc=point.jd_utc,
+                    positions=_graha_positions_from_ffi(point.positions),
+                )
+            )
+        return points
+    finally:
+        lib.dhruv_graha_positions_series_free(handle[0])
 
 
 # ---------------------------------------------------------------------------
@@ -903,7 +1015,14 @@ def full_kundali(
             grahas = [_graha_entry_from_ffi(out.graha_positions.grahas[i]) for i in range(9)]
             lagna_entry = _graha_entry_from_ffi(out.graha_positions.lagna)
             outer = [_graha_entry_from_ffi(out.graha_positions.outer_planets[i]) for i in range(3)]
-            graha_pos = GrahaPositions(grahas=grahas, lagna=lagna_entry, outer_planets=outer)
+            graha_pos = GrahaPositions(
+                grahas=grahas,
+                lagna=lagna_entry,
+                outer_planets=outer,
+                earth_orientation_valid=bool(out.graha_positions.earth_orientation_valid),
+                gmst_deg=out.graha_positions.gmst_deg,
+                gast_deg=out.graha_positions.gast_deg,
+            )
 
         # Bindus
         bindus = None
@@ -1168,7 +1287,14 @@ def _extract_full_kundali_result_ffi(out) -> FullKundaliResult:
         grahas = [_graha_entry_from_ffi(out.graha_positions.grahas[i]) for i in range(9)]
         lagna_entry = _graha_entry_from_ffi(out.graha_positions.lagna)
         outer = [_graha_entry_from_ffi(out.graha_positions.outer_planets[i]) for i in range(3)]
-        graha_pos = GrahaPositions(grahas=grahas, lagna=lagna_entry, outer_planets=outer)
+        graha_pos = GrahaPositions(
+            grahas=grahas,
+            lagna=lagna_entry,
+            outer_planets=outer,
+            earth_orientation_valid=bool(out.graha_positions.earth_orientation_valid),
+            gmst_deg=out.graha_positions.gmst_deg,
+            gast_deg=out.graha_positions.gast_deg,
+        )
 
     bindus = None
     if out.bindus_valid:

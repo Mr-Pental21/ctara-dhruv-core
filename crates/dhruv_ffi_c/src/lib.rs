@@ -65,7 +65,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 74;
+pub const DHRUV_API_VERSION: u32 = 75;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -982,6 +982,7 @@ fn graha_positions_config_from_ffi(
                 .include_sensitive_point_distances
                 != 0,
         },
+        include_equatorial: cfg.include_equatorial != 0,
     }
 }
 
@@ -1046,6 +1047,7 @@ fn resolve_graha_positions_config_ptr(
         include_outer_planets: true,
         include_bhava: false,
         basic_states_config: dhruv_search::BasicStatesConfig::default(),
+        include_equatorial: false,
     })
 }
 
@@ -3710,6 +3712,11 @@ pub struct DhruvChandraGrahanResult {
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation at greatest grahan, in degrees.
     pub angular_separation_deg: f64,
+    /// Moon's apparent geocentric right ascension at greatest grahan, in
+    /// degrees [0, 360) (equinox of date, nutation applied).
+    pub moon_right_ascension_deg: f64,
+    /// Moon's apparent geocentric declination at greatest grahan, in degrees.
+    pub moon_declination_deg: f64,
 }
 
 impl From<&ChandraGrahan> for DhruvChandraGrahanResult {
@@ -3746,6 +3753,8 @@ impl From<&ChandraGrahan> for DhruvChandraGrahanResult {
             p4_utc: utc_time_to_ffi(&e.p4_utc),
             moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
             angular_separation_deg: e.angular_separation_deg,
+            moon_right_ascension_deg: e.moon_right_ascension_deg,
+            moon_declination_deg: e.moon_declination_deg,
         }
     }
 }
@@ -3782,6 +3791,11 @@ pub struct DhruvSuryaGrahanResult {
     pub moon_ecliptic_lat_deg: f64,
     /// Angular separation at greatest grahan, in degrees.
     pub angular_separation_deg: f64,
+    /// Sun's apparent geocentric right ascension at greatest grahan, in
+    /// degrees [0, 360) (equinox of date, nutation applied).
+    pub sun_right_ascension_deg: f64,
+    /// Sun's apparent geocentric declination at greatest grahan, in degrees.
+    pub sun_declination_deg: f64,
 }
 
 impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
@@ -3813,6 +3827,8 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
                 .unwrap_or(ZEROED_UTC),
             moon_ecliptic_lat_deg: e.moon_ecliptic_lat_deg,
             angular_separation_deg: e.angular_separation_deg,
+            sun_right_ascension_deg: e.sun_right_ascension_deg,
+            sun_declination_deg: e.sun_declination_deg,
         }
     }
 }
@@ -10713,6 +10729,9 @@ pub struct DhruvGrahaPositionsConfig {
     pub include_outer_planets: u8,
     pub include_bhava: u8,
     pub basic_states_config: DhruvBasicStatesConfig,
+    /// Compute geocentric equatorial coordinates per entry plus Greenwich
+    /// sidereal time on the result (1 = yes, 0 = no).
+    pub include_equatorial: u8,
 }
 
 /// C-compatible single graha entry.
@@ -10734,6 +10753,14 @@ pub struct DhruvGrahaEntry {
     pub basic_states: DhruvBasicStates,
     pub sensitive_point_distances_valid: u8,
     pub sensitive_point_distances: DhruvSensitivePointDistances,
+    /// Whether the equatorial fields were computed (1 = yes).
+    pub equatorial_valid: u8,
+    /// Geocentric right ascension in degrees [0, 360), equinox of date.
+    pub right_ascension_deg: f64,
+    /// Geocentric declination in degrees [-90, +90], equinox of date.
+    pub declination_deg: f64,
+    /// Geocentric ecliptic latitude in degrees (0 for point-like entries).
+    pub ecliptic_latitude_deg: f64,
 }
 
 /// C-compatible graha positions result.
@@ -10746,6 +10773,12 @@ pub struct DhruvGrahaPositions {
     pub lagna: DhruvGrahaEntry,
     /// Outer planets: [Uranus, Neptune, Pluto].
     pub outer_planets: [DhruvGrahaEntry; 3],
+    /// Whether `gmst_deg`/`gast_deg` were computed (1 = yes).
+    pub earth_orientation_valid: u8,
+    /// Greenwich Mean Sidereal Time in degrees [0, 360).
+    pub gmst_deg: f64,
+    /// Greenwich Apparent Sidereal Time in degrees [0, 360).
+    pub gast_deg: f64,
 }
 
 fn basic_states_to_ffi(states: &dhruv_vedic_base::BasicStates) -> DhruvBasicStates {
@@ -10789,6 +10822,10 @@ fn graha_entry_to_ffi(entry: &dhruv_search::GrahaEntry) -> DhruvGrahaEntry {
         sensitive_point_distances: sensitive_point_distances_to_ffi(
             &entry.sensitive_point_distances,
         ),
+        equatorial_valid: if entry.equatorial_valid { 1 } else { 0 },
+        right_ascension_deg: entry.right_ascension_deg,
+        declination_deg: entry.declination_deg,
+        ecliptic_latitude_deg: entry.ecliptic_latitude_deg,
     }
 }
 
@@ -10863,9 +10900,185 @@ pub unsafe extern "C" fn dhruv_graha_positions(
             for i in 0..3 {
                 out.outer_planets[i] = graha_entry_to_ffi(&result.outer_planets[i]);
             }
+            out.earth_orientation_valid = if result.earth_orientation_valid { 1 } else { 0 };
+            out.gmst_deg = result.gmst_deg;
+            out.gast_deg = result.gast_deg;
             DhruvStatus::Ok
         }
         Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Opaque handle to a graha-positions series (Vec of points).
+pub type DhruvGrahaPositionsSeriesHandle = *mut std::ffi::c_void;
+
+/// C-compatible single epoch of a graha-positions series.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvGrahaPositionsPoint {
+    /// Epoch as Gregorian UTC.
+    pub utc: DhruvUtcTime,
+    /// Epoch as JD UTC.
+    pub jd_utc: f64,
+    /// Positions at this epoch (same shape as the single-epoch op).
+    pub positions: DhruvGrahaPositions,
+}
+
+fn graha_positions_to_ffi(result: &dhruv_search::GrahaPositions) -> DhruvGrahaPositions {
+    let mut out = DhruvGrahaPositions {
+        grahas: [graha_entry_to_ffi(&result.grahas[0]); 9],
+        lagna: graha_entry_to_ffi(&result.lagna),
+        outer_planets: [graha_entry_to_ffi(&result.outer_planets[0]); 3],
+        earth_orientation_valid: if result.earth_orientation_valid { 1 } else { 0 },
+        gmst_deg: result.gmst_deg,
+        gast_deg: result.gast_deg,
+    };
+    for i in 0..9 {
+        out.grahas[i] = graha_entry_to_ffi(&result.grahas[i]);
+    }
+    for i in 0..3 {
+        out.outer_planets[i] = graha_entry_to_ffi(&result.outer_planets[i]);
+    }
+    out
+}
+
+/// Sample graha positions at a fixed cadence over `[from_utc, to_utc]`.
+///
+/// Produces one point per `step_minutes` (endpoints inclusive when on the
+/// grid). Rejects `step_minutes == 0`, reversed ranges, and grids larger
+/// than 10,000 points. On success `*out` receives a series handle that must
+/// be freed with `dhruv_graha_positions_series_free`.
+///
+/// # Safety
+/// All pointers must be valid. `out` must be non-null.
+#[allow(clippy::too_many_arguments)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_graha_positions_series(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    from_utc: *const DhruvUtcTime,
+    to_utc: *const DhruvUtcTime,
+    step_minutes: u32,
+    location: *const DhruvGeoLocation,
+    bhava_config: *const DhruvBhavaConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    config: *const DhruvGrahaPositionsConfig,
+    out: *mut DhruvGrahaPositionsSeriesHandle,
+) -> DhruvStatus {
+    if engine.is_null()
+        || eop.is_null()
+        || from_utc.is_null()
+        || to_utc.is_null()
+        || location.is_null()
+        || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let from_c = unsafe { &*from_utc };
+    let to_c = unsafe { &*to_utc };
+    let loc_c = unsafe { &*location };
+
+    let from_time = ffi_to_utc_time(from_c);
+    let to_time = ffi_to_utc_time(to_c);
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+
+    let rust_bhava_config = match resolve_bhava_config_ptr(bhava_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    let rust_config = match resolve_graha_positions_config_ptr(config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+
+    match dhruv_search::graha_positions_series(
+        engine,
+        eop,
+        &from_time,
+        &to_time,
+        step_minutes,
+        &location,
+        &rust_bhava_config,
+        &aya_config,
+        &rust_config,
+    ) {
+        Ok(series) => {
+            let boxed = Box::new(series.points);
+            unsafe { *out = Box::into_raw(boxed) as DhruvGrahaPositionsSeriesHandle };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Get the number of points in a graha-positions series handle.
+///
+/// # Safety
+/// `handle` must be a valid series handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_graha_positions_series_count(
+    handle: DhruvGrahaPositionsSeriesHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let points = unsafe { &*(handle as *const Vec<dhruv_search::GrahaPositionsPoint>) };
+    unsafe { *out = points.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one point from a graha-positions series handle by index.
+///
+/// # Safety
+/// `handle` must be a valid series handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_graha_positions_series_at(
+    handle: DhruvGrahaPositionsSeriesHandle,
+    idx: u32,
+    out: *mut DhruvGrahaPositionsPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let points = unsafe { &*(handle as *const Vec<dhruv_search::GrahaPositionsPoint>) };
+    let i = idx as usize;
+    if i >= points.len() {
+        return DhruvStatus::InvalidInput;
+    }
+    let point = &points[i];
+    unsafe {
+        *out = DhruvGrahaPositionsPoint {
+            utc: utc_time_to_ffi(&point.utc),
+            jd_utc: point.jd_utc,
+            positions: graha_positions_to_ffi(&point.positions),
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// Free a graha-positions series handle. Passing NULL is a no-op.
+///
+/// # Safety
+/// `handle` must come from `dhruv_graha_positions_series` or be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_graha_positions_series_free(
+    handle: DhruvGrahaPositionsSeriesHandle,
+) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle as *mut Vec<dhruv_search::GrahaPositionsPoint>) };
     }
 }
 
@@ -12076,6 +12289,7 @@ pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig 
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -18040,6 +18254,7 @@ mod tests {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         };
         let bhava_cfg = dhruv_bhava_config_default();
         let s = unsafe {

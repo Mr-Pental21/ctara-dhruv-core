@@ -93,7 +93,8 @@ Total runtime functions documented here: **58**.
 | `special_lagnas_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config`, `aya_config` | `Result<AllSpecialLagnas, SearchError>` | Computes all special lagnas. |
 | `arudha_padas_for_date` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `aya_config` | `Result<[ArudhaResult; 12], SearchError>` | Computes arudha padas for 12 houses. |
 | `all_upagrahas_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config`, `aya_config` | `Result<AllUpagrahas, SearchError>` | Computes all 11 upagrahas. |
-| `graha_positions` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `aya_config`, `config` | `Result<GrahaPositions, SearchError>` | Extended graha-position API. |
+| `graha_positions` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `aya_config`, `config` | `Result<GrahaPositions, SearchError>` | Extended graha-position API. `config.include_equatorial` adds per-entry geocentric RA/declination/ecliptic latitude (equinox of date) and result-level `gmst_deg`/`gast_deg`. |
+| `graha_positions_series` | `engine`, `eop`, `from_utc`, `to_utc`, `step_minutes`, `location`, `bhava_config`, `aya_config`, `config` | `Result<GrahaPositionsSeries, SearchError>` | Fixed-cadence samples of `graha_positions` over a range (endpoints inclusive on the grid, max 10,000 points). |
 | `ashtakavarga_for_date` | `engine`, `eop`, `utc`, `location`, `aya_config` | `Result<AshtakavargaResult, SearchError>` | Full ashtakavarga result. |
 | `core_bindus` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<BindusResult, SearchError>` | Curated bindu/sensitive points set. |
 | `drishti_for_date` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<DrishtiResult, SearchError>` | Graha drishti matrix (+ optional projections). |

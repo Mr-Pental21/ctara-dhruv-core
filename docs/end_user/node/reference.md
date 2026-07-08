@@ -338,13 +338,30 @@ Common config objects:
 - graha positions config
   supports nested `basicStatesConfig.includeBasicStates` and
   `basicStatesConfig.includeSensitivePointDistances`; graha entries then expose
-  `basicStates` and `sensitivePointDistances`
+  `basicStates` and `sensitivePointDistances`.
+  Also supports `includeEquatorial`: each entry then exposes
+  `equatorialValid`, `rightAscensionDeg`, `declinationDeg`, and
+  `eclipticLatitudeDeg` (geocentric, degrees, equinox of date, nutation per
+  the request's `useNutation` flag, geometric without light-time or
+  aberration; lagna and Rahu/Ketu report ecliptic latitude exactly `0`), and
+  the positions result exposes `earthOrientationValid`, `gmstDeg`, and
+  `gastDeg` (Greenwich mean/apparent sidereal time in degrees)
 - bindus config
 - full-kundali config
   forwards the same nested graha-position settings and may return
   `bhavaCuspSensitivePointDistances` plus
   `rashiBhavaCuspSensitivePointDistances`
 - dasha selection and variation configs
+
+- `grahaPositionsSeriesForDate(engine, eop, fromUtc, toUtc, stepMinutes,
+  location, bhavaConfig, ayanamshaSystem, useNutation, config)` —
+  fixed-cadence sampling of the same op (endpoints inclusive on the grid,
+  max 10,000 points); returns an array of `{ utc, jdUtc, positions }`.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `moonRightAscensionDeg`/`moonDeclinationDeg` on chandra grahan
+results and `sunRightAscensionDeg`/`sunDeclinationDeg` on surya grahan
+results (degrees, equinox of date, nutation applied).
 
 `fullKundaliConfig.dashaConfig` supports:
 

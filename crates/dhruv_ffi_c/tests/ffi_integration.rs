@@ -2937,6 +2937,7 @@ fn ffi_full_kundali_result_free_double_free_same_pointer() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3040,6 +3041,7 @@ fn ffi_full_kundali_error_path_free_safety() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3133,6 +3135,7 @@ fn ffi_full_kundali_dasha_overflow_rejection() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3236,6 +3239,7 @@ fn ffi_full_kundali_dasha_partial_success_contract() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3350,6 +3354,7 @@ fn ffi_full_kundali_panchang_only() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3444,6 +3449,7 @@ fn ffi_full_kundali_panchang_disabled() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3534,6 +3540,7 @@ fn ffi_full_kundali_calendar_implies_panchang() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3631,6 +3638,7 @@ fn ffi_full_kundali_panchang_and_calendar() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3729,6 +3737,7 @@ fn ffi_full_kundali_bhava_cusps_enabled() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3830,6 +3839,7 @@ fn ffi_full_kundali_bhava_cusps_disabled() {
                 include_basic_states: 0,
                 include_sensitive_point_distances: 0,
             },
+            include_equatorial: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,

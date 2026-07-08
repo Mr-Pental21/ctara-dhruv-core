@@ -144,6 +144,30 @@ lists at length 9 and expose Uranus, Neptune, and Pluto separately as
 `outer_planets`. Outer planets are positional display entities only; they are
 not inputs to bala, avastha, dasha, drishti, or lordship calculations.
 
+## Equatorial Output
+
+`ctara_dhruv.kundali.graha_positions` accepts `config["include_equatorial"]`
+(0/1; also `graha_positions_config.include_equatorial` on the full-kundali
+config). When enabled, each entry reports `equatorial_valid=True` with
+geocentric `right_ascension_deg` ([0, 360)), `declination_deg`
+([-90, +90]), and `ecliptic_latitude_deg` in degrees — equinox of date,
+nutation applied per the request's `use_nutation` flag, geometric (no
+light-time or aberration). Lagna and Rahu/Ketu report ecliptic latitude
+exactly 0. The result additionally carries `earth_orientation_valid`,
+`gmst_deg`, and `gast_deg` (Greenwich mean/apparent sidereal time in degrees
+at the request instant).
+
+`ctara_dhruv.kundali.graha_positions_series` samples the same op at a
+fixed cadence: it takes `from_utc`, `to_utc`, and `step_minutes` instead
+of a single instant (endpoints inclusive when on the grid, at most
+10,000 points) and returns a list of `GrahaPositionsPoint` values, each
+with `utc`, `jd_utc`, and a `positions` value of the single-epoch shape.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `ChandraGrahanResult.moon_right_ascension_deg` /
+`moon_declination_deg` and `SuryaGrahanResult.sun_right_ascension_deg` /
+`sun_declination_deg` (degrees, equinox of date, nutation applied).
+
 ## Example
 
 ```python

@@ -177,6 +177,11 @@ pub struct GrahaPositionsConfig {
     pub include_bhava: bool,
     /// Compute basic graha/point state booleans and sensitive distances.
     pub basic_states_config: BasicStatesConfig,
+    /// Compute geocentric equatorial coordinates (right ascension,
+    /// declination, ecliptic latitude) per entry, plus Greenwich sidereal
+    /// time on the result. Equinox of date; nutation applied per the
+    /// request's `use_nutation` flag.
+    pub include_equatorial: bool,
 }
 
 impl Default for GrahaPositionsConfig {
@@ -187,6 +192,7 @@ impl Default for GrahaPositionsConfig {
             include_outer_planets: true,
             include_bhava: false,
             basic_states_config: BasicStatesConfig::default(),
+            include_equatorial: false,
         }
     }
 }
@@ -218,6 +224,15 @@ pub struct GrahaEntry {
     pub sensitive_point_distances_valid: bool,
     /// Minimum distances to mrityubhaga and pushkarabhaga definitions.
     pub sensitive_point_distances: SensitivePointDistances,
+    /// Whether the equatorial fields were computed for this entry.
+    pub equatorial_valid: bool,
+    /// Geocentric right ascension in degrees [0, 360), equinox of date.
+    pub right_ascension_deg: f64,
+    /// Geocentric declination in degrees [-90, +90], equinox of date.
+    pub declination_deg: f64,
+    /// Geocentric ecliptic latitude in degrees (0 for point-like entries
+    /// such as lagna and the lunar nodes).
+    pub ecliptic_latitude_deg: f64,
 }
 
 impl GrahaEntry {
@@ -236,6 +251,10 @@ impl GrahaEntry {
             basic_states: BasicStates::default(),
             sensitive_point_distances_valid: false,
             sensitive_point_distances: SensitivePointDistances::default(),
+            equatorial_valid: false,
+            right_ascension_deg: 0.0,
+            declination_deg: 0.0,
+            ecliptic_latitude_deg: 0.0,
         }
     }
 }
@@ -249,6 +268,35 @@ pub struct GrahaPositions {
     pub lagna: GrahaEntry,
     /// Outer planets: [Uranus, Neptune, Pluto] (sentinel zeros if not computed).
     pub outer_planets: [GrahaEntry; 3],
+    /// Whether `gmst_deg`/`gast_deg` were computed (set when the request
+    /// enables equatorial output).
+    pub earth_orientation_valid: bool,
+    /// Greenwich Mean Sidereal Time in degrees [0, 360) at the request epoch.
+    pub gmst_deg: f64,
+    /// Greenwich Apparent Sidereal Time in degrees [0, 360) at the request
+    /// epoch (GMST plus the equation of the equinoxes).
+    pub gast_deg: f64,
+}
+
+/// Maximum number of epochs a graha-positions series may produce.
+pub const MAX_GRAHA_POSITIONS_SERIES_POINTS: usize = 10_000;
+
+/// One epoch of a graha-positions series.
+#[derive(Debug, Clone, Copy)]
+pub struct GrahaPositionsPoint {
+    /// Epoch as Gregorian UTC.
+    pub utc: UtcTime,
+    /// Epoch as JD UTC.
+    pub jd_utc: f64,
+    /// Positions at this epoch (same shape as the single-epoch op).
+    pub positions: GrahaPositions,
+}
+
+/// Result of `graha_positions_series`: fixed-cadence samples over a range.
+#[derive(Debug, Clone)]
+pub struct GrahaPositionsSeries {
+    /// Epochs from `from_utc` to `to_utc` inclusive, every `step_minutes`.
+    pub points: Vec<GrahaPositionsPoint>,
 }
 
 /// Configuration flags for core_bindus computation.

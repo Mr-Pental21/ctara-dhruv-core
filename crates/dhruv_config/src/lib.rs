@@ -239,6 +239,7 @@ pub struct GrahaPositionsConfigPatch {
     pub include_outer_planets: Option<bool>,
     pub include_bhava: Option<bool>,
     pub basic_states: Option<BasicStatesConfigPatch>,
+    pub include_equatorial: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -947,6 +948,13 @@ impl ConfigResolver {
             recommended(self.defaults_mode, false),
             "graha_positions.basic_states.include_sensitive_point_distances",
         )?;
+        let (include_equatorial, s7) = choose_copy(
+            explicit.include_equatorial,
+            op.include_equatorial,
+            None,
+            recommended(self.defaults_mode, false),
+            "graha_positions.include_equatorial",
+        )?;
 
         let mut source = BTreeMap::new();
         source.insert("include_nakshatra".to_string(), s1);
@@ -958,6 +966,7 @@ impl ConfigResolver {
             "basic_states.include_sensitive_point_distances".to_string(),
             s6,
         );
+        source.insert("include_equatorial".to_string(), s7);
 
         Ok(EffectiveConfig {
             value: GrahaPositionsConfig {
@@ -969,6 +978,7 @@ impl ConfigResolver {
                     include_basic_states,
                     include_sensitive_point_distances,
                 },
+                include_equatorial,
             },
             source_by_field: source,
         })

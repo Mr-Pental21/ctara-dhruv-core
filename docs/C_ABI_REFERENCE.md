@@ -2259,6 +2259,31 @@ no proper motion). Equivalent to requesting ecliptic output for
 
 ## Changelog
 
+**v75**: Added equatorial output and fixed-cadence series to graha
+positions. `DhruvGrahaPositionsConfig` gains `include_equatorial`;
+`DhruvGrahaEntry` gains `equatorial_valid`, `right_ascension_deg`,
+`declination_deg`, and `ecliptic_latitude_deg`; `DhruvGrahaPositions`
+gains `earth_orientation_valid`, `gmst_deg`, and `gast_deg`. Coordinates
+are geocentric, equinox of date (nutation per the request's
+`use_nutation` flag), geometric (no light-time/aberration). Point-like
+entries (lagna, Rahu/Ketu) report ecliptic latitude 0. See
+`docs/clean_room_equatorial_output.md`. New series entrypoints:
+`dhruv_graha_positions_series` (from/to UTC + `step_minutes`, max 10,000
+points, handle-based result), `dhruv_graha_positions_series_count`,
+`dhruv_graha_positions_series_at` (yields `DhruvGrahaPositionsPoint`
+with `utc`, `jd_utc`, `positions`), and
+`dhruv_graha_positions_series_free`. Grahan results also gained apparent
+equatorial coordinates at greatest grahan: `DhruvChandraGrahanResult`
+gains `moon_right_ascension_deg`/`moon_declination_deg` and
+`DhruvSuryaGrahanResult` gains
+`sun_right_ascension_deg`/`sun_declination_deg` (degrees, equinox of
+date, IAU 2000B nutation applied).
+
+**v74**: Added dasha level-0 cycle repetition controls. `cycles` and
+`min_span_years` fields on `DhruvDashaVariationConfig` and
+`DhruvDashaSelectionConfig`; `DhruvDashaLevel0Request` and
+`DhruvDashaLevel0EntityRequest` gain a `variation` field.
+
 **v73**: `gochar_events` transit-body codes now accept Rahu and Ketu through
 `DHRUV_GOCHAR_TRANSIT_RAHU` and `DHRUV_GOCHAR_TRANSIT_KETU`, while continuing
 to accept physical-body codes such as `799`, `899`, and `999` for Uranus,

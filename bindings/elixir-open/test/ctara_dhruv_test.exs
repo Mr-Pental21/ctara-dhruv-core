@@ -79,6 +79,57 @@ defmodule CtaraDhruvTest do
           assert {:ok, _} = Panchang.tithi(engine, %{utc: utc})
           assert {:ok, _} = Search.sankranti(engine, %{mode: :next, at_utc: utc})
           assert {:ok, _} = Jyotish.graha_positions(engine, %{utc: utc, location: location})
+
+          assert {:ok, equatorial_positions} =
+                   Jyotish.graha_positions(engine, %{
+                     utc: utc,
+                     location: location,
+                     graha_positions_config: %{include_equatorial: true}
+                   })
+
+          assert equatorial_positions.earth_orientation_valid == true
+          assert is_float(equatorial_positions.gmst_deg)
+          assert equatorial_positions.gmst_deg >= 0.0
+          assert equatorial_positions.gmst_deg < 360.0
+          assert is_float(equatorial_positions.gast_deg)
+
+          for entry <- equatorial_positions.grahas do
+            assert entry.equatorial_valid == true
+            assert entry.right_ascension_deg >= 0.0
+            assert entry.right_ascension_deg < 360.0
+            assert entry.declination_deg >= -90.0
+            assert entry.declination_deg <= 90.0
+          end
+
+          rahu = Enum.find(equatorial_positions.grahas, &(&1.graha == :rahu))
+          ketu = Enum.find(equatorial_positions.grahas, &(&1.graha == :ketu))
+          assert rahu.ecliptic_latitude_deg == 0.0
+          assert ketu.ecliptic_latitude_deg == 0.0
+          assert equatorial_positions.lagna.ecliptic_latitude_deg == 0.0
+
+          to_utc = Map.put(utc, :hour, utc.hour + 2)
+
+          assert {:ok, series} =
+                   Jyotish.graha_positions_series(engine, %{
+                     from_utc: utc,
+                     to_utc: to_utc,
+                     step_minutes: 60,
+                     location: location,
+                     graha_positions_config: %{include_equatorial: true}
+                   })
+
+          assert length(series.points) == 3
+          [first_point | _] = series.points
+          assert first_point.positions.gmst_deg == equatorial_positions.gmst_deg
+          assert is_float(first_point.jd_utc)
+
+          assert {:error, _} =
+                   Jyotish.graha_positions_series(engine, %{
+                     from_utc: utc,
+                     to_utc: to_utc,
+                     location: location
+                   })
+
           assert {:ok, _} = Jyotish.bindus(engine, %{utc: utc, location: location})
 
           assert {:ok, _} =

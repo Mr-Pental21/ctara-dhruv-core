@@ -173,6 +173,27 @@ length 9 and expose Uranus, Neptune, and Pluto separately as `outerPlanets`.
 Outer planets are positional display entities only; they are not used in bala,
 avastha, dasha, drishti, or lordship calculations.
 
+Graha positions support optional equatorial output. Set
+`includeEquatorial: true` on the graha positions config (standalone
+`grahaPositionsForDate` or `fullKundaliConfig.grahaPositionsConfig`). Each
+entry then reports `equatorialValid`, `rightAscensionDeg`, `declinationDeg`,
+and `eclipticLatitudeDeg`: geocentric coordinates in degrees, equinox of date,
+nutation applied per the request's `useNutation` flag, geometric (no
+light-time or aberration). Lagna and Rahu/Ketu report ecliptic latitude
+exactly `0`. The positions result also carries `earthOrientationValid` with
+`gmstDeg` and `gastDeg` (Greenwich mean/apparent sidereal time in degrees).
+
+`grahaPositionsSeriesForDate(engine, eop, fromUtc, toUtc, stepMinutes,
+location, bhavaConfig, ayanamshaSystem, useNutation, config)` samples the
+same op at a fixed cadence (endpoints inclusive when on the grid, at most
+10,000 points) and returns an array of points, each carrying `utc`,
+`jdUtc`, and a `positions` object of the single-epoch shape.
+
+Grahan results also carry apparent equatorial coordinates at greatest
+grahan: `moonRightAscensionDeg`/`moonDeclinationDeg` on chandra grahan
+results and `sunRightAscensionDeg`/`sunDeclinationDeg` on surya grahan
+results (degrees, equinox of date, nutation applied).
+
 Embedded `fullKundaliForDate(...).amshas` now returns the full resolved amsha
 union used by the call, not only the explicitly requested subset. Numeric
 `variationCode` values are interpreted per amsha; use `amshaVariations*` to

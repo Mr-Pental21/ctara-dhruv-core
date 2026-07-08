@@ -624,6 +624,17 @@ struct GrahaPositionsArgs {
     /// Include minimum distances from mrityubhaga and pushkarbhaga
     #[arg(long)]
     sensitive_point_distances: bool,
+    /// Include geocentric equatorial coordinates (RA/declination/ecliptic
+    /// latitude) per entry plus Greenwich sidereal time
+    #[arg(long)]
+    equatorial: bool,
+    /// Series mode: sample positions from --date to this UTC datetime
+    /// (requires --step-minutes)
+    #[arg(long, requires = "step_minutes")]
+    to_date: Option<String>,
+    /// Series mode: sampling cadence in minutes (>= 1)
+    #[arg(long, requires = "to_date")]
+    step_minutes: Option<u32>,
     /// Output tropical (ecliptic-of-date) longitudes instead of sidereal
     #[arg(
         long,
@@ -634,7 +645,9 @@ struct GrahaPositionsArgs {
             "no_outer",
             "bhava",
             "basic_states",
-            "sensitive_point_distances"
+            "sensitive_point_distances",
+            "to_date",
+            "step_minutes"
         ]
     )]
     tropical: bool,
@@ -974,6 +987,10 @@ struct KundaliArgs {
     /// Include minimum distances from mrityubhaga and pushkarbhaga
     #[arg(long)]
     include_sensitive_point_distances: bool,
+    /// Include geocentric equatorial coordinates (RA/declination/ecliptic
+    /// latitude) on graha positions plus Greenwich sidereal time
+    #[arg(long)]
+    include_equatorial: bool,
     /// Include amsha (divisional charts)
     #[arg(long)]
     include_amshas: bool,
@@ -4867,7 +4884,90 @@ fn main() {
                         include_basic_states: args.basic_states,
                         include_sensitive_point_distances: args.sensitive_point_distances,
                     },
+                    include_equatorial: args.equatorial,
                 };
+
+                if let (Some(to_date), Some(step_minutes)) =
+                    (args.to_date.as_ref(), args.step_minutes)
+                {
+                    let to_utc = parse_utc(to_date).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let series = dhruv_search::graha_positions_series(
+                        &engine,
+                        &eop_kernel,
+                        &utc,
+                        &to_utc,
+                        step_minutes,
+                        &location,
+                        &bhava_config,
+                        &aya_config,
+                        &gp_config,
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    });
+
+                    println!(
+                        "Graha Positions Series {} -> {} step {}m at {:.6}°N, {:.6}°E ({} points)\n",
+                        args.date,
+                        to_date,
+                        step_minutes,
+                        args.lat,
+                        args.lon,
+                        series.points.len()
+                    );
+                    let graha_names = [
+                        "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu",
+                        "Ketu",
+                    ];
+                    for point in &series.points {
+                        let u = &point.utc;
+                        print!(
+                            "{:04}-{:02}-{:02}T{:02}:{:02}:{:06.3}Z",
+                            u.year, u.month, u.day, u.hour, u.minute, u.second
+                        );
+                        if point.positions.earth_orientation_valid {
+                            print!(
+                                "  GMST {:.6}°  GAST {:.6}°",
+                                point.positions.gmst_deg, point.positions.gast_deg
+                            );
+                        }
+                        println!();
+                        let mut entries: Vec<(&str, &dhruv_search::GrahaEntry)> = graha_names
+                            .iter()
+                            .zip(point.positions.grahas.iter())
+                            .map(|(name, entry)| (*name, entry))
+                            .collect();
+                        if args.lagna {
+                            entries.push(("Lagna", &point.positions.lagna));
+                        }
+                        if gp_config.include_outer_planets {
+                            let outer_names = ["Uranus", "Neptune", "Pluto"];
+                            entries.extend(
+                                outer_names
+                                    .iter()
+                                    .zip(point.positions.outer_planets.iter())
+                                    .map(|(name, entry)| (*name, entry)),
+                            );
+                        }
+                        for (name, entry) in entries {
+                            print!("  {:<10} {:>11.6}°", name, entry.sidereal_longitude);
+                            if entry.equatorial_valid {
+                                print!(
+                                    "  RA {:>11.6}°  Dec {:>+11.6}°  EclLat {:>+10.6}°",
+                                    entry.right_ascension_deg,
+                                    entry.declination_deg,
+                                    entry.ecliptic_latitude_deg
+                                );
+                            }
+                            println!();
+                        }
+                    }
+                    return;
+                }
 
                 let result = dhruv_search::graha_positions(
                     &engine,
@@ -4934,6 +5034,14 @@ fn main() {
                         if let Some(distances) = format_sensitive_point_distances(entry) {
                             println!("             Distances: {distances}");
                         }
+                        if entry.equatorial_valid {
+                            println!(
+                                "             Equatorial: RA {:.6}°  Dec {:+.6}°  EclLat {:+.6}°",
+                                entry.right_ascension_deg,
+                                entry.declination_deg,
+                                entry.ecliptic_latitude_deg,
+                            );
+                        }
                     };
 
                 for (i, entry) in result.grahas.iter().enumerate() {
@@ -4949,6 +5057,14 @@ fn main() {
                     for (i, entry) in result.outer_planets.iter().enumerate() {
                         print_entry(planet_names[i], entry, None);
                     }
+                }
+
+                if result.earth_orientation_valid {
+                    println!();
+                    println!(
+                        "GMST: {:.6}°   GAST: {:.6}°",
+                        result.gmst_deg, result.gast_deg
+                    );
                 }
             }
         }
@@ -5281,6 +5397,9 @@ fn main() {
                     std::process::exit(1);
                 }
                 full_config.dasha_config.min_span_years = min_span_years;
+            }
+            if args.include_equatorial {
+                full_config.graha_positions_config.include_equatorial = true;
             }
 
             let result = dhruv_search::full_kundali_for_date(
@@ -10111,6 +10230,10 @@ fn print_chandra_grahan(label: &str, ev: &dhruv_search::grahan_types::ChandraGra
             println!("  U2: UTC {}  JD TDB {:.6}", u2_utc, u2);
         }
     }
+    println!(
+        "  Moon at greatest: RA {:.6}°  Dec {:+.6}°",
+        ev.moon_right_ascension_deg, ev.moon_declination_deg
+    );
 }
 
 fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan) {
@@ -10139,6 +10262,10 @@ fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan)
             println!("  C4: UTC {}  JD TDB {:.6}", c4_utc, c4);
         }
     }
+    println!(
+        "  Sun at greatest: RA {:.6}°  Dec {:+.6}°",
+        ev.sun_right_ascension_deg, ev.sun_declination_deg
+    );
 }
 
 fn print_stationary_event(label: &str, ev: &dhruv_search::stationary_types::StationaryEvent) {
@@ -10514,6 +10641,7 @@ fn build_kundali_config(
             include_outer_planets,
             include_bhava: true,
             basic_states_config: Default::default(),
+            include_equatorial: false,
         }
     } else {
         dhruv_search::GrahaPositionsConfig::default()
@@ -10667,6 +10795,16 @@ fn format_sensitive_point_distances(entry: &dhruv_search::GrahaEntry) -> Option<
     Some(format!(
         "mrityubhaga={:.6}° pushkarbhaga={:.6}°",
         entry.sensitive_point_distances.mrityubhaga, entry.sensitive_point_distances.pushkarbhaga
+    ))
+}
+
+fn format_equatorial(entry: &dhruv_search::GrahaEntry) -> Option<String> {
+    if !entry.equatorial_valid {
+        return None;
+    }
+    Some(format!(
+        "RA {:.6}°  Dec {:+.6}°  EclLat {:+.6}°",
+        entry.right_ascension_deg, entry.declination_deg, entry.ecliptic_latitude_deg
     ))
 }
 
@@ -10863,6 +11001,9 @@ fn print_kundali(
             if let Some(distances) = format_sensitive_point_distances(entry) {
                 writeln!(w, "           Distances: {distances}")?;
             }
+            if let Some(equatorial) = format_equatorial(entry) {
+                writeln!(w, "           Equatorial: {equatorial}")?;
+            }
         }
         writeln!(
             w,
@@ -10881,6 +11022,9 @@ fn print_kundali(
         }
         if let Some(distances) = format_sensitive_point_distances(&g.lagna) {
             writeln!(w, "           Distances: {distances}")?;
+        }
+        if let Some(equatorial) = format_equatorial(&g.lagna) {
+            writeln!(w, "           Equatorial: {equatorial}")?;
         }
         if g.outer_planets
             .iter()
@@ -10907,7 +11051,13 @@ fn print_kundali(
                 if let Some(distances) = format_sensitive_point_distances(entry) {
                     writeln!(w, "             Distances: {distances}")?;
                 }
+                if let Some(equatorial) = format_equatorial(entry) {
+                    writeln!(w, "             Equatorial: {equatorial}")?;
+                }
             }
+        }
+        if g.earth_orientation_valid {
+            writeln!(w, "  GMST: {:.6}°   GAST: {:.6}°", g.gmst_deg, g.gast_deg)?;
         }
         writeln!(w)?;
     }

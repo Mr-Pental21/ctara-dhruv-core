@@ -250,6 +250,26 @@ function grahaPositionsForDate(engine, eop, utc, location, bhavaConfig, ayanamsh
   return r.result;
 }
 
+// Fixed-cadence sampling of grahaPositionsForDate over [fromUtc, toUtc]:
+// one point per stepMinutes (endpoints inclusive on the grid, max 10000
+// points). Each point carries { utc, jdUtc, positions }.
+function grahaPositionsSeriesForDate(engine, eop, fromUtc, toUtc, stepMinutes, location, bhavaConfig, ayanamshaSystem = 0, useNutation = true, config) {
+  const r = addon.grahaPositionsSeriesForDate(
+    engine._handle,
+    eop._handle,
+    fromUtc,
+    toUtc,
+    stepMinutes,
+    location,
+    bhavaConfig,
+    ayanamshaSystem,
+    !!useNutation,
+    config,
+  );
+  checkStatus('graha_positions_series', r.status);
+  return r.result;
+}
+
 function horaLord(vaarIndex, horaIndex) {
   return addon.horaLord(vaarIndex, horaIndex).grahaIndex;
 }
@@ -482,6 +502,7 @@ module.exports = {
   grahaDrishtiMatrixForLongitudes,
   drishtiForDate,
   grahaPositionsForDate,
+  grahaPositionsSeriesForDate,
   horaLord,
   masaLord,
   samvatsaraLord,

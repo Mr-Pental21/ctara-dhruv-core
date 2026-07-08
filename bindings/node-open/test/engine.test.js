@@ -625,6 +625,36 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
   const grahaPosCfg = { includeNakshatra: true, includeLagna: true, includeOuterPlanets: true, includeBhava: true };
   const grahaPositions = dhruv.grahaPositionsForDate(engine, eop, utc, loc, bhavaCfg, 0, true, grahaPosCfg);
   assert.equal(grahaPositions.grahas.length, 9);
+  assert.equal(grahaPositions.grahas[0].equatorialValid, false);
+  assert.equal(grahaPositions.earthOrientationValid, false);
+
+  const grahaPosEqCfg = { ...grahaPosCfg, includeEquatorial: true };
+  const grahaPositionsEq = dhruv.grahaPositionsForDate(engine, eop, utc, loc, bhavaCfg, 0, true, grahaPosEqCfg);
+  for (const entry of grahaPositionsEq.grahas) {
+    assert.equal(entry.equatorialValid, true);
+    assert.ok(entry.rightAscensionDeg >= 0 && entry.rightAscensionDeg < 360);
+    assert.ok(entry.declinationDeg >= -90 && entry.declinationDeg <= 90);
+    assert.ok(Number.isFinite(entry.eclipticLatitudeDeg));
+  }
+  // Rahu (7) and Ketu (8) are ecliptic points: latitude exactly 0.
+  assert.equal(grahaPositionsEq.grahas[7].eclipticLatitudeDeg, 0);
+  assert.equal(grahaPositionsEq.grahas[8].eclipticLatitudeDeg, 0);
+  assert.equal(grahaPositionsEq.lagna.eclipticLatitudeDeg, 0);
+  assert.equal(grahaPositionsEq.earthOrientationValid, true);
+  assert.ok(grahaPositionsEq.gmstDeg >= 0 && grahaPositionsEq.gmstDeg < 360);
+  assert.ok(grahaPositionsEq.gastDeg >= 0 && grahaPositionsEq.gastDeg < 360);
+
+  // Series: 2h at 60-minute cadence yields 3 points; first matches the
+  // single-epoch call exactly.
+  const seriesTo = { ...utc, hour: utc.hour + 2 };
+  const series = dhruv.grahaPositionsSeriesForDate(engine, eop, utc, seriesTo, 60, loc, bhavaCfg, 0, true, grahaPosEqCfg);
+  assert.equal(series.length, 3);
+  for (let i = 0; i < 9; i++) {
+    assert.equal(series[0].positions.grahas[i].siderealLongitude, grahaPositionsEq.grahas[i].siderealLongitude);
+  }
+  assert.equal(series[0].positions.gmstDeg, grahaPositionsEq.gmstDeg);
+  assert.ok(Number.isFinite(series[0].jdUtc));
+  assert.throws(() => dhruv.grahaPositionsSeriesForDate(engine, eop, utc, seriesTo, 0, loc, bhavaCfg, 0, true, grahaPosEqCfg));
 
   const bindusCfg = { includeNakshatra: true, includeBhava: true };
   const bindus = dhruv.coreBindusForDate(engine, eop, utc, loc, bhavaCfg, riseCfg, 0, true, bindusCfg);
