@@ -44,6 +44,8 @@ INCLUDE_VARSHA = 1 << 9
 INCLUDE_ALL_CORE = 0x7F
 INCLUDE_ALL_CALENDAR = 0x380
 INCLUDE_ALL = 0x3FF
+INCLUDE_LOCATION_INDEPENDENT = 0x3C7
+INCLUDE_LOCATION_DEPENDENT = 0x38
 
 # Time kind constants
 _TIME_JD_TDB = 0
@@ -211,19 +213,22 @@ def panchang(
     eop,
     lsk,
     utc_or_jd: Union[UtcTime, float],
-    location: GeoLocation,
+    location: Optional[GeoLocation] = None,
     include_mask: int = INCLUDE_ALL,
     riseset_config=None,
     sankranti_config=None,
 ) -> PanchangResult:
-    """Compute panchang for a given time and location.
+    """Compute panchang for a given time and (optionally) location.
 
     Args:
         engine: DhruvEngineHandle pointer.
         eop: DhruvEopHandle pointer.
         lsk: DhruvLskHandle pointer (required when *utc_or_jd* is a JD float).
         utc_or_jd: Either a ``UtcTime`` or a JD TDB float.
-        location: Observer location.
+        location: Optional observer location.  Required only when
+            *include_mask* selects location-dependent elements (vaar, hora,
+            ghatika -- ``INCLUDE_LOCATION_DEPENDENT``); requesting those
+            without a location raises a ``DhruvError``.
         include_mask: Bitmask of INCLUDE_* constants selecting which fields
             to compute.  Defaults to ``INCLUDE_ALL``.
         riseset_config: Optional ``DhruvRiseSetConfig`` (C struct).  Uses
@@ -244,7 +249,11 @@ def panchang(
         req.time_kind = _TIME_JD_TDB
         req.jd_tdb = float(utc_or_jd)
 
-    _fill_location(req.location, location)
+    if location is not None:
+        req.has_location = 1
+        _fill_location(req.location, location)
+    else:
+        req.has_location = 0
 
     if riseset_config is not None:
         req.riseset_config = riseset_config

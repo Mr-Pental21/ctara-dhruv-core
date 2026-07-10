@@ -5,7 +5,7 @@ canonical C ABI (`dhruv_ffi_c`) via `cffi`.
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=73`
+- ABI target: `DHRUV_API_VERSION=76`
 - Package root: `bindings/python-open`
 - Runtime dependency: `cffi`
 - Primary distribution: PyPI wheels plus sdist from unified `vX.Y.Z` tags
@@ -100,6 +100,21 @@ Accepted dict values are:
 
 - points: `"start"`, `"middle"`, `"end"`
 - planets: `"rahu"`, `"saturn"`
+
+## Panchang
+
+`ctara_dhruv.panchang.panchang(...)` takes an optional `location` (default
+`None`). Location-independent elements (tithi, karana, yoga, nakshatra, masa,
+ayana, varsha) can be computed without one; requesting location-dependent
+elements (vaar, hora, ghatika) without a location raises `DhruvError`.
+`include_mask` accepts the `INCLUDE_*` constants including the convenience
+masks `INCLUDE_LOCATION_INDEPENDENT` and `INCLUDE_LOCATION_DEPENDENT`.
+
+The full-kundali panchang section is selected with
+`config.panchang_include_mask` (same `INCLUDE_*` bits; `0` omits the section —
+this replaces the former `include_panchang`/`include_calendar` flags), and
+`FullKundaliResult.panchang` is a `PanchangResult` with per-element optional
+fields, identical to the standalone panchang op.
 
 ## Amsha Surface
 

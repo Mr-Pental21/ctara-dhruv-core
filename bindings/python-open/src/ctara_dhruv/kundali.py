@@ -9,6 +9,7 @@ from __future__ import annotations
 from ._ffi import ffi, lib
 from ._check import check
 from .dasha import DashaHierarchy, DashaLevel
+from .panchang import _panchang_result_from_c
 from .vedic import _make_time_upagraha_config
 from .types import (
     AmshaChart,
@@ -16,7 +17,6 @@ from .types import (
     AshtakavargaResult,
     AllGrahaAvasthas,
     AllUpagrahas,
-    AyanaInfo,
     BasicStates,
     BhavaEntry,
     BhavaBalaEntry,
@@ -31,7 +31,6 @@ from .types import (
     DrishtiEntry,
     DrishtiResult,
     FullKundaliResult,
-    GhatikaInfo,
     GrahaAvasthas,
     GrahaEntry,
     GrahaLongitudes,
@@ -40,11 +39,6 @@ from .types import (
     GrahaPositionsPoint,
     MovingOsculatingApogeeEntry,
     MovingOsculatingApogees,
-    HoraInfo,
-    KaranaInfo,
-    MasaInfo,
-    PanchangInfo,
-    PanchangNakshatraInfo,
     SarvaAshtakavarga,
     SayanadiResult,
     SensitivePointDistances,
@@ -54,13 +48,9 @@ from .types import (
     SphutalResult,
     SthanaBalaBreakdown,
     KalaBalaBreakdown,
-    TithiInfo,
     UtcTime,
-    VaarInfo,
-    VarshaInfo,
     VimsopakaEntry,
     VimsopakaResult,
-    YogaInfo,
 )
 
 
@@ -574,7 +564,11 @@ def full_kundali_config_default():
 
     Core sections (bhava, graha, bindus, drishti, ashtakavarga, upagrahas,
     special_lagnas) default to enabled. Optional sections (amshas, shadbala,
-    vimsopaka, avastha, panchang, calendar, dasha) default to disabled.
+    vimsopaka, avastha, panchang, dasha) default to disabled.
+
+    The panchang section is selected via ``panchang_include_mask`` --
+    a bitmask of ``ctara_dhruv.panchang`` INCLUDE_* constants (0 omits
+    the section entirely).
     """
     return lib.dhruv_full_kundali_config_default()
 
@@ -775,85 +769,6 @@ def _extract_charakaraka_result(c):
         scheme=c.scheme,
         used_eight_karakas=bool(c.used_eight_karakas),
         entries=[_extract_charakaraka_entry(c.entries[i]) for i in range(c.count)],
-    )
-
-
-def _extract_panchang_info(p):
-    tithi = TithiInfo(
-        tithi_index=p.tithi.tithi_index,
-        paksha=p.tithi.paksha,
-        tithi_in_paksha=p.tithi.tithi_in_paksha,
-        start=_utc_from_ffi(p.tithi.start),
-        end=_utc_from_ffi(p.tithi.end),
-    )
-    karana = KaranaInfo(
-        karana_index=p.karana.karana_index,
-        karana_name_index=p.karana.karana_name_index,
-        start=_utc_from_ffi(p.karana.start),
-        end=_utc_from_ffi(p.karana.end),
-    )
-    yoga = YogaInfo(
-        yoga_index=p.yoga.yoga_index,
-        start=_utc_from_ffi(p.yoga.start),
-        end=_utc_from_ffi(p.yoga.end),
-    )
-    vaar = VaarInfo(
-        vaar_index=p.vaar.vaar_index,
-        start=_utc_from_ffi(p.vaar.start),
-        end=_utc_from_ffi(p.vaar.end),
-    )
-    hora = HoraInfo(
-        hora_index=p.hora.hora_index,
-        hora_position=p.hora.hora_position,
-        start=_utc_from_ffi(p.hora.start),
-        end=_utc_from_ffi(p.hora.end),
-    )
-    ghatika = GhatikaInfo(
-        value=p.ghatika.value,
-        start=_utc_from_ffi(p.ghatika.start),
-        end=_utc_from_ffi(p.ghatika.end),
-    )
-    nakshatra = PanchangNakshatraInfo(
-        nakshatra_index=p.nakshatra.nakshatra_index,
-        pada=p.nakshatra.pada,
-        start=_utc_from_ffi(p.nakshatra.start),
-        end=_utc_from_ffi(p.nakshatra.end),
-    )
-
-    masa = None
-    ayana = None
-    varsha = None
-    if p.calendar_valid:
-        masa = MasaInfo(
-            masa_index=p.masa.masa_index,
-            adhika=bool(p.masa.adhika),
-            start=_utc_from_ffi(p.masa.start),
-            end=_utc_from_ffi(p.masa.end),
-        )
-        ayana = AyanaInfo(
-            ayana=p.ayana.ayana,
-            start=_utc_from_ffi(p.ayana.start),
-            end=_utc_from_ffi(p.ayana.end),
-        )
-        varsha = VarshaInfo(
-            samvatsara_index=p.varsha.samvatsara_index,
-            order=p.varsha.order,
-            start=_utc_from_ffi(p.varsha.start),
-            end=_utc_from_ffi(p.varsha.end),
-        )
-
-    return PanchangInfo(
-        tithi=tithi,
-        karana=karana,
-        yoga=yoga,
-        vaar=vaar,
-        hora=hora,
-        ghatika=ghatika,
-        nakshatra=nakshatra,
-        calendar_valid=bool(p.calendar_valid),
-        masa=masa,
-        ayana=ayana,
-        varsha=varsha,
     )
 
 
@@ -1178,10 +1093,10 @@ def full_kundali(
         if out.charakaraka_valid:
             charakaraka = _extract_charakaraka_result(out.charakaraka)
 
-        # Panchang
+        # Panchang (per-element optional, same shape as the panchang op)
         panchang = None
         if out.panchang_valid:
-            panchang = _extract_panchang_info(out.panchang)
+            panchang = _panchang_result_from_c(out.panchang)
 
         # Dasha hierarchies (owned by full_kundali_result_free; decode before finally)
         dasha = None
@@ -1440,7 +1355,7 @@ def _extract_full_kundali_result_ffi(out) -> FullKundaliResult:
 
     panchang = None
     if out.panchang_valid:
-        panchang = _extract_panchang_info(out.panchang)
+        panchang = _panchang_result_from_c(out.panchang)
 
     dasha = None
     if out.dasha_count > 0:

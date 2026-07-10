@@ -692,26 +692,6 @@ class PanchangResult:
     varsha: Optional[VarshaInfo] = None
 
 
-@dataclass(frozen=True)
-class PanchangInfo:
-    """Combined panchang info with all seven daily elements plus optional calendar.
-
-    Matches ``DhruvPanchangInfo``.
-    """
-
-    tithi: TithiInfo
-    karana: KaranaInfo
-    yoga: YogaInfo
-    vaar: VaarInfo
-    hora: HoraInfo
-    ghatika: GhatikaInfo
-    nakshatra: PanchangNakshatraInfo
-    calendar_valid: bool
-    masa: Optional[MasaInfo] = None
-    ayana: Optional[AyanaInfo] = None
-    varsha: Optional[VarshaInfo] = None
-
-
 # ---------------------------------------------------------------------------
 # Sphuta
 # ---------------------------------------------------------------------------
@@ -1390,7 +1370,7 @@ class FullKundaliResult:
     vimsopaka: Optional[VimsopakaResult] = None
     avastha: Optional[AllGrahaAvasthas] = None
     charakaraka: Optional[CharakarakaResult] = None
-    panchang: Optional[PanchangInfo] = None
+    panchang: Optional[PanchangResult] = None
     dasha: Optional[list[DashaHierarchy]] = None
     dasha_snapshots: Optional[list[DashaSnapshot]] = None
 

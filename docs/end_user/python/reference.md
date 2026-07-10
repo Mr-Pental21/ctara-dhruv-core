@@ -234,6 +234,9 @@ replacement.
   - `INCLUDE_ALL_CORE`
   - `INCLUDE_ALL_CALENDAR`
   - `INCLUDE_ALL`
+  - `INCLUDE_LOCATION_INDEPENDENT` (tithi, karana, yoga, nakshatra, masa,
+    ayana, varsha)
+  - `INCLUDE_LOCATION_DEPENDENT` (vaar, hora, ghatika)
 - functions:
   - `panchang`
   - `tithi_for_date`
@@ -255,6 +258,12 @@ replacement.
   - `vaar_from_sunrises`
   - `hora_from_sunrises`
   - `ghatika_from_sunrises`
+
+`panchang(...)` takes an optional `location` (default `None`).
+Location-independent elements can be computed without one; requesting
+location-dependent elements (vaar, hora, ghatika) without a location raises
+`DhruvError`. The returned `PanchangResult` keeps every element `Optional` —
+each of the ten fields is `None` unless requested and computed.
 
 `kundali`:
 
@@ -429,6 +438,13 @@ Common dict-style or struct-style config inputs:
   - `stationary_config_default`
   - `sankranti_config_default`
 - full-kundali config returned by `full_kundali_config_default`
+  The panchang section is selected with `panchang_include_mask` — a bitmask
+  of the `ctara_dhruv.panchang` `INCLUDE_*` constants (`0`, the default,
+  omits the section). This replaces the former `include_panchang` /
+  `include_calendar` booleans. The resulting `FullKundaliResult.panchang`
+  is a `PanchangResult` with per-element optional fields, identical to the
+  standalone panchang op. Selecting location-dependent bits (vaar, hora,
+  ghatika) is fine here because full kundali always has a location.
   `graha_positions_config.basic_states_config` accepts `include_basic_states`
   and `include_sensitive_point_distances`. When the distance flag is enabled,
   full-kundali results can also expose bhava-cusp distance arrays.
