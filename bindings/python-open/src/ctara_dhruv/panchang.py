@@ -11,6 +11,7 @@ from ._ffi import ffi, lib
 from ._check import check
 from .types import (
     GeoLocation,
+    PanchangEventsResult,
     PanchangResult,
     SamvatsaraResult,
     TithiInfo,
@@ -46,6 +47,10 @@ INCLUDE_ALL_CALENDAR = 0x380
 INCLUDE_ALL = 0x3FF
 INCLUDE_LOCATION_INDEPENDENT = 0x3C7
 INCLUDE_LOCATION_DEPENDENT = 0x38
+
+# Hard ceiling on total events per panchang_events sweep
+# (matches DHRUV_MAX_PANCHANG_EVENTS in the C ABI).
+MAX_PANCHANG_EVENTS = 50000
 
 # Time kind constants
 _TIME_JD_TDB = 0
@@ -268,6 +273,132 @@ def panchang(
         "panchang_compute_ex",
     )
     return _panchang_result_from_c(out[0])
+
+
+# ---------------------------------------------------------------------------
+# Panchang events (range sweep)
+# ---------------------------------------------------------------------------
+
+
+def _collect_events(handle, count_fn, at_fn, ctype, conv, name):
+    """Read all rows of one event kind from a panchang events handle."""
+    n = ffi.new("uint32_t *")
+    check(count_fn(handle, n), f"panchang_events_{name}_count")
+    row = ffi.new(ctype)
+    items = []
+    for i in range(n[0]):
+        check(at_fn(handle, i, row), f"panchang_events_{name}_at")
+        items.append(conv(row[0]))
+    return items
+
+
+def panchang_events(
+    engine,
+    eop,
+    from_utc: UtcTime,
+    to_utc: UtcTime,
+    include_mask: int = INCLUDE_LOCATION_INDEPENDENT,
+    sankranti_config=None,
+    max_events: int = 0,
+) -> PanchangEventsResult:
+    """Stream exact panchang element segments overlapping [from_utc, to_utc].
+
+    Only location-independent kinds are supported: *include_mask* must be a
+    subset of ``INCLUDE_LOCATION_INDEPENDENT`` (tithi, karana, yoga,
+    nakshatra, masa, ayana, varsha); any other bit raises ``DhruvError``.
+
+    Consecutive segments of one kind chain exactly (``end == next.start``);
+    the first segment of each kind may start before *from_utc* and the last
+    may end after *to_utc*.
+
+    Args:
+        engine: DhruvEngineHandle pointer.
+        eop: DhruvEopHandle pointer.
+        from_utc: Range start as ``UtcTime``.
+        to_utc: Range end as ``UtcTime`` (must be after *from_utc*).
+        include_mask: Bitmask of INCLUDE_* constants selecting kinds.
+        sankranti_config: Optional ``DhruvSankrantiConfig`` pointer (e.g.
+            ``ffi.new("DhruvSankrantiConfig *", ...)``). Library default
+            when ``None``.
+        max_events: Cap on total events across all kinds; ``0`` selects the
+            hard ceiling ``MAX_PANCHANG_EVENTS`` (50,000).
+
+    Returns:
+        ``PanchangEventsResult``. When ``truncated`` is True, resume by
+        calling again with ``from_utc=result.next_from`` and deduplicating
+        on ``(kind, start)``.
+    """
+    c_from = _make_utc_c(from_utc)
+    c_to = _make_utc_c(to_utc)
+    cfg = sankranti_config if sankranti_config is not None else ffi.NULL
+
+    handle = ffi.new("DhruvPanchangEventsHandle *")
+    check(
+        lib.dhruv_panchang_events(
+            engine, eop, c_from, c_to, include_mask, cfg, max_events, handle
+        ),
+        "panchang_events",
+    )
+    try:
+        h = handle[0]
+        tithis = _collect_events(
+            h, lib.dhruv_panchang_events_tithi_count,
+            lib.dhruv_panchang_events_tithi_at,
+            "DhruvTithiInfo *", _tithi_from_c, "tithi",
+        )
+        karanas = _collect_events(
+            h, lib.dhruv_panchang_events_karana_count,
+            lib.dhruv_panchang_events_karana_at,
+            "DhruvKaranaInfo *", _karana_from_c, "karana",
+        )
+        yogas = _collect_events(
+            h, lib.dhruv_panchang_events_yoga_count,
+            lib.dhruv_panchang_events_yoga_at,
+            "DhruvYogaInfo *", _yoga_from_c, "yoga",
+        )
+        nakshatras = _collect_events(
+            h, lib.dhruv_panchang_events_nakshatra_count,
+            lib.dhruv_panchang_events_nakshatra_at,
+            "DhruvPanchangNakshatraInfo *", _nakshatra_from_c, "nakshatra",
+        )
+        masas = _collect_events(
+            h, lib.dhruv_panchang_events_masa_count,
+            lib.dhruv_panchang_events_masa_at,
+            "DhruvMasaInfo *", _masa_from_c, "masa",
+        )
+        ayanas = _collect_events(
+            h, lib.dhruv_panchang_events_ayana_count,
+            lib.dhruv_panchang_events_ayana_at,
+            "DhruvAyanaInfo *", _ayana_from_c, "ayana",
+        )
+        varshas = _collect_events(
+            h, lib.dhruv_panchang_events_varsha_count,
+            lib.dhruv_panchang_events_varsha_at,
+            "DhruvVarshaInfo *", _varsha_from_c, "varsha",
+        )
+
+        truncated = ffi.new("uint8_t *")
+        next_valid = ffi.new("uint8_t *")
+        next_from_c = ffi.new("DhruvUtcTime *")
+        check(
+            lib.dhruv_panchang_events_meta(h, truncated, next_valid, next_from_c),
+            "panchang_events_meta",
+        )
+        next_from = _utc_from_c(next_from_c[0]) if next_valid[0] else None
+
+        return PanchangEventsResult(
+            tithis=tithis,
+            karanas=karanas,
+            yogas=yogas,
+            nakshatras=nakshatras,
+            masas=masas,
+            ayanas=ayanas,
+            varshas=varshas,
+            truncated=bool(truncated[0]),
+            next_from=next_from,
+        )
+    finally:
+        lib.dhruv_panchang_events_free(handle[0])
 
 
 # ---------------------------------------------------------------------------

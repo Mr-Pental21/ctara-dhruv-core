@@ -118,6 +118,12 @@ from ctara_dhruv.types import (
     MovingOsculatingApogees,
     AmshaVariationCatalog,
     AmshaVariationInfo,
+    AmshaSeriesChart,
+    AmshaSeriesPoint,
+    AmshaLagnaSegment,
+    AmshaLagnaEntry,
+    AmshaLagnaEventsResult,
+    PanchangEventsResult,
     CharakarakaEntry,
     CharakarakaResult,
     DashaPeriod,
@@ -152,12 +158,22 @@ from ctara_dhruv.tara import TaraCatalog
 
 # Amsha
 from ctara_dhruv.amsha import (
+    MAX_AMSHA_LAGNA_SEGMENTS,
+    MAX_AMSHA_SERIES_CELLS,
     amsha_longitude,
     amsha_longitudes,
     amsha_rashi_info,
     amsha_chart_for_date,
+    amsha_lagna_events,
+    amsha_series,
     amsha_variations,
     amsha_variations_many,
+)
+
+# Panchang range operations
+from ctara_dhruv.panchang import (
+    MAX_PANCHANG_EVENTS,
+    panchang_events,
 )
 
 # Dasha
@@ -213,6 +229,9 @@ __all__ = [
     "GrahaEntry", "GrahaPositions", "MovingOsculatingApogeeEntry", "MovingOsculatingApogees",
     "CharakarakaEntry", "CharakarakaResult", "DashaPeriod",
     "DashaSnapshot", "AmshaVariationCatalog", "AmshaVariationInfo",
+    "AmshaSeriesChart", "AmshaSeriesPoint",
+    "AmshaLagnaSegment", "AmshaLagnaEntry", "AmshaLagnaEventsResult",
+    "PanchangEventsResult",
     "GocharNatalTarget", "GocharReference", "GocharEventWindow",
     "TajakaReturnEvent", "TithiPraveshaEvent", "TransitToNatalAspectEvent",
     "GocharEventsResult",
@@ -225,6 +244,8 @@ __all__ = [
     "ayanamsha", "system_count", "reference_plane_default",
     "amsha_longitude", "amsha_longitudes", "amsha_rashi_info", "amsha_chart_for_date",
     "amsha_variations", "amsha_variations_many",
+    "amsha_series", "amsha_lagna_events", "panchang_events",
+    "MAX_AMSHA_SERIES_CELLS", "MAX_AMSHA_LAGNA_SEGMENTS", "MAX_PANCHANG_EVENTS",
     "TaraCatalog",
     "DashaLevel", "DashaHierarchy",
     "dasha_selection_config_default", "dasha_variation_config_default",

@@ -692,6 +692,31 @@ class PanchangResult:
     varsha: Optional[VarshaInfo] = None
 
 
+@dataclass(frozen=True)
+class PanchangEventsResult:
+    """Exact panchang element segments overlapping a UTC range.
+
+    Each per-kind list chains exactly within its kind
+    (``item.end == next_item.start``). The first segment of each kind may
+    start before the requested ``from_utc`` and the last may end after
+    ``to_utc``. Kinds not selected by the include mask are empty lists.
+
+    ``truncated``: True when the sweep hit the event cap before covering the
+    full range. ``next_from``: resume point (only set when truncated) —
+    re-issue the call from here and deduplicate on ``(kind, start)``.
+    """
+
+    tithis: list[TithiInfo]
+    karanas: list[KaranaInfo]
+    yogas: list[YogaInfo]
+    nakshatras: list[PanchangNakshatraInfo]
+    masas: list[MasaInfo]
+    ayanas: list[AyanaInfo]
+    varshas: list[VarshaInfo]
+    truncated: bool = False
+    next_from: Optional[UtcTime] = None
+
+
 # ---------------------------------------------------------------------------
 # Sphuta
 # ---------------------------------------------------------------------------
@@ -1023,6 +1048,74 @@ class AmshaVariationCatalog:
     amsha_code: int
     default_variation_code: int
     variations: list[AmshaVariationInfo]
+
+
+@dataclass(frozen=True)
+class AmshaSeriesChart:
+    """Slim varga chart within one amsha series point.
+
+    ``grahas`` holds the 9 navagraha entries when the series was requested
+    with ``include_grahas``; ``None`` otherwise. The varga lagna is always
+    present.
+    """
+
+    amsha_code: int
+    variation_code: int
+    lagna: AmshaEntry
+    grahas: Optional[list[AmshaEntry]] = None
+
+
+@dataclass(frozen=True)
+class AmshaSeriesPoint:
+    """One epoch of a fixed-cadence amsha series.
+
+    ``utc``: epoch as a (year, month, day, hour, minute, second) tuple.
+    ``jd_utc``: epoch as JD UTC.
+    ``charts``: one ``AmshaSeriesChart`` per request, in request order
+    (duplicate requests repeated).
+    """
+
+    utc: tuple
+    jd_utc: float
+    charts: list[AmshaSeriesChart]
+
+
+@dataclass(frozen=True)
+class AmshaLagnaSegment:
+    """One varga-lagna rashi segment with exact transition boundaries.
+
+    The first segment of a sweep starts at the requested ``from_utc``; later
+    segments start at the exact transition. ``end`` is the exact transition
+    time (the last segment's end is the first transition at or after
+    ``to_utc``).
+    """
+
+    rashi_index: int
+    start: UtcTime
+    end: UtcTime
+
+
+@dataclass(frozen=True)
+class AmshaLagnaEntry:
+    """Varga-lagna segments for one unique (amsha, variation) request."""
+
+    amsha_code: int
+    variation_code: int
+    segments: list[AmshaLagnaSegment]
+
+
+@dataclass(frozen=True)
+class AmshaLagnaEventsResult:
+    """Result of an amsha-lagna events sweep.
+
+    ``entries``: one entry per unique request (duplicates collapsed), in
+    request order. ``truncated``: True when the total-segment cap was hit.
+    ``next_from``: resume point (only set when truncated).
+    """
+
+    entries: list[AmshaLagnaEntry]
+    truncated: bool = False
+    next_from: Optional[UtcTime] = None
 
 
 # ---------------------------------------------------------------------------

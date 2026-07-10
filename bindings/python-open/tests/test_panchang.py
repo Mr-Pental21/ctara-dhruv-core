@@ -175,3 +175,113 @@ class TestSamvatsara:
         from ctara_dhruv.panchang import samvatsara_from_year
         s = samvatsara_from_year(2000)
         assert 0 <= s.samvatsara_index <= 59
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestPanchangEvents:
+    def test_tithi_chaining_35_days(self, engine_handles):
+        """Tithi segments over ~35 days chain exactly and cover the range."""
+        from ctara_dhruv.panchang import panchang_events, INCLUDE_TITHI
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine, eop
+
+        from_utc = UtcTime(2024, 1, 1, 0, 0, 0.0)
+        to_utc = UtcTime(2024, 2, 5, 0, 0, 0.0)
+        result = panchang_events(
+            engine()._ptr, eop(), from_utc, to_utc, include_mask=INCLUDE_TITHI
+        )
+        assert not result.truncated
+        assert result.next_from is None
+
+        tithis = result.tithis
+        # ~35 days of tithis (a tithi averages slightly under a day).
+        assert len(tithis) >= 33
+        # Kinds not selected stay empty.
+        assert result.karanas == []
+        assert result.yogas == []
+        assert result.nakshatras == []
+
+        # First segment may start before `from`, last may end after `to`.
+        assert tithis[0].start.to_datetime() <= from_utc.to_datetime()
+        assert tithis[-1].end.to_datetime() >= to_utc.to_datetime()
+
+        # Segments chain exactly and the tithi index advances by 1 mod 30.
+        for a, b in zip(tithis, tithis[1:]):
+            assert a.end == b.start
+            assert (a.tithi_index + 1) % 30 == b.tithi_index
+        for t in tithis:
+            assert 0 <= t.tithi_index <= 29
+            assert t.paksha in (0, 1)
+
+    def test_truncation_and_resume(self, engine_handles):
+        """Truncated sweep resumes from next_from; dedup on start recovers all."""
+        from ctara_dhruv.panchang import panchang_events, INCLUDE_TITHI
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine, eop
+
+        from_utc = UtcTime(2024, 1, 1, 0, 0, 0.0)
+        to_utc = UtcTime(2024, 1, 20, 0, 0, 0.0)
+
+        full = panchang_events(
+            engine()._ptr, eop(), from_utc, to_utc, include_mask=INCLUDE_TITHI
+        )
+        assert not full.truncated
+
+        first = panchang_events(
+            engine()._ptr, eop(), from_utc, to_utc,
+            include_mask=INCLUDE_TITHI, max_events=5,
+        )
+        assert first.truncated
+        assert first.next_from is not None
+        assert len(first.tithis) == 5
+
+        rest = panchang_events(
+            engine()._ptr, eop(), first.next_from, to_utc,
+            include_mask=INCLUDE_TITHI,
+        )
+        seen = {t.start for t in first.tithis}
+        merged = first.tithis + [t for t in rest.tithis if t.start not in seen]
+
+        assert [t.tithi_index for t in merged] == [t.tithi_index for t in full.tithis]
+        for a, b in zip(merged, full.tithis):
+            assert abs((a.start.to_datetime() - b.start.to_datetime()).total_seconds()) < 1.0
+            assert abs((a.end.to_datetime() - b.end.to_datetime()).total_seconds()) < 1.0
+
+    def test_multi_kind_smoke(self, engine_handles):
+        """A masa+ayana+nakshatra sweep populates each selected kind."""
+        from ctara_dhruv.panchang import (
+            panchang_events,
+            INCLUDE_NAKSHATRA,
+            INCLUDE_MASA,
+            INCLUDE_AYANA,
+        )
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine, eop
+
+        result = panchang_events(
+            engine()._ptr, eop(),
+            UtcTime(2024, 1, 1, 0, 0, 0.0), UtcTime(2024, 3, 1, 0, 0, 0.0),
+            include_mask=INCLUDE_NAKSHATRA | INCLUDE_MASA | INCLUDE_AYANA,
+        )
+        assert not result.truncated
+        assert len(result.nakshatras) >= 55  # ~1 nakshatra/day over 60 days
+        assert len(result.masas) >= 2
+        assert len(result.ayanas) >= 1
+        assert result.tithis == []
+        for a, b in zip(result.nakshatras, result.nakshatras[1:]):
+            assert a.end == b.start
+
+    def test_invalid_mask_raises(self, engine_handles):
+        """Location-dependent bits (vaar/hora/ghatika) must be rejected."""
+        from ctara_dhruv import DhruvError
+        from ctara_dhruv.panchang import panchang_events, INCLUDE_VAAR
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine, eop
+
+        with pytest.raises(DhruvError):
+            panchang_events(
+                engine()._ptr, eop(),
+                UtcTime(2024, 1, 1, 0, 0, 0.0), UtcTime(2024, 1, 2, 0, 0, 0.0),
+                include_mask=INCLUDE_VAAR,
+            )

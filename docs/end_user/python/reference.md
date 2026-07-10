@@ -17,6 +17,11 @@ This page summarizes the public Python wrapper by module, using
 - ayanamsha helpers: `ayanamsha`, `system_count`, `reference_plane_default`
 - tara: `TaraCatalog`
 - dasha classes and helpers
+- amsha helpers, including the range operations `amsha_series` and
+  `amsha_lagna_events` plus the caps `MAX_AMSHA_SERIES_CELLS` and
+  `MAX_AMSHA_LAGNA_SEGMENTS`
+- panchang range operation `panchang_events` plus the cap
+  `MAX_PANCHANG_EVENTS`
 
 The fuller public surface is intentionally module-based.
 
@@ -237,8 +242,12 @@ replacement.
   - `INCLUDE_LOCATION_INDEPENDENT` (tithi, karana, yoga, nakshatra, masa,
     ayana, varsha)
   - `INCLUDE_LOCATION_DEPENDENT` (vaar, hora, ghatika)
+- cap constants:
+  - `MAX_PANCHANG_EVENTS` (50,000 — hard ceiling on total events per
+    `panchang_events` sweep)
 - functions:
   - `panchang`
+  - `panchang_events`
   - `tithi_for_date`
   - `karana_for_date`
   - `yoga_for_date`
@@ -264,6 +273,23 @@ Location-independent elements can be computed without one; requesting
 location-dependent elements (vaar, hora, ghatika) without a location raises
 `DhruvError`. The returned `PanchangResult` keeps every element `Optional` —
 each of the ten fields is `None` unless requested and computed.
+
+`panchang_events(engine, eop, from_utc, to_utc,
+include_mask=INCLUDE_LOCATION_INDEPENDENT, sankranti_config=None,
+max_events=0)` streams exact panchang element segments overlapping
+`[from_utc, to_utc]` (both `UtcTime`) and returns a `PanchangEventsResult`
+with per-kind lists (`tithis`, `karanas`, `yogas`, `nakshatras`, `masas`,
+`ayanas`, `varshas`) of the same `TithiInfo`/`KaranaInfo`/... dataclasses
+used by the single-instant calls. Only location-independent kinds are
+supported: `include_mask` must be a subset of
+`INCLUDE_LOCATION_INDEPENDENT`; any vaar/hora/ghatika bit raises
+`DhruvError`. Consecutive segments of one kind chain exactly
+(`end == next.start`); the first segment of each kind may start before
+`from_utc` and the last may end after `to_utc`. `max_events` caps the total
+events across all kinds (`0` selects the hard ceiling
+`MAX_PANCHANG_EVENTS` = 50,000). When the cap is hit, `truncated` is `True`
+and `next_from` carries the resume point: call again with
+`from_utc=result.next_from` and deduplicate on `(kind, start)`.
 
 `kundali`:
 
@@ -324,6 +350,11 @@ apply to the graha. They also expose `lajjitadi`, `lajjitadi_states`, and
 
 `amsha`:
 
+- cap constants:
+  - `MAX_AMSHA_SERIES_CELLS` (100,000 — points x unique requests per
+    `amsha_series` call)
+  - `MAX_AMSHA_LAGNA_SEGMENTS` (50,000 — total segments per
+    `amsha_lagna_events` call)
 - `amsha_longitude`
 - `amsha_longitudes`
 - `amsha_rashi_info`
@@ -332,6 +363,32 @@ apply to the graha. They also expose `lajjitadi`, `lajjitadi_states`, and
   `outer_planets` separately when the scope includes them.
 - `amsha_variations`
 - `amsha_variations_many`
+- `amsha_series(engine, eop, from_utc, to_utc, step_minutes, location,
+  amsha_codes, variation_codes=None, include_grahas=True,
+  sankranti_config=None)` — fixed-cadence sampling of slim varga charts.
+  Grid semantics match `graha_positions_series`: one point per
+  `step_minutes` starting at `from_utc` (tuples, like the other `amsha`
+  functions), endpoints inclusive when they land on the grid. Returns a
+  list of `AmshaSeriesPoint` (`utc` tuple, `jd_utc`, `charts`); each point
+  carries one `AmshaSeriesChart` (`amsha_code`, `variation_code`, `lagna`,
+  optional `grahas`) per request, in request order (duplicates repeated).
+  The varga lagna is always computed; the 9 graha entries are added when
+  `include_grahas` is true. Rejects `step_minutes == 0`, reversed ranges,
+  empty or invalid request lists, and grids whose points x unique requests
+  exceed `MAX_AMSHA_SERIES_CELLS`. Ayanamsha/nutation policy comes from
+  `sankranti_config` (library default when `None`: Lahiri, no nutation).
+- `amsha_lagna_events(engine, eop, from_utc, to_utc, location, amsha_codes,
+  variation_codes=None, max_segments=0, sankranti_config=None)` — exact
+  varga-lagna rashi transitions (no sampling grid). Returns an
+  `AmshaLagnaEventsResult` with one `AmshaLagnaEntry` per unique
+  (amsha, variation) request (duplicates collapsed), in request order; each
+  entry holds `AmshaLagnaSegment` items (`rashi_index`, `start`, `end` as
+  `UtcTime`) that chain exactly (`end == next.start`). The first segment
+  starts at `from_utc`; the last segment's end is the first transition at
+  or after `to_utc`. `max_segments` caps the total segments across all
+  amshas (`0` selects `MAX_AMSHA_LAGNA_SEGMENTS` = 50,000). When truncated,
+  `truncated` is `True` and `next_from` carries the resume point: call
+  again from there and deduplicate on segment starts.
 
 `dasha`:
 

@@ -116,6 +116,14 @@ this replaces the former `include_panchang`/`include_calendar` flags), and
 `FullKundaliResult.panchang` is a `PanchangResult` with per-element optional
 fields, identical to the standalone panchang op.
 
+`ctara_dhruv.panchang.panchang_events(...)` streams exact panchang element
+segments over a UTC range for the location-independent kinds (tithi, karana,
+yoga, nakshatra, masa, ayana, varsha). Segments of one kind chain exactly
+(`end == next.start`); the first may start before `from_utc` and the last may
+end after `to_utc`. Sweeps are capped at `MAX_PANCHANG_EVENTS` (50,000)
+events; a truncated result carries a `next_from` resume point (dedup on
+`(kind, start)` when merging).
+
 ## Amsha Surface
 
 Direct amsha helpers:
@@ -126,6 +134,16 @@ Direct amsha helpers:
 - `ctara_dhruv.amsha.amsha_chart_for_date`
 - `ctara_dhruv.amsha.amsha_variations`
 - `ctara_dhruv.amsha.amsha_variations_many`
+
+Amsha range operations:
+
+- `ctara_dhruv.amsha.amsha_series` — fixed-cadence slim varga charts
+  (`AmshaSeriesPoint` list; lagna always, grahas with `include_grahas`;
+  points x unique requests capped at `MAX_AMSHA_SERIES_CELLS` = 100,000).
+- `ctara_dhruv.amsha.amsha_lagna_events` — exact varga-lagna rashi
+  transition segments per unique request, chaining `end == next.start`
+  (total segments capped at `MAX_AMSHA_LAGNA_SEGMENTS` = 50,000; truncated
+  results carry a `next_from` resume point).
 
 Embedded amsha support:
 
