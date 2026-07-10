@@ -28,6 +28,13 @@ Highest to lowest:
 - TOML and JSON are both supported.
 - Unknown keys are strict errors (`deny_unknown_fields`).
 - `version` must be `1` (or omitted/`0`, which normalizes to `1`).
+- `operations.full_kundali.panchang_include_mask` accepts an integer mask
+  (`PANCHANG_INCLUDE_*` bits), a single element/group name string (`tithi`,
+  `all`, `all_core`, `all_calendar`, `location_independent`,
+  `location_dependent`, or `"none"` for 0), or a list of such names OR-ed
+  together. Unknown names are strict errors (`InvalidEnumValue`). It replaces
+  the former `include_panchang`/`include_calendar` booleans; precedence and
+  provenance layering are unchanged.
 
 ## Discovery Order
 

@@ -89,7 +89,7 @@ fn moon_sidereal_lon(
     aya_config: &SankrantiConfig,
 ) -> Result<f64, SearchError> {
     let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
-    moon_sidereal_longitude_at(engine, jd_tdb, aya_config)
+    Ok(moon_sidereal_longitude_at(engine, jd_tdb, aya_config)?)
 }
 
 /// Assemble RashiDashaInputs from engine queries.

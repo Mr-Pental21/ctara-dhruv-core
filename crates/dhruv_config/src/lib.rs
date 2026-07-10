@@ -15,7 +15,7 @@ use dhruv_frames::{PrecessionModel, ReferencePlane};
 use dhruv_search::{
     AmshaSelectionConfig, BasicStatesConfig, BindusConfig, ConjunctionConfig, DashaSelectionConfig,
     DashaSnapshotTime, DrishtiConfig, FullKundaliConfig, GrahaPositionsConfig, GrahanConfig,
-    SankrantiConfig, StationaryConfig,
+    SankrantiConfig, StationaryConfig, panchang_include_bits,
 };
 use dhruv_tara::{TaraAccuracy, TaraConfig};
 use dhruv_time::UtcTime;
@@ -334,8 +334,7 @@ pub struct FullKundaliConfigPatch {
     pub include_avastha: Option<bool>,
     pub include_charakaraka: Option<bool>,
     pub charakaraka_scheme: Option<EnumInput>,
-    pub include_panchang: Option<bool>,
-    pub include_calendar: Option<bool>,
+    pub panchang_include_mask: Option<PanchangIncludeInput>,
     pub include_dasha: Option<bool>,
     pub node_dignity_policy: Option<EnumInput>,
     pub graha_positions: Option<GrahaPositionsConfigPatch>,
@@ -350,6 +349,43 @@ pub struct FullKundaliConfigPatch {
 pub enum EnumInput {
     Int(i64),
     Str(String),
+}
+
+/// Panchang include-mask input: an integer mask, an element/group name
+/// (e.g. `"all"`, `"location_independent"`, `"tithi"`, `"none"`), or a list
+/// of element/group names OR-ed together.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum PanchangIncludeInput {
+    Int(u32),
+    Str(String),
+    List(Vec<String>),
+}
+
+fn parse_panchang_include_mask(
+    input: &PanchangIncludeInput,
+    field: &'static str,
+) -> Result<u32, ConfigError> {
+    let name_bits = |name: &str| -> Result<u32, ConfigError> {
+        if name.eq_ignore_ascii_case("none") {
+            return Ok(0);
+        }
+        panchang_include_bits(name).ok_or_else(|| ConfigError::InvalidEnumValue {
+            field,
+            value: name.to_string(),
+        })
+    };
+    match input {
+        PanchangIncludeInput::Int(mask) => Ok(*mask),
+        PanchangIncludeInput::Str(name) => name_bits(name),
+        PanchangIncludeInput::List(names) => {
+            let mut mask = 0u32;
+            for name in names {
+                mask |= name_bits(name)?;
+            }
+            Ok(mask)
+        }
+    }
 }
 
 impl EnumInput {
@@ -1172,20 +1208,19 @@ impl ConfigResolver {
             "include_charakaraka",
             &mut source,
         );
-        let include_panchang = layered_bool(
-            explicit.include_panchang,
-            op.include_panchang,
-            defaults.include_panchang,
-            "include_panchang",
-            &mut source,
-        );
-        let include_calendar = layered_bool(
-            explicit.include_calendar,
-            op.include_calendar,
-            defaults.include_calendar,
-            "include_calendar",
-            &mut source,
-        );
+        let panchang_include_mask = if let Some(v) = &explicit.panchang_include_mask {
+            source.insert("panchang_include_mask".to_string(), ConfigSource::Explicit);
+            parse_panchang_include_mask(v, "full_kundali.panchang_include_mask")?
+        } else if let Some(v) = &op.panchang_include_mask {
+            source.insert("panchang_include_mask".to_string(), ConfigSource::Operation);
+            parse_panchang_include_mask(v, "full_kundali.panchang_include_mask")?
+        } else {
+            source.insert(
+                "panchang_include_mask".to_string(),
+                ConfigSource::RecommendedDefault,
+            );
+            defaults.panchang_include_mask
+        };
         let include_dasha = layered_bool(
             explicit.include_dasha,
             op.include_dasha,
@@ -1274,8 +1309,7 @@ impl ConfigResolver {
                 include_avastha,
                 include_charakaraka,
                 charakaraka_scheme,
-                include_panchang,
-                include_calendar,
+                panchang_include_mask,
                 include_dasha,
                 node_dignity_policy,
                 upagraha_config: dhruv_vedic_base::TimeUpagrahaConfig::default(),

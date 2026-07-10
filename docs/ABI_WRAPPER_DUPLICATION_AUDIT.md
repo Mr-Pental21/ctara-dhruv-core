@@ -50,6 +50,13 @@ What is duplicated when called separately:
 - sidereal sum (`yoga`)
 - sunrise bracket (`vaar` + `hora` + `ghatika`)
 
+Status note: the `dhruv_vedic_ops` panchang module no longer duplicates the
+implementation — it is now a re-export of `dhruv_search`'s panchang
+functions/types/constants (its `panchang()` executor remains as a thin
+wrapper). The combined `panchang_for_date` now takes a `PANCHANG_INCLUDE_*`
+mask that gates computation, so only selected elements (and their shared
+intermediates) are computed.
+
 ### 2) Panchang low-level/composable APIs already exist (good)
 
 Already exposed in C ABI:

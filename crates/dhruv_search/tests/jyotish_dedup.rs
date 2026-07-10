@@ -294,8 +294,7 @@ fn full_kundali_mixed_sections_match_standalone_results() {
     config.include_bhavabala = true;
     config.include_vimsopaka = true;
     config.include_avastha = true;
-    config.include_panchang = true;
-    config.include_calendar = true;
+    config.panchang_include_mask = dhruv_search::PANCHANG_INCLUDE_ALL;
     config.amsha_scope = AmshaChartScope {
         include_bhava_cusps: true,
         include_arudha_padas: true,
@@ -355,10 +354,10 @@ fn full_kundali_mixed_sections_match_standalone_results() {
         &engine,
         &eop,
         &utc,
-        &location,
+        Some(&location),
         &riseset_config,
         &aya_config,
-        true,
+        dhruv_search::PANCHANG_INCLUDE_ALL,
     )
     .expect("standalone panchang should succeed");
 

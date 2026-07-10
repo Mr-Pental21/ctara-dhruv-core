@@ -201,7 +201,8 @@ Interim implementation may expose both legacy and canonical paths while parity t
 
 `PanchangOperation` fields:
 - `at_utc: UtcTime`
-- `location: GeoLocation`
+- `location: Option<GeoLocation>` (required only when a location-dependent
+  element — vaar, hora, ghatika — is selected in `include_mask`)
 - `riseset_config: RiseSetConfig`
 - `sankranti_config: SankrantiConfig`
 - `include_mask: u32` (bitset over `PANCHANG_INCLUDE_*`)
@@ -220,6 +221,23 @@ Include bits:
 - `PANCHANG_INCLUDE_ALL_CORE`
 - `PANCHANG_INCLUDE_ALL_CALENDAR`
 - `PANCHANG_INCLUDE_ALL`
+- `PANCHANG_INCLUDE_LOCATION_INDEPENDENT` (tithi|karana|yoga|nakshatra|masa|ayana|varsha = `0x3C7`)
+- `PANCHANG_INCLUDE_LOCATION_DEPENDENT` (vaar|hora|ghatika = `0x38`)
+
+`panchang_include_bits(name)` resolves element names and group names (`all`,
+`all_core`, `all_calendar`, `location_independent`, `location_dependent`),
+case-insensitive.
+
+Semantics:
+- `include_mask` gates computation, not just output: unselected elements are
+  never computed, and shared intermediates (Moon-Sun elongation for
+  tithi/karana, sidereal sum for yoga, Moon sidereal longitude for nakshatra,
+  the Vedic-day sunrise pair for vaar/hora/ghatika) are computed at most once
+  and only when a selected element needs them. Masa/ayana/varsha are
+  individually gated.
+- `include_mask == 0` -> `InvalidConfig`.
+- Location-dependent bit set with `location: None` ->
+  `InvalidConfig("location required for vaar/hora/ghatika")`.
 
 ## Result
 

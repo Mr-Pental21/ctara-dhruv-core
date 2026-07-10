@@ -92,11 +92,13 @@ pub use dhruv_vedic_base::{
 pub use dhruv_vedic_ops::{
     NodeBackend, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_ALL_CORE,
     PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_GHATIKA, PANCHANG_INCLUDE_HORA,
-    PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_NAKSHATRA,
+    PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_LOCATION_DEPENDENT,
+    PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_NAKSHATRA,
     PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
     PanchangResult, SphutalResult, TaraOutputKind, TaraResult, dasha_child_period_for_birth,
     dasha_children_for_birth, dasha_complete_level_for_birth, dasha_hierarchy_for_birth,
     dasha_level0_entity_for_birth, dasha_level0_for_birth, dasha_snapshot_at,
+    panchang_include_bits,
 };
 
 fn utc_from_jd_utc(jd_utc: f64) -> UtcTime {

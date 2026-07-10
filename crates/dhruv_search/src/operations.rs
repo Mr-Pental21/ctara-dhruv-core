@@ -20,21 +20,15 @@ use crate::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use crate::error::SearchError;
 use crate::grahan_types::{ChandraGrahan, GrahanConfig, SuryaGrahan};
 use crate::lunar_phase_types::LunarPhaseEvent;
-use crate::panchang_types::{
-    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, TithiInfo,
-    VaarInfo, VarshaInfo, YogaInfo,
-};
 use crate::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use crate::stationary_types::{MaxSpeedEvent, StationaryConfig, StationaryEvent};
 use crate::{
-    ayana_for_date, ghatika_for_date, hora_for_date, karana_for_date, masa_for_date,
-    nakshatra_for_date, next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed,
-    next_purnima, next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan,
-    panchang_for_date, prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed,
-    prev_purnima, prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan,
-    search_amavasyas, search_chandra_grahan, search_conjunctions, search_max_speed,
-    search_purnimas, search_sankrantis, search_stationary, search_surya_grahan, tithi_for_date,
-    vaar_for_date, varsha_for_date, yoga_for_date,
+    next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed, next_purnima,
+    next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan, panchang_for_date,
+    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
+    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
+    search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
+    search_sankrantis, search_stationary, search_surya_grahan,
 };
 
 /// High-level query mode used by operation requests.
@@ -696,13 +690,56 @@ pub const PANCHANG_INCLUDE_ALL_CALENDAR: u32 =
 /// Include mask containing all panchang elements.
 pub const PANCHANG_INCLUDE_ALL: u32 = PANCHANG_INCLUDE_ALL_CORE | PANCHANG_INCLUDE_ALL_CALENDAR;
 
+/// All location-independent elements (no observer location required):
+/// tithi, karana, yoga, nakshatra, masa, ayana, varsha.
+pub const PANCHANG_INCLUDE_LOCATION_INDEPENDENT: u32 = PANCHANG_INCLUDE_TITHI
+    | PANCHANG_INCLUDE_KARANA
+    | PANCHANG_INCLUDE_YOGA
+    | PANCHANG_INCLUDE_NAKSHATRA
+    | PANCHANG_INCLUDE_MASA
+    | PANCHANG_INCLUDE_AYANA
+    | PANCHANG_INCLUDE_VARSHA;
+
+/// All location-dependent (sunrise-anchored) elements: vaar, hora, ghatika.
+pub const PANCHANG_INCLUDE_LOCATION_DEPENDENT: u32 =
+    PANCHANG_INCLUDE_VAAR | PANCHANG_INCLUDE_HORA | PANCHANG_INCLUDE_GHATIKA;
+
+/// Resolve a panchang element or group name to its include-mask bits.
+///
+/// Accepted names (case-insensitive): the ten element names (`tithi`,
+/// `karana`, `yoga`, `nakshatra`, `vaar`, `hora`, `ghatika`, `masa`,
+/// `ayana`, `varsha`) and the group names `all`, `all_core`, `all_calendar`,
+/// `location_independent`, `location_dependent`. Returns `None` for unknown
+/// names.
+pub fn panchang_include_bits(name: &str) -> Option<u32> {
+    match name.to_ascii_lowercase().as_str() {
+        "tithi" => Some(PANCHANG_INCLUDE_TITHI),
+        "karana" => Some(PANCHANG_INCLUDE_KARANA),
+        "yoga" => Some(PANCHANG_INCLUDE_YOGA),
+        "vaar" => Some(PANCHANG_INCLUDE_VAAR),
+        "hora" => Some(PANCHANG_INCLUDE_HORA),
+        "ghatika" => Some(PANCHANG_INCLUDE_GHATIKA),
+        "nakshatra" => Some(PANCHANG_INCLUDE_NAKSHATRA),
+        "masa" => Some(PANCHANG_INCLUDE_MASA),
+        "ayana" => Some(PANCHANG_INCLUDE_AYANA),
+        "varsha" => Some(PANCHANG_INCLUDE_VARSHA),
+        "all" => Some(PANCHANG_INCLUDE_ALL),
+        "all_core" => Some(PANCHANG_INCLUDE_ALL_CORE),
+        "all_calendar" => Some(PANCHANG_INCLUDE_ALL_CALENDAR),
+        "location_independent" => Some(PANCHANG_INCLUDE_LOCATION_INDEPENDENT),
+        "location_dependent" => Some(PANCHANG_INCLUDE_LOCATION_DEPENDENT),
+        _ => None,
+    }
+}
+
 /// Canonical panchang operation request.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PanchangOperation {
     /// Input timestamp in UTC.
     pub at_utc: UtcTime,
-    /// Observer location.
-    pub location: GeoLocation,
+    /// Observer location. Required only when a location-dependent element
+    /// (vaar, hora, ghatika) is selected in `include_mask`.
+    pub location: Option<GeoLocation>,
     /// Sunrise/sunset model configuration.
     pub riseset_config: RiseSetConfig,
     /// Ayanamsha/search configuration.
@@ -711,147 +748,26 @@ pub struct PanchangOperation {
     pub include_mask: u32,
 }
 
-/// Canonical panchang operation response.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PanchangResult {
-    pub tithi: Option<TithiInfo>,
-    pub karana: Option<KaranaInfo>,
-    pub yoga: Option<YogaInfo>,
-    pub vaar: Option<VaarInfo>,
-    pub hora: Option<HoraInfo>,
-    pub ghatika: Option<GhatikaInfo>,
-    pub nakshatra: Option<PanchangNakshatraInfo>,
-    pub masa: Option<MasaInfo>,
-    pub ayana: Option<AyanaInfo>,
-    pub varsha: Option<VarshaInfo>,
-}
-
-fn include(mask: u32, bit: u32) -> bool {
-    (mask & bit) != 0
-}
+pub use crate::panchang_types::PanchangResult;
 
 /// Execute a panchang operation request.
+///
+/// Only elements selected in `include_mask` are computed; see
+/// [`panchang_for_date`] for the sharing/skipping semantics.
 pub fn panchang(
     engine: &Engine,
     eop: &EopKernel,
     op: &PanchangOperation,
 ) -> Result<PanchangResult, SearchError> {
-    if op.include_mask == 0 {
-        return Err(SearchError::InvalidConfig("include_mask must be non-zero"));
-    }
-
-    let mut result = PanchangResult {
-        tithi: None,
-        karana: None,
-        yoga: None,
-        vaar: None,
-        hora: None,
-        ghatika: None,
-        nakshatra: None,
-        masa: None,
-        ayana: None,
-        varsha: None,
-    };
-
-    let any_core = (op.include_mask & PANCHANG_INCLUDE_ALL_CORE) != 0;
-    let any_calendar = (op.include_mask & PANCHANG_INCLUDE_ALL_CALENDAR) != 0;
-
-    if any_core {
-        let full = panchang_for_date(
-            engine,
-            eop,
-            &op.at_utc,
-            &op.location,
-            &op.riseset_config,
-            &op.sankranti_config,
-            any_calendar,
-        )?;
-        if include(op.include_mask, PANCHANG_INCLUDE_TITHI) {
-            result.tithi = Some(full.tithi);
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_KARANA) {
-            result.karana = Some(full.karana);
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_YOGA) {
-            result.yoga = Some(full.yoga);
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_VAAR) {
-            result.vaar = Some(full.vaar);
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_HORA) {
-            result.hora = Some(full.hora);
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_GHATIKA) {
-            result.ghatika = Some(full.ghatika);
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_NAKSHATRA) {
-            result.nakshatra = Some(full.nakshatra);
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_MASA) {
-            result.masa = full.masa;
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_AYANA) {
-            result.ayana = full.ayana;
-        }
-        if include(op.include_mask, PANCHANG_INCLUDE_VARSHA) {
-            result.varsha = full.varsha;
-        }
-        return Ok(result);
-    }
-
-    if include(op.include_mask, PANCHANG_INCLUDE_MASA) {
-        result.masa = Some(masa_for_date(engine, &op.at_utc, &op.sankranti_config)?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_AYANA) {
-        result.ayana = Some(ayana_for_date(engine, &op.at_utc, &op.sankranti_config)?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_VARSHA) {
-        result.varsha = Some(varsha_for_date(engine, &op.at_utc, &op.sankranti_config)?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_TITHI) {
-        result.tithi = Some(tithi_for_date(engine, &op.at_utc)?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_KARANA) {
-        result.karana = Some(karana_for_date(engine, &op.at_utc)?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_YOGA) {
-        result.yoga = Some(yoga_for_date(engine, &op.at_utc, &op.sankranti_config)?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_NAKSHATRA) {
-        result.nakshatra = Some(nakshatra_for_date(
-            engine,
-            &op.at_utc,
-            &op.sankranti_config,
-        )?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_VAAR) {
-        result.vaar = Some(vaar_for_date(
-            engine,
-            eop,
-            &op.at_utc,
-            &op.location,
-            &op.riseset_config,
-        )?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_HORA) {
-        result.hora = Some(hora_for_date(
-            engine,
-            eop,
-            &op.at_utc,
-            &op.location,
-            &op.riseset_config,
-        )?);
-    }
-    if include(op.include_mask, PANCHANG_INCLUDE_GHATIKA) {
-        result.ghatika = Some(ghatika_for_date(
-            engine,
-            eop,
-            &op.at_utc,
-            &op.location,
-            &op.riseset_config,
-        )?);
-    }
-    Ok(result)
+    panchang_for_date(
+        engine,
+        eop,
+        &op.at_utc,
+        op.location.as_ref(),
+        &op.riseset_config,
+        &op.sankranti_config,
+        op.include_mask,
+    )
 }
 
 /// Tara output selector.

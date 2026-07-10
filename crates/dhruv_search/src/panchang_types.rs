@@ -135,28 +135,30 @@ pub struct PanchangNakshatraInfo {
     pub end: UtcTime,
 }
 
-/// Combined daily panchang: all seven elements for a single moment,
-/// with optional calendar elements (masa, ayana, varsha).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PanchangInfo {
+/// Combined panchang result for a single moment.
+///
+/// Each element is present exactly when its `PANCHANG_INCLUDE_*` bit was set
+/// in the request mask; unselected elements are not computed at all.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PanchangResult {
     /// Tithi (lunar day).
-    pub tithi: TithiInfo,
+    pub tithi: Option<TithiInfo>,
     /// Karana (half-tithi).
-    pub karana: KaranaInfo,
+    pub karana: Option<KaranaInfo>,
     /// Yoga (luni-solar yoga).
-    pub yoga: YogaInfo,
+    pub yoga: Option<YogaInfo>,
     /// Vaar (Vedic weekday).
-    pub vaar: VaarInfo,
+    pub vaar: Option<VaarInfo>,
     /// Hora (planetary hour).
-    pub hora: HoraInfo,
+    pub hora: Option<HoraInfo>,
     /// Ghatika (1-60 division of Vedic day).
-    pub ghatika: GhatikaInfo,
+    pub ghatika: Option<GhatikaInfo>,
     /// Moon's nakshatra.
-    pub nakshatra: PanchangNakshatraInfo,
-    /// Masa (lunar month). Present when `include_calendar` is true.
+    pub nakshatra: Option<PanchangNakshatraInfo>,
+    /// Masa (lunar month).
     pub masa: Option<MasaInfo>,
-    /// Ayana (solstice period). Present when `include_calendar` is true.
+    /// Ayana (solstice period).
     pub ayana: Option<AyanaInfo>,
-    /// Varsha (60-year samvatsara). Present when `include_calendar` is true.
+    /// Varsha (60-year samvatsara).
     pub varsha: Option<VarshaInfo>,
 }

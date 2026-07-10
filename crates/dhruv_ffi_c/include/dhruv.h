@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       75
+#define DHRUV_API_VERSION       76
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -316,6 +316,18 @@ typedef int32_t DhruvStatus;
 #define DHRUV_PANCHANG_INCLUDE_ALL          \
     (DHRUV_PANCHANG_INCLUDE_ALL_CORE |      \
      DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR)
+#define DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT \
+    (DHRUV_PANCHANG_INCLUDE_TITHI     |             \
+     DHRUV_PANCHANG_INCLUDE_KARANA    |             \
+     DHRUV_PANCHANG_INCLUDE_YOGA      |             \
+     DHRUV_PANCHANG_INCLUDE_NAKSHATRA |             \
+     DHRUV_PANCHANG_INCLUDE_MASA      |             \
+     DHRUV_PANCHANG_INCLUDE_AYANA     |             \
+     DHRUV_PANCHANG_INCLUDE_VARSHA)
+#define DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT   \
+    (DHRUV_PANCHANG_INCLUDE_VAAR |                  \
+     DHRUV_PANCHANG_INCLUDE_HORA |                  \
+     DHRUV_PANCHANG_INCLUDE_GHATIKA)
 
 /* Count constants */
 #define DHRUV_GRAHA_COUNT              9
@@ -893,6 +905,9 @@ typedef struct {
     double           jd_tdb;
     DhruvUtcTime     utc;
     uint32_t         include_mask;
+    /* 1 when location is set; 0 to compute without an observer location.
+     * Required only for location-dependent elements (vaar, hora, ghatika). */
+    uint8_t          has_location;
     DhruvGeoLocation location;
     DhruvRiseSetConfig  riseset_config;
     DhruvSankrantiConfig sankranti_config;
@@ -987,20 +1002,6 @@ typedef struct {
     double   target_longitude_deg;
     double   actual_separation_deg;
 } DhruvTransitToNatalAspectEventRow;
-
-typedef struct {
-    DhruvTithiInfo              tithi;
-    DhruvKaranaInfo             karana;
-    DhruvYogaInfo               yoga;
-    DhruvVaarInfo               vaar;
-    DhruvHoraInfo               hora;
-    DhruvGhatikaInfo            ghatika;
-    DhruvPanchangNakshatraInfo  nakshatra;
-    uint8_t                     calendar_valid;
-    DhruvMasaInfo               masa;
-    DhruvAyanaInfo              ayana;
-    DhruvVarshaInfo             varsha;
-} DhruvPanchangInfo;
 
 /* --- UTC event variants --- */
 
@@ -1681,8 +1682,8 @@ typedef struct {
     DhruvDrishtiConfig        drishti_config;
     DhruvAmshaChartScope      amsha_scope;
     DhruvAmshaSelectionConfig amsha_selection;
-    uint8_t  include_panchang;
-    uint8_t  include_calendar;
+    /* DHRUV_PANCHANG_INCLUDE_* bits; 0 omits the panchang section. */
+    uint32_t panchang_include_mask;
     uint8_t  include_dasha;
     DhruvDashaSelectionConfig dasha_config;
 } DhruvFullKundaliConfig;
@@ -1741,7 +1742,7 @@ typedef struct {
     uint8_t                   charakaraka_valid;
     DhruvCharakarakaResult    charakaraka;
     uint8_t                   panchang_valid;
-    DhruvPanchangInfo         panchang;
+    DhruvPanchangOperationResult panchang;
     uint8_t                   dasha_count;
     DhruvDashaHierarchyHandle dasha_handles[DHRUV_MAX_DASHA_SYSTEMS];
     uint8_t                   dasha_systems[DHRUV_MAX_DASHA_SYSTEMS];

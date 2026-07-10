@@ -1,21 +1,26 @@
 # dhruv_search C ABI Coverage
 
-Scope: crate-root runtime/query APIs re-exported by `dhruv_search` (58 functions).
+Scope: crate-root runtime/query APIs re-exported by `dhruv_search` (61 functions).
 
-Direct C ABI coverage is high: `57 / 58` runtime APIs have an exported
+Direct C ABI coverage is high: `57 / 61` runtime APIs have an exported
 `dhruv_ffi_c` entry point.
-Functional coverage is `58 / 58` when `moon_sidereal_longitude_at` is satisfied
-via `dhruv_graha_longitudes` with sidereal config (Moon graha index).
+Functional coverage is `61 / 61` when the gaps below are satisfied through
+other exports.
 
 ## Not Wrapped Directly
 
-This crate-root runtime function does not currently have a direct C export:
+These crate-root runtime functions do not currently have a direct C export:
 
 - `moon_sidereal_longitude_at`
+- `masa_for_date_with_eop`
+- `ayana_for_date_with_eop`
+- `varsha_for_date_with_eop`
 
-Functional coverage note:
+Functional coverage notes:
 - `moon_sidereal_longitude_at` is obtainable from
   `dhruv_graha_longitudes` with sidereal config (Moon is one graha entry in that output).
+- The `*_for_date_with_eop` variants are obtainable from
+  `dhruv_panchang_compute_ex` (EOP handle + `DHRUV_PANCHANG_INCLUDE_MASA`/`_AYANA`/`_VARSHA` bits).
 
 ## Wrapped API Families (Direct)
 
@@ -34,7 +39,8 @@ Functional coverage note:
 - Panchang/time slices: `dhruv_masa_for_date`, `dhruv_ayana_for_date`,
   `dhruv_varsha_for_date`, `dhruv_nakshatra_for_date`, `dhruv_tithi_for_date`,
   `dhruv_karana_for_date`, `dhruv_yoga_for_date`, `dhruv_vaar_for_date`,
-  `dhruv_hora_for_date`, `dhruv_ghatika_for_date`, `dhruv_panchang_for_date`,
+  `dhruv_hora_for_date`, `dhruv_ghatika_for_date`, `dhruv_panchang_compute_ex`
+  (unified masked panchang, covering `panchang_for_date`),
   plus helper exports (`dhruv_elongation_at`, `dhruv_sidereal_sum_at`,
   `dhruv_tithi_at`, `dhruv_karana_at`, `dhruv_yoga_at`,
   `dhruv_vedic_day_sunrises`, `dhruv_vaar_from_sunrises`,

@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=73`
+- ABI target: `DHRUV_API_VERSION=76`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -81,7 +81,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v72).
+symbols from `dhruv.h` (ABI v76).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -118,6 +118,26 @@ The public `dhruv` package includes wrappers for:
 - tara catalog and compute APIs
 - low-level graha relationship/combustion/dignity helpers
 - low-level tara propagation and correction primitives
+
+## Panchang Selection
+
+`(*Engine).PanchangComputeEx` selects elements through
+`PanchangComputeRequest.IncludeMask` using the `PanchangInclude*` bit
+constants (`Tithi`, `Karana`, `Yoga`, `Vaar`, `Hora`, `Ghatika`, `Nakshatra`,
+`Masa`, `Ayana`, `Varsha`) and the groups `PanchangIncludeAllCore`,
+`PanchangIncludeAllCalendar`, `PanchangIncludeAll`,
+`PanchangIncludeLocationIndependent`, and `PanchangIncludeLocationDependent`.
+
+Location is optional: set `PanchangComputeRequest.HasLocation` (plus
+`Location`) only when the mask requests location-dependent elements (vaar,
+hora, ghatika). Those bits without `HasLocation` fail with an
+invalid-search-config error; location-independent masks need no location.
+
+`FullKundaliConfig.PanchangIncludeMask` selects the embedded panchang section
+of `FullKundaliForDate` with the same bits (0 omits the section, replacing the
+former `IncludePanchang`/`IncludeCalendar` booleans). The result section
+`FullKundaliResult.Panchang` is a `*PanchangOperationResult` with the same
+per-element `*Valid` flags as the standalone call.
 
 ## Time-Based Upagraha Config
 

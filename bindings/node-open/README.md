@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=72`
+- ABI target: `DHRUV_API_VERSION=76`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 - Primary distribution: npm package with bundled platform prebuilds from unified `vX.Y.Z` tags
@@ -84,6 +84,9 @@ Public modules included in this wrapper:
 - time conversions, nutation, ayanamsha, and lunar-node APIs
 - unified search APIs (conjunction/grahan/motion/lunar phase/sankranti/gochar events)
 - panchang/date APIs (`compute_rise_set*`, `compute_all_events*`, `compute_bhavas*`, `lagna/mc/ramc`, `tithi`, `karana`, `yoga`, `nakshatra`, `vaar`, `hora`, `ghatika`, `masa`, `ayana`, `varsha`)
+- unified panchang selection (`panchangComputeEx` with a `PANCHANG_INCLUDE`
+  bitmask and optional `location`; the same mask drives
+  `fullKundaliConfig.panchangIncludeMask`)
 - jyotish/rashi/nakshatra helpers (`grahaLongitudes`, longitude classifiers, special lagnas, arudha/upagraha date APIs)
 - charakaraka date API (`charakarakaForDate`) with selectable schemes (`8`, `7-no-pitri`, `7-pk-merged-mk`, `mixed-parashara`)
 - extras/composable APIs (panchang intermediates, sphuta/special-lagna scalar helpers, ashtakavarga, drishti, graha positions, bindus, amsha)
@@ -92,6 +95,31 @@ Public modules included in this wrapper:
 - dasha hierarchy and snapshot, with `entityName` on returned period objects for the exact canonical Sanskrit entity name
 - dasha level-0 cycle repetition through `variationConfig.cycles` and `variationConfig.minSpanYears`
 - tara catalog load/compute helpers plus low-level propagation/correction primitives
+
+## Panchang Selection
+
+`panchangComputeEx(engine, eop, lsk, request)` computes any subset of panchang
+elements in one call. `request.includeMask` is a bitmask built from the
+exported `PANCHANG_INCLUDE` object (`TITHI`, `KARANA`, `YOGA`, `VAAR`, `HORA`,
+`GHATIKA`, `NAKSHATRA`, `MASA`, `AYANA`, `VARSHA`, plus the combinations
+`ALL_CORE`, `ALL_CALENDAR`, `ALL`, `LOCATION_INDEPENDENT`, and
+`LOCATION_DEPENDENT`).
+
+`request.location` is optional. It is required only for the
+location-dependent elements (`VAAR`, `HORA`, `GHATIKA`); requesting those bits
+without a location fails with `STATUS.INVALID_SEARCH_CONFIG`. When
+`includeMask` is omitted it defaults to `PANCHANG_INCLUDE.ALL` with a location
+and `PANCHANG_INCLUDE.LOCATION_INDEPENDENT` without one. `riseSetConfig` and
+`sankrantiConfig` default to the library defaults when omitted.
+
+The result carries per-element `*Valid` flags (`tithiValid`, `vaarValid`,
+`masaValid`, ...) alongside the element payloads.
+
+`fullKundaliConfig` selects its embedded panchang section with the same mask
+through `panchangIncludeMask` (`0` omits the section; it replaces the former
+`includePanchang`/`includeCalendar` booleans). The embedded
+`fullKundaliForDate(...).panchang` result uses the same per-element `*Valid`
+shape as `panchangComputeEx`.
 
 ## Time-Based Upagraha Config
 

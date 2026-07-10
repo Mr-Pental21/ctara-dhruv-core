@@ -249,8 +249,7 @@ fn full_kundali_op_runs() {
         include_vimsopaka: false,
         include_avastha: true,
         include_charakaraka: false,
-        include_panchang: false,
-        include_calendar: false,
+        panchang_include_mask: 0,
         include_dasha: false,
         ..FullKundaliConfig::default()
     };

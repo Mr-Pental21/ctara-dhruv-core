@@ -117,6 +117,21 @@ physical-body codes such as `499`, `599`, `699`, `799`, `899`, `999`, plus
 - `ayanaForDate`
 - `varshaForDate`
 - `panchangComputeEx`
+- `PANCHANG_INCLUDE`
+
+`panchangComputeEx(engine, eop, lsk, request)` computes any subset of panchang
+elements in one call. `request.includeMask` is a bitmask built from
+`PANCHANG_INCLUDE` (`TITHI`, `KARANA`, `YOGA`, `VAAR`, `HORA`, `GHATIKA`,
+`NAKSHATRA`, `MASA`, `AYANA`, `VARSHA`, plus `ALL_CORE`, `ALL_CALENDAR`,
+`ALL`, `LOCATION_INDEPENDENT`, `LOCATION_DEPENDENT`). `request.location` is
+optional and only needed for the location-dependent elements (`VAAR`, `HORA`,
+`GHATIKA`); requesting those bits without a location fails with
+`STATUS.INVALID_SEARCH_CONFIG`. When `includeMask` is omitted it defaults to
+`PANCHANG_INCLUDE.ALL` with a location and
+`PANCHANG_INCLUDE.LOCATION_INDEPENDENT` without one. `riseSetConfig` and
+`sankrantiConfig` fall back to library defaults when omitted. The result
+carries per-element `*Valid` flags (`tithiValid`, `vaarValid`, `masaValid`,
+...) alongside the element payloads.
 
 `jyotish.js` exports:
 
@@ -350,7 +365,12 @@ Common config objects:
 - full-kundali config
   forwards the same nested graha-position settings and may return
   `bhavaCuspSensitivePointDistances` plus
-  `rashiBhavaCuspSensitivePointDistances`
+  `rashiBhavaCuspSensitivePointDistances`.
+  Selects its embedded panchang section with `panchangIncludeMask`, a
+  `PANCHANG_INCLUDE` bitmask (`0` omits the section; it replaces the former
+  `includePanchang`/`includeCalendar` booleans). The embedded
+  `fullKundaliForDate(...).panchang` result uses the same per-element
+  `*Valid` shape as `panchangComputeEx`.
 - dasha selection and variation configs
 
 - `grahaPositionsSeriesForDate(engine, eop, fromUtc, toUtc, stepMinutes,

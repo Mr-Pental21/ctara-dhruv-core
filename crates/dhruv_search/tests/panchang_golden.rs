@@ -10,10 +10,12 @@ use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::panchang_types::{AyanaInfo, MasaInfo, VarshaInfo};
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::{
-    ayana_for_date, elongation_at, ghatika_for_date, ghatika_from_sunrises, hora_for_date,
-    hora_from_sunrises, karana_at, karana_for_date, masa_for_date, moon_sidereal_longitude_at,
-    nakshatra_at, nakshatra_for_date, panchang_for_date, sidereal_sum_at, tithi_at, tithi_for_date,
-    vaar_for_date, vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, yoga_at, yoga_for_date,
+    PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CORE, PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
+    PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, SearchError, ayana_for_date, elongation_at,
+    ghatika_for_date, ghatika_from_sunrises, hora_for_date, hora_from_sunrises, karana_at,
+    karana_for_date, masa_for_date, moon_sidereal_longitude_at, nakshatra_at, nakshatra_for_date,
+    panchang_for_date, sidereal_sum_at, tithi_at, tithi_for_date, vaar_for_date,
+    vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, yoga_at, yoga_for_date,
 };
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
@@ -301,7 +303,16 @@ fn panchang_combined_matches_individual() {
     let rs = RiseSetConfig::default();
     let config = default_config();
 
-    let combined = panchang_for_date(&engine, &eop, &utc, &loc, &rs, &config, false).unwrap();
+    let combined = panchang_for_date(
+        &engine,
+        &eop,
+        &utc,
+        Some(&loc),
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_ALL_CORE,
+    )
+    .unwrap();
 
     let tithi = tithi_for_date(&engine, &utc).unwrap();
     let karana = karana_for_date(&engine, &utc).unwrap();
@@ -311,24 +322,24 @@ fn panchang_combined_matches_individual() {
     let hora = hora_for_date(&engine, &eop, &utc, &loc, &rs).unwrap();
     let ghatika = ghatika_for_date(&engine, &eop, &utc, &loc, &rs).unwrap();
 
-    assert_eq!(combined.tithi, tithi, "tithi mismatch");
-    assert_eq!(combined.karana, karana, "karana mismatch");
-    assert_eq!(combined.yoga, yoga, "yoga mismatch");
-    assert_eq!(combined.nakshatra, nakshatra, "nakshatra mismatch");
-    assert_eq!(combined.vaar, vaar, "vaar mismatch");
-    assert_eq!(combined.hora, hora, "hora mismatch");
-    assert_eq!(combined.ghatika, ghatika, "ghatika mismatch");
+    assert_eq!(combined.tithi, Some(tithi), "tithi mismatch");
+    assert_eq!(combined.karana, Some(karana), "karana mismatch");
+    assert_eq!(combined.yoga, Some(yoga), "yoga mismatch");
+    assert_eq!(combined.nakshatra, Some(nakshatra), "nakshatra mismatch");
+    assert_eq!(combined.vaar, Some(vaar), "vaar mismatch");
+    assert_eq!(combined.hora, Some(hora), "hora mismatch");
+    assert_eq!(combined.ghatika, Some(ghatika), "ghatika mismatch");
     assert!(
         combined.masa.is_none(),
-        "masa should be None without calendar"
+        "masa should be None when not selected"
     );
     assert!(
         combined.ayana.is_none(),
-        "ayana should be None without calendar"
+        "ayana should be None when not selected"
     );
     assert!(
         combined.varsha.is_none(),
-        "varsha should be None without calendar"
+        "varsha should be None when not selected"
     );
 }
 
@@ -342,7 +353,16 @@ fn panchang_with_calendar() {
     let rs = RiseSetConfig::default();
     let config = default_config();
 
-    let combined = panchang_for_date(&engine, &eop, &utc, &loc, &rs, &config, true).unwrap();
+    let combined = panchang_for_date(
+        &engine,
+        &eop,
+        &utc,
+        Some(&loc),
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_ALL,
+    )
+    .unwrap();
 
     // Calendar fields should be present
     let masa = combined.masa.expect("masa should be present");
@@ -357,4 +377,96 @@ fn panchang_with_calendar() {
     assert_eq!(masa, masa_direct, "masa mismatch");
     assert_eq!(ayana, ayana_direct, "ayana mismatch");
     assert_eq!(varsha, varsha_direct, "varsha mismatch");
+}
+
+/// A location-independent mask needs no location and computes only the
+/// selected elements.
+#[test]
+fn panchang_location_independent_without_location() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = UtcTime::new(2024, 1, 15, 12, 0, 0.0);
+    let rs = RiseSetConfig::default();
+    let config = default_config();
+
+    let result = panchang_for_date(
+        &engine,
+        &eop,
+        &utc,
+        None,
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
+    )
+    .unwrap();
+
+    assert!(result.tithi.is_some(), "tithi should be present");
+    assert!(result.karana.is_some(), "karana should be present");
+    assert!(result.yoga.is_some(), "yoga should be present");
+    assert!(result.nakshatra.is_some(), "nakshatra should be present");
+    assert!(result.masa.is_some(), "masa should be present");
+    assert!(result.ayana.is_some(), "ayana should be present");
+    assert!(result.varsha.is_some(), "varsha should be present");
+    assert!(result.vaar.is_none(), "vaar should not be present");
+    assert!(result.hora.is_none(), "hora should not be present");
+    assert!(result.ghatika.is_none(), "ghatika should not be present");
+}
+
+/// A location-dependent element without a location is an invalid request.
+#[test]
+fn panchang_location_dependent_requires_location() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = UtcTime::new(2024, 1, 15, 12, 0, 0.0);
+    let rs = RiseSetConfig::default();
+    let config = default_config();
+
+    let err = panchang_for_date(
+        &engine,
+        &eop,
+        &utc,
+        None,
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_VAAR,
+    )
+    .unwrap_err();
+    assert!(matches!(err, SearchError::InvalidConfig(_)));
+
+    let err =
+        panchang_for_date(&engine, &eop, &utc, None, &rs, &config, 0).unwrap_err();
+    assert!(matches!(err, SearchError::InvalidConfig(_)));
+}
+
+/// A single-element mask populates exactly that element.
+#[test]
+fn panchang_single_element_mask() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = UtcTime::new(2024, 1, 15, 12, 0, 0.0);
+    let rs = RiseSetConfig::default();
+    let config = default_config();
+
+    let result = panchang_for_date(
+        &engine,
+        &eop,
+        &utc,
+        None,
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_TITHI,
+    )
+    .unwrap();
+
+    let direct = tithi_for_date(&engine, &utc).unwrap();
+    assert_eq!(result.tithi, Some(direct), "tithi mismatch");
+    assert!(result.karana.is_none());
+    assert!(result.yoga.is_none());
+    assert!(result.nakshatra.is_none());
+    assert!(result.vaar.is_none());
+    assert!(result.hora.is_none());
+    assert!(result.ghatika.is_none());
+    assert!(result.masa.is_none());
+    assert!(result.ayana.is_none());
+    assert!(result.varsha.is_none());
 }

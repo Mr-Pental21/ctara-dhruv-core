@@ -2075,6 +2075,7 @@ fn ffi_panchang_runtime_bench(c: &mut Criterion) {
         jd_tdb: 0.0,
         utc,
         include_mask: DHRUV_PANCHANG_INCLUDE_ALL,
+        has_location: 1,
         location: loc_ffi,
         riseset_config: rs_cfg_ffi,
         sankranti_config: sank_cfg_ffi,
@@ -2087,13 +2088,14 @@ fn ffi_panchang_runtime_bench(c: &mut Criterion) {
                 black_box(&ctx.engine),
                 black_box(&ctx.eop),
                 black_box(&utc_rust),
-                black_box(&loc_rust),
+                black_box(Some(&loc_rust)),
                 black_box(&rs_cfg_rust),
                 black_box(&sank_cfg_rust),
-                true,
+                black_box(dhruv_search::PANCHANG_INCLUDE_ALL),
             )
             .expect("panchang_for_date")
             .tithi
+            .expect("tithi")
             .tithi_index as i32
         },
         || unsafe {
@@ -2200,13 +2202,18 @@ fn ffi_orchestrators_bench(c: &mut Criterion) {
         include_outer_planets: false,
         include_bhava: true,
         basic_states_config: Default::default(),
+        include_equatorial: false,
     };
     let gp_cfg_ffi = dhruv_ffi_c::DhruvGrahaPositionsConfig {
         include_nakshatra: 1,
         include_lagna: 1,
         include_outer_planets: 0,
         include_bhava: 1,
-        basic_states_config: Default::default(),
+        basic_states_config: dhruv_ffi_c::DhruvBasicStatesConfig {
+            include_basic_states: 0,
+            include_sensitive_point_distances: 0,
+        },
+        include_equatorial: 0,
     };
     let mut gp_out: dhruv_ffi_c::DhruvGrahaPositions = zeroed();
     bench_pair(

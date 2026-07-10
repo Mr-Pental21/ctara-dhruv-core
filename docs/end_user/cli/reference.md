@@ -145,6 +145,22 @@ Panchang:
 - `elongation-at`
 - `sidereal-sum-at`
 
+`panchang` computes only the elements you select with `--elements`, a
+comma-separated list of element names (`tithi`, `karana`, `yoga`, `vaar`,
+`hora`, `ghatika`, `nakshatra`, `masa`, `ayana`, `varsha`) or group names
+(`all`, `all_core`, `all_calendar`, `location_independent`,
+`location_dependent`). Omitting `--elements` selects all elements.
+`--lat`/`--lon` are required only when the selection includes a
+location-dependent element (vaar, hora, ghatika):
+
+```bash
+# No location needed: tithi/karana/yoga/nakshatra/masa/ayana/varsha only
+dhruv panchang --date 2026-04-17T13:25:39Z --elements location_independent
+
+# Location required for vaar/hora/ghatika
+dhruv panchang --date 2026-04-17T13:25:39Z --lat 28.6 --lon 77.2 --elements vaar,hora,ghatika
+```
+
 Jyotish and chart building:
 
 - `sphutas`
@@ -170,6 +186,18 @@ For `shadbala`, `vimsopaka`, `balas`, `avastha`, and `kundali`, use
 `kundali --include-amshas` is enabled, returned amsha charts include the full
 resolved union of explicit selections and internally required bala/avastha
 amshas.
+
+`kundali --panchang-elements` selects panchang elements for the kundali's
+panchang section using the same element/group names as `panchang --elements`
+(replacing the former `--include-panchang`/`--include-calendar` flags).
+`none` or omitting the flag omits the section. `kundali --all` selects all
+panchang elements unless an explicit non-empty `--panchang-elements`
+selection is given, which wins:
+
+```bash
+dhruv kundali --date 2026-04-17T13:25:39Z --lat 28.6 --lon 77.2 \
+  --panchang-elements tithi,nakshatra,masa
+```
 
 `avastha` and `kundali --include-avastha` print every Deeptadi and Lajjitadi
 state that applies to each graha, comma-separated. Lajjitadi prints `None` when

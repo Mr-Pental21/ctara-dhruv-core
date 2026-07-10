@@ -18,7 +18,7 @@ use dhruv_search::operations::{
 };
 use dhruv_search::{
     GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
-    GocharTransitBody, NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL,
+    GocharTransitBody, NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL_CORE,
     SankrantiConfig, StationaryConfig, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
     TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent, ayanamsha,
     body_ecliptic_lon_lat, conjunction, dasha_child_period_for_birth,
@@ -3806,9 +3806,11 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                 let utc = utc
                     .as_ref()
                     .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                // Default preserves the historical "daily" payload and cost:
+                // core elements only, calendar elements opt-in via the mask.
                 let include_mask = match request.include_mask.as_ref() {
                     Some(input) => parse_panchang_include_mask(input)?,
-                    None => PANCHANG_INCLUDE_ALL,
+                    None => PANCHANG_INCLUDE_ALL_CORE,
                 };
                 let op = PanchangOperation {
                     at_utc: *utc,

@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 73`
+**ABI version:** `DHRUV_API_VERSION = 76`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -641,11 +641,15 @@ typedef struct {
     double               jd_tdb;         // used for TIME_JD_TDB
     DhruvUtcTime         utc;            // used for TIME_UTC
     uint32_t             include_mask;   // DHRUV_PANCHANG_INCLUDE_* bitset
+    uint8_t              has_location;   // 1 when location is set; 0 to compute without one
     DhruvGeoLocation     location;
     DhruvRiseSetConfig   riseset_config;
     DhruvSankrantiConfig sankranti_config;
 } DhruvPanchangComputeRequest;
 ```
+
+`location` is required only when a location-dependent element (vaar, hora,
+ghatika) is selected in `include_mask`; set `has_location = 0` to ignore it.
 
 ### DhruvPanchangOperationResult
 
@@ -1411,6 +1415,8 @@ Unified sankranti entrypoint:
 #define DHRUV_PANCHANG_INCLUDE_ALL_CORE     0x7fu
 #define DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR 0x380u
 #define DHRUV_PANCHANG_INCLUDE_ALL          0x3ffu
+#define DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT 0x3c7u  // tithi|karana|yoga|nakshatra|masa|ayana|varsha
+#define DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT   0x38u   // vaar|hora|ghatika
 
 DhruvStatus dhruv_panchang_compute_ex(
     const DhruvEngineHandle*         engine,
@@ -1424,9 +1430,16 @@ DhruvStatus dhruv_panchang_compute_ex(
 Unified panchang entrypoint:
 - `time_kind=TIME_UTC` reads `request.utc`.
 - `time_kind=TIME_JD_TDB` reads `request.jd_tdb` and requires non-null `lsk`.
-- `include_mask` selects returned fields; each output slot has a `<field>_valid` flag.
+- `include_mask` gates computation, not just output: only selected elements are
+  computed, and shared intermediates (elongation for tithi/karana, sidereal sum
+  for yoga, Moon sidereal longitude for nakshatra, the Vedic-day sunrise pair
+  for vaar/hora/ghatika) are computed at most once and only when needed. Each
+  output slot has a `<field>_valid` flag.
+- `include_mask = 0` returns `InvalidConfig` (5).
 - `sankranti_config` is used for sidereal/calendar-dependent elements.
 - `riseset_config` and `location` are used for `vaar`, `hora`, `ghatika`.
+  `location` is read only when `has_location` is non-zero; selecting a
+  location-dependent element without `has_location` returns `InvalidConfig` (5).
 
 ---
 
@@ -2258,6 +2271,20 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v76**: Panchang element selection now gates computation, not just output.
+`DhruvPanchangComputeRequest` gains `has_location` (`uint8_t`, after
+`include_mask`); when 0, `location` is ignored, and a location is required
+only when a location-dependent element (vaar, hora, ghatika) is selected.
+New constants `DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT` (`0x3c7`) and
+`DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT` (`0x38`). `include_mask = 0`
+and location-dependent selections without a location return `InvalidConfig`.
+`DhruvFullKundaliConfig` replaces `include_panchang`/`include_calendar` with
+`panchang_include_mask` (`uint32_t`, `DHRUV_PANCHANG_INCLUDE_*` bits; 0 omits
+the panchang section, and masa/ayana/varsha are individually selectable).
+`DhruvPanchangInfo` is removed; `DhruvFullKundaliResult.panchang` is now a
+`DhruvPanchangOperationResult` with per-element `*_valid` flags
+(`panchang_valid` is retained).
 
 **v75**: Added equatorial output and fixed-cadence series to graha
 positions. `DhruvGrahaPositionsConfig` gains `include_equatorial`;

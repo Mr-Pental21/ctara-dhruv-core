@@ -820,7 +820,7 @@ fn full_kundali_bhava_cusps_flag_off() {
         include_ashtakavarga: false,
         include_upagrahas: false,
         include_special_lagnas: false,
-        include_panchang: true,
+        panchang_include_mask: dhruv_search::PANCHANG_INCLUDE_ALL_CORE,
         ..dhruv_search::FullKundaliConfig::default()
     };
 
@@ -872,7 +872,7 @@ fn full_kundali_high_lat_kp_bhava_off_succeeds() {
         include_ashtakavarga: false,
         include_upagrahas: false,
         include_special_lagnas: false,
-        include_panchang: false,
+        panchang_include_mask: 0,
         ..dhruv_search::FullKundaliConfig::default()
     };
 
@@ -915,7 +915,7 @@ fn full_kundali_high_lat_kp_bhava_off_panchang_succeeds() {
         include_ashtakavarga: false,
         include_upagrahas: false,
         include_special_lagnas: false,
-        include_panchang: true,
+        panchang_include_mask: dhruv_search::PANCHANG_INCLUDE_ALL_CORE,
         ..dhruv_search::FullKundaliConfig::default()
     };
 
@@ -958,8 +958,7 @@ fn full_kundali_high_lat_kp_bhava_off_calendar_succeeds() {
         include_ashtakavarga: false,
         include_upagrahas: false,
         include_special_lagnas: false,
-        include_panchang: false,
-        include_calendar: true,
+        panchang_include_mask: dhruv_search::PANCHANG_INCLUDE_ALL_CALENDAR,
         ..dhruv_search::FullKundaliConfig::default()
     };
 
@@ -996,7 +995,7 @@ fn full_kundali_high_lat_kp_bhava_on_fails() {
     let config = dhruv_search::FullKundaliConfig {
         include_bhava_cusps: true,
         include_graha_positions: false,
-        include_panchang: false,
+        panchang_include_mask: 0,
         ..dhruv_search::FullKundaliConfig::default()
     };
 

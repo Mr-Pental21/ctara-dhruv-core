@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use dhruv_core::{Engine, EngineConfig};
-use dhruv_search::{SankrantiConfig, next_purnima, panchang_for_date};
+use dhruv_search::{PANCHANG_INCLUDE_ALL, SankrantiConfig, next_purnima, panchang_for_date};
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{AyanamshaSystem, GeoLocation, RiseSetConfig};
 
@@ -76,10 +76,10 @@ fn cli_like_panchang_bench(c: &mut Criterion) {
                 black_box(&ctx.engine),
                 black_box(&ctx.eop),
                 black_box(&ctx.utc),
-                black_box(&ctx.location),
+                black_box(Some(&ctx.location)),
                 black_box(&ctx.riseset_config),
                 black_box(&ctx.sankranti_config),
-                true,
+                black_box(PANCHANG_INCLUDE_ALL),
             )
             .expect("panchang should succeed")
         })

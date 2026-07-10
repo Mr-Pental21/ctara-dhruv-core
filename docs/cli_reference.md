@@ -217,14 +217,18 @@ dhruv sunrise --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 --bsp de442s.bsp
 ### `panchang` — Masked panchang elements for a date
 
 ```
-dhruv panchang --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all --calendar
-dhruv panchang --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all --include tithi,yoga,nakshatra
+dhruv panchang --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all
+dhruv panchang --date 2024-03-20T12:00:00Z --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all --elements tithi,yoga,nakshatra
+dhruv panchang --date 2024-03-20T12:00:00Z --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all --elements location_independent
 ```
 
 | Flag | Description |
 |---|---|
-| `--calendar` | Include masa, ayana, varsha |
-| `--include` | Comma-separated include mask: `tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,core,calendar,all` |
+| `--elements` | Comma-separated element or group names (default `all`): `tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,all,all_core,all_calendar,location_independent,location_dependent` |
+| `--lat` / `--lon` | Observer location. Required only when the selection includes a location-dependent element (vaar, hora, ghatika) |
+
+Only the selected elements are computed. Selections without vaar/hora/ghatika
+need no `--lat`/`--lon` (e.g. `--elements location_independent`).
 
 ---
 
@@ -454,6 +458,16 @@ Amsha-related kundali flags:
 
 When explicit amsha scope is requested, the CLI promotes the dependent root
 sections needed to populate those amsha sub-sections.
+
+Panchang selection (replaces the former `--include-panchang`/`--include-calendar`):
+
+| Flag | Description |
+|---|---|
+| `--panchang-elements` | Comma-separated element or group names, same vocabulary as `panchang --elements`. `none` or omitted = no panchang section |
+
+Only the selected elements are computed. `--all` selects all panchang
+elements unless an explicit non-empty `--panchang-elements` selection is
+given, which wins.
 
 `kundali` also accepts the same time-based upagraha flags as `upagrahas`.
 Those values populate `FullKundaliConfig.upagraha_config` and

@@ -200,6 +200,43 @@ same knobs live on `DashaSelectionConfig` (`cycles: u8`, 0 = system
 default; `min_span_years: f64`, 0.0 = disabled). A period's cycle number
 is `(order - 1) / sequence_len + 1` — `order` is global across cycles.
 
+## Panchang Element Selection
+
+`PanchangRequest.include_mask` carries `PANCHANG_INCLUDE_*` bits that gate
+computation: only the selected elements are computed, and `panchang_op`
+returns a `PanchangResult` whose fields are all `Option`, populated only for
+selected elements. `PanchangRequest.location` is `Option<GeoLocation>` and is
+needed only when a location-dependent element (vaar, hora, ghatika) is
+selected; location-independent selections require no location.
+
+Per-element constants (`PANCHANG_INCLUDE_TITHI`, ..., `PANCHANG_INCLUDE_VARSHA`),
+group masks (`PANCHANG_INCLUDE_ALL`, `PANCHANG_INCLUDE_ALL_CORE`,
+`PANCHANG_INCLUDE_ALL_CALENDAR`, `PANCHANG_INCLUDE_LOCATION_INDEPENDENT`,
+`PANCHANG_INCLUDE_LOCATION_DEPENDENT`), and the name resolver
+`panchang_include_bits("tithi" | "all" | "location_independent" | ...)` are
+re-exported from `dhruv_rs`.
+
+```rust
+use dhruv_rs::{PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PanchangRequest, TimeInput, panchang_op};
+
+let request = PanchangRequest {
+    at: TimeInput::Utc(utc),
+    location: None, // not needed: no vaar/hora/ghatika selected
+    riseset_config: None,
+    sankranti_config: None,
+    include_mask: PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
+};
+let result = panchang_op(&ctx, &request, &eop)?;
+assert!(result.tithi.is_some());
+assert!(result.vaar.is_none()); // not selected, never computed
+```
+
+In full-kundali requests, `FullKundaliConfig.panchang_include_mask: u32`
+(default 0 = omit the panchang section) selects the elements the same way;
+it replaces the former `include_panchang`/`include_calendar` booleans, and
+`FullKundaliResult.panchang` is `Option<PanchangResult>` containing only the
+selected elements.
+
 ## Equatorial Output on Graha Positions
 
 `GrahaPositionsConfig.include_equatorial` (default false) adds per-entry

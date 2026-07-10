@@ -56,13 +56,16 @@ Total runtime functions documented here: **58**.
 | `prev_max_speed` | `engine`, `body`, `jd_tdb`, `config` | `Result<Option<MaxSpeedEvent>, SearchError>` | Previous speed extremum before `jd_tdb`. |
 | `search_max_speed` | `engine`, `body`, `jd_start`, `jd_end`, `config` | `Result<Vec<MaxSpeedEvent>, SearchError>` | All speed extrema in range. |
 
-## Panchang (22)
+## Panchang (25)
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
 | `masa_for_date` | `engine`, `utc`, `sankranti_config` | `Result<MasaInfo, SearchError>` | Amanta month + adhika flag + boundaries. |
+| `masa_for_date_with_eop` | `engine`, `eop`, `utc`, `sankranti_config` | `Result<MasaInfo, SearchError>` | EOP-aware variant of `masa_for_date`. |
 | `ayana_for_date` | `engine`, `utc`, `sankranti_config` | `Result<AyanaInfo, SearchError>` | Ayana + start/end transitions. |
+| `ayana_for_date_with_eop` | `engine`, `eop`, `utc`, `sankranti_config` | `Result<AyanaInfo, SearchError>` | EOP-aware variant of `ayana_for_date`. |
 | `varsha_for_date` | `engine`, `utc`, `sankranti_config` | `Result<VarshaInfo, SearchError>` | Samvatsara + Vedic year boundaries. |
+| `varsha_for_date_with_eop` | `engine`, `eop`, `utc`, `sankranti_config` | `Result<VarshaInfo, SearchError>` | EOP-aware variant of `varsha_for_date`. |
 | `elongation_at` | `engine`, `jd_tdb` | `Result<f64, SearchError>` | `(Moon_lon - Sun_lon) mod 360`. |
 | `sidereal_sum_at` | `engine`, `jd_tdb`, `sankranti_config` | `Result<f64, SearchError>` | `(Moon_sid + Sun_sid) mod 360`. |
 | `moon_sidereal_longitude_at` | `engine`, `jd_tdb`, `sankranti_config` | `Result<f64, SearchError>` | Moon sidereal longitude. |
@@ -81,7 +84,7 @@ Total runtime functions documented here: **58**.
 | `hora_from_sunrises` | `jd_tdb`, `sunrise_jd`, `next_sunrise_jd`, `lsk` | `HoraInfo` | Hora from sunrise pair (pure arithmetic). |
 | `ghatika_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config` | `Result<GhatikaInfo, SearchError>` | Ghatika with boundaries. |
 | `ghatika_from_sunrises` | `jd_tdb`, `sunrise_jd`, `next_sunrise_jd`, `lsk` | `GhatikaInfo` | Ghatika from sunrise pair (pure arithmetic). |
-| `panchang_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config`, `sankranti_config`, `include_calendar` | `Result<PanchangInfo, SearchError>` | One-shot panchang (7 limbs + optional calendar trio). |
+| `panchang_for_date` | `engine`, `eop`, `utc`, `location: Option<&GeoLocation>`, `riseset_config`, `sankranti_config`, `include_mask: u32` | `Result<PanchangResult, SearchError>` | Combined panchang; `include_mask` gates which elements are computed, `location` required only for vaar/hora/ghatika. |
 
 ## Jyotish Orchestration (8)
 

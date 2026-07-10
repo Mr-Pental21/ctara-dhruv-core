@@ -431,7 +431,9 @@ pub fn lunar_node_op(ctx: &DhruvContext, request: &NodeRequest) -> Result<f64, D
 #[derive(Debug, Clone, PartialEq)]
 pub struct PanchangRequest {
     pub at: TimeInput,
-    pub location: GeoLocation,
+    /// Required only when a location-dependent element (vaar, hora, ghatika)
+    /// is selected in `include_mask`.
+    pub location: Option<GeoLocation>,
     pub riseset_config: Option<RiseSetConfig>,
     pub sankranti_config: Option<SankrantiConfig>,
     pub include_mask: u32,
@@ -454,6 +456,9 @@ fn resolve_riseset_config(
 }
 
 /// Execute a unified panchang operation.
+///
+/// Only elements selected in `include_mask` are computed; a location is
+/// required only when a location-dependent element is selected.
 pub fn panchang_op(
     ctx: &DhruvContext,
     request: &PanchangRequest,

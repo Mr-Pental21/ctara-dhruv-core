@@ -1466,15 +1466,15 @@ pub fn full_kundali_for_date(
         None
     };
 
-    let panchang = if config.include_panchang || config.include_calendar {
+    let panchang = if config.panchang_include_mask != 0 {
         Some(panchang_for_date(
             engine,
             eop,
             utc,
-            location,
+            Some(location),
             riseset_config,
             aya_config,
-            config.include_calendar,
+            config.panchang_include_mask,
         )?)
     } else {
         None

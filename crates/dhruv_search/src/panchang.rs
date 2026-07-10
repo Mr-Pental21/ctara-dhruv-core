@@ -20,8 +20,14 @@ use dhruv_vedic_base::{
 use crate::conjunction::{body_ecliptic_lon_lat, body_lon_lat_on_plane};
 use crate::error::SearchError;
 use crate::lunar_phase::{next_amavasya, prev_amavasya};
+use crate::operations::{
+    PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_GHATIKA, PANCHANG_INCLUDE_HORA,
+    PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_LOCATION_DEPENDENT, PANCHANG_INCLUDE_MASA,
+    PANCHANG_INCLUDE_NAKSHATRA, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR,
+    PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
+};
 use crate::panchang_types::{
-    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangInfo, PanchangNakshatraInfo,
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, PanchangResult,
     TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
 };
 use crate::sankranti::{next_specific_sankranti, prev_specific_sankranti};
@@ -82,7 +88,8 @@ pub fn masa_for_date(
     masa_for_date_with_eop(engine, None, utc, config)
 }
 
-pub(crate) fn masa_for_date_with_eop(
+/// EOP-aware variant of [`masa_for_date`] used by assembled workflows.
+pub fn masa_for_date_with_eop(
     engine: &Engine,
     eop: Option<&EopKernel>,
     utc: &UtcTime,
@@ -131,7 +138,8 @@ pub fn ayana_for_date(
     ayana_for_date_with_eop(engine, None, utc, config)
 }
 
-pub(crate) fn ayana_for_date_with_eop(
+/// EOP-aware variant of [`ayana_for_date`] used by assembled workflows.
+pub fn ayana_for_date_with_eop(
     engine: &Engine,
     eop: Option<&EopKernel>,
     utc: &UtcTime,
@@ -176,7 +184,8 @@ pub fn varsha_for_date(
     varsha_for_date_with_eop(engine, None, utc, config)
 }
 
-pub(crate) fn varsha_for_date_with_eop(
+/// EOP-aware variant of [`varsha_for_date`] used by assembled workflows.
+pub fn varsha_for_date_with_eop(
     engine: &Engine,
     eop: Option<&EopKernel>,
     utc: &UtcTime,
@@ -736,64 +745,93 @@ pub fn ghatika_from_sunrises(
 // Combined panchang
 // ---------------------------------------------------------------------------
 
-/// Compute all six daily panchang elements (tithi, karana, yoga, vaar, hora,
-/// ghatika) for a single moment, sharing intermediate computations.
+/// Compute the panchang elements selected by `include_mask` for a single
+/// moment, sharing intermediate computations.
 ///
-/// This is more efficient than calling the six `_for_date` functions
-/// individually because Sun/Moon longitudes are queried once (instead of 3x)
-/// and sunrise is computed once (instead of 3x).
+/// Only elements whose `PANCHANG_INCLUDE_*` bit is set are computed; the
+/// mask gates the underlying searches, not just the output. Shared
+/// intermediates are computed at most once and only when some selected
+/// element needs them: Moon-Sun elongation (tithi, karana), sidereal sum
+/// (yoga), Moon sidereal longitude (nakshatra), and the Vedic-day sunrise
+/// pair (vaar, hora, ghatika).
 ///
-/// When `include_calendar` is true, also computes masa (lunar month),
-/// ayana (solstice period), and varsha (60-year samvatsara cycle).
+/// `location` is required only when a location-dependent element (vaar,
+/// hora, ghatika) is selected; it may be `None` otherwise.
 pub fn panchang_for_date(
     engine: &Engine,
     eop: &EopKernel,
     utc: &UtcTime,
-    location: &GeoLocation,
+    location: Option<&GeoLocation>,
     riseset_config: &RiseSetConfig,
     config: &SankrantiConfig,
-    include_calendar: bool,
-) -> Result<PanchangInfo, SearchError> {
+    include_mask: u32,
+) -> Result<PanchangResult, SearchError> {
+    if include_mask == 0 {
+        return Err(SearchError::InvalidConfig("include_mask must be non-zero"));
+    }
+    let needs_sunrise = include_mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT != 0;
+    if needs_sunrise && location.is_none() {
+        return Err(SearchError::InvalidConfig(
+            "location required for vaar/hora/ghatika",
+        ));
+    }
+
+    let include = |bit: u32| include_mask & bit != 0;
     let jd = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
+    let mut result = PanchangResult::default();
 
-    // Category A intermediates: compute body longitudes once
-    let elong = elongation_at(engine, jd)?;
-    let sum = sidereal_sum_at(engine, jd, config)?;
-    let moon_sid = moon_sidereal_longitude_at(engine, jd, config)?;
+    if include(PANCHANG_INCLUDE_TITHI) || include(PANCHANG_INCLUDE_KARANA) {
+        let elong = elongation_at(engine, jd)?;
+        if include(PANCHANG_INCLUDE_TITHI) {
+            result.tithi = Some(tithi_at(engine, jd, elong)?);
+        }
+        if include(PANCHANG_INCLUDE_KARANA) {
+            result.karana = Some(karana_at(engine, jd, elong)?);
+        }
+    }
+    if include(PANCHANG_INCLUDE_YOGA) {
+        let sum = sidereal_sum_at(engine, jd, config)?;
+        result.yoga = Some(yoga_at(engine, jd, sum, config)?);
+    }
+    if include(PANCHANG_INCLUDE_NAKSHATRA) {
+        let moon_sid = moon_sidereal_longitude_at(engine, jd, config)?;
+        result.nakshatra = Some(nakshatra_at(engine, jd, moon_sid, config)?);
+    }
 
-    let tithi = tithi_at(engine, jd, elong)?;
-    let karana = karana_at(engine, jd, elong)?;
-    let yoga = yoga_at(engine, jd, sum, config)?;
-    let nakshatra = nakshatra_at(engine, jd, moon_sid, config)?;
+    if needs_sunrise {
+        let location = location.expect("checked above");
+        let (sunrise_jd, next_sunrise_jd) =
+            vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
+        if include(PANCHANG_INCLUDE_VAAR) {
+            result.vaar = Some(vaar_from_sunrises(sunrise_jd, next_sunrise_jd, engine.lsk()));
+        }
+        if include(PANCHANG_INCLUDE_HORA) {
+            result.hora = Some(hora_from_sunrises(
+                jd,
+                sunrise_jd,
+                next_sunrise_jd,
+                engine.lsk(),
+            ));
+        }
+        if include(PANCHANG_INCLUDE_GHATIKA) {
+            result.ghatika = Some(ghatika_from_sunrises(
+                jd,
+                sunrise_jd,
+                next_sunrise_jd,
+                engine.lsk(),
+            ));
+        }
+    }
 
-    // Category B intermediates: compute sunrises once
-    let (sunrise_jd, next_sunrise_jd) =
-        vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
+    if include(PANCHANG_INCLUDE_MASA) {
+        result.masa = Some(masa_for_date_with_eop(engine, Some(eop), utc, config)?);
+    }
+    if include(PANCHANG_INCLUDE_AYANA) {
+        result.ayana = Some(ayana_for_date_with_eop(engine, Some(eop), utc, config)?);
+    }
+    if include(PANCHANG_INCLUDE_VARSHA) {
+        result.varsha = Some(varsha_for_date_with_eop(engine, Some(eop), utc, config)?);
+    }
 
-    let vaar = vaar_from_sunrises(sunrise_jd, next_sunrise_jd, engine.lsk());
-    let hora = hora_from_sunrises(jd, sunrise_jd, next_sunrise_jd, engine.lsk());
-    let ghatika = ghatika_from_sunrises(jd, sunrise_jd, next_sunrise_jd, engine.lsk());
-
-    // Calendar elements (expensive — only when requested)
-    let (masa, ayana, varsha) = if include_calendar {
-        let m = masa_for_date_with_eop(engine, Some(eop), utc, config)?;
-        let a = ayana_for_date_with_eop(engine, Some(eop), utc, config)?;
-        let v = varsha_for_date_with_eop(engine, Some(eop), utc, config)?;
-        (Some(m), Some(a), Some(v))
-    } else {
-        (None, None, None)
-    };
-
-    Ok(PanchangInfo {
-        tithi,
-        karana,
-        yoga,
-        vaar,
-        hora,
-        ghatika,
-        nakshatra,
-        masa,
-        ayana,
-        varsha,
-    })
+    Ok(result)
 }

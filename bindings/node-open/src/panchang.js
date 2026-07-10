@@ -3,6 +3,26 @@
 const { addon } = require('./native');
 const { checkStatus } = require('./errors');
 
+// DHRUV_PANCHANG_INCLUDE_* bitmask values for panchangComputeEx and
+// fullKundaliConfig.panchangIncludeMask.
+const PANCHANG_INCLUDE = Object.freeze({
+  TITHI: 1 << 0,
+  KARANA: 1 << 1,
+  YOGA: 1 << 2,
+  VAAR: 1 << 3,
+  HORA: 1 << 4,
+  GHATIKA: 1 << 5,
+  NAKSHATRA: 1 << 6,
+  MASA: 1 << 7,
+  AYANA: 1 << 8,
+  VARSHA: 1 << 9,
+  ALL_CORE: 0x07f,
+  ALL_CALENDAR: 0x380,
+  ALL: 0x3ff,
+  LOCATION_INDEPENDENT: 0x3c7,
+  LOCATION_DEPENDENT: 0x038,
+});
+
 function bhavaSystemCount() {
   return addon.bhavaSystemCount();
 }
@@ -153,13 +173,33 @@ function varshaForDate(engine, utc, config = addon.sankrantiConfigDefault()) {
   return r.varsha;
 }
 
+// Unified panchang computation. `request` fields:
+// - `timeKind`, `jdTdb`, `utc`: input time (QUERY_TIME.JD_TDB or QUERY_TIME.UTC)
+// - `includeMask`: PANCHANG_INCLUDE bitmask selecting which elements to
+//   compute. Defaults to PANCHANG_INCLUDE.ALL with a location, otherwise to
+//   PANCHANG_INCLUDE.LOCATION_INDEPENDENT.
+// - `location`: optional. Required only for location-dependent elements
+//   (vaar, hora, ghatika); requesting those bits without a location fails
+//   with INVALID_SEARCH_CONFIG.
+// - `riseSetConfig`, `sankrantiConfig`: optional, library defaults when omitted.
+// The result carries per-element `*Valid` flags alongside the payloads.
 function panchangComputeEx(engine, eop, lsk, request) {
-  const r = addon.panchangComputeEx(engine._handle, eop._handle, lsk._handle, request);
+  const req = { ...request };
+  if (req.location == null) delete req.location;
+  if (req.includeMask == null) {
+    req.includeMask = req.location
+      ? PANCHANG_INCLUDE.ALL
+      : PANCHANG_INCLUDE.LOCATION_INDEPENDENT;
+  }
+  if (req.riseSetConfig == null) req.riseSetConfig = addon.riseSetConfigDefault();
+  if (req.sankrantiConfig == null) req.sankrantiConfig = addon.sankrantiConfigDefault();
+  const r = addon.panchangComputeEx(engine._handle, eop._handle, lsk._handle, req);
   checkStatus('panchang_compute_ex', r.status);
   return r.result;
 }
 
 module.exports = {
+  PANCHANG_INCLUDE,
   bhavaSystemCount,
   computeRiseSet,
   computeAllEvents,

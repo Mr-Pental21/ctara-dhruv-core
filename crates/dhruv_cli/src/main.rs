@@ -37,12 +37,8 @@ use dhruv_vedic_base::{
 };
 use dhruv_vedic_base::{BhavaConfig, ChandraBeneficRule};
 use dhruv_vedic_ops::{
-    NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR,
-    PANCHANG_INCLUDE_ALL_CORE, PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_GHATIKA,
-    PANCHANG_INCLUDE_HORA, PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_MASA,
-    PANCHANG_INCLUDE_NAKSHATRA, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR,
-    PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA, PanchangOperation, TaraOperation,
-    TaraOutputKind, TaraResult,
+    NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_LOCATION_DEPENDENT,
+    PanchangOperation, TaraOperation, TaraOutputKind, TaraResult, panchang_include_bits,
 };
 
 #[derive(Parser)]
@@ -431,12 +427,14 @@ struct PanchangArgs {
     /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
     date: String,
-    /// Latitude in degrees (north positive)
+    /// Latitude in degrees (north positive). Required only for
+    /// location-dependent elements (vaar, hora, ghatika)
     #[arg(long)]
-    lat: f64,
-    /// Longitude in degrees (east positive)
+    lat: Option<f64>,
+    /// Longitude in degrees (east positive). Required only for
+    /// location-dependent elements (vaar, hora, ghatika)
     #[arg(long)]
-    lon: f64,
+    lon: Option<f64>,
     /// Altitude in meters (default 0)
     #[arg(long, default_value = "0")]
     alt: f64,
@@ -446,13 +444,11 @@ struct PanchangArgs {
     /// Apply nutation correction
     #[arg(long)]
     nutation: bool,
-    /// Include calendar elements (masa, ayana, varsha)
+    /// Comma-separated element or group names (default: all):
+    /// tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,
+    /// all,all_core,all_calendar,location_independent,location_dependent
     #[arg(long)]
-    calendar: bool,
-    /// Include mask tokens (comma-separated):
-    /// tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,core,calendar,all
-    #[arg(long)]
-    include: Option<String>,
+    elements: Option<String>,
     /// Path to SPK kernel
     #[arg(long)]
     bsp: Option<PathBuf>,
@@ -1033,12 +1029,12 @@ struct KundaliArgs {
     /// Charakaraka scheme used when charakaraka is included
     #[arg(long, default_value = "mixed-parashara")]
     charakaraka_scheme: String,
-    /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra)
+    /// Panchang elements to include, comma-separated element or group names
+    /// ("none" or omitted = no panchang section):
+    /// tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,
+    /// all,all_core,all_calendar,location_independent,location_dependent
     #[arg(long)]
-    include_panchang: bool,
-    /// Include calendar (masa, ayana, varsha). Implies --include-panchang
-    #[arg(long)]
-    include_calendar: bool,
+    panchang_elements: Option<String>,
     /// Node dignity policy: "sign-lord" (default) or "sama"
     #[arg(long)]
     node_policy: Option<String>,
@@ -3351,32 +3347,25 @@ fn require_observer(code: i32) -> Observer {
     })
 }
 
-fn parse_panchang_include_mask(raw: &str) -> Result<u32, String> {
+const PANCHANG_ELEMENT_NAMES: &str = "tithi, karana, yoga, vaar, hora, ghatika, nakshatra, \
+     masa, ayana, varsha, all, all_core, all_calendar, location_independent, location_dependent";
+
+fn parse_panchang_elements(raw: &str) -> Result<u32, String> {
     let mut mask = 0_u32;
     for token in raw.split(',').map(str::trim).filter(|t| !t.is_empty()) {
-        match token.to_ascii_lowercase().as_str() {
-            "all" => mask |= PANCHANG_INCLUDE_ALL,
-            "core" => mask |= PANCHANG_INCLUDE_ALL_CORE,
-            "calendar" => mask |= PANCHANG_INCLUDE_ALL_CALENDAR,
-            "tithi" => mask |= PANCHANG_INCLUDE_TITHI,
-            "karana" => mask |= PANCHANG_INCLUDE_KARANA,
-            "yoga" => mask |= PANCHANG_INCLUDE_YOGA,
-            "vaar" => mask |= PANCHANG_INCLUDE_VAAR,
-            "hora" => mask |= PANCHANG_INCLUDE_HORA,
-            "ghatika" => mask |= PANCHANG_INCLUDE_GHATIKA,
-            "nakshatra" => mask |= PANCHANG_INCLUDE_NAKSHATRA,
-            "masa" => mask |= PANCHANG_INCLUDE_MASA,
-            "ayana" => mask |= PANCHANG_INCLUDE_AYANA,
-            "varsha" => mask |= PANCHANG_INCLUDE_VARSHA,
-            other => {
+        match panchang_include_bits(token) {
+            Some(bits) => mask |= bits,
+            None => {
                 return Err(format!(
-                    "invalid include token '{other}' (use: tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,core,calendar,all)"
+                    "unknown panchang element '{token}' (valid: {PANCHANG_ELEMENT_NAMES})"
                 ));
             }
         }
     }
     if mask == 0 {
-        return Err("include mask is empty".to_string());
+        return Err(format!(
+            "element list is empty (valid: {PANCHANG_ELEMENT_NAMES})"
+        ));
     }
     Ok(mask)
 }
@@ -4555,21 +4544,32 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
             let eop_kernel = load_eop(&args.eop);
-            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let location = match (args.lat, args.lon) {
+                (Some(lat), Some(lon)) => Some(GeoLocation::new(lat, lon, args.alt)),
+                (None, None) => None,
+                _ => {
+                    eprintln!("Error: --lat and --lon must be provided together");
+                    std::process::exit(1);
+                }
+            };
             let rs_config = RiseSetConfig::default();
             let config = SankrantiConfig::new(system, args.nutation);
-            let include_mask = if let Some(raw) = args.include.as_deref() {
-                parse_panchang_include_mask(raw).unwrap_or_else(|e| {
-                    eprintln!("Invalid --include value: {e}");
+            let include_mask = if let Some(raw) = args.elements.as_deref() {
+                parse_panchang_elements(raw).unwrap_or_else(|e| {
+                    eprintln!("Invalid --elements value: {e}");
                     std::process::exit(1);
                 })
             } else {
-                let mut mask = PANCHANG_INCLUDE_ALL_CORE;
-                if args.calendar {
-                    mask |= PANCHANG_INCLUDE_ALL_CALENDAR;
-                }
-                mask
+                PANCHANG_INCLUDE_ALL
             };
+            if include_mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT != 0 && location.is_none() {
+                eprintln!(
+                    "Error: --lat/--lon required for location-dependent elements \
+                     (vaar, hora, ghatika); provide a location or select only \
+                     location-independent elements via --elements"
+                );
+                std::process::exit(1);
+            }
             let op = PanchangOperation {
                 at_utc: utc,
                 location,
@@ -4579,10 +4579,14 @@ fn main() {
             };
             match dhruv_vedic_ops::panchang(&engine, &eop_kernel, &op) {
                 Ok(info) => {
-                    println!(
-                        "Panchang for {} at {:.6}°N, {:.6}°E (mask=0x{:x})\n",
-                        args.date, args.lat, args.lon, include_mask
-                    );
+                    if let (Some(lat), Some(lon)) = (args.lat, args.lon) {
+                        println!(
+                            "Panchang for {} at {:.6}°N, {:.6}°E (mask=0x{:x})\n",
+                            args.date, lat, lon, include_mask
+                        );
+                    } else {
+                        println!("Panchang for {} (mask=0x{:x})\n", args.date, include_mask);
+                    }
                     if let Some(tithi) = info.tithi {
                         println!(
                             "Tithi:    {} (index {})",
@@ -5335,6 +5339,15 @@ fn main() {
                 .map(parse_amsha_specs)
                 .map(|requests| amsha_selection_from_requests(&requests));
 
+            let panchang_include_mask = match args.panchang_elements.as_deref() {
+                None => 0,
+                Some(raw) if raw.trim().eq_ignore_ascii_case("none") => 0,
+                Some(raw) => parse_panchang_elements(raw).unwrap_or_else(|e| {
+                    eprintln!("Invalid --panchang-elements value: {e}");
+                    std::process::exit(1);
+                }),
+            };
+
             let mut resolved = resolve_kundali_flags(
                 args.all,
                 args.include_graha,
@@ -5349,8 +5362,7 @@ fn main() {
                 args.include_vimsopaka,
                 args.include_avastha,
                 args.include_charakaraka,
-                args.include_panchang,
-                args.include_calendar,
+                panchang_include_mask,
             );
             if requested_amsha_selection.is_some() || has_amsha_scope(&requested_amsha_scope) {
                 resolved.include_amshas = true;
@@ -10511,8 +10523,7 @@ struct ResolvedKundaliFlags {
     include_vimsopaka: bool,
     include_avastha: bool,
     include_charakaraka: bool,
-    include_panchang: bool,
-    include_calendar: bool,
+    panchang_include_mask: u32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -10530,8 +10541,7 @@ fn resolve_kundali_flags(
     include_vimsopaka: bool,
     include_avastha: bool,
     include_charakaraka: bool,
-    include_panchang: bool,
-    include_calendar: bool,
+    panchang_include_mask: u32,
 ) -> ResolvedKundaliFlags {
     let any_include_flag = include_graha
         || include_bindus
@@ -10545,8 +10555,7 @@ fn resolve_kundali_flags(
         || include_vimsopaka
         || include_avastha
         || include_charakaraka
-        || include_panchang
-        || include_calendar;
+        || panchang_include_mask != 0;
 
     if all {
         ResolvedKundaliFlags {
@@ -10563,8 +10572,11 @@ fn resolve_kundali_flags(
             include_vimsopaka: true,
             include_avastha: true,
             include_charakaraka: true,
-            include_panchang: true,
-            include_calendar: true,
+            panchang_include_mask: if panchang_include_mask != 0 {
+                panchang_include_mask
+            } else {
+                PANCHANG_INCLUDE_ALL
+            },
         }
     } else if any_include_flag {
         ResolvedKundaliFlags {
@@ -10581,8 +10593,7 @@ fn resolve_kundali_flags(
             include_vimsopaka,
             include_avastha,
             include_charakaraka,
-            include_panchang: include_panchang || include_calendar,
-            include_calendar,
+            panchang_include_mask,
         }
     } else {
         // Backwards-compatible default: original 6 sections + bhava cusps
@@ -10600,8 +10611,7 @@ fn resolve_kundali_flags(
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
-            include_panchang: false,
-            include_calendar: false,
+            panchang_include_mask: 0,
         }
     }
 }
@@ -10696,8 +10706,7 @@ fn build_kundali_config(
         include_avastha: resolved.include_avastha,
         include_charakaraka: resolved.include_charakaraka,
         charakaraka_scheme,
-        include_panchang: resolved.include_panchang,
-        include_calendar: resolved.include_calendar,
+        panchang_include_mask: resolved.panchang_include_mask,
         include_dasha,
         dasha_config,
         node_dignity_policy: node_policy,
@@ -11418,79 +11427,91 @@ fn print_kundali(
         writeln!(w)?;
     }
 
-    if flags.include_panchang
+    if flags.panchang_include_mask != 0
         && let Some(ref p) = result.panchang
     {
         writeln!(w, "Panchang:")?;
-        writeln!(
-            w,
-            "  Tithi:     {} (index {})",
-            p.tithi.tithi.name(),
-            p.tithi.tithi_index
-        )?;
-        writeln!(
-            w,
-            "    Paksha: {}  Tithi in paksha: {}",
-            p.tithi.paksha.name(),
-            p.tithi.tithi_in_paksha
-        )?;
-        writeln!(w, "    Start:  {}  End: {}", p.tithi.start, p.tithi.end)?;
-        writeln!(
-            w,
-            "  Karana:    {} (sequence {})",
-            p.karana.karana.name(),
-            p.karana.karana_index
-        )?;
-        writeln!(w, "    Start:  {}  End: {}", p.karana.start, p.karana.end)?;
-        writeln!(
-            w,
-            "  Yoga:      {} (index {})",
-            p.yoga.yoga.name(),
-            p.yoga.yoga_index
-        )?;
-        writeln!(w, "    Start:  {}  End: {}", p.yoga.start, p.yoga.end)?;
-        writeln!(w, "  Vaar:      {}", p.vaar.vaar.name())?;
-        writeln!(w, "    Start:  {}  End: {}", p.vaar.start, p.vaar.end)?;
-        writeln!(
-            w,
-            "  Hora:      {} (position {} of 24)",
-            p.hora.hora.name(),
-            p.hora.hora_index
-        )?;
-        writeln!(w, "    Start:  {}  End: {}", p.hora.start, p.hora.end)?;
-        writeln!(w, "  Ghatika:   {}/60", p.ghatika.value)?;
-        writeln!(w, "    Start:  {}  End: {}", p.ghatika.start, p.ghatika.end)?;
-        writeln!(
-            w,
-            "  Nakshatra: {} (index {}, pada {})",
-            p.nakshatra.nakshatra.name(),
-            p.nakshatra.nakshatra_index,
-            p.nakshatra.pada
-        )?;
-        writeln!(
-            w,
-            "    Start:  {}  End: {}",
-            p.nakshatra.start, p.nakshatra.end
-        )?;
-        if flags.include_calendar {
-            if let Some(ref m) = p.masa {
-                let adhika_str = if m.adhika { " (Adhika)" } else { "" };
-                writeln!(w, "  Masa:      {}{}", m.masa.name(), adhika_str)?;
-                writeln!(w, "    Start:  {}  End: {}", m.start, m.end)?;
-            }
-            if let Some(ref a) = p.ayana {
-                writeln!(w, "  Ayana:     {}", a.ayana.name())?;
-                writeln!(w, "    Start:  {}  End: {}", a.start, a.end)?;
-            }
-            if let Some(ref v) = p.varsha {
-                writeln!(
-                    w,
-                    "  Varsha:    {} (order {} of 60)",
-                    v.samvatsara.name(),
-                    v.order
-                )?;
-                writeln!(w, "    Start:  {}  End: {}", v.start, v.end)?;
-            }
+        if let Some(ref tithi) = p.tithi {
+            writeln!(
+                w,
+                "  Tithi:     {} (index {})",
+                tithi.tithi.name(),
+                tithi.tithi_index
+            )?;
+            writeln!(
+                w,
+                "    Paksha: {}  Tithi in paksha: {}",
+                tithi.paksha.name(),
+                tithi.tithi_in_paksha
+            )?;
+            writeln!(w, "    Start:  {}  End: {}", tithi.start, tithi.end)?;
+        }
+        if let Some(ref karana) = p.karana {
+            writeln!(
+                w,
+                "  Karana:    {} (sequence {})",
+                karana.karana.name(),
+                karana.karana_index
+            )?;
+            writeln!(w, "    Start:  {}  End: {}", karana.start, karana.end)?;
+        }
+        if let Some(ref yoga) = p.yoga {
+            writeln!(
+                w,
+                "  Yoga:      {} (index {})",
+                yoga.yoga.name(),
+                yoga.yoga_index
+            )?;
+            writeln!(w, "    Start:  {}  End: {}", yoga.start, yoga.end)?;
+        }
+        if let Some(ref vaar) = p.vaar {
+            writeln!(w, "  Vaar:      {}", vaar.vaar.name())?;
+            writeln!(w, "    Start:  {}  End: {}", vaar.start, vaar.end)?;
+        }
+        if let Some(ref hora) = p.hora {
+            writeln!(
+                w,
+                "  Hora:      {} (position {} of 24)",
+                hora.hora.name(),
+                hora.hora_index
+            )?;
+            writeln!(w, "    Start:  {}  End: {}", hora.start, hora.end)?;
+        }
+        if let Some(ref ghatika) = p.ghatika {
+            writeln!(w, "  Ghatika:   {}/60", ghatika.value)?;
+            writeln!(w, "    Start:  {}  End: {}", ghatika.start, ghatika.end)?;
+        }
+        if let Some(ref nakshatra) = p.nakshatra {
+            writeln!(
+                w,
+                "  Nakshatra: {} (index {}, pada {})",
+                nakshatra.nakshatra.name(),
+                nakshatra.nakshatra_index,
+                nakshatra.pada
+            )?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}",
+                nakshatra.start, nakshatra.end
+            )?;
+        }
+        if let Some(ref m) = p.masa {
+            let adhika_str = if m.adhika { " (Adhika)" } else { "" };
+            writeln!(w, "  Masa:      {}{}", m.masa.name(), adhika_str)?;
+            writeln!(w, "    Start:  {}  End: {}", m.start, m.end)?;
+        }
+        if let Some(ref a) = p.ayana {
+            writeln!(w, "  Ayana:     {}", a.ayana.name())?;
+            writeln!(w, "    Start:  {}  End: {}", a.start, a.end)?;
+        }
+        if let Some(ref v) = p.varsha {
+            writeln!(
+                w,
+                "  Varsha:    {} (order {} of 60)",
+                v.samvatsara.name(),
+                v.order
+            )?;
+            writeln!(w, "    Start:  {}  End: {}", v.start, v.end)?;
         }
         writeln!(w)?;
     }
@@ -11598,7 +11619,7 @@ mod tests {
     fn test_resolve_kundali_flags_default() {
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
@@ -11611,15 +11632,14 @@ mod tests {
         assert!(!f.include_shadbala);
         assert!(!f.include_vimsopaka);
         assert!(!f.include_avastha);
-        assert!(!f.include_panchang);
-        assert!(!f.include_calendar);
+        assert_eq!(f.panchang_include_mask, 0);
     }
 
     #[test]
     fn test_resolve_kundali_flags_all() {
         let f = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         assert!(f.include_bhava_cusps);
         assert!(f.include_graha);
@@ -11628,15 +11648,27 @@ mod tests {
         assert!(f.include_shadbala);
         assert!(f.include_vimsopaka);
         assert!(f.include_avastha);
-        assert!(f.include_panchang);
-        assert!(f.include_calendar);
+        assert_eq!(f.panchang_include_mask, PANCHANG_INCLUDE_ALL);
+    }
+
+    #[test]
+    fn test_resolve_kundali_flags_all_respects_explicit_panchang_mask() {
+        let f = resolve_kundali_flags(
+            true, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_TITHI,
+        );
+        assert_eq!(
+            f.panchang_include_mask,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_TITHI
+        );
     }
 
     #[test]
     fn test_resolve_kundali_flags_graha_only() {
         let f = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         assert!(
             f.include_bhava_cusps,
@@ -11646,21 +11678,24 @@ mod tests {
         assert!(!f.include_bindus);
         assert!(!f.include_drishti);
         assert!(!f.include_amshas);
-        assert!(!f.include_panchang);
+        assert_eq!(f.panchang_include_mask, 0);
     }
 
     #[test]
-    fn test_resolve_kundali_flags_calendar_implies_panchang() {
+    fn test_resolve_kundali_flags_calendar_mask_only() {
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false, false, true,
+            false,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CALENDAR,
         );
-        assert!(f.include_panchang);
-        assert!(f.include_calendar);
+        assert_eq!(
+            f.panchang_include_mask,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CALENDAR
+        );
         assert!(!f.include_graha);
         assert!(
             !f.include_bhava_cusps,
-            "bhava cusps off when only calendar selected"
+            "bhava cusps off when only calendar elements selected"
         );
     }
 
@@ -11668,12 +11703,15 @@ mod tests {
     fn test_resolve_kundali_flags_panchang_only_no_bhava() {
         // When only panchang is selected, bhava cusps should be off
         // (follows include_graha which is false)
-        //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let f = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            false, true, false,
+            false,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CORE,
         );
-        assert!(f.include_panchang);
+        assert_eq!(
+            f.panchang_include_mask,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CORE
+        );
         assert!(!f.include_graha);
         assert!(!f.include_bhava_cusps);
     }
@@ -11693,7 +11731,7 @@ mod tests {
     fn test_build_kundali_config_defaults_with_dasha() {
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -11720,15 +11758,15 @@ mod tests {
         assert!(cfg.dasha_config.count > 0);
         assert!(!cfg.include_amshas);
         assert!(!cfg.include_shadbala);
-        assert!(!cfg.include_panchang);
+        assert_eq!(cfg.panchang_include_mask, 0);
     }
 
     #[test]
     fn test_build_kundali_config_bhava_cusps_off_when_panchang_only() {
-        //                   all   graha bindus drishti ashtak upagr  splgn amsha shadb vimso avast panch calen
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, false, false, false, false, true,
-            false, true, false,
+            false,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CORE,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -11745,7 +11783,10 @@ mod tests {
             false,
         );
         assert!(!cfg.include_bhava_cusps);
-        assert!(cfg.include_panchang);
+        assert_eq!(
+            cfg.panchang_include_mask,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CORE
+        );
         assert!(!cfg.include_graha_positions);
     }
 
@@ -11753,7 +11794,7 @@ mod tests {
     fn test_build_kundali_config_graha_with_dasha() {
         let resolved = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -11778,7 +11819,7 @@ mod tests {
     fn test_build_kundali_config_all_with_dasha() {
         let resolved = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -11795,8 +11836,7 @@ mod tests {
             false,
         );
         assert!(cfg.include_graha_positions);
-        assert!(cfg.include_panchang);
-        assert!(cfg.include_calendar);
+        assert_eq!(cfg.panchang_include_mask, PANCHANG_INCLUDE_ALL);
         assert!(cfg.include_amshas);
         assert_eq!(cfg.amsha_selection.count, 16);
         assert!(cfg.include_dasha);
@@ -11806,7 +11846,7 @@ mod tests {
     fn test_build_kundali_config_no_dasha_without_systems() {
         let resolved = resolve_kundali_flags(
             true, false, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -11833,7 +11873,7 @@ mod tests {
         // --include-amshas alone (no --include-graha)
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, true, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -11860,7 +11900,7 @@ mod tests {
     fn test_build_kundali_config_node_policy() {
         let resolved = resolve_kundali_flags(
             false, true, false, false, false, false, false, false, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         let cfg = build_kundali_config(
             &resolved,
@@ -11900,7 +11940,7 @@ mod tests {
     fn test_build_kundali_config_uses_explicit_amsha_selection_and_scope_dependencies() {
         let resolved = resolve_kundali_flags(
             false, false, false, false, false, false, false, true, false, false, false, false,
-            false, false, false,
+            false, 0,
         );
         let requests = vec![
             dhruv_vedic_base::AmshaRequest::new(dhruv_vedic_base::Amsha::D9),
@@ -12078,8 +12118,7 @@ mod tests {
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
-            include_panchang: false,
-            include_calendar: false,
+            panchang_include_mask: 0,
         };
         let mut buf = Vec::new();
         print_kundali(&mut buf, &result, &flags).unwrap();
@@ -12146,8 +12185,7 @@ mod tests {
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
-            include_panchang: false,
-            include_calendar: false,
+            panchang_include_mask: 0,
         };
         let mut buf = Vec::new();
         print_kundali(&mut buf, &result, &flags).unwrap();
@@ -12175,8 +12213,7 @@ mod tests {
             include_vimsopaka: false,
             include_avastha: false,
             include_charakaraka: false,
-            include_panchang: false,
-            include_calendar: false,
+            panchang_include_mask: 0,
         };
         let mut buf = Vec::new();
         print_kundali(&mut buf, &result, &flags).unwrap();

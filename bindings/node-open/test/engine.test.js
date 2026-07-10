@@ -14,6 +14,16 @@ test('api version matches expected ABI', () => {
   assert.doesNotThrow(() => dhruv.verifyAbi());
 });
 
+test('panchang include mask constants match the C ABI', () => {
+  assert.equal(dhruv.PANCHANG_INCLUDE.ALL_CORE, 0x07f);
+  assert.equal(dhruv.PANCHANG_INCLUDE.ALL_CALENDAR, 0x380);
+  assert.equal(dhruv.PANCHANG_INCLUDE.ALL, 0x3ff);
+  assert.equal(dhruv.PANCHANG_INCLUDE.LOCATION_INDEPENDENT, 0x3c7);
+  assert.equal(dhruv.PANCHANG_INCLUDE.LOCATION_DEPENDENT, 0x038);
+  const fullCfg = dhruv.fullKundaliConfigDefault();
+  assert.equal(typeof fullCfg.panchangIncludeMask, 'number');
+});
+
 test('calculateBhavaBala opts into node aspects explicitly', () => {
   const aspectVirupas = Array.from({ length: 9 }, () => Array(12).fill(0));
   aspectVirupas[4][0] = 40; // Guru full positive.
@@ -346,6 +356,29 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     sankrantiConfig: sankCfg,
   });
   assert.equal(typeof panchang, 'object');
+  assert.equal(panchang.tithiValid, true);
+
+  const panchangNoLoc = dhruv.panchangComputeEx(engine, eop, lsk, {
+    timeKind: 1,
+    jdTdb: -1,
+    utc,
+    includeMask: dhruv.PANCHANG_INCLUDE.LOCATION_INDEPENDENT,
+  });
+  assert.equal(panchangNoLoc.tithiValid, true);
+  assert.equal(panchangNoLoc.masaValid, true);
+  assert.equal(panchangNoLoc.vaarValid, false);
+  assert.equal(panchangNoLoc.horaValid, false);
+  assert.equal(panchangNoLoc.ghatikaValid, false);
+
+  assert.throws(
+    () => dhruv.panchangComputeEx(engine, eop, lsk, {
+      timeKind: 1,
+      jdTdb: -1,
+      utc,
+      includeMask: dhruv.PANCHANG_INCLUDE.LOCATION_DEPENDENT,
+    }),
+    (err) => err.status === dhruv.STATUS.INVALID_SEARCH_CONFIG,
+  );
   assert.ok(dhruv.bhavaSystemCount() >= 1);
 
   const riseSet = dhruv.computeRiseSet(engine, eop, loc, riseCfg, 0, 2460000.5, lsk);
@@ -486,8 +519,12 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
   fullCfg.amshaSelection.count = 1;
   fullCfg.amshaSelection.codes[0] = 9;
   fullCfg.amshaSelection.variations[0] = 0;
+  fullCfg.panchangIncludeMask = dhruv.PANCHANG_INCLUDE.ALL;
   const kundaliFull = dhruv.fullKundaliForDate(engine, eop, utc, loc, bhavaCfg, riseCfg, 0, true, fullCfg);
   assert.equal(kundaliFull.sphutas.longitudes.length, 16);
+  assert.equal(kundaliFull.panchang.tithiValid, true);
+  assert.equal(kundaliFull.panchang.vaarValid, true);
+  assert.equal(kundaliFull.panchang.masaValid, true);
   assert.equal(kundaliFull.amshas.length, 1);
   assert.equal(kundaliFull.amshas[0].bhavaCusps.length, 12);
   assert.equal(kundaliFull.amshas[0].arudhaPadas.length, 12);

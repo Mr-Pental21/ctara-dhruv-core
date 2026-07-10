@@ -133,6 +133,16 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
 - `ghatika_from_elapsed/1`
 - `ghatikas_since_sunrise/1`
 
+`daily/2` accepts an optional `:include_mask` selecting which panchang
+elements are computed: an integer mask, a single element/group name string
+(`"tithi"`, `"all"`, `"all_core"`, `"all_calendar"`,
+`"location_independent"`, `"location_dependent"`, ...), or a list of such
+names OR-ed together. When omitted it defaults to the core elements
+(`all_core`), preserving the historical `daily` payload; add calendar
+elements (masa, ayana, varsha) via the mask. `:location` is optional and
+required only when the selection includes a location-dependent element
+(vaar, hora, ghatika). Only selected elements are computed and returned.
+
 `CtaraDhruv.Jyotish`:
 
 - `graha_longitudes/2`
@@ -302,6 +312,12 @@ Accepted enum-style string values:
   `:max_levels`, `:snapshot_utc`, `:cycles`, and `:min_span_years`. The
   `:cycles` / `:min_span_years` semantics match the standalone dasha
   `:variation` map.
+- `full_kundali_config[:panchang_include_mask]` selects the panchang elements
+  in full-kundali output (integer mask, element/group name string, or list of
+  names — the same forms as `Panchang.daily/2` `:include_mask`; `"none"` or
+  omitted = no panchang section). It replaces the former `:include_panchang` /
+  `:include_calendar` keys, and the result's panchang block contains only the
+  selected elements.
 - Dasha period results now include `:start_utc` / `:end_utc` alongside
   `:start_jd` / `:end_jd`, and dasha snapshots include `:query_utc`
   alongside `:query_jd`.

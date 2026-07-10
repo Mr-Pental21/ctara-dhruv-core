@@ -374,6 +374,44 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 		t.Fatalf("VaarForDate: %v", err)
 	}
 
+	lsk, err := LoadLSK(lskPath)
+	if err != nil {
+		t.Fatalf("LoadLSK: %v", err)
+	}
+	defer lsk.Close()
+
+	panchangReq := PanchangComputeRequest{
+		TimeKind:        QueryTimeUTC,
+		UTC:             utc,
+		IncludeMask:     PanchangIncludeLocationIndependent,
+		SankrantiConfig: SankrantiConfigDefault(),
+	}
+	panchang, err := eng.PanchangComputeEx(eop, lsk, panchangReq)
+	if err != nil {
+		t.Fatalf("PanchangComputeEx without location: %v", err)
+	}
+	if !panchang.TithiValid || !panchang.MasaValid {
+		t.Fatalf("expected location-independent elements without location")
+	}
+	if panchang.VaarValid || panchang.HoraValid || panchang.GhatikaValid {
+		t.Fatalf("location-dependent elements must stay invalid without location")
+	}
+
+	panchangReq.IncludeMask = PanchangIncludeLocationDependent
+	if _, err := eng.PanchangComputeEx(eop, lsk, panchangReq); err == nil {
+		t.Fatalf("expected error for location-dependent mask without location")
+	}
+	panchangReq.HasLocation = true
+	panchangReq.Location = loc
+	panchangReq.RiseSetConfig = RiseSetConfigDefault()
+	panchang, err = eng.PanchangComputeEx(eop, lsk, panchangReq)
+	if err != nil {
+		t.Fatalf("PanchangComputeEx with location: %v", err)
+	}
+	if !panchang.VaarValid || !panchang.HoraValid || !panchang.GhatikaValid {
+		t.Fatalf("expected location-dependent elements with location")
+	}
+
 	bhava := BhavaConfigDefault()
 	if !bhava.UseRashiBhavaForBalaAvastha {
 		t.Fatalf("expected rashi-bhava bala/avastha default on")
@@ -412,6 +450,7 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 	}
 
 	cfg := FullKundaliConfigDefault()
+	cfg.PanchangIncludeMask = PanchangIncludeAll
 	cfg.IncludeDasha = true
 	cfg.DashaConfig.Count = 2
 	cfg.DashaConfig.Systems[0] = 0
@@ -424,6 +463,12 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 	}
 	if kundali.Sphutas == nil || len(kundali.Sphutas.Longitudes) != SphutaCount {
 		t.Fatalf("expected root sphutas in full kundali")
+	}
+	if kundali.Panchang == nil {
+		t.Fatalf("expected panchang section in full kundali")
+	}
+	if !kundali.Panchang.TithiValid || !kundali.Panchang.VaarValid || !kundali.Panchang.MasaValid {
+		t.Fatalf("expected all panchang elements valid in full kundali: %+v", kundali.Panchang)
 	}
 	if len(kundali.Dasha) != 2 {
 		t.Fatalf("expected 2 dasha hierarchies, got %d", len(kundali.Dasha))

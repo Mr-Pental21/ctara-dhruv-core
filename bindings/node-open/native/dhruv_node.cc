@@ -785,10 +785,7 @@ bool ReadFullKundaliConfig(napi_env env, napi_value obj, DhruvFullKundaliConfig*
     if (!GetNamedProperty(env, obj, "drishtiConfig", &v) || !ReadDrishtiConfig(env, v, &out->drishti_config)) return false;
     if (!GetNamedProperty(env, obj, "amshaScope", &v) || !ReadAmshaChartScope(env, v, &out->amsha_scope)) return false;
     if (!GetNamedProperty(env, obj, "amshaSelection", &v) || !ReadAmshaSelectionConfig(env, v, &out->amsha_selection)) return false;
-    if (!GetNamedProperty(env, obj, "includePanchang", &v) || !GetBool(env, v, &b)) return false;
-    out->include_panchang = b ? 1 : 0;
-    if (!GetNamedProperty(env, obj, "includeCalendar", &v) || !GetBool(env, v, &b)) return false;
-    out->include_calendar = b ? 1 : 0;
+    if (!GetNamedProperty(env, obj, "panchangIncludeMask", &v) || !GetUint32(env, v, &out->panchang_include_mask)) return false;
     if (!GetNamedProperty(env, obj, "includeDasha", &v) || !GetBool(env, v, &b)) return false;
     out->include_dasha = b ? 1 : 0;
     if (!GetNamedProperty(env, obj, "dashaConfig", &v) || !ReadDashaSelectionConfig(env, v, &out->dasha_config)) return false;
@@ -1347,7 +1344,13 @@ bool ReadPanchangComputeRequest(napi_env env, napi_value obj, DhruvPanchangCompu
     if (!GetNamedProperty(env, obj, "jdTdb", &v) || !GetDouble(env, v, &out->jd_tdb)) return false;
     if (!GetNamedProperty(env, obj, "utc", &v) || !ReadUtcTime(env, v, &out->utc)) return false;
     if (!GetNamedProperty(env, obj, "includeMask", &v) || !GetUint32(env, v, &out->include_mask)) return false;
-    if (!GetNamedProperty(env, obj, "location", &v) || !ReadGeoLocation(env, v, &out->location)) return false;
+    bool has_location = false;
+    if (!GetOptionalNamedProperty(env, obj, "location", &v, &has_location)) return false;
+    out->has_location = 0;
+    if (has_location) {
+        if (!ReadGeoLocation(env, v, &out->location)) return false;
+        out->has_location = 1;
+    }
     if (!GetNamedProperty(env, obj, "riseSetConfig", &v) || !ReadRiseSetConfig(env, v, &out->riseset_config)) return false;
     if (!GetNamedProperty(env, obj, "sankrantiConfig", &v) || !ReadSankrantiConfig(env, v, &out->sankranti_config)) return false;
     return true;
@@ -1436,23 +1439,6 @@ int32_t WriteDashaPeriodList(napi_env env, DhruvDashaPeriodListHandle handle, na
     return STATUS_OK;
 }
 
-napi_value WriteFullPanchangInfo(napi_env env, const DhruvPanchangInfo& p) {
-    napi_value obj;
-    napi_create_object(env, &obj);
-    SetNamed(env, obj, "tithi", WriteTithiInfo(env, p.tithi));
-    SetNamed(env, obj, "karana", WriteKaranaInfo(env, p.karana));
-    SetNamed(env, obj, "yoga", WriteYogaInfo(env, p.yoga));
-    SetNamed(env, obj, "vaar", WriteVaarInfo(env, p.vaar));
-    SetNamed(env, obj, "hora", WriteHoraInfo(env, p.hora));
-    SetNamed(env, obj, "ghatika", WriteGhatikaInfo(env, p.ghatika));
-    SetNamed(env, obj, "nakshatra", WritePanchangNakshatraInfo(env, p.nakshatra));
-    SetNamed(env, obj, "calendarValid", MakeBool(env, p.calendar_valid != 0));
-    SetNamed(env, obj, "masa", WriteMasaInfo(env, p.masa));
-    SetNamed(env, obj, "ayana", WriteAyanaInfo(env, p.ayana));
-    SetNamed(env, obj, "varsha", WriteVarshaInfo(env, p.varsha));
-    return obj;
-}
-
 int32_t WriteFullKundaliResultObject(
     napi_env env,
     const DhruvFullKundaliResult& result,
@@ -1506,7 +1492,7 @@ int32_t WriteFullKundaliResultObject(
     if (result.vimsopaka_valid != 0) SetNamed(env, obj, "vimsopaka", WriteVimsopakaResult(env, result.vimsopaka));
     if (result.avastha_valid != 0) SetNamed(env, obj, "avastha", WriteAllGrahaAvasthas(env, result.avastha));
     if (result.charakaraka_valid != 0) SetNamed(env, obj, "charakaraka", WriteCharakarakaResult(env, result.charakaraka));
-    if (result.panchang_valid != 0) SetNamed(env, obj, "panchang", WriteFullPanchangInfo(env, result.panchang));
+    if (result.panchang_valid != 0) SetNamed(env, obj, "panchang", WritePanchangOperationResult(env, result.panchang));
 
     int32_t status = STATUS_OK;
     if (result.dasha_count > 0) {
@@ -6794,8 +6780,7 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, amsha_selection, "variations", amsha_variations);
     SetNamed(env, obj, "amshaSelection", amsha_selection);
 
-    SetNamed(env, obj, "includePanchang", MakeBool(env, cfg.include_panchang != 0));
-    SetNamed(env, obj, "includeCalendar", MakeBool(env, cfg.include_calendar != 0));
+    SetNamed(env, obj, "panchangIncludeMask", MakeUint32(env, cfg.panchang_include_mask));
     SetNamed(env, obj, "includeDasha", MakeBool(env, cfg.include_dasha != 0));
 
     napi_value dasha_cfg;

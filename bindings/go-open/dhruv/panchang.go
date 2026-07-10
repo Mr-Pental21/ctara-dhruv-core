@@ -137,6 +137,15 @@ func (e *Engine) VarshaForDate(utc UtcTime, cfg SankrantiConfig) (VarshaInfo, er
 	return out, statusErr("varsha_for_date", st)
 }
 
+// PanchangComputeEx computes the panchang elements selected by
+// req.IncludeMask (PanchangInclude* bits) in one call.
+//
+// Location is optional: set req.HasLocation and req.Location only when the
+// mask selects location-dependent elements (PanchangIncludeVaar,
+// PanchangIncludeHora, PanchangIncludeGhatika, grouped as
+// PanchangIncludeLocationDependent). Requesting those bits without
+// HasLocation fails with an invalid-search-config error; masks limited to
+// PanchangIncludeLocationIndependent need no location.
 func (e *Engine) PanchangComputeEx(ep *EOP, lsk *LSK, req PanchangComputeRequest) (PanchangOperationResult, error) {
 	out, st := cabi.PanchangComputeEx(e.h, ep.h, lsk.h, req)
 	return out, statusErr("panchang_compute_ex", st)

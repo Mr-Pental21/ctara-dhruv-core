@@ -149,7 +149,10 @@ Wrapper policy:
 
 Usage guidance:
 
-- prefer `panchang_for_date` over separate panchang limb calls
+- prefer `panchang_for_date` over separate panchang limb calls (its
+  `include_mask` now gates computation to the selected elements, and the
+  `dhruv_vedic_ops` panchang module is now a re-export of `dhruv_search`'s
+  rather than a duplicate implementation)
 - prefer `full_kundali_for_date` once available over many separate kundali orchestration calls
 
 ## Go Concurrency Plan

@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 75
+const ExpectedAPIVersion = 76
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -143,6 +143,27 @@ const (
 	DashaTimeNone  = cabi.DashaTimeNone
 	DashaTimeJDUTC = cabi.DashaTimeJDUTC
 	DashaTimeUTC   = cabi.DashaTimeUTC
+)
+
+// PanchangInclude* select panchang elements in
+// PanchangComputeRequest.IncludeMask and FullKundaliConfig.PanchangIncludeMask.
+const (
+	PanchangIncludeTithi     = cabi.PanchangIncludeTithi
+	PanchangIncludeKarana    = cabi.PanchangIncludeKarana
+	PanchangIncludeYoga      = cabi.PanchangIncludeYoga
+	PanchangIncludeVaar      = cabi.PanchangIncludeVaar
+	PanchangIncludeHora      = cabi.PanchangIncludeHora
+	PanchangIncludeGhatika   = cabi.PanchangIncludeGhatika
+	PanchangIncludeNakshatra = cabi.PanchangIncludeNakshatra
+	PanchangIncludeMasa      = cabi.PanchangIncludeMasa
+	PanchangIncludeAyana     = cabi.PanchangIncludeAyana
+	PanchangIncludeVarsha    = cabi.PanchangIncludeVarsha
+
+	PanchangIncludeAllCore             = cabi.PanchangIncludeAllCore
+	PanchangIncludeAllCalendar         = cabi.PanchangIncludeAllCalendar
+	PanchangIncludeAll                 = cabi.PanchangIncludeAll
+	PanchangIncludeLocationIndependent = cabi.PanchangIncludeLocationIndependent
+	PanchangIncludeLocationDependent   = cabi.PanchangIncludeLocationDependent
 )
 
 const (
@@ -313,7 +334,6 @@ type (
 	CharakarakaEntry          = cabi.CharakarakaEntry
 	CharakarakaResult         = cabi.CharakarakaResult
 	FullKundaliSummary        = cabi.FullKundaliSummary
-	FullPanchangInfo          = cabi.FullPanchangInfo
 	FullKundaliDashaLevel     = cabi.FullKundaliDashaLevel
 	FullKundaliDashaHierarchy = cabi.FullKundaliDashaHierarchy
 	FullKundaliResult         = cabi.FullKundaliResult

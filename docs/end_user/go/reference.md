@@ -69,6 +69,18 @@ Upagraha config constants:
 - `GulikaMaandiPlanetRahu`
 - `GulikaMaandiPlanetSaturn`
 
+Panchang selection constants (bits for `PanchangComputeRequest.IncludeMask`
+and `FullKundaliConfig.PanchangIncludeMask`):
+
+- `PanchangIncludeTithi`, `PanchangIncludeKarana`, `PanchangIncludeYoga`,
+  `PanchangIncludeVaar`, `PanchangIncludeHora`, `PanchangIncludeGhatika`,
+  `PanchangIncludeNakshatra`, `PanchangIncludeMasa`, `PanchangIncludeAyana`,
+  `PanchangIncludeVarsha`
+- Groups: `PanchangIncludeAllCore` (tithi through nakshatra),
+  `PanchangIncludeAllCalendar` (masa/ayana/varsha), `PanchangIncludeAll`,
+  `PanchangIncludeLocationIndependent` (everything except vaar/hora/ghatika),
+  and `PanchangIncludeLocationDependent` (vaar/hora/ghatika)
+
 ## Package-Level Function Inventory
 
 Lifecycle and runtime:
@@ -300,6 +312,12 @@ Panchang and vedic basics:
 - `(*Engine).AyanaForDate`
 - `(*Engine).VarshaForDate`
 - `(*Engine).PanchangComputeEx`
+  Computes the elements selected by `PanchangComputeRequest.IncludeMask`
+  (`PanchangInclude*` bits) in one call; each result element carries its own
+  `*Valid` flag. Location is optional: set `HasLocation` and `Location` only
+  when the mask includes location-dependent elements
+  (`PanchangIncludeLocationDependent`, i.e. vaar/hora/ghatika); requesting
+  those bits without `HasLocation` fails with an invalid-search-config error.
 - `(*Engine).ElongationAt`
 - `(*Engine).SiderealSumAt`
 - `(*Engine).VedicDaySunrises`
@@ -404,7 +422,15 @@ Search:
 - `DrishtiConfig`
 - `AmshaScope`
 - `AmshaSelection`
+- `PanchangIncludeMask`
 - `DashaConfig`
+
+`FullKundaliConfig.PanchangIncludeMask` selects the embedded panchang section
+with the `PanchangInclude*` bits (0 omits the section); it replaces the former
+`IncludePanchang` / `IncludeCalendar` booleans. The embedded
+`FullKundaliResult.Panchang` section is a `*PanchangOperationResult` with the
+same per-element `*Valid` flags and payloads as the standalone
+`PanchangComputeEx` result.
 
 `ShadbalaForDate`, `VimsopakaForDate`, `BalasForDate`, and `AvasthaForDate`
 accept `AmshaSelection`. Embedded `FullKundaliResult.Amshas` returns the

@@ -35,19 +35,22 @@ pub use operations::{
     AyanamshaMode, AyanamshaOperation, NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL,
     PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_ALL_CORE, PANCHANG_INCLUDE_AYANA,
     PANCHANG_INCLUDE_GHATIKA, PANCHANG_INCLUDE_HORA, PANCHANG_INCLUDE_KARANA,
+    PANCHANG_INCLUDE_LOCATION_DEPENDENT, PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
     PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_NAKSHATRA, PANCHANG_INCLUDE_TITHI,
     PANCHANG_INCLUDE_VAAR, PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA, PanchangOperation,
     PanchangResult, QueryMode, TaraOperation, TaraOutputKind, TaraResult, ayanamsha, lunar_node,
-    panchang, tara,
+    panchang, panchang_include_bits, tara,
 };
 pub use panchang::{
-    ayana_for_date, elongation_at, ghatika_for_date, ghatika_from_sunrises, hora_for_date,
-    hora_from_sunrises, karana_at, karana_for_date, masa_for_date, moon_sidereal_longitude_at,
-    nakshatra_at, nakshatra_for_date, panchang_for_date, sidereal_sum_at, tithi_at, tithi_for_date,
-    vaar_for_date, vaar_from_sunrises, varsha_for_date, vedic_day_sunrises, yoga_at, yoga_for_date,
+    ayana_for_date, ayana_for_date_with_eop, elongation_at, ghatika_for_date,
+    ghatika_from_sunrises, hora_for_date, hora_from_sunrises, karana_at, karana_for_date,
+    masa_for_date, masa_for_date_with_eop, moon_sidereal_longitude_at, nakshatra_at,
+    nakshatra_for_date, panchang_for_date, sidereal_sum_at, tithi_at, tithi_for_date,
+    vaar_for_date, vaar_from_sunrises, varsha_for_date, varsha_for_date_with_eop,
+    vedic_day_sunrises, yoga_at, yoga_for_date,
 };
 pub use panchang_types::{
-    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangInfo, PanchangNakshatraInfo,
-    TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, TithiInfo,
+    VaarInfo, VarshaInfo, YogaInfo,
 };
 pub use search_util::{set_time_conversion_policy, time_conversion_policy};

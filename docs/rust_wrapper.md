@@ -93,6 +93,21 @@ Their `TimeInput` fields accept either structured Gregorian UTC or numeric
 JD/TDB transport without splitting the public API into `*_utc` or similar
 variant entrypoints.
 
+`PanchangRequest.include_mask` (`PANCHANG_INCLUDE_*` bits) gates computation:
+only selected elements are computed, and `panchang_op` returns a
+`PanchangResult` whose fields are `Option`, populated only for selected
+elements. `PanchangRequest.location` is `Option<GeoLocation>` and is required
+only when a location-dependent element (vaar, hora, ghatika) is selected.
+`dhruv_rs` re-exports the per-element `PANCHANG_INCLUDE_*` constants, the
+group masks `PANCHANG_INCLUDE_ALL`, `PANCHANG_INCLUDE_ALL_CORE`,
+`PANCHANG_INCLUDE_ALL_CALENDAR`, `PANCHANG_INCLUDE_LOCATION_INDEPENDENT`,
+`PANCHANG_INCLUDE_LOCATION_DEPENDENT`, and the name resolver
+`panchang_include_bits(name)` (element and group names, case-insensitive).
+`FullKundaliConfig.panchang_include_mask: u32` (default 0 = omit the panchang
+section) replaces the former `include_panchang`/`include_calendar` booleans;
+`FullKundaliResult.panchang` is `Option<PanchangResult>` containing only the
+selected elements.
+
 ### Re-Export Policy
 
 `dhruv_rs` intentionally re-exports a selected set of high-level config/result

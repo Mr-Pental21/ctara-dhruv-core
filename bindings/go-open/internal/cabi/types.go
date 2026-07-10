@@ -655,11 +655,47 @@ type VarshaInfo struct {
 	End             UtcTime
 }
 
+// PanchangInclude* mirror the DHRUV_PANCHANG_INCLUDE_* bit flags used by
+// PanchangComputeRequest.IncludeMask and FullKundaliConfig.PanchangIncludeMask.
+const (
+	PanchangIncludeTithi     uint32 = 1 << 0
+	PanchangIncludeKarana    uint32 = 1 << 1
+	PanchangIncludeYoga      uint32 = 1 << 2
+	PanchangIncludeVaar      uint32 = 1 << 3
+	PanchangIncludeHora      uint32 = 1 << 4
+	PanchangIncludeGhatika   uint32 = 1 << 5
+	PanchangIncludeNakshatra uint32 = 1 << 6
+	PanchangIncludeMasa      uint32 = 1 << 7
+	PanchangIncludeAyana     uint32 = 1 << 8
+	PanchangIncludeVarsha    uint32 = 1 << 9
+
+	PanchangIncludeAllCore = PanchangIncludeTithi | PanchangIncludeKarana |
+		PanchangIncludeYoga | PanchangIncludeVaar | PanchangIncludeHora |
+		PanchangIncludeGhatika | PanchangIncludeNakshatra
+	PanchangIncludeAllCalendar = PanchangIncludeMasa | PanchangIncludeAyana |
+		PanchangIncludeVarsha
+	PanchangIncludeAll = PanchangIncludeAllCore | PanchangIncludeAllCalendar
+	// PanchangIncludeLocationIndependent selects every element that can be
+	// computed without an observer location.
+	PanchangIncludeLocationIndependent = PanchangIncludeTithi |
+		PanchangIncludeKarana | PanchangIncludeYoga |
+		PanchangIncludeNakshatra | PanchangIncludeMasa |
+		PanchangIncludeAyana | PanchangIncludeVarsha
+	// PanchangIncludeLocationDependent selects the elements that require an
+	// observer location (vaar, hora, ghatika).
+	PanchangIncludeLocationDependent = PanchangIncludeVaar |
+		PanchangIncludeHora | PanchangIncludeGhatika
+)
+
 type PanchangComputeRequest struct {
-	TimeKind        int32
-	JdTdb           float64
-	UTC             UtcTime
-	IncludeMask     uint32
+	TimeKind    int32
+	JdTdb       float64
+	UTC         UtcTime
+	IncludeMask uint32
+	// HasLocation reports whether Location is set. Required only when
+	// IncludeMask selects location-dependent elements (vaar, hora, ghatika);
+	// requesting those without a location yields StatusInvalidSearchConfig.
+	HasLocation     bool
 	Location        GeoLocation
 	RiseSetConfig   RiseSetConfig
 	SankrantiConfig SankrantiConfig
@@ -1364,24 +1400,11 @@ type FullKundaliConfig struct {
 	DrishtiConfig         DrishtiConfig
 	AmshaScope            AmshaChartScope
 	AmshaSelection        AmshaSelectionConfig
-	IncludePanchang       bool
-	IncludeCalendar       bool
-	IncludeDasha          bool
-	DashaConfig           DashaSelectionConfig
-}
-
-type FullPanchangInfo struct {
-	Tithi         TithiInfo
-	Karana        KaranaInfo
-	Yoga          YogaInfo
-	Vaar          VaarInfo
-	Hora          HoraInfo
-	Ghatika       GhatikaInfo
-	Nakshatra     PanchangNakshatraInfo
-	CalendarValid bool
-	Masa          *MasaInfo
-	Ayana         *AyanaInfo
-	Varsha        *VarshaInfo
+	// PanchangIncludeMask selects panchang elements with PanchangInclude*
+	// bits; 0 omits the panchang section.
+	PanchangIncludeMask uint32
+	IncludeDasha        bool
+	DashaConfig         DashaSelectionConfig
 }
 
 type FullKundaliDashaLevel struct {
@@ -1413,7 +1436,7 @@ type FullKundaliResult struct {
 	Vimsopaka                             *VimsopakaResult
 	Avastha                               *AllGrahaAvasthas
 	Charakaraka                           *CharakarakaResult
-	Panchang                              *FullPanchangInfo
+	Panchang                              *PanchangOperationResult
 	Dasha                                 []FullKundaliDashaHierarchy
 	DashaSnapshots                        []DashaSnapshot
 }

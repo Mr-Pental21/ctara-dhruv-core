@@ -65,7 +65,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 75;
+pub const DHRUV_API_VERSION: u32 = 76;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -1118,6 +1118,14 @@ fn full_kundali_config_from_ffi(
         Some(v) => v,
         None => return Err(DhruvStatus::InvalidSearchConfig),
     };
+    let panchang_include_mask = if cfg.panchang_include_mask == 0 {
+        0
+    } else {
+        match panchang_include_mask_from_ffi(cfg.panchang_include_mask) {
+            Some(mask) => mask,
+            None => return Err(DhruvStatus::InvalidSearchConfig),
+        }
+    };
     Ok(dhruv_search::FullKundaliConfig {
         include_bhava_cusps: cfg.include_bhava_cusps != 0,
         include_graha_positions: cfg.include_graha_positions != 0,
@@ -1148,8 +1156,7 @@ fn full_kundali_config_from_ffi(
             include_outer_planets: cfg.amsha_scope.include_outer_planets != 0,
         },
         amsha_selection: amsha_sel,
-        include_panchang: cfg.include_panchang != 0 || cfg.include_calendar != 0,
-        include_calendar: cfg.include_calendar != 0,
+        panchang_include_mask,
         include_dasha: cfg.include_dasha != 0,
         dasha_config: dasha_selection_from_ffi(&cfg.dasha_config)?,
     })
@@ -4916,6 +4923,17 @@ pub const DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR: u32 =
 /// Panchang include mask for all fields.
 pub const DHRUV_PANCHANG_INCLUDE_ALL: u32 =
     DHRUV_PANCHANG_INCLUDE_ALL_CORE | DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR;
+/// Panchang include mask for all location-independent fields.
+pub const DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT: u32 = DHRUV_PANCHANG_INCLUDE_TITHI
+    | DHRUV_PANCHANG_INCLUDE_KARANA
+    | DHRUV_PANCHANG_INCLUDE_YOGA
+    | DHRUV_PANCHANG_INCLUDE_NAKSHATRA
+    | DHRUV_PANCHANG_INCLUDE_MASA
+    | DHRUV_PANCHANG_INCLUDE_AYANA
+    | DHRUV_PANCHANG_INCLUDE_VARSHA;
+/// Panchang include mask for all location-dependent (sunrise-anchored) fields.
+pub const DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT: u32 =
+    DHRUV_PANCHANG_INCLUDE_VAAR | DHRUV_PANCHANG_INCLUDE_HORA | DHRUV_PANCHANG_INCLUDE_GHATIKA;
 
 /// C-compatible request for unified lunar-phase search.
 #[repr(C)]
@@ -5052,7 +5070,12 @@ pub struct DhruvPanchangComputeRequest {
     pub utc: DhruvUtcTime,
     /// Include mask with `DHRUV_PANCHANG_INCLUDE_*` bits.
     pub include_mask: u32,
-    /// Observer location.
+    /// 1 when `location` is set; 0 to compute without an observer location.
+    ///
+    /// A location is required only when `include_mask` selects a
+    /// location-dependent element (vaar, hora, ghatika).
+    pub has_location: u8,
+    /// Observer location. Read only when `has_location` is non-zero.
     pub location: DhruvGeoLocation,
     /// Rise/set model configuration.
     pub riseset_config: DhruvRiseSetConfig,
@@ -7782,27 +7805,6 @@ pub struct DhruvPanchangNakshatraInfo {
     pub end: DhruvUtcTime,
 }
 
-/// C-compatible combined Panchang info.
-///
-/// Contains all seven daily elements plus optional calendar fields.
-/// Calendar fields use `*_valid` flags (0=absent, 1=present).
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DhruvPanchangInfo {
-    pub tithi: DhruvTithiInfo,
-    pub karana: DhruvKaranaInfo,
-    pub yoga: DhruvYogaInfo,
-    pub vaar: DhruvVaarInfo,
-    pub hora: DhruvHoraInfo,
-    pub ghatika: DhruvGhatikaInfo,
-    pub nakshatra: DhruvPanchangNakshatraInfo,
-    /// 1 if masa/ayana/varsha fields are populated, 0 otherwise.
-    pub calendar_valid: u8,
-    pub masa: DhruvMasaInfo,
-    pub ayana: DhruvAyanaInfo,
-    pub varsha: DhruvVarshaInfo,
-}
-
 /// Unified panchang compute entrypoint with include-mask control.
 ///
 /// `time_kind` controls whether input comes from `jd_tdb` or `utc`.
@@ -7858,11 +7860,13 @@ pub unsafe extern "C" fn dhruv_panchang_compute_ex(
             _ => return DhruvStatus::InvalidQuery,
         };
 
-        let location = GeoLocation::new(
-            req.location.latitude_deg,
-            req.location.longitude_deg,
-            req.location.altitude_m,
-        );
+        let location = (req.has_location != 0).then(|| {
+            GeoLocation::new(
+                req.location.latitude_deg,
+                req.location.longitude_deg,
+                req.location.altitude_m,
+            )
+        });
 
         let op = PanchangOperation {
             at_utc,
@@ -8179,166 +8183,45 @@ fn transit_to_natal_aspect_event_to_ffi(
     row
 }
 
-/// Convert a Rust `PanchangInfo` to a C-compatible `DhruvPanchangInfo`.
-fn panchang_info_to_ffi(info: &dhruv_search::PanchangInfo) -> DhruvPanchangInfo {
-    let (calendar_valid, masa_ffi, ayana_ffi, varsha_ffi) =
-        match (info.masa, info.ayana, info.varsha) {
-            (Some(m), Some(a), Some(v)) => (
-                1u8,
-                masa_info_to_ffi(&m),
-                ayana_info_to_ffi(&a),
-                varsha_info_to_ffi(&v),
-            ),
-            _ => (
-                0u8,
-                zeroed_masa_info(),
-                zeroed_ayana_info(),
-                zeroed_varsha_info(),
-            ),
-        };
-    DhruvPanchangInfo {
-        tithi: tithi_info_to_ffi(&info.tithi),
-        karana: karana_info_to_ffi(&info.karana),
-        yoga: yoga_info_to_ffi(&info.yoga),
-        vaar: vaar_info_to_ffi(&info.vaar),
-        hora: hora_info_to_ffi(&info.hora),
-        ghatika: ghatika_info_to_ffi(&info.ghatika),
-        nakshatra: panchang_nakshatra_info_to_ffi(&info.nakshatra),
-        calendar_valid,
-        masa: masa_ffi,
-        ayana: ayana_ffi,
-        varsha: varsha_ffi,
-    }
-}
-
-fn tithi_info_to_ffi_ops(info: &dhruv_vedic_ops::TithiInfo) -> DhruvTithiInfo {
-    DhruvTithiInfo {
-        tithi_index: info.tithi_index as i32,
-        paksha: info.paksha as i32,
-        tithi_in_paksha: info.tithi_in_paksha as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn karana_info_to_ffi_ops(info: &dhruv_vedic_ops::KaranaInfo) -> DhruvKaranaInfo {
-    DhruvKaranaInfo {
-        karana_index: info.karana_index as i32,
-        karana_name_index: info.karana.index() as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn yoga_info_to_ffi_ops(info: &dhruv_vedic_ops::YogaInfo) -> DhruvYogaInfo {
-    DhruvYogaInfo {
-        yoga_index: info.yoga_index as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn vaar_info_to_ffi_ops(info: &dhruv_vedic_ops::VaarInfo) -> DhruvVaarInfo {
-    DhruvVaarInfo {
-        vaar_index: info.vaar.index() as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn hora_info_to_ffi_ops(info: &dhruv_vedic_ops::HoraInfo) -> DhruvHoraInfo {
-    DhruvHoraInfo {
-        hora_index: info.hora.index() as i32,
-        hora_position: info.hora_index as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn ghatika_info_to_ffi_ops(info: &dhruv_vedic_ops::GhatikaInfo) -> DhruvGhatikaInfo {
-    DhruvGhatikaInfo {
-        value: info.value as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn panchang_nakshatra_info_to_ffi_ops(
-    info: &dhruv_vedic_ops::PanchangNakshatraInfo,
-) -> DhruvPanchangNakshatraInfo {
-    DhruvPanchangNakshatraInfo {
-        nakshatra_index: info.nakshatra_index as i32,
-        pada: info.pada as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn masa_info_to_ffi_ops(info: &dhruv_vedic_ops::MasaInfo) -> DhruvMasaInfo {
-    DhruvMasaInfo {
-        masa_index: info.masa.index() as i32,
-        adhika: u8::from(info.adhika),
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn ayana_info_to_ffi_ops(info: &dhruv_vedic_ops::AyanaInfo) -> DhruvAyanaInfo {
-    DhruvAyanaInfo {
-        ayana: info.ayana.index() as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
-fn varsha_info_to_ffi_ops(info: &dhruv_vedic_ops::VarshaInfo) -> DhruvVarshaInfo {
-    DhruvVarshaInfo {
-        samvatsara_index: info.samvatsara.index() as i32,
-        order: info.order as i32,
-        start: utc_time_to_ffi(&info.start),
-        end: utc_time_to_ffi(&info.end),
-    }
-}
-
 fn panchang_result_to_ffi(info: &PanchangResult) -> DhruvPanchangOperationResult {
     let (tithi_valid, tithi) = match info.tithi {
-        Some(v) => (1, tithi_info_to_ffi_ops(&v)),
+        Some(v) => (1, tithi_info_to_ffi(&v)),
         None => (0, zeroed_tithi_info()),
     };
     let (karana_valid, karana) = match info.karana {
-        Some(v) => (1, karana_info_to_ffi_ops(&v)),
+        Some(v) => (1, karana_info_to_ffi(&v)),
         None => (0, zeroed_karana_info()),
     };
     let (yoga_valid, yoga) = match info.yoga {
-        Some(v) => (1, yoga_info_to_ffi_ops(&v)),
+        Some(v) => (1, yoga_info_to_ffi(&v)),
         None => (0, zeroed_yoga_info()),
     };
     let (vaar_valid, vaar) = match info.vaar {
-        Some(v) => (1, vaar_info_to_ffi_ops(&v)),
+        Some(v) => (1, vaar_info_to_ffi(&v)),
         None => (0, zeroed_vaar_info()),
     };
     let (hora_valid, hora) = match info.hora {
-        Some(v) => (1, hora_info_to_ffi_ops(&v)),
+        Some(v) => (1, hora_info_to_ffi(&v)),
         None => (0, zeroed_hora_info()),
     };
     let (ghatika_valid, ghatika) = match info.ghatika {
-        Some(v) => (1, ghatika_info_to_ffi_ops(&v)),
+        Some(v) => (1, ghatika_info_to_ffi(&v)),
         None => (0, zeroed_ghatika_info()),
     };
     let (nakshatra_valid, nakshatra) = match info.nakshatra {
-        Some(v) => (1, panchang_nakshatra_info_to_ffi_ops(&v)),
+        Some(v) => (1, panchang_nakshatra_info_to_ffi(&v)),
         None => (0, zeroed_panchang_nakshatra_info()),
     };
     let (masa_valid, masa) = match info.masa {
-        Some(v) => (1, masa_info_to_ffi_ops(&v)),
+        Some(v) => (1, masa_info_to_ffi(&v)),
         None => (0, zeroed_masa_info()),
     };
     let (ayana_valid, ayana) = match info.ayana {
-        Some(v) => (1, ayana_info_to_ffi_ops(&v)),
+        Some(v) => (1, ayana_info_to_ffi(&v)),
         None => (0, zeroed_ayana_info()),
     };
     let (varsha_valid, varsha) = match info.varsha {
-        Some(v) => (1, varsha_info_to_ffi_ops(&v)),
+        Some(v) => (1, varsha_info_to_ffi(&v)),
         None => (0, zeroed_varsha_info()),
     };
 
@@ -12132,10 +12015,10 @@ pub struct DhruvFullKundaliConfig {
     pub amsha_scope: DhruvAmshaChartScope,
     /// Which amshas to compute.
     pub amsha_selection: DhruvAmshaSelectionConfig,
-    /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra).
-    pub include_panchang: u8,
-    /// Include calendar elements (masa, ayana, varsha). Implies include_panchang.
-    pub include_calendar: u8,
+    /// Panchang element selection with `DHRUV_PANCHANG_INCLUDE_*` bits.
+    /// `0` omits the panchang section entirely; only selected elements are
+    /// computed.
+    pub panchang_include_mask: u32,
     /// Include dasha (planetary period) section.
     pub include_dasha: u8,
     /// Dasha configuration.
@@ -12203,8 +12086,10 @@ pub struct DhruvFullKundaliResult {
     pub avastha: DhruvAllGrahaAvasthas,
     pub charakaraka_valid: u8,
     pub charakaraka: DhruvCharakarakaResult,
+    /// 1 when `panchang_include_mask` was non-zero and computation succeeded.
+    /// Per-element validity lives in `panchang.*_valid`.
     pub panchang_valid: u8,
-    pub panchang: DhruvPanchangInfo,
+    pub panchang: DhruvPanchangOperationResult,
     /// Number of valid dasha hierarchies (0..=DHRUV_MAX_DASHA_SYSTEMS).
     pub dasha_count: u8,
     /// Opaque hierarchy handles. Read via `dhruv_dasha_hierarchy_*` accessors.
@@ -12255,8 +12140,7 @@ pub unsafe extern "C" fn dhruv_full_kundali_result_free(result: *mut DhruvFullKu
 /// `include_bindus`, `include_drishti`, `include_ashtakavarga`,
 /// `include_upagrahas`, `include_sphutas`, `include_special_lagnas`) are set to 1.
 /// Optional sections (`include_amshas`, `include_shadbala`, `include_vimsopaka`,
-/// `include_avastha`, `include_panchang`, `include_calendar`, `include_dasha`)
-/// are set to 0.
+/// `include_avastha`, `panchang_include_mask`, `include_dasha`) are set to 0.
 ///
 /// C callers should use this instead of zero-initializing the struct, which
 /// would leave `include_bhava_cusps` (and other defaults) at 0.
@@ -12314,8 +12198,7 @@ pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig 
             codes: [0; 40],
             variations: [0; 40],
         },
-        include_panchang: 0,
-        include_calendar: 0,
+        panchang_include_mask: 0,
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
     }
@@ -12518,7 +12401,7 @@ fn populate_full_kundali_result(
 
     if let Some(p) = result.panchang.as_ref() {
         out.panchang_valid = 1;
-        out.panchang = panchang_info_to_ffi(p);
+        out.panchang = panchang_result_to_ffi(p);
     }
 
     if let Some(dasha_vec) = result.dasha.as_ref() {
@@ -16076,6 +15959,7 @@ mod tests {
                 second: 0.0,
             },
             include_mask: DHRUV_PANCHANG_INCLUDE_TITHI,
+            has_location: 1,
             location: DhruvGeoLocation {
                 latitude_deg: 0.0,
                 longitude_deg: 0.0,
@@ -16135,6 +16019,7 @@ mod tests {
                 second: 0.0,
             },
             include_mask: DHRUV_PANCHANG_INCLUDE_TITHI,
+            has_location: 1,
             location: DhruvGeoLocation {
                 latitude_deg: 0.0,
                 longitude_deg: 0.0,
@@ -16242,6 +16127,20 @@ mod tests {
     }
 
     #[test]
+    fn ffi_panchang_include_location_masks_match_rust() {
+        assert_eq!(
+            DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_LOCATION_INDEPENDENT
+        );
+        assert_eq!(
+            DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT,
+            dhruv_vedic_ops::PANCHANG_INCLUDE_LOCATION_DEPENDENT
+        );
+        assert_eq!(DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT, 0x3C7);
+        assert_eq!(DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT, 0x38);
+    }
+
+    #[test]
     fn ffi_full_kundali_config_default_values() {
         let cfg = dhruv_full_kundali_config_default();
         assert_eq!(cfg.include_bhava_cusps, 1);
@@ -16258,8 +16157,7 @@ mod tests {
         assert_eq!(cfg.include_avastha, 0);
         assert_eq!(cfg.include_charakaraka, 0);
         assert_eq!(cfg.charakaraka_scheme, CharakarakaScheme::default() as u8);
-        assert_eq!(cfg.include_panchang, 0);
-        assert_eq!(cfg.include_calendar, 0);
+        assert_eq!(cfg.panchang_include_mask, 0);
         assert_eq!(cfg.include_dasha, 0);
         assert_eq!(cfg.node_dignity_policy, 0);
         assert_eq!(cfg.graha_positions_config.include_lagna, 1);

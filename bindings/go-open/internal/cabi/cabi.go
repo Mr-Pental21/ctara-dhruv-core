@@ -1312,19 +1312,8 @@ func VarshaForDate(engine EngineHandle, utc UtcTime, cfg SankrantiConfig) (Varsh
 	return goVarshaInfo(out), st
 }
 
-func PanchangComputeEx(engine EngineHandle, eop EopHandle, lsk LskHandle, req PanchangComputeRequest) (PanchangOperationResult, Status) {
-	creq := C.DhruvPanchangComputeRequest{
-		time_kind:        C.int32_t(req.TimeKind),
-		jd_tdb:           C.double(req.JdTdb),
-		utc:              cUTC(req.UTC),
-		include_mask:     C.uint32_t(req.IncludeMask),
-		location:         cGeo(req.Location),
-		riseset_config:   cRiseSetConfig(req.RiseSetConfig),
-		sankranti_config: cSankrantiConfig(req.SankrantiConfig),
-	}
-	var out C.DhruvPanchangOperationResult
-	st := Status(C.dhruv_panchang_compute_ex(engine.ptr, eop.ptr, lsk.ptr, &creq, &out))
-	res := PanchangOperationResult{
+func goPanchangOperationResult(out C.DhruvPanchangOperationResult) PanchangOperationResult {
+	return PanchangOperationResult{
 		TithiValid:     out.tithi_valid != 0,
 		Tithi:          goTithiInfo(out.tithi),
 		KaranaValid:    out.karana_valid != 0,
@@ -1346,7 +1335,22 @@ func PanchangComputeEx(engine EngineHandle, eop EopHandle, lsk LskHandle, req Pa
 		VarshaValid:    out.varsha_valid != 0,
 		Varsha:         goVarshaInfo(out.varsha),
 	}
-	return res, st
+}
+
+func PanchangComputeEx(engine EngineHandle, eop EopHandle, lsk LskHandle, req PanchangComputeRequest) (PanchangOperationResult, Status) {
+	creq := C.DhruvPanchangComputeRequest{
+		time_kind:        C.int32_t(req.TimeKind),
+		jd_tdb:           C.double(req.JdTdb),
+		utc:              cUTC(req.UTC),
+		include_mask:     C.uint32_t(req.IncludeMask),
+		has_location:     boolU8(req.HasLocation),
+		location:         cGeo(req.Location),
+		riseset_config:   cRiseSetConfig(req.RiseSetConfig),
+		sankranti_config: cSankrantiConfig(req.SankrantiConfig),
+	}
+	var out C.DhruvPanchangOperationResult
+	st := Status(C.dhruv_panchang_compute_ex(engine.ptr, eop.ptr, lsk.ptr, &creq, &out))
+	return goPanchangOperationResult(out), st
 }
 
 func ComputeGrahaLongitudes(engine EngineHandle, jdTdb float64, cfg GrahaLongitudesConfig) (GrahaLongitudes, Status) {
@@ -1658,11 +1662,10 @@ func FullKundaliConfigDefault() FullKundaliConfig {
 			IncludeSpecialLagnas: cfg.amsha_scope.include_special_lagnas != 0,
 			IncludeOuterPlanets:  cfg.amsha_scope.include_outer_planets != 0,
 		},
-		AmshaSelection:  AmshaSelectionConfig{Count: uint8(cfg.amsha_selection.count)},
-		IncludePanchang: cfg.include_panchang != 0,
-		IncludeCalendar: cfg.include_calendar != 0,
-		IncludeDasha:    cfg.include_dasha != 0,
-		DashaConfig:     goDashaSelectionConfig(cfg.dasha_config),
+		AmshaSelection:      AmshaSelectionConfig{Count: uint8(cfg.amsha_selection.count)},
+		PanchangIncludeMask: uint32(cfg.panchang_include_mask),
+		IncludeDasha:        cfg.include_dasha != 0,
+		DashaConfig:         goDashaSelectionConfig(cfg.dasha_config),
 	}
 }
 
@@ -1710,8 +1713,7 @@ func cFullKundaliConfig(cfg FullKundaliConfig) C.DhruvFullKundaliConfig {
 	}
 	out.amsha_scope = cAmshaScope(cfg.AmshaScope)
 	out.amsha_selection = cAmshaSelectionConfig(cfg.AmshaSelection)
-	out.include_panchang = boolU8(cfg.IncludePanchang)
-	out.include_calendar = boolU8(cfg.IncludeCalendar)
+	out.panchang_include_mask = C.uint32_t(cfg.PanchangIncludeMask)
 	out.include_dasha = boolU8(cfg.IncludeDasha)
 	out.dasha_config = cDashaSelectionConfig(cfg.DashaConfig)
 	return out
@@ -2294,72 +2296,6 @@ func FullKundaliForDateSummary(engine EngineHandle, eop EopHandle, utc UtcTime, 
 	}, st
 }
 
-func goFullPanchangInfo(v C.DhruvPanchangInfo) FullPanchangInfo {
-	out := FullPanchangInfo{
-		Tithi: TithiInfo{
-			TithiIndex:    int32(v.tithi.tithi_index),
-			Paksha:        int32(v.tithi.paksha),
-			TithiInPaksha: int32(v.tithi.tithi_in_paksha),
-			Start:         goUTC(v.tithi.start),
-			End:           goUTC(v.tithi.end),
-		},
-		Karana: KaranaInfo{
-			KaranaIndex:     int32(v.karana.karana_index),
-			KaranaNameIndex: int32(v.karana.karana_name_index),
-			Start:           goUTC(v.karana.start),
-			End:             goUTC(v.karana.end),
-		},
-		Yoga: YogaInfo{
-			YogaIndex: int32(v.yoga.yoga_index),
-			Start:     goUTC(v.yoga.start),
-			End:       goUTC(v.yoga.end),
-		},
-		Vaar: VaarInfo{
-			VaarIndex: int32(v.vaar.vaar_index),
-			Start:     goUTC(v.vaar.start),
-			End:       goUTC(v.vaar.end),
-		},
-		Hora: HoraInfo{
-			HoraIndex:    int32(v.hora.hora_index),
-			HoraPosition: int32(v.hora.hora_position),
-			Start:        goUTC(v.hora.start),
-			End:          goUTC(v.hora.end),
-		},
-		Ghatika: GhatikaInfo{
-			Value: int32(v.ghatika.value),
-			Start: goUTC(v.ghatika.start),
-			End:   goUTC(v.ghatika.end),
-		},
-		Nakshatra: PanchangNakshatraInfo{
-			NakshatraIndex: int32(v.nakshatra.nakshatra_index),
-			Pada:           int32(v.nakshatra.pada),
-			Start:          goUTC(v.nakshatra.start),
-			End:            goUTC(v.nakshatra.end),
-		},
-		CalendarValid: v.calendar_valid != 0,
-	}
-	if v.calendar_valid != 0 {
-		out.Masa = &MasaInfo{
-			MasaIndex: int32(v.masa.masa_index),
-			Adhika:    v.masa.adhika != 0,
-			Start:     goUTC(v.masa.start),
-			End:       goUTC(v.masa.end),
-		}
-		out.Ayana = &AyanaInfo{
-			Ayana: int32(v.ayana.ayana),
-			Start: goUTC(v.ayana.start),
-			End:   goUTC(v.ayana.end),
-		}
-		out.Varsha = &VarshaInfo{
-			SamvatsaraIndex: int32(v.varsha.samvatsara_index),
-			Order:           int32(v.varsha.order),
-			Start:           goUTC(v.varsha.start),
-			End:             goUTC(v.varsha.end),
-		}
-	}
-	return out
-}
-
 func goFullKundaliDashaHierarchy(handle C.DhruvDashaHierarchyHandle, system uint8) (FullKundaliDashaHierarchy, Status) {
 	var levelCount C.uint8_t
 	st := Status(C.dhruv_dasha_hierarchy_level_count(handle, &levelCount))
@@ -2580,7 +2516,7 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 		res.Charakaraka = &v
 	}
 	if out.panchang_valid != 0 {
-		v := goFullPanchangInfo(out.panchang)
+		v := goPanchangOperationResult(out.panchang)
 		res.Panchang = &v
 	}
 	if out.dasha_count > 0 {

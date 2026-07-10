@@ -299,7 +299,9 @@ single name, or a list of names OR-ed together. Accepted names
 (case-insensitive) are the ten elements (`tithi`, `karana`, `yoga`,
 `nakshatra`, `vaar`, `hora`, `ghatika`, `masa`, `ayana`, `varsha`) and the
 groups `all`, `all_core`, `all_calendar`, `location_independent`,
-`location_dependent`, plus `none`. When omitted, all elements are computed.
+`location_dependent`, plus `none`. When omitted, the core elements
+(`all_core`) are computed, matching the historical `daily` behavior; calendar
+elements (`masa`, `ayana`, `varsha`) are opt-in.
 The result map carries `nil` for elements not selected.
 
 `:location` is optional for `daily/2`; it is only required when a

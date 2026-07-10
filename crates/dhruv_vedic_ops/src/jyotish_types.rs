@@ -1,6 +1,6 @@
 //! Types for Vedic jyotish orchestration (graha longitudes, etc.).
 
-use crate::panchang_types::PanchangInfo;
+use crate::panchang_types::PanchangResult;
 use dhruv_frames::{DEFAULT_PRECESSION_MODEL, PrecessionModel, ReferencePlane};
 use dhruv_time::UtcTime;
 use dhruv_vedic_base::{
@@ -568,10 +568,10 @@ pub struct FullKundaliConfig {
     pub include_charakaraka: bool,
     /// Charakaraka scheme.
     pub charakaraka_scheme: CharakarakaScheme,
-    /// Include panchang (tithi, karana, yoga, vaar, hora, ghatika, nakshatra).
-    pub include_panchang: bool,
-    /// Include calendar elements (masa, ayana, varsha). Implies include_panchang.
-    pub include_calendar: bool,
+    /// Panchang element selection with `PANCHANG_INCLUDE_*` bits.
+    /// `0` omits the panchang section entirely; only selected elements are
+    /// computed.
+    pub panchang_include_mask: u32,
     /// Include dasha (planetary period) section.
     pub include_dasha: bool,
     /// Node dignity policy for vimsopaka and avastha.
@@ -609,8 +609,7 @@ impl Default for FullKundaliConfig {
             include_avastha: false,
             include_charakaraka: false,
             charakaraka_scheme: CharakarakaScheme::default(),
-            include_panchang: false,
-            include_calendar: false,
+            panchang_include_mask: 0,
             include_dasha: false,
             node_dignity_policy: NodeDignityPolicy::default(),
             upagraha_config: TimeUpagrahaConfig::default(),
@@ -662,8 +661,9 @@ pub struct FullKundaliResult {
     pub avastha: Option<AllGrahaAvasthas>,
     /// Present when `FullKundaliConfig::include_charakaraka` is true.
     pub charakaraka: Option<CharakarakaResult>,
-    /// Present when `FullKundaliConfig::include_panchang` or `include_calendar` is true.
-    pub panchang: Option<PanchangInfo>,
+    /// Present when `FullKundaliConfig::panchang_include_mask` is non-zero;
+    /// contains only the selected elements.
+    pub panchang: Option<PanchangResult>,
     /// Present when `FullKundaliConfig::include_dasha` is true.
     pub dasha: Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
     /// Present when dasha is computed and snapshot_time is set.

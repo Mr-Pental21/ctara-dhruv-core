@@ -108,8 +108,11 @@ Source: `crates/dhruv_search/src/panchang.rs`
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
 | `masa_for_date` | `engine`, `utc`, `sankranti_config` | `Result<MasaInfo, SearchError>` | Computes amanta lunar month + adhika flag + boundaries. |
+| `masa_for_date_with_eop` | `engine`, `eop`, `utc`, `sankranti_config` | `Result<MasaInfo, SearchError>` | EOP-aware variant of `masa_for_date` used by assembled workflows. |
 | `ayana_for_date` | `engine`, `utc`, `sankranti_config` | `Result<AyanaInfo, SearchError>` | Computes current ayana and its start/end transitions. |
+| `ayana_for_date_with_eop` | `engine`, `eop`, `utc`, `sankranti_config` | `Result<AyanaInfo, SearchError>` | EOP-aware variant of `ayana_for_date` used by assembled workflows. |
 | `varsha_for_date` | `engine`, `utc`, `sankranti_config` | `Result<VarshaInfo, SearchError>` | Computes samvatsara position and Vedic year boundaries. |
+| `varsha_for_date_with_eop` | `engine`, `eop`, `utc`, `sankranti_config` | `Result<VarshaInfo, SearchError>` | EOP-aware variant of `varsha_for_date` used by assembled workflows. |
 | `elongation_at` | `engine`, `jd_tdb` | `Result<f64, SearchError>` | Computes `(Moon_lon - Sun_lon) mod 360` (tropical). |
 | `sidereal_sum_at` | `engine`, `jd_tdb`, `sankranti_config` | `Result<f64, SearchError>` | Computes `(Moon_sid + Sun_sid) mod 360`. |
 | `moon_sidereal_longitude_at` | `engine`, `jd_tdb`, `sankranti_config` | `Result<f64, SearchError>` | Computes Moon sidereal longitude. |
@@ -128,7 +131,7 @@ Source: `crates/dhruv_search/src/panchang.rs`
 | `hora_from_sunrises` | `jd_tdb`, `sunrise_jd`, `next_sunrise_jd`, `lsk` | `HoraInfo` | Pure arithmetic hora classification from sunrise pair. |
 | `ghatika_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config` | `Result<GhatikaInfo, SearchError>` | Computes ghatika number (1..60) with start/end. |
 | `ghatika_from_sunrises` | `jd_tdb`, `sunrise_jd`, `next_sunrise_jd`, `lsk` | `GhatikaInfo` | Pure arithmetic ghatika classification from sunrise pair. |
-| `panchang_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config`, `sankranti_config`, `include_calendar` | `Result<PanchangInfo, SearchError>` | Combined one-shot daily panchang (7 limbs + optional masa/ayana/varsha). |
+| `panchang_for_date` | `engine`, `eop`, `utc`, `location: Option<&GeoLocation>`, `riseset_config`, `sankranti_config`, `include_mask: u32` | `Result<PanchangResult, SearchError>` | Combined panchang for one moment. `include_mask` (`PANCHANG_INCLUDE_*` bits) gates computation, sharing intermediates across selected elements; `location` required only for vaar/hora/ghatika. |
 
 ## Jyotish Orchestration APIs
 

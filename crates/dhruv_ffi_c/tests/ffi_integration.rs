@@ -2924,8 +2924,7 @@ fn ffi_full_kundali_result_free_double_free_same_pointer() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 0,
-        include_calendar: 0,
+        panchang_include_mask: 0,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3028,8 +3027,7 @@ fn ffi_full_kundali_error_path_free_safety() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 0,
-        include_calendar: 0,
+        panchang_include_mask: 0,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3122,8 +3120,7 @@ fn ffi_full_kundali_dasha_overflow_rejection() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 0,
-        include_calendar: 0,
+        panchang_include_mask: 0,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3226,8 +3223,7 @@ fn ffi_full_kundali_dasha_partial_success_contract() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 0,
-        include_calendar: 0,
+        panchang_include_mask: 0,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3341,8 +3337,7 @@ fn ffi_full_kundali_panchang_only() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 1,
-        include_calendar: 0,
+        panchang_include_mask: DHRUV_PANCHANG_INCLUDE_ALL_CORE,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3402,9 +3397,11 @@ fn ffi_full_kundali_panchang_only() {
     let r = unsafe { &*result.as_ptr() };
 
     assert_eq!(r.panchang_valid, 1);
+    assert_eq!(r.panchang.tithi_valid, 1);
     assert!((0..=29).contains(&r.panchang.tithi.tithi_index));
+    assert_eq!(r.panchang.vaar_valid, 1);
     assert!((0..=6).contains(&r.panchang.vaar.vaar_index));
-    assert_eq!(r.panchang.calendar_valid, 0);
+    assert_eq!(r.panchang.masa_valid, 0);
     assert_eq!(r.graha_positions_valid, 0);
 
     unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
@@ -3436,8 +3433,7 @@ fn ffi_full_kundali_panchang_disabled() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 0,
-        include_calendar: 0,
+        panchang_include_mask: 0,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3504,7 +3500,7 @@ fn ffi_full_kundali_panchang_disabled() {
 }
 
 #[test]
-fn ffi_full_kundali_calendar_implies_panchang() {
+fn ffi_full_kundali_calendar_only_mask() {
     let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
         Some(f) => f,
         None => return,
@@ -3527,8 +3523,7 @@ fn ffi_full_kundali_calendar_implies_panchang() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 0,
-        include_calendar: 1,
+        panchang_include_mask: DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3587,12 +3582,13 @@ fn ffi_full_kundali_calendar_implies_panchang() {
     assert_eq!(status, DhruvStatus::Ok);
     let r = unsafe { &*result.as_ptr() };
 
-    // include_calendar=1 implies panchang is present
+    // A calendar-only mask populates only the calendar elements.
     assert_eq!(r.panchang_valid, 1);
-    assert!((0..=29).contains(&r.panchang.tithi.tithi_index));
-    assert!((0..=6).contains(&r.panchang.vaar.vaar_index));
-    // Calendar fields should be populated
-    assert_eq!(r.panchang.calendar_valid, 1);
+    assert_eq!(r.panchang.tithi_valid, 0);
+    assert_eq!(r.panchang.vaar_valid, 0);
+    assert_eq!(r.panchang.masa_valid, 1);
+    assert_eq!(r.panchang.ayana_valid, 1);
+    assert_eq!(r.panchang.varsha_valid, 1);
     assert!(r.panchang.masa.start.year > 0);
     assert!(r.panchang.masa.end.year > 0);
 
@@ -3625,8 +3621,7 @@ fn ffi_full_kundali_panchang_and_calendar() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 1,
-        include_calendar: 1,
+        panchang_include_mask: DHRUV_PANCHANG_INCLUDE_ALL,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3686,8 +3681,9 @@ fn ffi_full_kundali_panchang_and_calendar() {
     let r = unsafe { &*result.as_ptr() };
 
     assert_eq!(r.panchang_valid, 1);
+    assert_eq!(r.panchang.tithi_valid, 1);
     assert!((0..=29).contains(&r.panchang.tithi.tithi_index));
-    assert_eq!(r.panchang.calendar_valid, 1);
+    assert_eq!(r.panchang.masa_valid, 1);
     assert!(r.panchang.masa.start.year > 0);
 
     // bhava_cusps not requested → not populated.
@@ -3724,8 +3720,7 @@ fn ffi_full_kundali_bhava_cusps_enabled() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 0,
-        include_calendar: 0,
+        panchang_include_mask: 0,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3826,8 +3821,7 @@ fn ffi_full_kundali_bhava_cusps_disabled() {
         include_avastha: 0,
         include_charakaraka: 0,
         charakaraka_scheme: 0,
-        include_panchang: 1,
-        include_calendar: 0,
+        panchang_include_mask: DHRUV_PANCHANG_INCLUDE_ALL_CORE,
         node_dignity_policy: 0,
         upagraha_config: dhruv_time_upagraha_config_default(),
         graha_positions_config: DhruvGrahaPositionsConfig {
@@ -3896,7 +3890,7 @@ fn ffi_full_kundali_bhava_cusps_disabled() {
     unsafe { dhruv_eop_free(eop_ptr) };
 }
 
-/// FFI: bhava cusps off + include_calendar=1 succeeds, calendar data populated.
+/// FFI: bhava cusps off + calendar-only mask succeeds, calendar data populated.
 #[test]
 fn ffi_full_kundali_bhava_off_calendar_on() {
     let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
@@ -3913,8 +3907,7 @@ fn ffi_full_kundali_bhava_off_calendar_on() {
     fk_config.include_ashtakavarga = 0;
     fk_config.include_upagrahas = 0;
     fk_config.include_special_lagnas = 0;
-    fk_config.include_panchang = 0;
-    fk_config.include_calendar = 1;
+    fk_config.panchang_include_mask = DHRUV_PANCHANG_INCLUDE_ALL_CALENDAR;
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
     let status = unsafe {
@@ -3935,7 +3928,8 @@ fn ffi_full_kundali_bhava_off_calendar_on() {
     let r = unsafe { &*result.as_ptr() };
 
     assert_eq!(r.bhava_cusps_valid, 0, "bhava cusps should be off");
-    assert_eq!(r.panchang_valid, 1, "calendar implies panchang");
+    assert_eq!(r.panchang_valid, 1, "calendar mask implies panchang section");
+    assert_eq!(r.panchang.masa_valid, 1);
 
     unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -3958,8 +3952,7 @@ fn ffi_full_kundali_exposes_root_sphutas() {
     fk_config.include_ashtakavarga = 0;
     fk_config.include_upagrahas = 0;
     fk_config.include_special_lagnas = 0;
-    fk_config.include_panchang = 0;
-    fk_config.include_calendar = 0;
+    fk_config.panchang_include_mask = 0;
     fk_config.include_dasha = 0;
     fk_config.include_sphutas = 1;
 
@@ -4003,8 +3996,7 @@ fn ffi_full_kundali_dasha_per_system_max_levels() {
     fk_config.include_ashtakavarga = 0;
     fk_config.include_upagrahas = 0;
     fk_config.include_special_lagnas = 0;
-    fk_config.include_panchang = 0;
-    fk_config.include_calendar = 0;
+    fk_config.panchang_include_mask = 0;
     fk_config.include_sphutas = 0;
     fk_config.include_dasha = 1;
     fk_config.dasha_config.count = 2;
