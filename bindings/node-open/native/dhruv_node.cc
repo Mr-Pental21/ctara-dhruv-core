@@ -2176,6 +2176,68 @@ napi_value WriteAmshaChart(napi_env env, const DhruvAmshaChart& a) {
     return obj;
 }
 
+napi_value WriteAmshaSeriesChart(napi_env env, const DhruvAmshaSeriesChart& c) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "amshaCode", MakeUint32(env, c.amsha_code));
+    SetNamed(env, obj, "variationCode", MakeUint32(env, c.variation_code));
+    SetNamed(env, obj, "lagna", WriteAmshaEntry(env, c.lagna));
+    if (c.grahas_valid != 0) {
+        napi_value grahas;
+        napi_create_array_with_length(env, DHRUV_GRAHA_COUNT, &grahas);
+        for (uint32_t i = 0; i < DHRUV_GRAHA_COUNT; ++i) {
+            napi_set_element(env, grahas, i, WriteAmshaEntry(env, c.grahas[i]));
+        }
+        SetNamed(env, obj, "grahas", grahas);
+    } else {
+        napi_value nullv;
+        napi_get_null(env, &nullv);
+        SetNamed(env, obj, "grahas", nullv);
+    }
+    return obj;
+}
+
+// Reads parallel amsha request arrays: codes is a required array of amsha
+// codes; vars may be null/undefined (all-default variations) or an array of
+// the same length. Mirrors the C ABI's (amsha_codes, variation_codes) pair.
+bool ReadAmshaRequestArrays(
+    napi_env env,
+    napi_value codes_val,
+    napi_value vars_val,
+    std::vector<uint16_t>* codes,
+    std::vector<uint8_t>* vars,
+    bool* has_vars) {
+    bool is_array = false;
+    if (napi_is_array(env, codes_val, &is_array) != napi_ok || !is_array) return false;
+    uint32_t len = 0;
+    if (napi_get_array_length(env, codes_val, &len) != napi_ok) return false;
+    codes->resize(len);
+    for (uint32_t i = 0; i < len; ++i) {
+        napi_value cv;
+        uint32_t c = 0;
+        if (napi_get_element(env, codes_val, i, &cv) != napi_ok || !GetUint32(env, cv, &c)) return false;
+        (*codes)[i] = static_cast<uint16_t>(c);
+    }
+    napi_valuetype t = napi_undefined;
+    if (napi_typeof(env, vars_val, &t) != napi_ok) return false;
+    if (t == napi_null || t == napi_undefined) {
+        *has_vars = false;
+        return true;
+    }
+    if (napi_is_array(env, vars_val, &is_array) != napi_ok || !is_array) return false;
+    uint32_t vlen = 0;
+    if (napi_get_array_length(env, vars_val, &vlen) != napi_ok || vlen != len) return false;
+    vars->resize(vlen);
+    for (uint32_t i = 0; i < vlen; ++i) {
+        napi_value vv;
+        uint32_t v = 0;
+        if (napi_get_element(env, vars_val, i, &vv) != napi_ok || !GetUint32(env, vv, &v)) return false;
+        (*vars)[i] = static_cast<uint8_t>(v);
+    }
+    *has_vars = true;
+    return true;
+}
+
 napi_value WriteAmshaVariationInfo(napi_env env, const DhruvAmshaVariationInfo& info) {
     napi_value obj;
     napi_create_object(env, &obj);
@@ -5184,6 +5246,90 @@ napi_value PanchangComputeEx(napi_env env, napi_callback_info info) {
     return out;
 }
 
+napi_value PanchangEvents(napi_env env, napi_callback_info info) {
+    size_t argc = 7;
+    napi_value args[7];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 7) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime from_utc{};
+    DhruvUtcTime to_utc{};
+    uint32_t include_mask = 0;
+    DhruvSankrantiConfig sank_cfg{};
+    uint32_t max_events = 0;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) ||
+        !ReadUtcTime(env, args[2], &from_utc) || !ReadUtcTime(env, args[3], &to_utc) ||
+        !GetUint32(env, args[4], &include_mask) || !ReadSankrantiConfig(env, args[5], &sank_cfg) ||
+        !GetUint32(env, args[6], &max_events)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvPanchangEventsHandle handle = nullptr;
+    int32_t status = dhruv_panchang_events(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &from_utc,
+        &to_utc,
+        include_mask,
+        &sank_cfg,
+        max_events,
+        &handle);
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) return out;
+
+    napi_value result;
+    napi_create_object(env, &result);
+
+#define DHRUV_NODE_PANCHANG_EVENT_KIND(prop, count_fn, at_fn, info_type, writer)      \
+    do {                                                                              \
+        uint32_t n = 0;                                                               \
+        status = count_fn(handle, &n);                                                \
+        if (status != STATUS_OK) {                                                    \
+            dhruv_panchang_events_free(handle);                                       \
+            return MakeStatusResult(env, status);                                     \
+        }                                                                             \
+        napi_value arr;                                                               \
+        napi_create_array_with_length(env, n, &arr);                                  \
+        for (uint32_t i = 0; i < n; ++i) {                                            \
+            info_type item{};                                                         \
+            status = at_fn(handle, i, &item);                                         \
+            if (status != STATUS_OK) {                                                \
+                dhruv_panchang_events_free(handle);                                   \
+                return MakeStatusResult(env, status);                                 \
+            }                                                                         \
+            napi_set_element(env, arr, i, writer(env, item));                         \
+        }                                                                             \
+        SetNamed(env, result, prop, arr);                                             \
+    } while (0)
+
+    DHRUV_NODE_PANCHANG_EVENT_KIND("tithis", dhruv_panchang_events_tithi_count, dhruv_panchang_events_tithi_at, DhruvTithiInfo, WriteTithiInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("karanas", dhruv_panchang_events_karana_count, dhruv_panchang_events_karana_at, DhruvKaranaInfo, WriteKaranaInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("yogas", dhruv_panchang_events_yoga_count, dhruv_panchang_events_yoga_at, DhruvYogaInfo, WriteYogaInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("nakshatras", dhruv_panchang_events_nakshatra_count, dhruv_panchang_events_nakshatra_at, DhruvPanchangNakshatraInfo, WritePanchangNakshatraInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("masas", dhruv_panchang_events_masa_count, dhruv_panchang_events_masa_at, DhruvMasaInfo, WriteMasaInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("ayanas", dhruv_panchang_events_ayana_count, dhruv_panchang_events_ayana_at, DhruvAyanaInfo, WriteAyanaInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("varshas", dhruv_panchang_events_varsha_count, dhruv_panchang_events_varsha_at, DhruvVarshaInfo, WriteVarshaInfo);
+
+#undef DHRUV_NODE_PANCHANG_EVENT_KIND
+
+    uint8_t truncated = 0;
+    uint8_t next_valid = 0;
+    DhruvUtcTime next_from{};
+    status = dhruv_panchang_events_meta(handle, &truncated, &next_valid, &next_from);
+    dhruv_panchang_events_free(handle);
+    if (status != STATUS_OK) return MakeStatusResult(env, status);
+    SetNamed(env, result, "truncated", MakeBool(env, truncated != 0));
+    napi_value next_value;
+    if (next_valid != 0) {
+        next_value = WriteUtcTime(env, next_from);
+    } else {
+        napi_get_null(env, &next_value);
+    }
+    SetNamed(env, result, "nextFromUtc", next_value);
+    SetNamed(env, out, "result", result);
+    return out;
+}
+
 napi_value SpecialLagnasForDate(napi_env env, napi_callback_info info) {
     size_t argc = 7;
     napi_value args[7];
@@ -6354,6 +6500,192 @@ napi_value AmshaVariationsMany(napi_env env, napi_callback_info info) {
         }
         SetNamed(env, out, "catalogs", catalogs);
     }
+    return out;
+}
+
+napi_value AmshaSeries(napi_env env, napi_callback_info info) {
+    size_t argc = 10;
+    napi_value args[10];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 10) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime from_utc{};
+    DhruvUtcTime to_utc{};
+    uint32_t step_minutes = 0;
+    DhruvGeoLocation loc{};
+    DhruvSankrantiConfig sank_cfg{};
+    std::vector<uint16_t> codes;
+    std::vector<uint8_t> vars;
+    bool has_vars = false;
+    bool include_grahas = false;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) ||
+        !ReadUtcTime(env, args[2], &from_utc) || !ReadUtcTime(env, args[3], &to_utc) ||
+        !GetUint32(env, args[4], &step_minutes) || !ReadGeoLocation(env, args[5], &loc) ||
+        !ReadSankrantiConfig(env, args[6], &sank_cfg) ||
+        !ReadAmshaRequestArrays(env, args[7], args[8], &codes, &vars, &has_vars) ||
+        !GetBool(env, args[9], &include_grahas)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvAmshaSeriesHandle handle = nullptr;
+    int32_t status = dhruv_amsha_series(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &from_utc,
+        &to_utc,
+        step_minutes,
+        &loc,
+        &sank_cfg,
+        codes.empty() ? nullptr : codes.data(),
+        has_vars ? vars.data() : nullptr,
+        static_cast<uint32_t>(codes.size()),
+        include_grahas ? 1 : 0,
+        &handle);
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) return out;
+
+    uint32_t point_count = 0;
+    uint32_t chart_count = 0;
+    status = dhruv_amsha_series_point_count(handle, &point_count);
+    if (status == STATUS_OK) status = dhruv_amsha_series_chart_count(handle, &chart_count);
+    if (status != STATUS_OK) {
+        dhruv_amsha_series_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_value points;
+    napi_create_array_with_length(env, point_count, &points);
+    for (uint32_t p = 0; p < point_count; ++p) {
+        DhruvUtcTime point_utc{};
+        double jd_utc = 0.0;
+        status = dhruv_amsha_series_point_at(handle, p, &point_utc, &jd_utc);
+        if (status != STATUS_OK) {
+            dhruv_amsha_series_free(handle);
+            return MakeStatusResult(env, status);
+        }
+        napi_value charts;
+        napi_create_array_with_length(env, chart_count, &charts);
+        for (uint32_t c = 0; c < chart_count; ++c) {
+            DhruvAmshaSeriesChart chart{};
+            status = dhruv_amsha_series_chart_at(handle, p, c, &chart);
+            if (status != STATUS_OK) {
+                dhruv_amsha_series_free(handle);
+                return MakeStatusResult(env, status);
+            }
+            napi_set_element(env, charts, c, WriteAmshaSeriesChart(env, chart));
+        }
+        napi_value obj;
+        napi_create_object(env, &obj);
+        SetNamed(env, obj, "utc", WriteUtcTime(env, point_utc));
+        SetNamed(env, obj, "jdUtc", MakeDouble(env, jd_utc));
+        SetNamed(env, obj, "charts", charts);
+        napi_set_element(env, points, p, obj);
+    }
+    dhruv_amsha_series_free(handle);
+    SetNamed(env, out, "result", points);
+    return out;
+}
+
+napi_value AmshaLagnaEvents(napi_env env, napi_callback_info info) {
+    size_t argc = 9;
+    napi_value args[9];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 9) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime from_utc{};
+    DhruvUtcTime to_utc{};
+    DhruvGeoLocation loc{};
+    DhruvSankrantiConfig sank_cfg{};
+    std::vector<uint16_t> codes;
+    std::vector<uint8_t> vars;
+    bool has_vars = false;
+    uint32_t max_segments = 0;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) ||
+        !ReadUtcTime(env, args[2], &from_utc) || !ReadUtcTime(env, args[3], &to_utc) ||
+        !ReadGeoLocation(env, args[4], &loc) || !ReadSankrantiConfig(env, args[5], &sank_cfg) ||
+        !ReadAmshaRequestArrays(env, args[6], args[7], &codes, &vars, &has_vars) ||
+        !GetUint32(env, args[8], &max_segments)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvAmshaLagnaEventsHandle handle = nullptr;
+    int32_t status = dhruv_amsha_lagna_events(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &from_utc,
+        &to_utc,
+        &loc,
+        &sank_cfg,
+        codes.empty() ? nullptr : codes.data(),
+        has_vars ? vars.data() : nullptr,
+        static_cast<uint32_t>(codes.size()),
+        max_segments,
+        &handle);
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) return out;
+
+    uint32_t entry_count = 0;
+    status = dhruv_amsha_lagna_events_entry_count(handle, &entry_count);
+    if (status != STATUS_OK) {
+        dhruv_amsha_lagna_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_value entries;
+    napi_create_array_with_length(env, entry_count, &entries);
+    for (uint32_t e = 0; e < entry_count; ++e) {
+        uint16_t amsha_code = 0;
+        uint8_t variation_code = 0;
+        status = dhruv_amsha_lagna_events_entry_info(handle, e, &amsha_code, &variation_code);
+        if (status != STATUS_OK) {
+            dhruv_amsha_lagna_events_free(handle);
+            return MakeStatusResult(env, status);
+        }
+        uint32_t seg_count = 0;
+        status = dhruv_amsha_lagna_events_segment_count(handle, e, &seg_count);
+        if (status != STATUS_OK) {
+            dhruv_amsha_lagna_events_free(handle);
+            return MakeStatusResult(env, status);
+        }
+        napi_value segments;
+        napi_create_array_with_length(env, seg_count, &segments);
+        for (uint32_t s = 0; s < seg_count; ++s) {
+            DhruvAmshaLagnaSegment seg{};
+            status = dhruv_amsha_lagna_events_segment_at(handle, e, s, &seg);
+            if (status != STATUS_OK) {
+                dhruv_amsha_lagna_events_free(handle);
+                return MakeStatusResult(env, status);
+            }
+            napi_value seg_obj;
+            napi_create_object(env, &seg_obj);
+            SetNamed(env, seg_obj, "rashiIndex", MakeUint32(env, seg.rashi_index));
+            SetNamed(env, seg_obj, "start", WriteUtcTime(env, seg.start));
+            SetNamed(env, seg_obj, "end", WriteUtcTime(env, seg.end));
+            napi_set_element(env, segments, s, seg_obj);
+        }
+        napi_value entry_obj;
+        napi_create_object(env, &entry_obj);
+        SetNamed(env, entry_obj, "amshaCode", MakeUint32(env, amsha_code));
+        SetNamed(env, entry_obj, "variationCode", MakeUint32(env, variation_code));
+        SetNamed(env, entry_obj, "segments", segments);
+        napi_set_element(env, entries, e, entry_obj);
+    }
+    uint8_t truncated = 0;
+    uint8_t next_valid = 0;
+    DhruvUtcTime next_from{};
+    status = dhruv_amsha_lagna_events_meta(handle, &truncated, &next_valid, &next_from);
+    dhruv_amsha_lagna_events_free(handle);
+    if (status != STATUS_OK) return MakeStatusResult(env, status);
+    napi_value result;
+    napi_create_object(env, &result);
+    SetNamed(env, result, "entries", entries);
+    SetNamed(env, result, "truncated", MakeBool(env, truncated != 0));
+    napi_value next_value;
+    if (next_valid != 0) {
+        next_value = WriteUtcTime(env, next_from);
+    } else {
+        napi_get_null(env, &next_value);
+    }
+    SetNamed(env, result, "nextFromUtc", next_value);
+    SetNamed(env, out, "result", result);
     return out;
 }
 
@@ -8035,6 +8367,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"ayanaForDate", nullptr, AyanaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"varshaForDate", nullptr, VarshaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"panchangComputeEx", nullptr, PanchangComputeEx, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"panchangEvents", nullptr, PanchangEvents, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"elongationAt", nullptr, ElongationAt, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"siderealSumAt", nullptr, SiderealSumAt, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"vedicDaySunrises", nullptr, VedicDaySunrises, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -8097,6 +8430,8 @@ napi_value Init(napi_env env, napi_value exports) {
         {"amshaChartForDate", nullptr, AmshaChartForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaVariations", nullptr, AmshaVariations, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaVariationsMany", nullptr, AmshaVariationsMany, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"amshaSeries", nullptr, AmshaSeries, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"amshaLagnaEvents", nullptr, AmshaLagnaEvents, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"specialLagnasForDate", nullptr, SpecialLagnasForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"arudhaPadasForDate", nullptr, ArudhaPadasForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"allUpagrahasForDate", nullptr, AllUpagrahasForDate, nullptr, nullptr, nullptr, napi_default, nullptr},

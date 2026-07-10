@@ -23,6 +23,10 @@ const PANCHANG_INCLUDE = Object.freeze({
   LOCATION_DEPENDENT: 0x038,
 });
 
+// Hard ceiling on total panchang event segments per panchangEvents sweep
+// (DHRUV_MAX_PANCHANG_EVENTS in the C ABI).
+const MAX_PANCHANG_EVENTS = 50000;
+
 function bhavaSystemCount() {
   return addon.bhavaSystemCount();
 }
@@ -198,8 +202,42 @@ function panchangComputeEx(engine, eop, lsk, request) {
   return r.result;
 }
 
+// Exact panchang element segments overlapping [fromUtc, toUtc], without
+// sampling. `includeMask` must be a subset of
+// PANCHANG_INCLUDE.LOCATION_INDEPENDENT (tithi, karana, yoga, nakshatra,
+// masa, ayana, varsha). `maxEvents` caps the total segments across all kinds
+// (0 selects MAX_PANCHANG_EVENTS). Consecutive segments of one kind chain
+// exactly (`end` equals the next segment's `start`); the first segment per
+// kind may start before `fromUtc` and the last may end after `toUtc`.
+// Returns { tithis, karanas, yogas, nakshatras, masas, ayanas, varshas,
+// truncated, nextFromUtc }. When `truncated` is true, resume the sweep from
+// `nextFromUtc` and deduplicate on (kind, start).
+function panchangEvents(
+  engine,
+  eop,
+  fromUtc,
+  toUtc,
+  includeMask = PANCHANG_INCLUDE.LOCATION_INDEPENDENT,
+  sankrantiConfig = addon.sankrantiConfigDefault(),
+  maxEvents = 0,
+) {
+  const r = addon.panchangEvents(
+    engine._handle,
+    eop._handle,
+    fromUtc,
+    toUtc,
+    includeMask,
+    sankrantiConfig,
+    maxEvents,
+  );
+  checkStatus('panchang_events', r.status);
+  return r.result;
+}
+
 module.exports = {
   PANCHANG_INCLUDE,
+  MAX_PANCHANG_EVENTS,
+  panchangEvents,
   bhavaSystemCount,
   computeRiseSet,
   computeAllEvents,

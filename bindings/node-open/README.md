@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=76`
+- ABI target: `DHRUV_API_VERSION=77`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 - Primary distribution: npm package with bundled platform prebuilds from unified `vX.Y.Z` tags
@@ -87,6 +87,11 @@ Public modules included in this wrapper:
 - unified panchang selection (`panchangComputeEx` with a `PANCHANG_INCLUDE`
   bitmask and optional `location`; the same mask drives
   `fullKundaliConfig.panchangIncludeMask`)
+- range sweeps: `panchangEvents` (exact panchang element segments over a UTC
+  range), `amshaSeries` (fixed-cadence slim varga charts), and
+  `amshaLagnaEvents` (exact varga-lagna transitions), with the C ABI caps
+  exported as `MAX_PANCHANG_EVENTS`, `MAX_AMSHA_SERIES_CELLS`, and
+  `MAX_AMSHA_LAGNA_SEGMENTS`
 - jyotish/rashi/nakshatra helpers (`grahaLongitudes`, longitude classifiers, special lagnas, arudha/upagraha date APIs)
 - charakaraka date API (`charakarakaForDate`) with selectable schemes (`8`, `7-no-pitri`, `7-pk-merged-mk`, `mixed-parashara`)
 - extras/composable APIs (panchang intermediates, sphuta/special-lagna scalar helpers, ashtakavarga, drishti, graha positions, bindus, amsha)
@@ -114,6 +119,14 @@ and `PANCHANG_INCLUDE.LOCATION_INDEPENDENT` without one. `riseSetConfig` and
 
 The result carries per-element `*Valid` flags (`tithiValid`, `vaarValid`,
 `masaValid`, ...) alongside the element payloads.
+
+`panchangEvents(engine, eop, fromUtc, toUtc, includeMask, sankrantiConfig,
+maxEvents)` streams the exact element segments overlapping the range (no
+sampling). `includeMask` must be a subset of
+`PANCHANG_INCLUDE.LOCATION_INDEPENDENT`; `maxEvents` of `0` selects the
+`MAX_PANCHANG_EVENTS` ceiling. Segments of one kind chain exactly; on
+truncation (`truncated: true`) resume from `nextFromUtc` and deduplicate on
+`(kind, start)`.
 
 `fullKundaliConfig` selects its embedded panchang section with the same mask
 through `panchangIncludeMask` (`0` omits the section; it replaces the former
@@ -169,10 +182,21 @@ The Node wrapper exposes the amsha family through:
 - `amshaRashiInfo`
 - `amshaLongitudes`
 - `amshaChartForDate`
+- `amshaSeries`
+- `amshaLagnaEvents`
 - `amshaVariations`
 - `amshaVariationsMany`
 - `fullKundaliConfigDefault`
 - `fullKundaliForDate`
+
+`amshaSeries(engine, eop, fromUtc, toUtc, stepMinutes, location, amshaCodes,
+variationCodes, includeGrahas, sankrantiConfig)` samples slim varga charts at
+a fixed cadence (points x unique requests capped at
+`MAX_AMSHA_SERIES_CELLS`). `amshaLagnaEvents(engine, eop, fromUtc, toUtc,
+location, amshaCodes, variationCodes, maxSegments, sankrantiConfig)` streams
+exact varga-lagna rashi transition segments per unique request (capped at
+`MAX_AMSHA_LAGNA_SEGMENTS`; on truncation resume from `nextFromUtc`). For
+both, `variationCodes` may be `null` to use each amsha's default variation.
 
 `fullKundaliConfigDefault()` returns amsha config fields as:
 

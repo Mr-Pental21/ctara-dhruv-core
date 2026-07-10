@@ -853,3 +853,136 @@ test('gochar events wrapper preserves named natal targets and optional charts', 
   eop.close();
   engine.close();
 });
+
+test('range operation cap constants match the C ABI', () => {
+  assert.equal(dhruv.MAX_AMSHA_SERIES_CELLS, 100000);
+  assert.equal(dhruv.MAX_PANCHANG_EVENTS, 50000);
+  assert.equal(dhruv.MAX_AMSHA_LAGNA_SEGMENTS, 50000);
+});
+
+test('range operations: amshaSeries, panchangEvents, amshaLagnaEvents', { skip: !(hasKernels() && hasEop()) }, () => {
+  const paths = kernelPaths();
+  const engine = dhruv.Engine.create({
+    spkPaths: [paths.spk],
+    lskPath: paths.lsk,
+    cacheCapacity: 64,
+    strictValidation: false,
+  });
+  const eop = dhruv.EOP.load(paths.eop);
+  const loc = { latitudeDeg: 12.9716, longitudeDeg: 77.5946, altitudeM: 920 };
+  const utc = { year: 2025, month: 1, day: 15, hour: 12, minute: 0, second: 0 };
+  const sankCfg = dhruv.sankrantiConfigDefault();
+  const bhavaCfg = dhruv.bhavaConfigDefault();
+  const riseCfg = dhruv.riseSetConfigDefault();
+  const angularSep = (a, b) => {
+    const d = Math.abs(a - b) % 360;
+    return Math.min(d, 360 - d);
+  };
+
+  // --- amshaSeries: 2h at 60-minute cadence yields 3 points; first point
+  // matches the single-epoch amsha chart.
+  const seriesTo = { ...utc, hour: utc.hour + 2 };
+  const series = dhruv.amshaSeries(engine, eop, utc, seriesTo, 60, loc, [9, 1, 9], null, true);
+  assert.equal(series.length, 3);
+  assert.equal(series[0].charts.length, 3);
+  assert.ok(Number.isFinite(series[0].jdUtc));
+  assert.equal(series[0].utc.year, utc.year);
+  const d9 = series[0].charts[0];
+  assert.equal(d9.amshaCode, 9);
+  assert.equal(d9.variationCode, 0);
+  assert.equal(series[0].charts[1].amshaCode, 1);
+  // Duplicate D9 request repeats the same chart.
+  assert.equal(series[0].charts[2].amshaCode, 9);
+  assert.equal(d9.lagna.siderealLongitude, series[0].charts[2].lagna.siderealLongitude);
+  assert.equal(d9.grahas.length, 9);
+  const amshaScope = {
+    includeBhavaCusps: false,
+    includeArudhaPadas: false,
+    includeUpagrahas: false,
+    includeSphutas: false,
+    includeSpecialLagnas: false,
+    includeOuterPlanets: false,
+  };
+  const single = dhruv.amshaChartForDate(
+    engine, eop, utc, loc, bhavaCfg, riseCfg,
+    sankCfg.ayanamshaSystem, sankCfg.useNutation, 9, 0, amshaScope,
+  );
+  assert.ok(angularSep(d9.lagna.siderealLongitude, single.lagna.siderealLongitude) < 1e-6);
+  for (let g = 0; g < 9; g += 1) {
+    assert.ok(angularSep(d9.grahas[g].siderealLongitude, single.grahas[g].siderealLongitude) < 1e-6);
+  }
+  // Lagna-only series omits graha entries.
+  const slim = dhruv.amshaSeries(engine, eop, utc, seriesTo, 60, loc, [9], null, false);
+  assert.equal(slim[0].charts[0].grahas, null);
+
+  // amshaSeries rejections: zero step, empty request list.
+  assert.throws(() => dhruv.amshaSeries(engine, eop, utc, seriesTo, 0, loc, [9]));
+  assert.throws(() => dhruv.amshaSeries(engine, eop, utc, seriesTo, 60, loc, []));
+
+  // --- panchangEvents: tithi segments over 7 days chain exactly.
+  const weekTo = { ...utc, day: utc.day + 7 };
+  const events = dhruv.panchangEvents(engine, eop, utc, weekTo, dhruv.PANCHANG_INCLUDE.TITHI);
+  assert.ok(events.tithis.length >= 6);
+  assert.equal(events.karanas.length, 0);
+  assert.equal(events.truncated, false);
+  assert.equal(events.nextFromUtc, null);
+  for (let i = 0; i + 1 < events.tithis.length; i += 1) {
+    assert.deepEqual(events.tithis[i].end, events.tithis[i + 1].start);
+    assert.ok(Number.isInteger(events.tithis[i].tithiIndex));
+  }
+
+  // Truncation and resume: dedup on segment start reproduces the full sweep.
+  const truncated = dhruv.panchangEvents(
+    engine, eop, utc, weekTo, dhruv.PANCHANG_INCLUDE.TITHI, sankCfg, 3,
+  );
+  assert.equal(truncated.truncated, true);
+  assert.equal(truncated.tithis.length, 3);
+  assert.ok(truncated.nextFromUtc !== null);
+  const resumed = dhruv.panchangEvents(
+    engine, eop, truncated.nextFromUtc, weekTo, dhruv.PANCHANG_INCLUDE.TITHI, sankCfg, 0,
+  );
+  // Resumed sweeps re-solve boundaries, so allow sub-second drift when
+  // deduplicating and comparing against the untruncated sweep.
+  const utcMs = (t) => Date.UTC(t.year, t.month - 1, t.day, t.hour, t.minute, 0) + t.second * 1000;
+  const seenMs = truncated.tithis.map((t) => utcMs(t.start));
+  const merged = truncated.tithis.concat(
+    resumed.tithis.filter((t) => !seenMs.some((ms) => Math.abs(ms - utcMs(t.start)) < 500)),
+  );
+  assert.equal(merged.length, events.tithis.length);
+  for (let i = 0; i < merged.length; i += 1) {
+    assert.ok(Math.abs(utcMs(merged[i].start) - utcMs(events.tithis[i].start)) < 500);
+    assert.equal(merged[i].tithiIndex, events.tithis[i].tithiIndex);
+  }
+
+  // panchangEvents rejections: zero mask, location-dependent bit, unknown bit.
+  assert.throws(() => dhruv.panchangEvents(engine, eop, utc, weekTo, 0));
+  assert.throws(() => dhruv.panchangEvents(engine, eop, utc, weekTo, dhruv.PANCHANG_INCLUDE.VAAR));
+  assert.throws(() => dhruv.panchangEvents(engine, eop, utc, weekTo, 1 << 20));
+
+  // --- amshaLagnaEvents: D1 lagna segments over 6h chain exactly and
+  // advance one rashi at a time.
+  const lagnaTo = { ...utc, hour: utc.hour + 6 };
+  const lagnaEvents = dhruv.amshaLagnaEvents(engine, eop, utc, lagnaTo, loc, [1, 1]);
+  assert.equal(lagnaEvents.entries.length, 1, 'duplicate requests collapse');
+  const entry = lagnaEvents.entries[0];
+  assert.equal(entry.amshaCode, 1);
+  assert.equal(entry.variationCode, 0);
+  assert.ok(entry.segments.length >= 3, '6h of D1 lagna spans >= 3 rashis');
+  assert.deepEqual(entry.segments[0].start, utc, 'first segment starts at fromUtc');
+  for (const seg of entry.segments) {
+    assert.ok(seg.rashiIndex >= 0 && seg.rashiIndex <= 11);
+  }
+  for (let i = 0; i + 1 < entry.segments.length; i += 1) {
+    assert.deepEqual(entry.segments[i].end, entry.segments[i + 1].start);
+    assert.equal((entry.segments[i].rashiIndex + 1) % 12, entry.segments[i + 1].rashiIndex);
+  }
+  assert.equal(lagnaEvents.truncated, false);
+  assert.equal(lagnaEvents.nextFromUtc, null);
+
+  // amshaLagnaEvents rejections: empty request list, invalid amsha code.
+  assert.throws(() => dhruv.amshaLagnaEvents(engine, eop, utc, lagnaTo, loc, []));
+  assert.throws(() => dhruv.amshaLagnaEvents(engine, eop, utc, lagnaTo, loc, [65535]));
+
+  eop.close();
+  engine.close();
+});

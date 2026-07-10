@@ -436,6 +436,87 @@ function amshaChartForDate(
   return r.result;
 }
 
+// Caps enforced by the C ABI range operations.
+// amshaSeries rejects grids whose points x unique requests exceed this.
+const MAX_AMSHA_SERIES_CELLS = 100000;
+// amshaLagnaEvents hard ceiling on total segments across all amshas.
+const MAX_AMSHA_LAGNA_SEGMENTS = 50000;
+
+// Fixed-cadence slim varga charts over [fromUtc, toUtc]: one point per
+// stepMinutes starting at fromUtc (endpoints inclusive when on the grid).
+// `amshaCodes` is a non-empty array of amsha codes; `variationCodes` is null
+// (all default variations) or a parallel array. Each point carries one chart
+// per request, in request order (duplicates repeated). The varga lagna is
+// always computed; per-graha entries are added when `includeGrahas` is true.
+// Rejects stepMinutes === 0, reversed ranges, empty or invalid request
+// lists, and grids whose points x unique requests exceed
+// MAX_AMSHA_SERIES_CELLS. Each point is { utc, jdUtc, charts } with charts
+// entries { amshaCode, variationCode, lagna, grahas } (grahas is null unless
+// includeGrahas).
+function amshaSeries(
+  engine,
+  eop,
+  fromUtc,
+  toUtc,
+  stepMinutes,
+  location,
+  amshaCodes,
+  variationCodes = null,
+  includeGrahas = true,
+  sankrantiConfig = addon.sankrantiConfigDefault(),
+) {
+  const r = addon.amshaSeries(
+    engine._handle,
+    eop._handle,
+    fromUtc,
+    toUtc,
+    stepMinutes,
+    location,
+    sankrantiConfig,
+    amshaCodes,
+    variationCodes,
+    !!includeGrahas,
+  );
+  checkStatus('amsha_series', r.status);
+  return r.result;
+}
+
+// Exact varga-lagna rashi segments overlapping [fromUtc, toUtc] (no sampling
+// grid): one entry per unique request (duplicates collapsed), in request
+// order. `variationCodes` is null (all default variations) or a parallel
+// array. `maxSegments` caps the total segments across all amshas (0 selects
+// MAX_AMSHA_LAGNA_SEGMENTS). Per entry, segments chain exactly (`end` equals
+// the next segment's `start`); the first segment starts at fromUtc and the
+// last ends at the first transition at or after toUtc. Returns
+// { entries: [{ amshaCode, variationCode, segments: [{ rashiIndex, start,
+// end }] }], truncated, nextFromUtc }. When `truncated` is true, resume from
+// `nextFromUtc` and deduplicate on segment start.
+function amshaLagnaEvents(
+  engine,
+  eop,
+  fromUtc,
+  toUtc,
+  location,
+  amshaCodes,
+  variationCodes = null,
+  maxSegments = 0,
+  sankrantiConfig = addon.sankrantiConfigDefault(),
+) {
+  const r = addon.amshaLagnaEvents(
+    engine._handle,
+    eop._handle,
+    fromUtc,
+    toUtc,
+    location,
+    sankrantiConfig,
+    amshaCodes,
+    variationCodes,
+    maxSegments,
+  );
+  checkStatus('amsha_lagna_events', r.status);
+  return r.result;
+}
+
 function amshaVariations(amshaCode) {
   const r = addon.amshaVariations(amshaCode);
   checkStatus('amsha_variations', r.status);
@@ -526,6 +607,10 @@ module.exports = {
   amshaRashiInfo,
   amshaLongitudes,
   amshaChartForDate,
+  amshaSeries,
+  amshaLagnaEvents,
   amshaVariations,
   amshaVariationsMany,
+  MAX_AMSHA_SERIES_CELLS,
+  MAX_AMSHA_LAGNA_SEGMENTS,
 };

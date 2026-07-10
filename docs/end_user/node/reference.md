@@ -117,7 +117,9 @@ physical-body codes such as `499`, `599`, `699`, `799`, `899`, `999`, plus
 - `ayanaForDate`
 - `varshaForDate`
 - `panchangComputeEx`
+- `panchangEvents`
 - `PANCHANG_INCLUDE`
+- `MAX_PANCHANG_EVENTS`
 
 `panchangComputeEx(engine, eop, lsk, request)` computes any subset of panchang
 elements in one call. `request.includeMask` is a bitmask built from
@@ -132,6 +134,38 @@ optional and only needed for the location-dependent elements (`VAAR`, `HORA`,
 `sankrantiConfig` fall back to library defaults when omitted. The result
 carries per-element `*Valid` flags (`tithiValid`, `vaarValid`, `masaValid`,
 ...) alongside the element payloads.
+
+`panchangEvents(engine, eop, fromUtc, toUtc, includeMask, sankrantiConfig,
+maxEvents)` streams the exact panchang element segments overlapping
+`[fromUtc, toUtc]` without a sampling grid. `includeMask` must be a subset of
+`PANCHANG_INCLUDE.LOCATION_INDEPENDENT` (`TITHI`, `KARANA`, `YOGA`,
+`NAKSHATRA`, `MASA`, `AYANA`, `VARSHA`; it defaults to the full
+location-independent set). The location-dependent bits (`VAAR`, `HORA`,
+`GHATIKA`), a zero mask, or unknown bits are rejected. `maxEvents` caps the
+total segments across all requested kinds; `0` selects the hard ceiling
+`MAX_PANCHANG_EVENTS` (50,000). The result is:
+
+```js
+{
+  tithis: [{ tithiIndex, paksha, tithiInPaksha, start, end }, ...],
+  karanas: [{ karanaIndex, karanaNameIndex, start, end }, ...],
+  yogas: [{ yogaIndex, start, end }, ...],
+  nakshatras: [{ nakshatraIndex, pada, start, end }, ...],
+  masas: [{ masaIndex, adhika, start, end }, ...],
+  ayanas: [{ ayana, start, end }, ...],
+  varshas: [{ samvatsaraIndex, order, start, end }, ...],
+  truncated: false,
+  nextFromUtc: null,
+}
+```
+
+Arrays for kinds not present in `includeMask` are empty. Consecutive segments
+of one kind chain exactly (`end` equals the next segment's `start`); the
+first segment of each kind may start before `fromUtc` and the last may end
+after `toUtc`. When the cap is hit, `truncated` is `true` and `nextFromUtc`
+carries the resume point: call `panchangEvents` again from `nextFromUtc` and
+deduplicate merged segments on `(kind, start)` (resumed sweeps re-solve
+boundaries, so match starts with a small tolerance).
 
 `jyotish.js` exports:
 
@@ -247,6 +281,10 @@ carries per-element `*Valid` flags (`tithiValid`, `vaarValid`, `masaValid`,
   - `amshaRashiInfo`
   - `amshaLongitudes`
   - `amshaChartForDate`
+  - `amshaSeries`
+  - `amshaLagnaEvents`
+  - `MAX_AMSHA_SERIES_CELLS`
+  - `MAX_AMSHA_LAGNA_SEGMENTS`
 - graha relationship, combustion, dignity, and classification helpers:
   - `horaLord`
   - `masaLord`
@@ -377,6 +415,45 @@ Common config objects:
   location, bhavaConfig, ayanamshaSystem, useNutation, config)` —
   fixed-cadence sampling of the same op (endpoints inclusive on the grid,
   max 10,000 points); returns an array of `{ utc, jdUtc, positions }`.
+
+- `amshaSeries(engine, eop, fromUtc, toUtc, stepMinutes, location,
+  amshaCodes, variationCodes = null, includeGrahas = true,
+  sankrantiConfig = default)` — fixed-cadence slim varga charts: one point
+  per `stepMinutes` starting at `fromUtc` (endpoints inclusive when on the
+  grid). `amshaCodes` is a non-empty array of amsha codes; `variationCodes`
+  is `null` (each amsha's default variation) or a parallel array of variation
+  codes. Returns an array of points
+  `{ utc, jdUtc, charts: [{ amshaCode, variationCode, lagna, grahas }] }`
+  with one chart per request, in request order (duplicates repeated).
+  `lagna` and each `grahas` element use the amsha-entry shape
+  (`siderealLongitude`, `rashiIndex`, `dmsDegrees`, `dmsMinutes`,
+  `dmsSeconds`, `degreesInRashi`); `grahas` is `null` unless `includeGrahas`
+  is `true`. Rejects `stepMinutes === 0`, reversed ranges, empty or invalid
+  request lists, and grids whose points x unique requests exceed
+  `MAX_AMSHA_SERIES_CELLS` (100,000). Narrow the range, increase the step,
+  or split the request list to stay under the cap.
+
+- `amshaLagnaEvents(engine, eop, fromUtc, toUtc, location, amshaCodes,
+  variationCodes = null, maxSegments = 0, sankrantiConfig = default)` —
+  exact varga-lagna rashi segments overlapping `[fromUtc, toUtc]` (exact
+  transition boundaries, no sampling grid). One entry per unique
+  `(amshaCode, variationCode)` request (duplicates collapsed), in request
+  order. `maxSegments` caps the total segments across all amshas; `0`
+  selects the hard ceiling `MAX_AMSHA_LAGNA_SEGMENTS` (50,000). Returns:
+
+  ```js
+  {
+    entries: [{ amshaCode, variationCode,
+                segments: [{ rashiIndex, start, end }, ...] }],
+    truncated: false,
+    nextFromUtc: null,
+  }
+  ```
+
+  Per entry, segments chain exactly (`end` equals the next segment's
+  `start`); the first segment starts at `fromUtc` and the last ends at the
+  first transition at or after `toUtc`. When truncated, resume from
+  `nextFromUtc` and deduplicate merged segments on their `start`.
 
 Grahan results also carry apparent equatorial coordinates at greatest
 grahan: `moonRightAscensionDeg`/`moonDeclinationDeg` on chandra grahan
