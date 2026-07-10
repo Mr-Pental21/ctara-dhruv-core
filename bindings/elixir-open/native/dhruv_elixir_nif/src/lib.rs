@@ -19,17 +19,17 @@ use dhruv_search::operations::{
 use dhruv_search::{
     GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
     GocharTransitBody, NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL,
-    PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_VARSHA, SankrantiConfig,
-    StationaryConfig, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
-    TransitAspectOwner, TransitToNatalAspectEvent, ayanamsha, body_ecliptic_lon_lat, conjunction,
-    dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
-    dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
-    dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth,
-    dasha_level0_entity_with_inputs, dasha_level0_for_birth, dasha_level0_with_inputs,
-    dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
-    ghatika_from_sunrises, gochar_events, graha_longitudes, hora_from_sunrises, karana_at,
-    lunar_node, motion, nakshatra_at, panchang, set_time_conversion_policy, sidereal_sum_at,
-    tara as tara_op, tithi_at, vaar_from_sunrises, vedic_day_sunrises, yoga_at,
+    SankrantiConfig, StationaryConfig, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
+    TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent, ayanamsha,
+    body_ecliptic_lon_lat, conjunction, dasha_child_period_for_birth,
+    dasha_child_period_with_inputs, dasha_children_for_birth, dasha_children_with_inputs,
+    dasha_complete_level_for_birth, dasha_complete_level_with_inputs, dasha_hierarchy_for_birth,
+    dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth, dasha_level0_entity_with_inputs,
+    dasha_level0_for_birth, dasha_level0_with_inputs, dasha_snapshot_at, dasha_snapshot_with_inputs,
+    elongation_at, full_kundali_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes,
+    hora_from_sunrises, karana_at, lunar_node, motion, nakshatra_at, panchang,
+    panchang_include_bits, set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at,
+    vaar_from_sunrises, vedic_day_sunrises, yoga_at,
 };
 use dhruv_search::{
     GrahaLongitudeKind, GrahaLongitudesConfig, all_upagrahas_for_date,
@@ -180,6 +180,17 @@ struct GeoLocationInput {
     altitude_m: Option<f64>,
 }
 
+/// Panchang include-mask input: an integer mask, an element/group name
+/// (e.g. `"all"`, `"location_independent"`, `"tithi"`, `"none"`), or a list
+/// of element/group names OR-ed together.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum PanchangIncludeInput {
+    Int(u32),
+    Str(String),
+    List(Vec<String>),
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct QueryInput {
     target: EnumInput,
@@ -254,7 +265,7 @@ struct PanchangRequest {
     moon_sidereal_deg: Option<f64>,
     body: Option<EnumInput>,
     location: Option<GeoLocationInput>,
-    include_calendar: Option<bool>,
+    include_mask: Option<PanchangIncludeInput>,
     riseset_config: Option<RiseSetConfigInput>,
     sankranti_config: Option<SankrantiConfigInput>,
 }
@@ -480,8 +491,7 @@ struct FullKundaliConfigInput {
     include_vimsopaka: Option<bool>,
     include_avastha: Option<bool>,
     include_charakaraka: Option<bool>,
-    include_panchang: Option<bool>,
-    include_calendar: Option<bool>,
+    panchang_include_mask: Option<PanchangIncludeInput>,
     include_dasha: Option<bool>,
     charakaraka_scheme: Option<EnumInput>,
     node_dignity_policy: Option<EnumInput>,
@@ -1560,6 +1570,31 @@ fn parse_location(input: GeoLocationInput) -> GeoLocation {
     }
 }
 
+fn parse_panchang_include_mask(input: &PanchangIncludeInput) -> Result<u32, Value> {
+    let name_bits = |name: &str| -> Result<u32, Value> {
+        if name.eq_ignore_ascii_case("none") {
+            return Ok(0);
+        }
+        panchang_include_bits(name).ok_or_else(|| {
+            error_payload(
+                "invalid_request",
+                format!("unknown panchang include name '{name}'"),
+            )
+        })
+    };
+    match input {
+        PanchangIncludeInput::Int(mask) => Ok(*mask),
+        PanchangIncludeInput::Str(name) => name_bits(name),
+        PanchangIncludeInput::List(names) => {
+            let mut mask = 0_u32;
+            for name in names {
+                mask |= name_bits(name)?;
+            }
+            Ok(mask)
+        }
+    }
+}
+
 fn to_riseset_config(
     state: &EngineState,
     input: Option<&RiseSetConfigInput>,
@@ -2053,11 +2088,8 @@ fn to_full_kundali_config(
         if let Some(value) = input.include_charakaraka {
             config.include_charakaraka = value;
         }
-        if let Some(value) = input.include_panchang {
-            config.include_panchang = value;
-        }
-        if let Some(value) = input.include_calendar {
-            config.include_calendar = value;
+        if let Some(value) = input.panchang_include_mask.as_ref() {
+            config.panchang_include_mask = parse_panchang_include_mask(value)?;
         }
         if let Some(value) = input.include_dasha {
             config.include_dasha = value;
@@ -3205,18 +3237,7 @@ fn full_kundali_json(result: dhruv_search::FullKundaliResult) -> Value {
         "vimsopaka": result.vimsopaka.map(vimsopaka_json),
         "avastha": result.avastha.map(avastha_json),
         "charakaraka": result.charakaraka.map(charakaraka_json),
-        "panchang": result.panchang.map(|panchang| panchang_value_json(&PanchangResult {
-            tithi: Some(panchang.tithi),
-            karana: Some(panchang.karana),
-            yoga: Some(panchang.yoga),
-            vaar: Some(panchang.vaar),
-            hora: Some(panchang.hora),
-            ghatika: Some(panchang.ghatika),
-            nakshatra: Some(panchang.nakshatra),
-            masa: panchang.masa,
-            ayana: panchang.ayana,
-            varsha: panchang.varsha
-        })),
+        "panchang": result.panchang.as_ref().map(panchang_value_json),
         "dasha": result.dasha.map(|items| items.into_iter().map(dasha_hierarchy_json).collect::<Vec<_>>()),
         "dasha_snapshots": result.dasha_snapshots.map(|items| items.into_iter().map(dasha_snapshot_json).collect::<Vec<_>>())
     })
@@ -3712,11 +3733,12 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
             .ok_or_else(|| error_payload("missing_eop", "panchang requires loaded EOP data"))?;
         apply_time_policy(state);
         let utc = request.utc.clone().map(parse_utc).transpose()?;
-        let location = parse_location(request.location.unwrap_or(GeoLocationInput {
+        let location = request.location.map(parse_location);
+        let location_or_default = location.unwrap_or(GeoLocation {
             latitude_deg: 0.0,
             longitude_deg: 0.0,
-            altitude_m: Some(0.0),
-        }));
+            altitude_m: 0.0,
+        });
         let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
         let sankranti_config = to_sankranti_config(state, request.sankranti_config.as_ref())?;
         let result = match request.op.as_str() {
@@ -3748,19 +3770,19 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                 let utc = utc
                     .as_ref()
                     .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
-                json!({ "vaar": vaar_json(dhruv_search::vaar_for_date(engine, eop, utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
+                json!({ "vaar": vaar_json(dhruv_search::vaar_for_date(engine, eop, utc, &location_or_default, &riseset_config).map_err(|err| map_error("search_error", err))?) })
             }
             "hora" => {
                 let utc = utc
                     .as_ref()
                     .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
-                json!({ "hora": hora_json(dhruv_search::hora_for_date(engine, eop, utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
+                json!({ "hora": hora_json(dhruv_search::hora_for_date(engine, eop, utc, &location_or_default, &riseset_config).map_err(|err| map_error("search_error", err))?) })
             }
             "ghatika" => {
                 let utc = utc
                     .as_ref()
                     .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
-                json!({ "ghatika": ghatika_json(dhruv_search::ghatika_for_date(engine, eop, utc, &location, &riseset_config).map_err(|err| map_error("search_error", err))?) })
+                json!({ "ghatika": ghatika_json(dhruv_search::ghatika_for_date(engine, eop, utc, &location_or_default, &riseset_config).map_err(|err| map_error("search_error", err))?) })
             }
             "masa" => {
                 let utc = utc
@@ -3784,12 +3806,10 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                 let utc = utc
                     .as_ref()
                     .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
-                let include_mask = PANCHANG_INCLUDE_ALL
-                    - if request.include_calendar.unwrap_or(false) {
-                        0
-                    } else {
-                        PANCHANG_INCLUDE_MASA | PANCHANG_INCLUDE_AYANA | PANCHANG_INCLUDE_VARSHA
-                    };
+                let include_mask = match request.include_mask.as_ref() {
+                    Some(input) => parse_panchang_include_mask(input)?,
+                    None => PANCHANG_INCLUDE_ALL,
+                };
                 let op = PanchangOperation {
                     at_utc: *utc,
                     location,
@@ -3821,7 +3841,7 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                     .as_ref()
                     .ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
                 let (sunrise_jd, next_sunrise_jd) =
-                    vedic_day_sunrises(engine, eop, utc, &location, &riseset_config)
+                    vedic_day_sunrises(engine, eop, utc, &location_or_default, &riseset_config)
                         .map_err(|err| map_error("search_error", err))?;
                 json!({
                     "sunrise_jd": sunrise_jd,
@@ -5786,8 +5806,7 @@ mod tests {
                 include_vimsopaka: None,
                 include_avastha: None,
                 include_charakaraka: None,
-                include_panchang: None,
-                include_calendar: None,
+                panchang_include_mask: None,
                 include_dasha: None,
                 charakaraka_scheme: None,
                 node_dignity_policy: None,
@@ -5850,8 +5869,7 @@ mod tests {
                 include_vimsopaka: None,
                 include_avastha: None,
                 include_charakaraka: None,
-                include_panchang: None,
-                include_calendar: None,
+                panchang_include_mask: None,
                 include_dasha: Some(true),
                 charakaraka_scheme: None,
                 node_dignity_policy: None,
@@ -5903,8 +5921,7 @@ mod tests {
                 include_vimsopaka: None,
                 include_avastha: None,
                 include_charakaraka: None,
-                include_panchang: None,
-                include_calendar: None,
+                panchang_include_mask: None,
                 include_dasha: Some(true),
                 charakaraka_scheme: None,
                 node_dignity_policy: None,

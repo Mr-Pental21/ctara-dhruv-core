@@ -291,6 +291,25 @@ intermediate helpers, `CtaraDhruv.Math` covers the pure helper surface, and
 `CtaraDhruv.Tara` exposes the low-level propagation/correction primitives in
 addition to the main request/config compute API.
 
+## Panchang Element Selection
+
+`CtaraDhruv.Panchang.daily/2` accepts an optional `:include_mask` selecting
+which panchang elements to compute: an integer `PANCHANG_INCLUDE_*` bitmask, a
+single name, or a list of names OR-ed together. Accepted names
+(case-insensitive) are the ten elements (`tithi`, `karana`, `yoga`,
+`nakshatra`, `vaar`, `hora`, `ghatika`, `masa`, `ayana`, `varsha`) and the
+groups `all`, `all_core`, `all_calendar`, `location_independent`,
+`location_dependent`, plus `none`. When omitted, all elements are computed.
+The result map carries `nil` for elements not selected.
+
+`:location` is optional for `daily/2`; it is only required when a
+location-dependent element (`vaar`, `hora`, `ghatika`) is selected.
+
+`full_kundali_config` selects embedded panchang output with
+`:panchang_include_mask`, accepting the same integer/name/list forms
+(default `0` omits panchang). It replaces the former
+`:include_panchang`/`:include_calendar` booleans.
+
 ## Time-Based Upagraha Config
 
 The Elixir wrapper accepts `:upagraha_config` maps for:
