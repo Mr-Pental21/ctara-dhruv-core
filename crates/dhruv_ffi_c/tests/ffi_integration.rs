@@ -3928,7 +3928,10 @@ fn ffi_full_kundali_bhava_off_calendar_on() {
     let r = unsafe { &*result.as_ptr() };
 
     assert_eq!(r.bhava_cusps_valid, 0, "bhava cusps should be off");
-    assert_eq!(r.panchang_valid, 1, "calendar mask implies panchang section");
+    assert_eq!(
+        r.panchang_valid, 1,
+        "calendar mask implies panchang section"
+    );
     assert_eq!(r.panchang.masa_valid, 1);
 
     unsafe { dhruv_full_kundali_result_free(result.as_mut_ptr()) };
@@ -4367,5 +4370,559 @@ fn ffi_moving_osculating_apogees_for_date_basic_and_invalid_graha() {
     };
     assert_eq!(s, DhruvStatus::InvalidSearchConfig);
 
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+// ---------------------------------------------------------------------------
+// Range operations: amsha series / panchang events / amsha lagna events
+// ---------------------------------------------------------------------------
+
+fn utc_fields_eq(a: &DhruvUtcTime, b: &DhruvUtcTime) -> bool {
+    a.year == b.year
+        && a.month == b.month
+        && a.day == b.day
+        && a.hour == b.hour
+        && a.minute == b.minute
+        && a.second == b.second
+}
+
+fn utc_to_jd_approx(t: &DhruvUtcTime) -> f64 {
+    calendar_to_jd(
+        t.year,
+        t.month,
+        t.day as f64 + (t.hour as f64 + (t.minute as f64 + t.second / 60.0) / 60.0) / 24.0,
+    )
+}
+
+#[test]
+fn ffi_amsha_series_matches_amsha_chart_for_date() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(v) => v,
+        None => return,
+    };
+    let (from, loc, bhava, rs) = kundali_test_params();
+    let to = DhruvUtcTime {
+        hour: from.hour + 2,
+        ..from
+    };
+    let sankranti = dhruv_sankranti_config_default();
+    let codes = [9u16, 1u16, 9u16]; // D9, D1, duplicate D9
+
+    let mut handle: DhruvAmshaSeriesHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_amsha_series(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            60,
+            &loc,
+            &sankranti,
+            codes.as_ptr(),
+            ptr::null(),
+            3,
+            1,
+            &mut handle,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(!handle.is_null());
+
+    let mut point_count = 0u32;
+    let s = unsafe { dhruv_amsha_series_point_count(handle, &mut point_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(point_count, 3, "2h span at 60min step = 3 points");
+
+    let mut chart_count = 0u32;
+    let s = unsafe { dhruv_amsha_series_chart_count(handle, &mut chart_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(
+        chart_count, 3,
+        "charts in request order, duplicates repeated"
+    );
+
+    // First point epoch must be the requested from time.
+    let mut point_utc = ZEROED_UTC;
+    let mut jd_utc = 0.0f64;
+    let s = unsafe { dhruv_amsha_series_point_at(handle, 0, &mut point_utc, &mut jd_utc) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!((utc_to_jd_approx(&point_utc) - utc_to_jd_approx(&from)).abs() < 1e-5);
+    assert!((jd_utc - utc_to_jd_approx(&from)).abs() < 1e-5);
+
+    // Chart 0 (D9) and chart 2 (duplicate D9) must be identical.
+    let mut chart0: DhruvAmshaSeriesChart = unsafe { std::mem::zeroed() };
+    let mut chart2: DhruvAmshaSeriesChart = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_amsha_series_chart_at(handle, 0, 0, &mut chart0) };
+    assert_eq!(s, DhruvStatus::Ok);
+    let s = unsafe { dhruv_amsha_series_chart_at(handle, 0, 2, &mut chart2) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(chart0.amsha_code, 9);
+    assert_eq!(chart0.variation_code, 0);
+    assert_eq!(chart0.grahas_valid, 1);
+    assert_eq!(chart2.amsha_code, 9);
+    assert_eq!(
+        chart0.lagna.sidereal_longitude,
+        chart2.lagna.sidereal_longitude
+    );
+
+    // Chart index bounds.
+    let mut oob: DhruvAmshaSeriesChart = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_amsha_series_chart_at(handle, 0, 3, &mut oob) };
+    assert_eq!(s, DhruvStatus::InvalidInput);
+    let s = unsafe { dhruv_amsha_series_chart_at(handle, 3, 0, &mut oob) };
+    assert_eq!(s, DhruvStatus::InvalidInput);
+
+    // Cross-check the first-epoch D9 chart against the single-epoch op.
+    let scope = DhruvAmshaChartScope {
+        include_bhava_cusps: 0,
+        include_arudha_padas: 0,
+        include_upagrahas: 0,
+        include_sphutas: 0,
+        include_special_lagnas: 0,
+        include_outer_planets: 0,
+    };
+    let mut single: DhruvAmshaChart = unsafe { std::mem::zeroed() };
+    let s = unsafe {
+        dhruv_amsha_chart_for_date(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &loc,
+            &bhava,
+            &rs,
+            sankranti.ayanamsha_system as u32,
+            sankranti.use_nutation,
+            9,
+            0,
+            &scope,
+            &mut single,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(
+        angular_separation_deg(
+            chart0.lagna.sidereal_longitude,
+            single.lagna.sidereal_longitude
+        ) < 1e-6,
+        "series lagna {} vs single-epoch lagna {}",
+        chart0.lagna.sidereal_longitude,
+        single.lagna.sidereal_longitude
+    );
+    for g in 0..9 {
+        assert!(
+            angular_separation_deg(
+                chart0.grahas[g].sidereal_longitude,
+                single.grahas[g].sidereal_longitude
+            ) < 1e-6,
+            "graha {g}: series {} vs single {}",
+            chart0.grahas[g].sidereal_longitude,
+            single.grahas[g].sidereal_longitude
+        );
+    }
+
+    unsafe { dhruv_amsha_series_free(handle) };
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_panchang_events_tithi_count_and_chaining() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(v) => v,
+        None => return,
+    };
+    let from = DhruvUtcTime {
+        year: 2024,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
+    let to = DhruvUtcTime {
+        month: 2,
+        day: 5,
+        ..from
+    };
+    let sankranti = dhruv_sankranti_config_default();
+
+    let mut handle: DhruvPanchangEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_panchang_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            DHRUV_PANCHANG_INCLUDE_TITHI,
+            &sankranti,
+            0,
+            &mut handle,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(!handle.is_null());
+
+    let mut count = 0u32;
+    let s = unsafe { dhruv_panchang_events_tithi_count(handle, &mut count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    // ~35 days of tithis (mean tithi length is a bit under one day).
+    assert!(
+        (34..=40).contains(&count),
+        "unexpected tithi count over 35 days: {count}"
+    );
+
+    // Segments chain exactly; first starts at/before from, last ends at/after to.
+    let mut prev: DhruvTithiInfo = unsafe { std::mem::zeroed() };
+    for idx in 0..count {
+        let mut info: DhruvTithiInfo = unsafe { std::mem::zeroed() };
+        let s = unsafe { dhruv_panchang_events_tithi_at(handle, idx, &mut info) };
+        assert_eq!(s, DhruvStatus::Ok);
+        assert!((0..30).contains(&info.tithi_index));
+        if idx > 0 {
+            assert!(
+                utc_fields_eq(&prev.end, &info.start),
+                "segment {idx} does not chain: prev.end != start"
+            );
+            assert_eq!(
+                info.tithi_index,
+                (prev.tithi_index + 1) % 30,
+                "segment {idx} tithi index not consecutive"
+            );
+        }
+        prev = info;
+    }
+    let mut first: DhruvTithiInfo = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_panchang_events_tithi_at(handle, 0, &mut first) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(utc_to_jd_approx(&first.start) <= utc_to_jd_approx(&from) + 1e-5);
+    assert!(utc_to_jd_approx(&prev.end) >= utc_to_jd_approx(&to) - 1e-5);
+
+    // Index out of bounds.
+    let mut oob: DhruvTithiInfo = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_panchang_events_tithi_at(handle, count, &mut oob) };
+    assert_eq!(s, DhruvStatus::InvalidInput);
+
+    // Unselected kinds are empty.
+    let mut masa_count = 99u32;
+    let s = unsafe { dhruv_panchang_events_masa_count(handle, &mut masa_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(masa_count, 0);
+
+    // Not truncated.
+    let mut truncated = 1u8;
+    let mut next_valid = 1u8;
+    let mut next_utc = ZEROED_UTC;
+    let s = unsafe {
+        dhruv_panchang_events_meta(handle, &mut truncated, &mut next_valid, &mut next_utc)
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(truncated, 0);
+    assert_eq!(next_valid, 0);
+    unsafe { dhruv_panchang_events_free(handle) };
+
+    // Truncation: a tiny event budget must mark the result truncated and
+    // provide a resume point.
+    let mut small: DhruvPanchangEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_panchang_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            DHRUV_PANCHANG_INCLUDE_TITHI,
+            &sankranti,
+            5,
+            &mut small,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    let mut small_count = 0u32;
+    let s = unsafe { dhruv_panchang_events_tithi_count(small, &mut small_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(small_count, 5);
+    let s = unsafe {
+        dhruv_panchang_events_meta(small, &mut truncated, &mut next_valid, &mut next_utc)
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(truncated, 1);
+    assert_eq!(next_valid, 1);
+    assert!(utc_to_jd_approx(&next_utc) > utc_to_jd_approx(&from));
+    unsafe { dhruv_panchang_events_free(small) };
+
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_amsha_lagna_events_d1_smoke() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(v) => v,
+        None => return,
+    };
+    let (_, loc, _, _) = kundali_test_params();
+    let from = DhruvUtcTime {
+        year: 2024,
+        month: 1,
+        day: 15,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
+    let to = DhruvUtcTime { day: 16, ..from };
+    let sankranti = dhruv_sankranti_config_default();
+    let codes = [1u16]; // D1
+
+    let mut handle: DhruvAmshaLagnaEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_amsha_lagna_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            &loc,
+            &sankranti,
+            codes.as_ptr(),
+            ptr::null(),
+            1,
+            0,
+            &mut handle,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(!handle.is_null());
+
+    let mut entry_count = 0u32;
+    let s = unsafe { dhruv_amsha_lagna_events_entry_count(handle, &mut entry_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(entry_count, 1);
+
+    let mut amsha_code = 0u16;
+    let mut variation_code = 99u8;
+    let s = unsafe {
+        dhruv_amsha_lagna_events_entry_info(handle, 0, &mut amsha_code, &mut variation_code)
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(amsha_code, 1);
+    assert_eq!(variation_code, 0);
+
+    let mut seg_count = 0u32;
+    let s = unsafe { dhruv_amsha_lagna_events_segment_count(handle, 0, &mut seg_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    // The D1 lagna sweeps all 12 rashis in about one sidereal day.
+    assert!(
+        (12..=14).contains(&seg_count),
+        "unexpected D1 segment count over 24h: {seg_count}"
+    );
+
+    let mut prev: DhruvAmshaLagnaSegment = unsafe { std::mem::zeroed() };
+    for idx in 0..seg_count {
+        let mut seg: DhruvAmshaLagnaSegment = unsafe { std::mem::zeroed() };
+        let s = unsafe { dhruv_amsha_lagna_events_segment_at(handle, 0, idx, &mut seg) };
+        assert_eq!(s, DhruvStatus::Ok);
+        assert!(seg.rashi_index < 12);
+        assert!(utc_to_jd_approx(&seg.end) > utc_to_jd_approx(&seg.start));
+        if idx > 0 {
+            assert!(
+                utc_fields_eq(&prev.end, &seg.start),
+                "segment {idx} does not chain"
+            );
+            assert_eq!(
+                seg.rashi_index,
+                (prev.rashi_index + 1) % 12,
+                "segment {idx} rashi not consecutive"
+            );
+        }
+        prev = seg;
+    }
+
+    // Bounds checks.
+    let mut oob: DhruvAmshaLagnaSegment = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_amsha_lagna_events_segment_at(handle, 0, seg_count, &mut oob) };
+    assert_eq!(s, DhruvStatus::InvalidInput);
+    let s = unsafe { dhruv_amsha_lagna_events_segment_at(handle, 1, 0, &mut oob) };
+    assert_eq!(s, DhruvStatus::InvalidInput);
+
+    let mut truncated = 1u8;
+    let mut next_valid = 1u8;
+    let mut next_utc = ZEROED_UTC;
+    let s = unsafe {
+        dhruv_amsha_lagna_events_meta(handle, &mut truncated, &mut next_valid, &mut next_utc)
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(truncated, 0);
+    assert_eq!(next_valid, 0);
+
+    unsafe { dhruv_amsha_lagna_events_free(handle) };
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_range_ops_reject_invalid_masks_and_empty_requests() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(v) => v,
+        None => return,
+    };
+    let (from, loc, _, _) = kundali_test_params();
+    let to = DhruvUtcTime {
+        day: from.day + 1,
+        ..from
+    };
+    let sankranti = dhruv_sankranti_config_default();
+    let codes = [9u16];
+
+    // panchang_events: zero mask.
+    let mut pe: DhruvPanchangEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_panchang_events(engine_ptr, eop_ptr, &from, &to, 0, &sankranti, 0, &mut pe)
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // panchang_events: location-dependent bit (vaar) is rejected.
+    let s = unsafe {
+        dhruv_panchang_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            DHRUV_PANCHANG_INCLUDE_TITHI | DHRUV_PANCHANG_INCLUDE_VAAR,
+            &sankranti,
+            0,
+            &mut pe,
+        )
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // panchang_events: unknown bit.
+    let s = unsafe {
+        dhruv_panchang_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            1 << 10,
+            &sankranti,
+            0,
+            &mut pe,
+        )
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // amsha_series: empty request list.
+    let mut series: DhruvAmshaSeriesHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_amsha_series(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            60,
+            &loc,
+            &sankranti,
+            codes.as_ptr(),
+            ptr::null(),
+            0,
+            0,
+            &mut series,
+        )
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // amsha_series: zero step.
+    let s = unsafe {
+        dhruv_amsha_series(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            0,
+            &loc,
+            &sankranti,
+            codes.as_ptr(),
+            ptr::null(),
+            1,
+            0,
+            &mut series,
+        )
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // amsha_series: reversed range.
+    let s = unsafe {
+        dhruv_amsha_series(
+            engine_ptr,
+            eop_ptr,
+            &to,
+            &from,
+            60,
+            &loc,
+            &sankranti,
+            codes.as_ptr(),
+            ptr::null(),
+            1,
+            0,
+            &mut series,
+        )
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // amsha_series: invalid amsha code.
+    let bad_codes = [999u16];
+    let s = unsafe {
+        dhruv_amsha_series(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            60,
+            &loc,
+            &sankranti,
+            bad_codes.as_ptr(),
+            ptr::null(),
+            1,
+            0,
+            &mut series,
+        )
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // amsha_lagna_events: empty request list.
+    let mut events: DhruvAmshaLagnaEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_amsha_lagna_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            &loc,
+            &sankranti,
+            codes.as_ptr(),
+            ptr::null(),
+            0,
+            0,
+            &mut events,
+        )
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    // amsha_lagna_events: null codes with non-zero count.
+    let s = unsafe {
+        dhruv_amsha_lagna_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            &loc,
+            &sankranti,
+            ptr::null(),
+            ptr::null(),
+            1,
+            0,
+            &mut events,
+        )
+    };
+    assert_eq!(s, DhruvStatus::NullPointer);
+
+    unsafe { dhruv_eop_free(eop_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };
 }

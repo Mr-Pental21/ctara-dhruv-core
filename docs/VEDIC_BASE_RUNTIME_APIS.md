@@ -121,6 +121,27 @@ This document lists crate-root runtime free functions re-exported by
 | `time_upagraha_planet` | `(u8, bool)` | Planet and day/night mapping for time upagraha. |
 | `time_upagraha_jd` | `f64` | JD at which to evaluate lagna for time upagraha. |
 
+## Amsha Module (`dhruv_vedic_base::amsha`)
+
+Pure divisional-chart functions re-exported from `dhruv_vedic_math::amsha`
+through the public `amsha` module (not the crate root).
+
+| Function | Output | Purpose |
+|---|---|---|
+| `amsha_longitude` | `f64` | Transform a sidereal longitude through one amsha division. |
+| `amsha_longitudes` | `Vec<f64>` | Batch transform through multiple amsha requests. |
+| `amsha_rashi_info` | `RashiInfo` | Rashi info for a longitude transformed through one amsha. |
+| `amsha_rashi_infos` | `Vec<RashiInfo>` | Batch rashi info for multiple amsha requests. |
+| `amsha_from_rashi_position` | `f64` | Amsha longitude from rashi index + degrees in rashi. |
+| `rashi_position_to_longitude` | `f64` | Absolute longitude from rashi index + degrees in rashi. |
+| `next_amsha_boundary_longitude` | `f64` | Smallest longitude strictly greater than the input at which the varga rashi of the amsha changes. Returned as `sidereal_lon + delta` (`delta > 0`), an exact division boundary, so monotone trackers (e.g. the ascendant over time) need no wrap-around handling. Used by `amsha_lagna_events`. |
+| `amsha_variations` | `&'static [AmshaVariationInfo]` | Variation catalog entries for one amsha. |
+| `amsha_variation_catalog` | `AmshaVariationCatalog` | Catalog with default code for one amsha. |
+| `amsha_variation_info` | lookup | Variation info by amsha + code. |
+| `amsha_variation_by_name` | `Option<&AmshaVariationInfo>` | Variation info by amsha + name. |
+| `default_amsha_variation` | `AmshaVariationCode` | Default variation code for an amsha. |
+| `is_valid_amsha_variation` | `bool` | Whether a variation code is valid for an amsha. |
+
 ## Utility
 
 | Function | Output | Purpose |

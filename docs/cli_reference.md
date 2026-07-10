@@ -230,6 +230,28 @@ dhruv panchang --date 2024-03-20T12:00:00Z --bsp de442s.bsp --lsk naif0012.tls -
 Only the selected elements are computed. Selections without vaar/hora/ghatika
 need no `--lat`/`--lon` (e.g. `--elements location_independent`).
 
+### `panchang-events` — Element boundary events over a UTC range
+
+```
+dhruv panchang-events --start 2024-03-01T00:00:00Z --end 2024-04-01T00:00:00Z \
+  --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all --elements tithi,masa
+```
+
+Streams exact element segments overlapping `[start, end]`, one warm-seeded
+boundary search per emitted segment. Location-independent elements only, so
+there are no location flags.
+
+| Flag | Description |
+|---|---|
+| `--start` / `--end` | UTC range (`YYYY-MM-DDThh:mm:ssZ`) |
+| `--elements` | Comma-separated element or group names (location-independent only, default `location_independent`): `tithi,karana,yoga,nakshatra,masa,ayana,varsha,location_independent` |
+| `--max-events` | Maximum total segments across all elements (0 = library ceiling of 50000) |
+
+Consecutive segments of one kind chain exactly (`end == next start`); the
+first segment of each kind may start before `--start` and the last may end
+after `--end`. When the cap is hit, output is marked truncated with a resume
+point.
+
 ---
 
 ## Panchang Elements
@@ -434,6 +456,49 @@ dhruv amsha-chart --date 2024-03-20T12:00:00Z --lat 28.6 --lon 77.2 \
 | `--include-upagrahas` | Include upagrahas inside each amsha chart |
 | `--include-sphutas` | Include sphutas inside each amsha chart |
 | `--include-special-lagnas` | Include special lagnas inside each amsha chart |
+
+### `amsha-series` — Slim amsha charts at a fixed cadence over a UTC range
+
+```
+dhruv amsha-series --date 2024-03-20T00:00:00Z --to-date 2024-03-21T00:00:00Z \
+  --step-minutes 60 --lat 28.6 --lon 77.2 \
+  --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all \
+  --amsha D9,D10 --include-grahas
+```
+
+Samples one slim chart per amsha request at each grid point (grid semantics
+match the `graha-positions` `--to-date`/`--step-minutes` series mode: one
+point per `--step-minutes` starting at `--date`, endpoints inclusive when on
+the grid). The varga lagna is always
+computed; graha entries are added with `--include-grahas`. Capped at 100,000
+cells (points x unique requests).
+
+| Flag | Description |
+|---|---|
+| `--date` / `--to-date` | UTC range (`YYYY-MM-DDThh:mm:ssZ`) |
+| `--step-minutes` | Sampling cadence in minutes (>= 1) |
+| `--amsha` | Comma-separated amsha specs: `D<n>[:variation]` |
+| `--include-grahas` | Include the nine grahas per chart (varga lagna is always included) |
+
+### `amsha-lagna-events` — Exact varga-lagna rashi segments over a UTC range
+
+```
+dhruv amsha-lagna-events --start 2024-03-20T00:00:00Z --end 2024-03-21T00:00:00Z \
+  --lat 28.6 --lon 77.2 \
+  --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all \
+  --amsha D9,D60
+```
+
+Root-finds the exact times the varga lagna changes rashi — no sampling grid,
+so fast vargas such as D60 cannot alias between samples. One entry per unique
+amsha request; the first segment starts at `--start`, later boundaries are
+exact transitions.
+
+| Flag | Description |
+|---|---|
+| `--start` / `--end` | UTC range (`YYYY-MM-DDThh:mm:ssZ`) |
+| `--amsha` | Comma-separated amsha specs: `D<n>[:variation]` |
+| `--max-segments` | Maximum total segments across all amshas (0 = library ceiling of 50000) |
 
 ### `kundali` — Full-kundali orchestration with amsha selection/scope
 

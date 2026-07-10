@@ -58,6 +58,18 @@ defmodule CtaraDhruv.Math do
   def upagraha_name(request),
     do: Native.call_util(&Native.util_run/1, Map.put(request, :op, :upagraha_name))
 
+  @doc """
+  Engine-free batched varga mapping.
+
+  The request takes `:longitudes` (list of sidereal longitudes in degrees)
+  and `:amsha_requests` (`[%{code: ..., variation: ...}]`). Returns
+  `%{"entries" => [[...]]}`: one list per longitude with one map per request
+  carrying `"amsha_longitude"`, `"rashi"`, `"rashi_index"`,
+  `"degrees_in_rashi"`, and `"dms"`.
+  """
+  def amsha_rashi_infos(request),
+    do: Native.call_util(&Native.util_run/1, Map.put(request, :op, :amsha_rashi_infos))
+
   def amsha_variations(request),
     do: Native.call_util(&Native.util_run/1, Map.put(request, :op, :amsha_variations))
 

@@ -237,6 +237,100 @@ it replaces the former `include_panchang`/`include_calendar` booleans, and
 `FullKundaliResult.panchang` is `Option<PanchangResult>` containing only the
 selected elements.
 
+## Panchang Events Over a Range
+
+`panchang_events` (re-exported from `dhruv_search`) streams every element
+segment overlapping a UTC range in one call, with exact boundary times. It
+supports location-independent elements only — the `include_mask` must stay
+within `PANCHANG_INCLUDE_LOCATION_INDEPENDENT` bits — and returns per-kind
+`Vec`s of the same `*Info` structs the per-moment ops use. Consecutive
+segments of one kind chain exactly (`end == next.start`); the first segment
+may start before `from_utc` and the last may end after `to_utc`. `max_events`
+caps the total segments across all kinds (`0` selects the
+`MAX_PANCHANG_EVENTS` = 50,000 ceiling); a capped result sets `truncated` and
+`next_from_utc` for resuming (deduplicate on `(kind, start)`). Nakshatra
+events report the segment-start pada (always 1).
+
+```rust
+use dhruv_rs::{PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_TITHI, panchang_events};
+
+let events = panchang_events(
+    ctx.engine(),
+    &eop,
+    &from_utc,
+    &to_utc,
+    PANCHANG_INCLUDE_TITHI | PANCHANG_INCLUDE_MASA,
+    &SankrantiConfig::default_lahiri(),
+    0, // library ceiling
+)?;
+for tithi in &events.tithi {
+    println!("{:?}: {:?} -> {:?}", tithi.tithi, tithi.start, tithi.end);
+}
+assert!(!events.truncated);
+```
+
+## Amsha Series and Amsha Lagna Events
+
+`amsha_series` samples slim varga charts at a fixed cadence over
+`[from_utc, to_utc]` (grid semantics identical to `graha_positions_series`).
+The varga lagna is always computed per requested amsha; pass
+`include_grahas = true` to add the nine graha varga entries. Charts come back
+in request order; the grid is capped at `MAX_AMSHA_SERIES_CELLS` = 100,000
+cells (points x unique requests).
+
+```rust
+use dhruv_rs::amsha_series;
+use dhruv_vedic_base::{Amsha, AmshaRequest};
+
+let series = amsha_series(
+    ctx.engine(),
+    &eop,
+    &from_utc,
+    &to_utc,
+    60, // step_minutes
+    &location,
+    &SankrantiConfig::default_lahiri(),
+    &[AmshaRequest::new(Amsha::D9), AmshaRequest::new(Amsha::D10)],
+    true, // include_grahas
+)?;
+for point in &series.points {
+    let d9 = &point.charts[0];
+    println!("{:?}: D9 lagna in rashi {}", point.utc, d9.lagna.rashi_index);
+}
+```
+
+`amsha_lagna_events` returns the exact varga-lagna rashi segments over a
+range by root-finding the times the ascendant crosses fixed division-boundary
+longitudes — no sampling grid, so fast vargas such as D60 cannot alias
+between samples. One entry per unique request; the first segment starts at
+`from_utc` and each segment `end` is an exact transition. `max_segments`
+caps totals across all amshas (`0` = `MAX_AMSHA_LAGNA_SEGMENTS` = 50,000),
+with `truncated`/`next_from_utc` for resuming.
+
+```rust
+use dhruv_rs::amsha_lagna_events;
+use dhruv_vedic_base::{Amsha, AmshaRequest};
+
+let result = amsha_lagna_events(
+    ctx.engine(),
+    &eop,
+    &from_utc,
+    &to_utc,
+    &location,
+    &SankrantiConfig::default_lahiri(),
+    &[AmshaRequest::new(Amsha::D60)],
+    0, // library ceiling
+)?;
+for segment in &result.entries[0].segments {
+    println!("{:?} from {:?} to {:?}", segment.rashi, segment.start, segment.end);
+}
+```
+
+The pure helper `next_amsha_boundary_longitude(sidereal_lon, amsha,
+variation)` in `dhruv_vedic_base::amsha` returns the next longitude (as
+`sidereal_lon + delta`, `delta > 0`) at which the varga rashi changes — an
+exact division boundary, convenient for monotone trackers.
+
 ## Equatorial Output on Graha Positions
 
 `GrahaPositionsConfig.include_equatorial` (default false) adds per-entry

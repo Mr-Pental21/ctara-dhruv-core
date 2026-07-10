@@ -38,7 +38,8 @@ use dhruv_vedic_base::{
 use dhruv_vedic_base::{BhavaConfig, ChandraBeneficRule};
 use dhruv_vedic_ops::{
     NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_LOCATION_DEPENDENT,
-    PanchangOperation, TaraOperation, TaraOutputKind, TaraResult, panchang_include_bits,
+    PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PanchangOperation, TaraOperation, TaraOutputKind,
+    TaraResult, panchang_include_bits,
 };
 
 #[derive(Parser)]
@@ -460,6 +461,39 @@ struct PanchangArgs {
     eop: PathBuf,
     #[command(flatten)]
     bhava_behavior: BhavaBehaviorArgs,
+}
+
+#[derive(clap::Args)]
+struct PanchangEventsArgs {
+    /// UTC start datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: String,
+    /// UTC end datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: String,
+    /// Panchang elements to include, comma-separated element or group names
+    /// (location-independent only):
+    /// tithi,karana,yoga,nakshatra,masa,ayana,varsha,location_independent
+    #[arg(long, default_value = "location_independent")]
+    elements: String,
+    /// Maximum total segments across all elements (0 = library ceiling of 50000)
+    #[arg(long, default_value = "0")]
+    max_events: u32,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -1184,6 +1218,89 @@ struct AmshaChartArgs {
     no_outer_planets: bool,
     #[command(flatten)]
     bhava_behavior: BhavaBehaviorArgs,
+}
+
+#[derive(clap::Args)]
+struct AmshaSeriesArgs {
+    /// UTC start datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Series end UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    to_date: String,
+    /// Sampling cadence in minutes (>= 1)
+    #[arg(long)]
+    step_minutes: u32,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Comma-separated amsha specs: D<n>[:variation], e.g. D9,D10,D2:cancer-leo-only
+    #[arg(long)]
+    amsha: String,
+    /// Include the nine grahas per chart (varga lagna is always included)
+    #[arg(long)]
+    include_grahas: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct AmshaLagnaEventsArgs {
+    /// UTC start datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: String,
+    /// UTC end datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Comma-separated amsha specs: D<n>[:variation], e.g. D9,D10,D2:cancer-leo-only
+    #[arg(long)]
+    amsha: String,
+    /// Maximum total segments across all amshas (0 = library ceiling of 50000)
+    #[arg(long, default_value = "0")]
+    max_segments: u32,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -2571,6 +2688,8 @@ enum Commands {
     ArudhaPadas(ArudhaPadasArgs),
     /// Combined panchang: tithi, karana, yoga, vaar, hora, ghatika
     Panchang(PanchangArgs),
+    /// Panchang element boundary events over a UTC range (location-independent elements)
+    PanchangEvents(PanchangEventsArgs),
     /// Compute Ashtakavarga (BAV + SAV) for a date and location
     Ashtakavarga(AshtakavargaArgs),
     /// Compute all 11 upagrahas for a date and location
@@ -3053,6 +3172,10 @@ enum Commands {
     AmshaVariations(AmshaVariationsArgs),
     /// Compute amsha charts for a date and location
     AmshaChart(AmshaChartArgs),
+    /// Sample slim amsha charts at a fixed cadence over a UTC range
+    AmshaSeries(AmshaSeriesArgs),
+    /// Exact varga-lagna rashi segments over a UTC range
+    AmshaLagnaEvents(AmshaLagnaEventsArgs),
     /// Compute Graha Avasthas (planetary states) for a date and location
     Avastha(AvasthaArgs),
     /// Compute Dasha (planetary period) hierarchy or snapshot
@@ -4659,6 +4782,139 @@ fn main() {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
                 }
+            }
+        }
+
+        Commands::PanchangEvents(args) => {
+            let from_utc = parse_utc(&args.start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let to_utc = parse_utc(&args.end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let config = SankrantiConfig::new(system, args.nutation);
+            let include_mask = parse_panchang_elements(&args.elements).unwrap_or_else(|e| {
+                eprintln!("Invalid --elements value: {e}");
+                std::process::exit(1);
+            });
+            if include_mask & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT != 0 {
+                eprintln!(
+                    "Error: panchang-events supports location-independent elements only \
+                     (tithi, karana, yoga, nakshatra, masa, ayana, varsha)"
+                );
+                std::process::exit(1);
+            }
+            let result = dhruv_search::panchang_events(
+                &engine,
+                &eop_kernel,
+                &from_utc,
+                &to_utc,
+                include_mask,
+                &config,
+                args.max_events,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            println!(
+                "Panchang events {} -> {} (mask=0x{:x})\n",
+                args.start, args.end, include_mask
+            );
+            if !result.tithi.is_empty() {
+                println!("Tithi ({} segments):", result.tithi.len());
+                for info in &result.tithi {
+                    println!(
+                        "  {:<20} (index {:>2})  {}  ->  {}",
+                        info.tithi.name(),
+                        info.tithi_index,
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.karana.is_empty() {
+                println!("Karana ({} segments):", result.karana.len());
+                for info in &result.karana {
+                    println!(
+                        "  {:<20} (sequence {:>2})  {}  ->  {}",
+                        info.karana.name(),
+                        info.karana_index,
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.yoga.is_empty() {
+                println!("Yoga ({} segments):", result.yoga.len());
+                for info in &result.yoga {
+                    println!(
+                        "  {:<20} (index {:>2})  {}  ->  {}",
+                        info.yoga.name(),
+                        info.yoga_index,
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.nakshatra.is_empty() {
+                println!("Nakshatra ({} segments):", result.nakshatra.len());
+                for info in &result.nakshatra {
+                    println!(
+                        "  {:<20} (index {:>2})  {}  ->  {}",
+                        info.nakshatra.name(),
+                        info.nakshatra_index,
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.masa.is_empty() {
+                println!("Masa ({} segments):", result.masa.len());
+                for info in &result.masa {
+                    let adhika_str = if info.adhika { " (Adhika)" } else { "" };
+                    println!(
+                        "  {:<20} {}  ->  {}",
+                        format!("{}{}", info.masa.name(), adhika_str),
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.ayana.is_empty() {
+                println!("Ayana ({} segments):", result.ayana.len());
+                for info in &result.ayana {
+                    println!(
+                        "  {:<20} {}  ->  {}",
+                        info.ayana.name(),
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.varsha.is_empty() {
+                println!("Varsha ({} segments):", result.varsha.len());
+                for info in &result.varsha {
+                    println!(
+                        "  {:<20} (order {:>2})  {}  ->  {}",
+                        info.samvatsara.name(),
+                        info.order,
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if result.truncated {
+                print!("\nTruncated at event cap");
+                if let Some(next) = result.next_from_utc {
+                    print!("; resume with --start {next}");
+                }
+                println!();
             }
         }
 
@@ -8923,6 +9179,131 @@ fn main() {
                 });
             }
         }
+        Commands::AmshaSeries(args) => {
+            let from_utc = parse_utc(&args.date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let to_utc = parse_utc(&args.to_date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+            let requests = parse_amsha_specs(&args.amsha);
+            let series = dhruv_search::amsha_series(
+                &engine,
+                &eop_kernel,
+                &from_utc,
+                &to_utc,
+                args.step_minutes,
+                &location,
+                &aya_config,
+                &requests,
+                args.include_grahas,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            println!(
+                "Amsha series {} -> {} step {}m at {:.6}°N, {:.6}°E ({} points)\n",
+                args.date,
+                args.to_date,
+                args.step_minutes,
+                args.lat,
+                args.lon,
+                series.points.len()
+            );
+            let graha_names = [
+                "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
+            ];
+            for point in &series.points {
+                println!("{}", point.utc);
+                for chart in &point.charts {
+                    println!(
+                        "  {} (D{}){}: Lagna {}",
+                        chart.amsha.name(),
+                        chart.amsha.code(),
+                        format_amsha_variation_label(chart.amsha, chart.variation_code),
+                        format_rashi_dms(chart.lagna.sidereal_longitude)
+                    );
+                    if let Some(ref grahas) = chart.grahas {
+                        for (name, entry) in graha_names.iter().zip(grahas.iter()) {
+                            println!(
+                                "    {:<10} {}",
+                                name,
+                                format_rashi_dms(entry.sidereal_longitude)
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        Commands::AmshaLagnaEvents(args) => {
+            let from_utc = parse_utc(&args.start).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let to_utc = parse_utc(&args.end).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+            let requests = parse_amsha_specs(&args.amsha);
+            let result = dhruv_search::amsha_lagna_events(
+                &engine,
+                &eop_kernel,
+                &from_utc,
+                &to_utc,
+                &location,
+                &aya_config,
+                &requests,
+                args.max_segments,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
+            println!(
+                "Amsha lagna events {} -> {} at {:.6}°N, {:.6}°E\n",
+                args.start, args.end, args.lat, args.lon
+            );
+            for (index, entry) in result.entries.iter().enumerate() {
+                if index > 0 {
+                    println!();
+                }
+                println!(
+                    "{} (D{}){} ({} segments):",
+                    entry.amsha.name(),
+                    entry.amsha.code(),
+                    format_amsha_variation_label(entry.amsha, entry.variation_code),
+                    entry.segments.len()
+                );
+                for segment in &entry.segments {
+                    println!(
+                        "  {:<12} {}  ->  {}",
+                        segment.rashi.name(),
+                        segment.start,
+                        segment.end
+                    );
+                }
+            }
+            if result.truncated {
+                print!("\nTruncated at segment cap");
+                if let Some(next) = result.next_from_utc {
+                    print!("; resume with --start {next}");
+                }
+                println!();
+            }
+        }
         Commands::Avastha(args) => {
             let system = require_aya_system(args.ayanamsha);
             let utc = parse_utc(&args.date).unwrap_or_else(|e| {
@@ -12404,5 +12785,112 @@ mod tests {
             parse_gochar_body_token("10008"),
             dhruv_search::GocharTransitBody::Ketu
         );
+    }
+
+    #[test]
+    fn test_amsha_series_args_parse() {
+        let cli = Cli::try_parse_from([
+            "dhruv",
+            "amsha-series",
+            "--date",
+            "2024-01-01T00:00:00Z",
+            "--to-date",
+            "2024-01-02T00:00:00Z",
+            "--step-minutes",
+            "60",
+            "--lat",
+            "28.6",
+            "--lon",
+            "77.2",
+            "--amsha",
+            "D9,D2:cancer-leo-only",
+            "--include-grahas",
+            "--eop",
+            "finals2000A.all",
+        ])
+        .expect("amsha-series should parse");
+        let Commands::AmshaSeries(args) = cli.command else {
+            panic!("expected amsha-series command");
+        };
+        assert_eq!(args.step_minutes, 60);
+        assert!(args.include_grahas);
+        assert_eq!(args.amsha, "D9,D2:cancer-leo-only");
+        assert_eq!(args.alt, 0.0);
+        assert_eq!(args.ayanamsha, 0);
+        let requests = parse_amsha_specs(&args.amsha);
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].amsha, dhruv_vedic_base::Amsha::D9);
+        assert_eq!(requests[1].amsha, dhruv_vedic_base::Amsha::D2);
+        assert_eq!(
+            requests[1].effective_variation(),
+            dhruv_vedic_base::D2_CANCER_LEO_ONLY_VARIATION_CODE
+        );
+    }
+
+    #[test]
+    fn test_panchang_events_args_parse_defaults() {
+        let cli = Cli::try_parse_from([
+            "dhruv",
+            "panchang-events",
+            "--start",
+            "2024-01-01T00:00:00Z",
+            "--end",
+            "2024-02-01T00:00:00Z",
+            "--eop",
+            "finals2000A.all",
+        ])
+        .expect("panchang-events should parse");
+        let Commands::PanchangEvents(args) = cli.command else {
+            panic!("expected panchang-events command");
+        };
+        assert_eq!(args.elements, "location_independent");
+        assert_eq!(args.max_events, 0);
+        let mask = parse_panchang_elements(&args.elements).expect("default elements mask");
+        assert_eq!(mask, PANCHANG_INCLUDE_LOCATION_INDEPENDENT);
+        assert_eq!(mask, 0x3c7);
+        assert_eq!(mask & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT, 0);
+    }
+
+    #[test]
+    fn test_panchang_events_location_dependent_mask_detected() {
+        // The handler rejects masks with location-dependent bits; verify the
+        // guard expression flags them and passes pure element lists.
+        let mask = parse_panchang_elements("tithi,vaar").expect("mask");
+        assert_ne!(mask & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT, 0);
+        let mask = parse_panchang_elements("tithi,karana,yoga,nakshatra,masa,ayana,varsha")
+            .expect("mask");
+        assert_eq!(mask, PANCHANG_INCLUDE_LOCATION_INDEPENDENT);
+    }
+
+    #[test]
+    fn test_amsha_lagna_events_args_parse() {
+        let cli = Cli::try_parse_from([
+            "dhruv",
+            "amsha-lagna-events",
+            "--start",
+            "2024-01-01T00:00:00Z",
+            "--end",
+            "2024-01-03T00:00:00Z",
+            "--lat",
+            "28.6",
+            "--lon",
+            "77.2",
+            "--amsha",
+            "D9,D60",
+            "--max-segments",
+            "100",
+            "--eop",
+            "finals2000A.all",
+        ])
+        .expect("amsha-lagna-events should parse");
+        let Commands::AmshaLagnaEvents(args) = cli.command else {
+            panic!("expected amsha-lagna-events command");
+        };
+        assert_eq!(args.start, "2024-01-01T00:00:00Z");
+        assert_eq!(args.end, "2024-01-03T00:00:00Z");
+        assert_eq!(args.max_segments, 100);
+        let requests = parse_amsha_specs(&args.amsha);
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[1].amsha, dhruv_vedic_base::Amsha::D60);
     }
 }

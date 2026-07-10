@@ -86,6 +86,40 @@ defmodule CtaraDhruv.Jyotish do
   def amsha(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :amsha))
 
+  @doc """
+  Fixed-cadence sampling of slim varga charts over `[from_utc, to_utc]`.
+
+  The request takes `:from_utc`, `:to_utc`, `:step_minutes`, `:location`, and
+  `:amsha_requests` (`[%{code: ..., variation: ...}]`), plus an optional
+  `:include_grahas` boolean (default `false`) that adds the nine graha varga
+  entries per chart. At most 100,000 cells (points x unique requests). Returns
+  `%{"points" => [%{"utc" => ..., "jd_utc" => ..., "charts" => [%{"amsha" =>
+  ..., "variation_code" => ..., "lagna" => ..., "grahas" => [...] | nil}]}]}`
+  with charts in request order and entries in the single-epoch `amsha/2`
+  entry shape.
+  """
+  def amsha_series(engine, request),
+    do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :amsha_series))
+
+  @doc """
+  Exact varga-lagna rashi segments over `[from_utc, to_utc]`.
+
+  The request takes `:from_utc`, `:to_utc`, `:location`, and
+  `:amsha_requests`, plus an optional `:max_segments` cap (default `0` selects
+  the 50,000 ceiling). Returns `%{"entries" => [%{"amsha" => ...,
+  "variation_code" => ..., "segments" => [%{"rashi" => ..., "rashi_index" =>
+  ..., "start" => utc, "end" => utc}]}], "truncated" => bool,
+  "next_from_utc" => utc | nil}` with one entry per unique request and exact
+  transition boundaries. On truncation resume from `next_from_utc`.
+  """
+  def amsha_lagna_events(engine, request),
+    do:
+      Native.call_engine(
+        &Native.jyotish_run/2,
+        engine,
+        Map.put(request, :op, :amsha_lagna_events)
+      )
+
   defp put_sankranti_config(request, sankranti_config),
     do: Map.put(request, :sankranti_config, sankranti_config)
 end

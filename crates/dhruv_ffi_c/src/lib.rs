@@ -65,7 +65,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 76;
+pub const DHRUV_API_VERSION: u32 = 77;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -8078,6 +8078,401 @@ fn varsha_info_to_ffi(info: &dhruv_search::VarshaInfo) -> DhruvVarshaInfo {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Panchang events (range sweep) FFI
+// ---------------------------------------------------------------------------
+
+/// Hard ceiling on events returned by one `dhruv_panchang_events` call.
+pub const DHRUV_MAX_PANCHANG_EVENTS: u32 = dhruv_search::MAX_PANCHANG_EVENTS;
+
+/// Opaque handle to a panchang-events result.
+pub type DhruvPanchangEventsHandle = *mut std::ffi::c_void;
+
+/// Stream panchang element segments overlapping `[from_utc, to_utc]`.
+///
+/// `include_mask` selects elements with `DHRUV_PANCHANG_INCLUDE_*` bits and
+/// must contain only bits from `DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT`.
+/// `max_events` caps the total number of returned segments across all kinds
+/// (`0` selects the hard ceiling `DHRUV_MAX_PANCHANG_EVENTS`); when the cap
+/// is reached the result is marked truncated and carries a resume point (see
+/// `dhruv_panchang_events_meta`). Consecutive segments of one kind chain
+/// exactly (`end == next.start`); the first segment of each kind may start
+/// before `from_utc` and the last may end after `to_utc`. On success `*out`
+/// receives a handle that must be freed with `dhruv_panchang_events_free`.
+///
+/// # Safety
+/// All pointers must be valid. `out` must be non-null.
+#[allow(clippy::too_many_arguments)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    from_utc: *const DhruvUtcTime,
+    to_utc: *const DhruvUtcTime,
+    include_mask: u32,
+    sankranti_config: *const DhruvSankrantiConfig,
+    max_events: u32,
+    out: *mut DhruvPanchangEventsHandle,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || from_utc.is_null() || to_utc.is_null() || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let mask = match panchang_include_mask_from_ffi(include_mask) {
+        Some(v) => v,
+        None => return DhruvStatus::InvalidSearchConfig,
+    };
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let from_time = ffi_to_utc_time(unsafe { &*from_utc });
+    let to_time = ffi_to_utc_time(unsafe { &*to_utc });
+
+    let cfg = match resolve_sankranti_config_ptr(sankranti_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    match dhruv_search::panchang_events(engine, eop, &from_time, &to_time, mask, &cfg, max_events) {
+        Ok(result) => {
+            let boxed = Box::new(result);
+            unsafe { *out = Box::into_raw(boxed) as DhruvPanchangEventsHandle };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Get the number of tithi segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_tithi_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.tithi.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one tithi segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_tithi_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvTithiInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.tithi.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = tithi_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of karana segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_karana_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.karana.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one karana segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_karana_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvKaranaInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.karana.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = karana_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of yoga segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_yoga_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.yoga.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one yoga segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_yoga_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvYogaInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.yoga.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = yoga_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of nakshatra segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_nakshatra_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.nakshatra.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one nakshatra segment from a panchang-events handle by index.
+///
+/// The `pada` field refers to the segment start and is always 1; use the
+/// per-moment API for the pada of a specific instant.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_nakshatra_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvPanchangNakshatraInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.nakshatra.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = panchang_nakshatra_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of masa segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_masa_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.masa.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one masa segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_masa_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvMasaInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.masa.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = masa_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of ayana segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_ayana_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.ayana.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one ayana segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_ayana_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvAyanaInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.ayana.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = ayana_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of varsha segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_varsha_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.varsha.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one varsha segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_varsha_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvVarshaInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.varsha.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = varsha_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Read truncation metadata from a panchang-events handle.
+///
+/// `*out_truncated` is 1 when the event budget was exhausted before
+/// `to_utc`. `*out_next_from_valid` is 1 when `*out_next_from_utc` carries
+/// the resume point; re-invoke with `from_utc = next_from_utc` to continue
+/// (resuming may re-emit, per kind, the one segment containing the resume
+/// point).
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. All out pointers must
+/// be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_meta(
+    handle: DhruvPanchangEventsHandle,
+    out_truncated: *mut u8,
+    out_next_from_valid: *mut u8,
+    out_next_from_utc: *mut DhruvUtcTime,
+) -> DhruvStatus {
+    if handle.is_null()
+        || out_truncated.is_null()
+        || out_next_from_valid.is_null()
+        || out_next_from_utc.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe {
+        *out_truncated = u8::from(result.truncated);
+        match result.next_from_utc.as_ref() {
+            Some(utc) => {
+                *out_next_from_valid = 1;
+                *out_next_from_utc = utc_time_to_ffi(utc);
+            }
+            None => {
+                *out_next_from_valid = 0;
+                *out_next_from_utc = zeroed_utc();
+            }
+        }
+    }
+    DhruvStatus::Ok
+}
+
+/// Free a panchang-events handle. Passing NULL is a no-op.
+///
+/// # Safety
+/// `handle` must come from `dhruv_panchang_events` or be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_free(handle: DhruvPanchangEventsHandle) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle as *mut dhruv_search::PanchangEventsResult) };
+    }
+}
+
 fn tajaka_return_basis_to_code(value: TajakaReturnBasis) -> i32 {
     match value {
         TajakaReturnBasis::TropicalSolar => DHRUV_TAJAKA_RETURN_BASIS_TROPICAL_SOLAR,
@@ -12789,6 +13184,529 @@ pub unsafe extern "C" fn dhruv_amsha_variations_many(
         out_ref.lists[index] = amsha_variation_list_to_ffi(amsha_variation_catalog(amsha));
     }
     DhruvStatus::Ok
+}
+
+/// Decode a batch of amsha requests from parallel code arrays.
+///
+/// `variation_codes` may be null (all default).
+///
+/// # Safety
+/// `amsha_codes` must point to `request_count` u16 values. `variation_codes`
+/// (if non-null) must point to `request_count` u8 values.
+unsafe fn amsha_requests_from_ffi(
+    amsha_codes: *const u16,
+    variation_codes: *const u8,
+    request_count: u32,
+) -> Result<Vec<AmshaRequest>, DhruvStatus> {
+    if request_count == 0 || request_count as usize > DHRUV_MAX_AMSHA_REQUESTS {
+        return Err(DhruvStatus::InvalidSearchConfig);
+    }
+    if amsha_codes.is_null() {
+        return Err(DhruvStatus::NullPointer);
+    }
+    let codes = unsafe { std::slice::from_raw_parts(amsha_codes, request_count as usize) };
+    let mut requests = Vec::with_capacity(codes.len());
+    for (i, &code) in codes.iter().enumerate() {
+        let amsha = match Amsha::from_code(code) {
+            Some(a) => a,
+            None => return Err(DhruvStatus::InvalidSearchConfig),
+        };
+        let variation = if variation_codes.is_null() {
+            default_amsha_variation(amsha)
+        } else {
+            let vc = unsafe { *variation_codes.add(i) };
+            resolve_amsha_variation_code(amsha, vc)?
+        };
+        requests.push(AmshaRequest::with_variation(amsha, variation));
+    }
+    Ok(requests)
+}
+
+// ---------------------------------------------------------------------------
+// Amsha series (fixed-cadence slim varga charts)
+// ---------------------------------------------------------------------------
+
+/// Maximum total cells (grid points x unique requests) in one amsha series.
+pub const DHRUV_MAX_AMSHA_SERIES_CELLS: usize = dhruv_search::MAX_AMSHA_SERIES_CELLS;
+
+/// Opaque handle to an amsha series (Vec of points).
+pub type DhruvAmshaSeriesHandle = *mut std::ffi::c_void;
+
+/// C-compatible slim varga chart within an amsha series point.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvAmshaSeriesChart {
+    /// D-number of this chart.
+    pub amsha_code: u16,
+    /// Amsha-specific variation code (0=default for that amsha).
+    pub variation_code: u8,
+    /// Varga position of the ascendant.
+    pub lagna: DhruvAmshaEntry,
+    /// Whether `grahas` is populated (1 when the series was requested with
+    /// `include_grahas`).
+    pub grahas_valid: u8,
+    /// Varga positions of the 9 Vedic grahas (Surya..Ketu).
+    pub grahas: [DhruvAmshaEntry; 9],
+}
+
+fn amsha_series_chart_to_ffi(chart: &dhruv_search::AmshaSeriesChart) -> DhruvAmshaSeriesChart {
+    let mut out = DhruvAmshaSeriesChart {
+        amsha_code: chart.amsha.code(),
+        variation_code: chart.variation_code,
+        lagna: amsha_entry_to_ffi(&chart.lagna),
+        grahas_valid: 0,
+        grahas: [DhruvAmshaEntry::zeroed(); 9],
+    };
+    if let Some(ref grahas) = chart.grahas {
+        out.grahas_valid = 1;
+        for (i, graha) in grahas.iter().enumerate() {
+            out.grahas[i] = amsha_entry_to_ffi(graha);
+        }
+    }
+    out
+}
+
+/// Sample slim varga charts at a fixed cadence over `[from_utc, to_utc]`.
+///
+/// Grid semantics match `dhruv_graha_positions_series`: one point per
+/// `step_minutes` starting at `from_utc`, endpoints inclusive when on the
+/// grid. Each point carries one chart per request, in request order
+/// (duplicate requests are computed once and repeated); `variation_codes`
+/// may be NULL (all default). The varga lagna is always computed; the nine
+/// graha entries are added when `include_grahas` is non-zero. Rejects
+/// `step_minutes == 0`, reversed ranges, empty or invalid request lists,
+/// and grids whose `points * unique_requests` exceeds
+/// `DHRUV_MAX_AMSHA_SERIES_CELLS`. On success `*out` receives a series
+/// handle that must be freed with `dhruv_amsha_series_free`.
+///
+/// # Safety
+/// All pointers must be valid. `amsha_codes` must point to `request_count`
+/// u16 values, `variation_codes` (if non-null) to `request_count` u8 values.
+/// `out` must be non-null.
+#[allow(clippy::too_many_arguments)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_series(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    from_utc: *const DhruvUtcTime,
+    to_utc: *const DhruvUtcTime,
+    step_minutes: u32,
+    location: *const DhruvGeoLocation,
+    sankranti_config: *const DhruvSankrantiConfig,
+    amsha_codes: *const u16,
+    variation_codes: *const u8,
+    request_count: u32,
+    include_grahas: u8,
+    out: *mut DhruvAmshaSeriesHandle,
+) -> DhruvStatus {
+    if engine.is_null()
+        || eop.is_null()
+        || from_utc.is_null()
+        || to_utc.is_null()
+        || location.is_null()
+        || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let requests =
+        match unsafe { amsha_requests_from_ffi(amsha_codes, variation_codes, request_count) } {
+            Ok(r) => r,
+            Err(status) => return status,
+        };
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let from_time = ffi_to_utc_time(unsafe { &*from_utc });
+    let to_time = ffi_to_utc_time(unsafe { &*to_utc });
+    let loc_c = unsafe { &*location };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let aya_config = match resolve_sankranti_config_ptr(sankranti_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    match dhruv_search::amsha_series(
+        engine,
+        eop,
+        &from_time,
+        &to_time,
+        step_minutes,
+        &location,
+        &aya_config,
+        &requests,
+        include_grahas != 0,
+    ) {
+        Ok(series) => {
+            let boxed = Box::new(series.points);
+            unsafe { *out = Box::into_raw(boxed) as DhruvAmshaSeriesHandle };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Get the number of points in an amsha series handle.
+///
+/// # Safety
+/// `handle` must be a valid series handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_series_point_count(
+    handle: DhruvAmshaSeriesHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let points = unsafe { &*(handle as *const Vec<dhruv_search::AmshaSeriesPoint>) };
+    unsafe { *out = points.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Get the number of charts per point in an amsha series handle.
+///
+/// Equals the request count of the originating call (duplicates repeated).
+///
+/// # Safety
+/// `handle` must be a valid series handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_series_chart_count(
+    handle: DhruvAmshaSeriesHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let points = unsafe { &*(handle as *const Vec<dhruv_search::AmshaSeriesPoint>) };
+    let count = points.first().map_or(0, |p| p.charts.len());
+    unsafe { *out = count as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one point's epoch (UTC and JD UTC) from an amsha series handle.
+///
+/// # Safety
+/// `handle` must be a valid series handle. `out_utc` and `out_jd_utc` must
+/// be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_series_point_at(
+    handle: DhruvAmshaSeriesHandle,
+    idx: u32,
+    out_utc: *mut DhruvUtcTime,
+    out_jd_utc: *mut f64,
+) -> DhruvStatus {
+    if handle.is_null() || out_utc.is_null() || out_jd_utc.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let points = unsafe { &*(handle as *const Vec<dhruv_search::AmshaSeriesPoint>) };
+    let point = match points.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe {
+        *out_utc = utc_time_to_ffi(&point.utc);
+        *out_jd_utc = point.jd_utc;
+    }
+    DhruvStatus::Ok
+}
+
+/// Read one chart from an amsha series handle by point and chart index.
+///
+/// Charts are in request order of the originating call.
+///
+/// # Safety
+/// `handle` must be a valid series handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_series_chart_at(
+    handle: DhruvAmshaSeriesHandle,
+    point_idx: u32,
+    chart_idx: u32,
+    out: *mut DhruvAmshaSeriesChart,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let points = unsafe { &*(handle as *const Vec<dhruv_search::AmshaSeriesPoint>) };
+    let point = match points.get(point_idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let chart = match point.charts.get(chart_idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = amsha_series_chart_to_ffi(chart) };
+    DhruvStatus::Ok
+}
+
+/// Free an amsha series handle. Passing NULL is a no-op.
+///
+/// # Safety
+/// `handle` must come from `dhruv_amsha_series` or be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_series_free(handle: DhruvAmshaSeriesHandle) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle as *mut Vec<dhruv_search::AmshaSeriesPoint>) };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Amsha lagna events (exact varga-lagna transitions)
+// ---------------------------------------------------------------------------
+
+/// Hard ceiling on segments returned by one `dhruv_amsha_lagna_events` call.
+pub const DHRUV_MAX_AMSHA_LAGNA_SEGMENTS: u32 = dhruv_search::MAX_AMSHA_LAGNA_SEGMENTS;
+
+/// Opaque handle to an amsha-lagna-events result.
+pub type DhruvAmshaLagnaEventsHandle = *mut std::ffi::c_void;
+
+/// C-compatible varga-lagna rashi segment.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvAmshaLagnaSegment {
+    /// 0-based rashi index (0-11).
+    pub rashi_index: u8,
+    /// Segment start (UTC). The first segment of a sweep starts at the
+    /// requested `from_utc`; later segments start at the exact transition.
+    pub start: DhruvUtcTime,
+    /// Segment end (UTC): the exact transition time. The last segment's end
+    /// is the first transition at or after `to_utc`.
+    pub end: DhruvUtcTime,
+}
+
+/// Stream exact varga-lagna rashi segments overlapping `[from_utc, to_utc]`
+/// for each requested amsha.
+///
+/// One entry per unique request (duplicates collapsed), in request order;
+/// `variation_codes` may be NULL (all default). `max_segments` caps the
+/// total segments across all amshas (`0` selects the hard ceiling
+/// `DHRUV_MAX_AMSHA_LAGNA_SEGMENTS`); when the cap is reached the result is
+/// marked truncated and carries a resume point (see
+/// `dhruv_amsha_lagna_events_meta`). On success `*out` receives a handle
+/// that must be freed with `dhruv_amsha_lagna_events_free`.
+///
+/// # Safety
+/// All pointers must be valid. `amsha_codes` must point to `request_count`
+/// u16 values, `variation_codes` (if non-null) to `request_count` u8 values.
+/// `out` must be non-null.
+#[allow(clippy::too_many_arguments)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_lagna_events(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    from_utc: *const DhruvUtcTime,
+    to_utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    sankranti_config: *const DhruvSankrantiConfig,
+    amsha_codes: *const u16,
+    variation_codes: *const u8,
+    request_count: u32,
+    max_segments: u32,
+    out: *mut DhruvAmshaLagnaEventsHandle,
+) -> DhruvStatus {
+    if engine.is_null()
+        || eop.is_null()
+        || from_utc.is_null()
+        || to_utc.is_null()
+        || location.is_null()
+        || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+
+    let requests =
+        match unsafe { amsha_requests_from_ffi(amsha_codes, variation_codes, request_count) } {
+            Ok(r) => r,
+            Err(status) => return status,
+        };
+
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let from_time = ffi_to_utc_time(unsafe { &*from_utc });
+    let to_time = ffi_to_utc_time(unsafe { &*to_utc });
+    let loc_c = unsafe { &*location };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+
+    let aya_config = match resolve_sankranti_config_ptr(sankranti_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    match dhruv_search::amsha_lagna_events(
+        engine,
+        eop,
+        &from_time,
+        &to_time,
+        &location,
+        &aya_config,
+        &requests,
+        max_segments,
+    ) {
+        Ok(result) => {
+            let boxed = Box::new(result);
+            unsafe { *out = Box::into_raw(boxed) as DhruvAmshaLagnaEventsHandle };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Get the number of entries (unique amsha requests) in an
+/// amsha-lagna-events handle.
+///
+/// # Safety
+/// `handle` must be a valid amsha-lagna-events handle. `out` must be
+/// non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_lagna_events_entry_count(
+    handle: DhruvAmshaLagnaEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::AmshaLagnaEventsResult) };
+    unsafe { *out = result.entries.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one entry's amsha identity from an amsha-lagna-events handle.
+///
+/// # Safety
+/// `handle` must be a valid amsha-lagna-events handle. `out_amsha_code`
+/// and `out_variation_code` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_lagna_events_entry_info(
+    handle: DhruvAmshaLagnaEventsHandle,
+    entry_idx: u32,
+    out_amsha_code: *mut u16,
+    out_variation_code: *mut u8,
+) -> DhruvStatus {
+    if handle.is_null() || out_amsha_code.is_null() || out_variation_code.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::AmshaLagnaEventsResult) };
+    let entry = match result.entries.get(entry_idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe {
+        *out_amsha_code = entry.amsha.code();
+        *out_variation_code = entry.variation_code;
+    }
+    DhruvStatus::Ok
+}
+
+/// Get the number of segments in one entry of an amsha-lagna-events handle.
+///
+/// # Safety
+/// `handle` must be a valid amsha-lagna-events handle. `out` must be
+/// non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_lagna_events_segment_count(
+    handle: DhruvAmshaLagnaEventsHandle,
+    entry_idx: u32,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::AmshaLagnaEventsResult) };
+    let entry = match result.entries.get(entry_idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = entry.segments.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one segment from an amsha-lagna-events handle by entry and segment
+/// index.
+///
+/// # Safety
+/// `handle` must be a valid amsha-lagna-events handle. `out` must be
+/// non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_lagna_events_segment_at(
+    handle: DhruvAmshaLagnaEventsHandle,
+    entry_idx: u32,
+    seg_idx: u32,
+    out: *mut DhruvAmshaLagnaSegment,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::AmshaLagnaEventsResult) };
+    let entry = match result.entries.get(entry_idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    let segment = match entry.segments.get(seg_idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe {
+        *out = DhruvAmshaLagnaSegment {
+            rashi_index: segment.rashi_index,
+            start: utc_time_to_ffi(&segment.start),
+            end: utc_time_to_ffi(&segment.end),
+        };
+    }
+    DhruvStatus::Ok
+}
+
+/// Read truncation metadata from an amsha-lagna-events handle.
+///
+/// `*out_truncated` is 1 when the segment budget was exhausted before
+/// `to_utc`. `*out_next_from_valid` is 1 when `*out_next_from_utc` carries
+/// the resume point; re-invoke with `from_utc = next_from_utc` to continue
+/// (the resumed sweep re-yields, per amsha, the segment containing the
+/// resume point with its start clipped to it).
+///
+/// # Safety
+/// `handle` must be a valid amsha-lagna-events handle. All out pointers
+/// must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_lagna_events_meta(
+    handle: DhruvAmshaLagnaEventsHandle,
+    out_truncated: *mut u8,
+    out_next_from_valid: *mut u8,
+    out_next_from_utc: *mut DhruvUtcTime,
+) -> DhruvStatus {
+    if handle.is_null()
+        || out_truncated.is_null()
+        || out_next_from_valid.is_null()
+        || out_next_from_utc.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::AmshaLagnaEventsResult) };
+    unsafe {
+        *out_truncated = u8::from(result.truncated);
+        match result.next_from_utc.as_ref() {
+            Some(utc) => {
+                *out_next_from_valid = 1;
+                *out_next_from_utc = utc_time_to_ffi(utc);
+            }
+            None => {
+                *out_next_from_valid = 0;
+                *out_next_from_utc = zeroed_utc();
+            }
+        }
+    }
+    DhruvStatus::Ok
+}
+
+/// Free an amsha-lagna-events handle. Passing NULL is a no-op.
+///
+/// # Safety
+/// `handle` must come from `dhruv_amsha_lagna_events` or be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_amsha_lagna_events_free(handle: DhruvAmshaLagnaEventsHandle) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle as *mut dhruv_search::AmshaLagnaEventsResult) };
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -18657,5 +19575,168 @@ mod tests {
             )
         };
         assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_range_op_caps_match_search_crate() {
+        assert_eq!(
+            DHRUV_MAX_AMSHA_SERIES_CELLS,
+            dhruv_search::MAX_AMSHA_SERIES_CELLS
+        );
+        assert_eq!(DHRUV_MAX_AMSHA_SERIES_CELLS, 100_000);
+        assert_eq!(DHRUV_MAX_PANCHANG_EVENTS, dhruv_search::MAX_PANCHANG_EVENTS);
+        assert_eq!(DHRUV_MAX_PANCHANG_EVENTS, 50_000);
+        assert_eq!(
+            DHRUV_MAX_AMSHA_LAGNA_SEGMENTS,
+            dhruv_search::MAX_AMSHA_LAGNA_SEGMENTS
+        );
+        assert_eq!(DHRUV_MAX_AMSHA_LAGNA_SEGMENTS, 50_000);
+    }
+
+    #[test]
+    fn ffi_amsha_series_null_engine() {
+        let utc = DhruvUtcTime {
+            year: 2024,
+            month: 1,
+            day: 15,
+            hour: 6,
+            minute: 0,
+            second: 0.0,
+        };
+        let to = DhruvUtcTime { hour: 8, ..utc };
+        let loc = DhruvGeoLocation {
+            latitude_deg: 28.6,
+            longitude_deg: 77.2,
+            altitude_m: 0.0,
+        };
+        let codes = [9u16];
+        let mut handle: DhruvAmshaSeriesHandle = ptr::null_mut();
+        let s = unsafe {
+            dhruv_amsha_series(
+                ptr::null(),
+                ptr::null(),
+                &utc,
+                &to,
+                60,
+                &loc,
+                ptr::null(),
+                codes.as_ptr(),
+                ptr::null(),
+                1,
+                1,
+                &mut handle,
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_amsha_series_accessors_null_handle() {
+        let mut count = 0u32;
+        let s = unsafe { dhruv_amsha_series_point_count(ptr::null_mut(), &mut count) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+        let s = unsafe { dhruv_amsha_series_chart_count(ptr::null_mut(), &mut count) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+        let mut utc = zeroed_utc();
+        let mut jd = 0.0f64;
+        let s = unsafe { dhruv_amsha_series_point_at(ptr::null_mut(), 0, &mut utc, &mut jd) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+        // Free on NULL must be a no-op.
+        unsafe { dhruv_amsha_series_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn ffi_panchang_events_null_engine() {
+        let from = DhruvUtcTime {
+            year: 2024,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        };
+        let to = DhruvUtcTime { month: 2, ..from };
+        let mut handle: DhruvPanchangEventsHandle = ptr::null_mut();
+        let s = unsafe {
+            dhruv_panchang_events(
+                ptr::null(),
+                ptr::null(),
+                &from,
+                &to,
+                DHRUV_PANCHANG_INCLUDE_TITHI,
+                ptr::null(),
+                0,
+                &mut handle,
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_panchang_events_accessors_null_handle() {
+        let mut count = 0u32;
+        let s = unsafe { dhruv_panchang_events_tithi_count(ptr::null_mut(), &mut count) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+        let mut truncated = 0u8;
+        let mut next_valid = 0u8;
+        let mut next_utc = zeroed_utc();
+        let s = unsafe {
+            dhruv_panchang_events_meta(
+                ptr::null_mut(),
+                &mut truncated,
+                &mut next_valid,
+                &mut next_utc,
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+        // Free on NULL must be a no-op.
+        unsafe { dhruv_panchang_events_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn ffi_amsha_lagna_events_null_engine() {
+        let from = DhruvUtcTime {
+            year: 2024,
+            month: 1,
+            day: 15,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        };
+        let to = DhruvUtcTime { day: 16, ..from };
+        let loc = DhruvGeoLocation {
+            latitude_deg: 28.6,
+            longitude_deg: 77.2,
+            altitude_m: 0.0,
+        };
+        let codes = [1u16];
+        let mut handle: DhruvAmshaLagnaEventsHandle = ptr::null_mut();
+        let s = unsafe {
+            dhruv_amsha_lagna_events(
+                ptr::null(),
+                ptr::null(),
+                &from,
+                &to,
+                &loc,
+                ptr::null(),
+                codes.as_ptr(),
+                ptr::null(),
+                1,
+                0,
+                &mut handle,
+            )
+        };
+        assert_eq!(s, DhruvStatus::NullPointer);
+    }
+
+    #[test]
+    fn ffi_amsha_lagna_events_accessors_null_handle() {
+        let mut count = 0u32;
+        let s = unsafe { dhruv_amsha_lagna_events_entry_count(ptr::null_mut(), &mut count) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+        let s = unsafe { dhruv_amsha_lagna_events_segment_count(ptr::null_mut(), 0, &mut count) };
+        assert_eq!(s, DhruvStatus::NullPointer);
+        // Free on NULL must be a no-op.
+        unsafe { dhruv_amsha_lagna_events_free(ptr::null_mut()) };
     }
 }

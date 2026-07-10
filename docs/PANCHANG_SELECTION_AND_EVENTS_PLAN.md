@@ -1,6 +1,12 @@
 # Panchang Selection & Range-Event Operations Plan
 
-Status: Phase 1 in progress. Phases 2–3 specced, not started.
+Status: all phases complete. Phase 1 (mask-driven lazy panchang selection)
+and Phases 2–3 (`amsha_series`, `panchang_events`, `amsha_lagna_events`,
+`next_amsha_boundary_longitude`, batched pure varga mapping) are implemented
+across all surfaces (C ABI v77, CLI, dhruv_rs, Python, Go, Node, Elixir),
+integration-tested (`crates/dhruv_search/tests/range_events.rs` plus
+per-wrapper suites), and documented (`clean_room_range_events.md`, reference
+and end-user docs).
 
 ## Goals
 

@@ -2,7 +2,7 @@
 
 This is the runtime/query surface of `dhruv_search` re-exported from `crates/dhruv_search/src/lib.rs`.
 
-Total runtime functions documented here: **58**.
+Total runtime functions documented here: **67**.
 
 ## Conjunction / Aspect (4)
 
@@ -56,7 +56,7 @@ Total runtime functions documented here: **58**.
 | `prev_max_speed` | `engine`, `body`, `jd_tdb`, `config` | `Result<Option<MaxSpeedEvent>, SearchError>` | Previous speed extremum before `jd_tdb`. |
 | `search_max_speed` | `engine`, `body`, `jd_start`, `jd_end`, `config` | `Result<Vec<MaxSpeedEvent>, SearchError>` | All speed extrema in range. |
 
-## Panchang (25)
+## Panchang (26)
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
@@ -85,8 +85,9 @@ Total runtime functions documented here: **58**.
 | `ghatika_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config` | `Result<GhatikaInfo, SearchError>` | Ghatika with boundaries. |
 | `ghatika_from_sunrises` | `jd_tdb`, `sunrise_jd`, `next_sunrise_jd`, `lsk` | `GhatikaInfo` | Ghatika from sunrise pair (pure arithmetic). |
 | `panchang_for_date` | `engine`, `eop`, `utc`, `location: Option<&GeoLocation>`, `riseset_config`, `sankranti_config`, `include_mask: u32` | `Result<PanchangResult, SearchError>` | Combined panchang; `include_mask` gates which elements are computed, `location` required only for vaar/hora/ghatika. |
+| `panchang_events` | `engine`, `eop`, `from_utc`, `to_utc`, `include_mask`, `sankranti_config`, `max_events` | `Result<PanchangEventsResult, SearchError>` | Exact element segments over a range (location-independent bits only); segments chain exactly; `max_events` 0 = 50,000 ceiling with `truncated`/`next_from_utc` resume. |
 
-## Jyotish Orchestration (8)
+## Jyotish Orchestration (13)
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
@@ -98,6 +99,8 @@ Total runtime functions documented here: **58**.
 | `all_upagrahas_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config`, `aya_config` | `Result<AllUpagrahas, SearchError>` | Computes all 11 upagrahas. |
 | `graha_positions` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `aya_config`, `config` | `Result<GrahaPositions, SearchError>` | Extended graha-position API. `config.include_equatorial` adds per-entry geocentric RA/declination/ecliptic latitude (equinox of date) and result-level `gmst_deg`/`gast_deg`. |
 | `graha_positions_series` | `engine`, `eop`, `from_utc`, `to_utc`, `step_minutes`, `location`, `bhava_config`, `aya_config`, `config` | `Result<GrahaPositionsSeries, SearchError>` | Fixed-cadence samples of `graha_positions` over a range (endpoints inclusive on the grid, max 10,000 points). |
+| `amsha_series` | `engine`, `eop`, `from_utc`, `to_utc`, `step_minutes`, `location`, `aya_config`, `amsha_requests`, `include_grahas` | `Result<AmshaSeries, SearchError>` | Fixed-cadence slim varga charts (grid semantics match `graha_positions_series`); varga lagna always, nine grahas optional; `points * unique_requests` capped at 100,000. |
+| `amsha_lagna_events` | `engine`, `eop`, `from_utc`, `to_utc`, `location`, `aya_config`, `amsha_requests`, `max_segments` | `Result<AmshaLagnaEventsResult, SearchError>` | Exact varga-lagna rashi segments via root-found division-boundary crossings (no sampling grid); one entry per unique request; `max_segments` 0 = 50,000 ceiling with `truncated`/`next_from_utc` resume. |
 | `ashtakavarga_for_date` | `engine`, `eop`, `utc`, `location`, `aya_config` | `Result<AshtakavargaResult, SearchError>` | Full ashtakavarga result. |
 | `core_bindus` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<BindusResult, SearchError>` | Curated bindu/sensitive points set. |
 | `drishti_for_date` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<DrishtiResult, SearchError>` | Graha drishti matrix (+ optional projections). |

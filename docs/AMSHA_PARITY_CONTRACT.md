@@ -27,7 +27,7 @@ Primary source files:
 
 Current ABI constants relevant to amsha:
 
-- `DHRUV_API_VERSION = 72`
+- `DHRUV_API_VERSION = 77`
 - `DHRUV_MAX_AMSHA_REQUESTS = 40`
 
 ## Canonical Concepts
@@ -105,6 +105,17 @@ Grahas and lagna are always present.
 ### Date/location-backed amsha chart orchestration
 
 - `dhruv_amsha_chart_for_date`
+
+### Range operations (ABI v77)
+
+- `dhruv_amsha_series` (+ `_point_count` / `_chart_count` / `_point_at` /
+  `_chart_at` / `_free`) — fixed-cadence slim varga charts
+- `dhruv_amsha_lagna_events` (+ `_entry_count` / `_entry_info` /
+  `_segment_count` / `_segment_at` / `_meta` / `_free`) — exact varga-lagna
+  rashi transitions
+
+See `docs/C_ABI_REFERENCE.md` for the full shapes; the same amsha
+code/variation validation rules below apply to their request lists.
 
 ### Full-kundali embedded amsha support
 

@@ -8,6 +8,14 @@ Full callable runtime functions are documented in:
 
 - `docs/VEDIC_BASE_RUNTIME_APIS.md`
 
+Pure amsha (divisional chart) functions live in the public
+`dhruv_vedic_base::amsha` module (re-exported from
+`dhruv_vedic_math::amsha`), including `amsha_longitude(s)`,
+`amsha_rashi_info(s)`, the variation catalog helpers, and
+`next_amsha_boundary_longitude` (the exact next division-boundary longitude,
+used by `amsha_lagna_events`). See the "Amsha Module" section of
+`docs/VEDIC_BASE_RUNTIME_APIS.md`.
+
 ## Core Runtime Input/Output Types
 
 - Location and rise/set:

@@ -913,6 +913,85 @@ pub fn amsha_rashi_infos(sidereal_lon: f64, requests: &[AmshaRequest]) -> Vec<Ra
 }
 
 // ---------------------------------------------------------------------------
+// Boundary search
+// ---------------------------------------------------------------------------
+
+/// Probe offset used to classify the division just past a boundary.
+const AMSHA_BOUNDARY_PROBE_DEG: f64 = 1e-7;
+
+/// Next division boundary strictly after `lon` (normalized input, output in
+/// `(lon, 360]`). Division boundaries are the only longitudes where the
+/// varga mapping can change.
+fn next_division_boundary(lon: f64, amsha: Amsha, variation_code: AmshaVariationCode) -> f64 {
+    if amsha == Amsha::D30 {
+        let rashi_idx = (lon / 30.0).floor().min(11.0);
+        let rashi_start = rashi_idx * 30.0;
+        let pos_in_rashi = lon - rashi_start;
+        let is_odd_rashi = (rashi_idx as u8).is_multiple_of(2);
+        let segment_ends: [f64; 5] = if is_odd_rashi {
+            [5.0, 10.0, 18.0, 25.0, 30.0]
+        } else {
+            [5.0, 12.0, 20.0, 25.0, 30.0]
+        };
+        for end in segment_ends {
+            if pos_in_rashi < end {
+                return rashi_start + end;
+            }
+        }
+        rashi_start + 30.0
+    } else {
+        let deg_per_div = 30.0 / effective_divisions(amsha, variation_code) as f64;
+        ((lon / deg_per_div).floor() + 1.0) * deg_per_div
+    }
+}
+
+/// Smallest longitude strictly greater than `sidereal_lon` at which the
+/// varga rashi of `amsha` changes.
+///
+/// The varga mapping is piecewise constant between division boundaries, so
+/// the returned longitude is exact (a division boundary), not a numerical
+/// approximation. Adjacent divisions can map to the same rashi in some
+/// sequences (e.g. across a rashi boundary), so boundaries are scanned
+/// forward until the mapped rashi differs.
+///
+/// The result is expressed relative to the (un-normalized) input:
+/// `sidereal_lon + delta` with `delta > 0`, so callers tracking a
+/// monotonically increasing longitude (such as the ascendant over time) can
+/// compare without wrap-around handling. For D1 this is the next multiple
+/// of 30 degrees.
+pub fn next_amsha_boundary_longitude(
+    sidereal_lon: f64,
+    amsha: Amsha,
+    variation: Option<AmshaVariationCode>,
+) -> f64 {
+    let variation_code = variation
+        .filter(|code| is_valid_amsha_variation(amsha, *code))
+        .unwrap_or_else(|| default_amsha_variation(amsha));
+    let lon = normalize_360(sidereal_lon);
+    let current = amsha_rashi_info(lon, amsha, Some(variation_code)).rashi_index;
+
+    // Track the boundary in normalized space plus a wrap count so returned
+    // values stay exact grid points (no probe-epsilon accumulation).
+    let mut boundary = next_division_boundary(lon, amsha, variation_code);
+    let mut wraps = 0.0;
+    let max_scan = 12 * effective_divisions(amsha, variation_code).max(5) as usize + 2;
+    for _ in 0..max_scan {
+        let probe = normalize_360(boundary + AMSHA_BOUNDARY_PROBE_DEG);
+        if amsha_rashi_info(probe, amsha, Some(variation_code)).rashi_index != current {
+            return sidereal_lon + (boundary + wraps * 360.0 - lon);
+        }
+        if boundary + AMSHA_BOUNDARY_PROBE_DEG >= 360.0 {
+            wraps += 1.0;
+        }
+        boundary = next_division_boundary(probe, amsha, variation_code);
+    }
+
+    // Unreachable for any real varga (the mapping always changes within one
+    // full circle); kept as a defensive fallback.
+    sidereal_lon + 360.0
+}
+
+// ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 
@@ -1559,5 +1638,77 @@ mod tests {
         assert_eq!(results.len(), 2);
         let individual_d9 = amsha_rashi_info(lon, Amsha::D9, None);
         assert_eq!(results[0].rashi, individual_d9.rashi);
+    }
+
+    #[test]
+    fn next_boundary_d1_is_rashi_cusp() {
+        assert!((next_amsha_boundary_longitude(1.0, Amsha::D1, None) - 30.0).abs() < 1e-9);
+        assert!((next_amsha_boundary_longitude(29.999, Amsha::D1, None) - 30.0).abs() < 1e-9);
+        // Exactly on a cusp: next change is the following cusp.
+        assert!((next_amsha_boundary_longitude(30.0, Amsha::D1, None) - 60.0).abs() < 1e-9);
+        // Wrap: from Meena into Mesha.
+        assert!((next_amsha_boundary_longitude(355.0, Amsha::D1, None) - 360.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn next_boundary_d9_and_d60_grid() {
+        // D9: 3°20' divisions.
+        let b = next_amsha_boundary_longitude(1.0, Amsha::D9, None);
+        assert!((b - 30.0 / 9.0).abs() < 1e-9, "got {b}");
+        // D60: 0.5° divisions.
+        let b = next_amsha_boundary_longitude(10.2, Amsha::D60, None);
+        assert!((b - 10.5).abs() < 1e-9, "got {b}");
+    }
+
+    #[test]
+    fn next_boundary_d30_unequal_segments() {
+        // Odd rashi (Mesha): breakpoints at 5, 10, 18, 25, 30.
+        assert!((next_amsha_boundary_longitude(2.0, Amsha::D30, None) - 5.0).abs() < 1e-9);
+        assert!((next_amsha_boundary_longitude(12.0, Amsha::D30, None) - 18.0).abs() < 1e-9);
+        // Even rashi (Vrishabha, 30-60): breakpoints at 35, 42, 50, 55, 60.
+        assert!((next_amsha_boundary_longitude(36.0, Amsha::D30, None) - 42.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn next_boundary_skips_same_rashi_divisions() {
+        // Kashinath hora: Karka div1 (105-120) maps to Karka(3), and Simha
+        // div0 (120-135) also maps to Karka(3) — the 120° division boundary
+        // is not a rashi change; the next change is at 135°.
+        let b = next_amsha_boundary_longitude(
+            110.0,
+            Amsha::D2,
+            Some(D2_KASHINATH_HORA_VARIATION_CODE),
+        );
+        assert!((b - 135.0).abs() < 1e-9, "got {b}");
+    }
+
+    #[test]
+    fn next_boundary_result_changes_rashi() {
+        // Property: for a spread of longitudes and vargas, the rashi just
+        // after the returned boundary differs from the rashi at the input,
+        // and the rashi just before it matches the input.
+        let vargas = [
+            Amsha::D1,
+            Amsha::D2,
+            Amsha::D3,
+            Amsha::D9,
+            Amsha::D10,
+            Amsha::D24,
+            Amsha::D30,
+            Amsha::D60,
+            Amsha::D144,
+        ];
+        for amsha in vargas {
+            for i in 0..48 {
+                let lon = i as f64 * 7.51;
+                let before = amsha_rashi_info(lon, amsha, None).rashi_index;
+                let boundary = next_amsha_boundary_longitude(lon, amsha, None);
+                assert!(boundary > lon, "{amsha:?} boundary not after input");
+                let just_before = amsha_rashi_info(boundary - 1e-6, amsha, None).rashi_index;
+                let just_after = amsha_rashi_info(boundary + 1e-6, amsha, None).rashi_index;
+                assert_eq!(just_before, before, "{amsha:?} at lon {lon}");
+                assert_ne!(just_after, before, "{amsha:?} at lon {lon}");
+            }
+        }
     }
 }

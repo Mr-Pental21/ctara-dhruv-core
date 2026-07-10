@@ -203,11 +203,58 @@ Dedicated amsha requests:
   })
 ```
 
+Batch sweeps over a time window (e.g. birth-time rectification or long-range
+precalculation) replace loops of per-moment calls:
+
+```elixir
+# Slim varga charts on a fixed grid; add include_grahas: true for the nine
+# graha entries per chart. Cap: 100,000 cells (points x unique requests).
+{:ok, series} =
+  Jyotish.amsha_series(engine, %{
+    from_utc: from_utc,
+    to_utc: to_utc,
+    step_minutes: 5,
+    location: location,
+    amsha_requests: [%{code: 1}, %{code: 9}]
+  })
+# => %{"points" => [%{"utc" => ..., "jd_utc" => ...,
+#      "charts" => [%{"amsha" => ..., "variation_code" => ...,
+#                     "lagna" => ..., "grahas" => [...] | nil}]}]}
+
+# Exact varga-lagna rashi segments (no sampling grid). Optional
+# :max_segments (0 = 50,000 ceiling); on truncation resume from
+# "next_from_utc".
+{:ok, events} =
+  Jyotish.amsha_lagna_events(engine, %{
+    from_utc: from_utc,
+    to_utc: to_utc,
+    location: location,
+    amsha_requests: [%{code: 9}]
+  })
+# => %{"entries" => [%{"amsha" => ..., "variation_code" => ...,
+#      "segments" => [%{"rashi" => ..., "rashi_index" => ...,
+#                       "start" => ..., "end" => ...}]}],
+#      "truncated" => false, "next_from_utc" => nil}
+```
+
 Variation discovery helpers live on `CtaraDhruv.Math`:
 
 ```elixir
 {:ok, d2_catalog} = CtaraDhruv.Math.amsha_variations(%{amsha_code: 2})
 {:ok, catalogs} = CtaraDhruv.Math.amsha_variations_many(%{amsha_codes: [2, 9]})
+```
+
+Engine-free batched varga mapping also lives on `CtaraDhruv.Math`: given
+sidereal longitudes and amsha requests it returns, per longitude, one map per
+request with `amsha_longitude`, `rashi`, `rashi_index`, `degrees_in_rashi`,
+and `dms`:
+
+```elixir
+{:ok, %{"entries" => [[d1_info, d9_info] | _]}} =
+  CtaraDhruv.Math.amsha_rashi_infos(%{
+    longitudes: [123.5, 245.0],
+    amsha_requests: [%{code: 1}, %{code: 9}]
+  })
 ```
 
 Embedded amsha configuration in `full_kundali`:
@@ -311,6 +358,16 @@ location-dependent element (`vaar`, `hora`, `ghatika`) is selected.
 `:panchang_include_mask`, accepting the same integer/name/list forms
 (default `0` omits panchang). It replaces the former
 `:include_panchang`/`:include_calendar` booleans.
+
+`CtaraDhruv.Panchang.events/2` streams exact element boundaries over a range
+instead of computing one moment at a time: pass `:from_utc` and `:to_utc`,
+an optional `:include_mask` restricted to the location-independent elements
+(`tithi`, `karana`, `yoga`, `nakshatra`, `masa`, `ayana`, `varsha`; default
+all of them), and an optional `:max_events` cap (`0` selects the 50,000
+ceiling). The result carries one list per kind in the per-moment shapes plus
+`"truncated"` and `"next_from_utc"`; consecutive segments of one kind chain
+exactly (`end == next start`). On truncation resume from `next_from_utc` and
+deduplicate on `{kind, start}`.
 
 ## Time-Based Upagraha Config
 

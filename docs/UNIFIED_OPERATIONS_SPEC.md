@@ -42,6 +42,9 @@ Each family gets one canonical request + result contract:
 7. Tara
 8. Panchang (with include mask)
 9. Lunar node backend selection
+10. Panchang events (range sweep, location-independent elements)
+11. Amsha series (fixed-cadence slim varga charts)
+12. Amsha lagna events (exact varga-lagna transitions)
 
 ## Conjunction (Implemented)
 
@@ -252,6 +255,86 @@ Semantics:
 - `masa: Option<MasaInfo>`
 - `ayana: Option<AyanaInfo>`
 - `varsha: Option<VarshaInfo>`
+
+## Panchang Events (Implemented)
+
+Range sweep over panchang element boundaries. Inputs are plain function
+parameters (`dhruv_search::panchang_events`), mirrored as handle-based C ABI
+accessors, a CLI subcommand, and wrapper ops.
+
+## Request
+
+- `from_utc: UtcTime`, `to_utc: UtcTime` (`to_utc > from_utc`)
+- `include_mask: u32` — non-zero, restricted to
+  `PANCHANG_INCLUDE_LOCATION_INDEPENDENT` bits
+  (tithi|karana|yoga|nakshatra|masa|ayana|varsha)
+- `config: SankrantiConfig`
+- `max_events: u32` (`0` = ceiling `MAX_PANCHANG_EVENTS` = 50,000)
+
+## Result
+
+`PanchangEventsResult` fields:
+- per-kind `Vec`s of the existing per-moment info structs: `tithi:
+  Vec<TithiInfo>`, `karana: Vec<KaranaInfo>`, `yoga: Vec<YogaInfo>`,
+  `nakshatra: Vec<PanchangNakshatraInfo>`, `masa: Vec<MasaInfo>`,
+  `ayana: Vec<AyanaInfo>`, `varsha: Vec<VarshaInfo>`
+- `truncated: bool`
+- `next_from_utc: Option<UtcTime>` (resume point; dedup on `(kind, start)`)
+
+Semantics: consecutive segments of one kind chain exactly (`end ==
+next.start`); the first segment may start before `from_utc` and the last may
+end after `to_utc`; nakshatra `pada` is the segment-start pada (always 1).
+
+## Amsha Series (Implemented)
+
+Fixed-cadence sampling of slim varga charts
+(`dhruv_search::amsha_series`).
+
+## Request
+
+- `from_utc: UtcTime`, `to_utc: UtcTime`, `step_minutes: u32` (>= 1) — grid
+  semantics identical to `graha_positions_series`
+- `location: GeoLocation`
+- `aya_config: SankrantiConfig`
+- `amsha_requests: &[AmshaRequest]` (non-empty, usual amsha batch rules)
+- `include_grahas: bool`
+
+## Result
+
+`AmshaSeries { points: Vec<AmshaSeriesPoint> }`; each point carries `utc`,
+`jd_utc`, and `charts: Vec<AmshaSeriesChart>` in request order. Each chart
+has `amsha`, `variation_code`, `lagna: AmshaEntry`, and `grahas:
+Option<[AmshaEntry; 9]>` (present when `include_grahas`).
+
+Validation: `points * unique_requests` capped at `MAX_AMSHA_SERIES_CELLS`
+(100,000).
+
+## Amsha Lagna Events (Implemented)
+
+Exact varga-lagna rashi segments (`dhruv_search::amsha_lagna_events`) via
+fixed division-boundary longitudes and root-finding on the monotone
+ascendant — no sampling grid, so fast vargas (e.g. D60) cannot alias.
+
+## Request
+
+- `from_utc: UtcTime`, `to_utc: UtcTime`
+- `location: GeoLocation`
+- `aya_config: SankrantiConfig`
+- `amsha_requests: &[AmshaRequest]` (non-empty; duplicates collapsed)
+- `max_segments: u32` (`0` = ceiling `MAX_AMSHA_LAGNA_SEGMENTS` = 50,000)
+
+## Result
+
+`AmshaLagnaEventsResult` fields:
+- `entries: Vec<AmshaLagnaEvents>` — one per unique request, in request
+  order; each carries `amsha`, `variation_code`, and `segments:
+  Vec<AmshaLagnaSegment>` (`rashi`, `rashi_index`, `start`, `end`)
+- `truncated: bool`
+- `next_from_utc: Option<UtcTime>`
+
+Semantics: the first segment starts at `from_utc` (clipped); each segment's
+`end` is an exact root-found transition; the last segment's `end` is the
+first transition at or after `to_utc`.
 
 ## Tara (Implemented)
 

@@ -1,10 +1,10 @@
 # dhruv_search C ABI Coverage
 
-Scope: crate-root runtime/query APIs re-exported by `dhruv_search` (61 functions).
+Scope: crate-root runtime/query APIs re-exported by `dhruv_search` (64 functions).
 
-Direct C ABI coverage is high: `57 / 61` runtime APIs have an exported
+Direct C ABI coverage is high: `60 / 64` runtime APIs have an exported
 `dhruv_ffi_c` entry point.
-Functional coverage is `61 / 61` when the gaps below are satisfied through
+Functional coverage is `64 / 64` when the gaps below are satisfied through
 other exports.
 
 ## Not Wrapped Directly
@@ -45,10 +45,18 @@ Functional coverage notes:
   `dhruv_tithi_at`, `dhruv_karana_at`, `dhruv_yoga_at`,
   `dhruv_vedic_day_sunrises`, `dhruv_vaar_from_sunrises`,
   `dhruv_hora_from_sunrises`, `dhruv_ghatika_from_sunrises`)
+- Panchang range sweep: `dhruv_panchang_events` (handle-based, covering
+  `panchang_events`) with per-kind `_count`/`_at` accessors, `_meta`, and
+  `_free`
 - Jyotish orchestrators: `dhruv_special_lagnas_for_date`,
   `dhruv_arudha_padas_for_date`, `dhruv_all_upagrahas_for_date`,
   `dhruv_graha_positions`, `dhruv_ashtakavarga_for_date`, `dhruv_core_bindus`,
   `dhruv_drishti`, `dhruv_graha_longitudes`, `dhruv_nakshatra_at`
+- Amsha range ops: `dhruv_amsha_series` (handle-based, covering
+  `amsha_series`) with `_point_count`/`_chart_count`/`_point_at`/`_chart_at`/
+  `_free`, and `dhruv_amsha_lagna_events` (handle-based, covering
+  `amsha_lagna_events`) with `_entry_count`/`_entry_info`/`_segment_count`/
+  `_segment_at`/`_meta`/`_free`
 
 ## Amsha Parity Status
 
@@ -60,6 +68,8 @@ Canonical C ABI amsha surface:
 - `dhruv_amsha_rashi_info`
 - `dhruv_amsha_longitudes`
 - `dhruv_amsha_chart_for_date`
+- `dhruv_amsha_series` (+ accessors/free)
+- `dhruv_amsha_lagna_events` (+ accessors/meta/free)
 - full-kundali amsha config/result fields
 
 Current wrapper status:

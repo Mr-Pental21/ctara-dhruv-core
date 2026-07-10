@@ -58,14 +58,14 @@ use crate::dasha::{
 };
 use crate::error::SearchError;
 use crate::jyotish_types::{
-    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BalaBundleResult,
-    BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime,
-    DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
-    GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
-    GrahaPositionsConfig, GrahaPositionsPoint, GrahaPositionsSeries,
-    MAX_AMSHA_REQUESTS, MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry,
-    MovingOsculatingApogees, ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry,
-    VimsopakaResult,
+    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, AmshaSeries,
+    AmshaSeriesChart, AmshaSeriesPoint, BalaBundleResult, BhavaResultSet, BindusConfig,
+    BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig, DrishtiResult,
+    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
+    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, GrahaPositionsPoint,
+    GrahaPositionsSeries, MAX_AMSHA_REQUESTS, MAX_AMSHA_SERIES_CELLS,
+    MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry, MovingOsculatingApogees,
+    ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
 };
 use crate::panchang::{
     hora_from_sunrises, masa_for_date_with_eop, panchang_for_date, varsha_for_date_with_eop,
@@ -1870,7 +1870,9 @@ pub fn graha_positions_series(
     }
     let step_days = step_minutes as f64 / 1440.0;
     // Inclusive grid: epochs from from_jd stepping by step_days, up to to_jd.
-    let count = (((to_jd - from_jd) / step_days) + 1e-9).floor() as usize + 1;
+    // The slack absorbs JD subtraction rounding (~1e-9 days on ~2.4e6-day
+    // values, i.e. up to ~1.5e-6 of a one-minute step).
+    let count = (((to_jd - from_jd) / step_days) + 1e-5).floor() as usize + 1;
     if count > MAX_GRAHA_POSITIONS_SERIES_POINTS {
         return Err(SearchError::InvalidConfig(
             "series would exceed MAX_GRAHA_POSITIONS_SERIES_POINTS",
@@ -1899,6 +1901,93 @@ pub fn graha_positions_series(
     }
 
     Ok(GrahaPositionsSeries { points })
+}
+
+/// Sample slim varga charts at a fixed cadence over `[from_utc, to_utc]`.
+///
+/// Grid semantics match [`graha_positions_series`]: one point per
+/// `step_minutes` starting at `from_utc`, endpoints inclusive when they fall
+/// on the grid. For each point and each request the varga lagna is always
+/// computed; the nine graha entries are added when `include_grahas` is set.
+/// Charts are returned in request order (duplicate requests are computed
+/// once and repeated).
+///
+/// Errors: `step_minutes == 0`, `to_utc` not after `from_utc`, an empty or
+/// invalid request list, or a grid whose `points * unique_requests` exceeds
+/// [`MAX_AMSHA_SERIES_CELLS`].
+#[allow(clippy::too_many_arguments)]
+pub fn amsha_series(
+    engine: &Engine,
+    eop: &EopKernel,
+    from_utc: &UtcTime,
+    to_utc: &UtcTime,
+    step_minutes: u32,
+    location: &GeoLocation,
+    aya_config: &SankrantiConfig,
+    requests: &[AmshaRequest],
+    include_grahas: bool,
+) -> Result<AmshaSeries, SearchError> {
+    if step_minutes == 0 {
+        return Err(SearchError::InvalidConfig("step_minutes must be >= 1"));
+    }
+    if requests.is_empty() {
+        return Err(SearchError::InvalidConfig(
+            "amsha_requests must be non-empty",
+        ));
+    }
+    validate_amsha_requests(requests)?;
+    let (unique_requests, positions) = unique_amsha_requests_for_compute(requests);
+
+    let from_jd = utc_to_jd_utc(from_utc);
+    let to_jd = utc_to_jd_utc(to_utc);
+    if to_jd <= from_jd {
+        return Err(SearchError::InvalidConfig(
+            "to_utc must be after from_utc",
+        ));
+    }
+    let step_days = step_minutes as f64 / 1440.0;
+    let count = (((to_jd - from_jd) / step_days) + 1e-5).floor() as usize + 1;
+    if count.saturating_mul(unique_requests.len()) > MAX_AMSHA_SERIES_CELLS {
+        return Err(SearchError::InvalidConfig(
+            "series would exceed MAX_AMSHA_SERIES_CELLS",
+        ));
+    }
+
+    let mut points = Vec::with_capacity(count);
+    for i in 0..count {
+        let jd_utc = from_jd + i as f64 * step_days;
+        let utc = jd_utc_to_utc(jd_utc);
+        let mut ctx = JyotishContext::new(engine, Some(eop), &utc, aya_config);
+        let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
+        let graha_lons = if include_grahas {
+            Some(ctx.graha_lons(engine, aya_config)?.longitudes)
+        } else {
+            None
+        };
+
+        let unique_charts: Vec<AmshaSeriesChart> = unique_requests
+            .iter()
+            .map(|req| AmshaSeriesChart {
+                amsha: req.amsha,
+                variation_code: req.effective_variation(),
+                lagna: transform_to_amsha_entry(lagna_sid, req.amsha, req.variation),
+                grahas: graha_lons.map(|lons| {
+                    core::array::from_fn(|g| {
+                        transform_to_amsha_entry(lons[g], req.amsha, req.variation)
+                    })
+                }),
+            })
+            .collect();
+        let charts = positions.iter().map(|&p| unique_charts[p]).collect();
+
+        points.push(AmshaSeriesPoint {
+            utc,
+            jd_utc,
+            charts,
+        });
+    }
+
+    Ok(AmshaSeries { points })
 }
 
 /// Per-epoch data for equatorial output: nutation, obliquity, sidereal time,
@@ -4367,7 +4456,7 @@ fn transform_to_amsha_entry(sidereal_lon: f64, amsha: Amsha, variation: Option<u
 }
 
 /// Validate an AmshaRequest slice.
-fn validate_amsha_requests(requests: &[AmshaRequest]) -> Result<(), SearchError> {
+pub(crate) fn validate_amsha_requests(requests: &[AmshaRequest]) -> Result<(), SearchError> {
     if requests.len() > MAX_AMSHA_REQUESTS {
         return Err(SearchError::InvalidConfig("amsha count exceeds maximum"));
     }
@@ -4446,7 +4535,9 @@ fn resolve_amsha_plan(
     Ok(ResolvedAmshaPlan { requests })
 }
 
-fn unique_amsha_requests_for_compute(requests: &[AmshaRequest]) -> (Vec<AmshaRequest>, Vec<usize>) {
+pub(crate) fn unique_amsha_requests_for_compute(
+    requests: &[AmshaRequest],
+) -> (Vec<AmshaRequest>, Vec<usize>) {
     let mut unique = Vec::with_capacity(requests.len());
     let mut positions = Vec::with_capacity(requests.len());
     for request in requests {

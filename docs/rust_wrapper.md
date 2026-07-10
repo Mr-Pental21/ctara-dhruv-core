@@ -108,6 +108,39 @@ section) replaces the former `include_panchang`/`include_calendar` booleans;
 `FullKundaliResult.panchang` is `Option<PanchangResult>` containing only the
 selected elements.
 
+### Range / Series Ops (re-exported from `dhruv_search`)
+
+`dhruv_rs` re-exports the range operations directly from `dhruv_search`:
+
+- `graha_positions_series(engine, eop, from_utc, to_utc, step_minutes, ...)` —
+  fixed-cadence graha positions (`GrahaPositionsSeries` /
+  `GrahaPositionsPoint`, cap `MAX_GRAHA_POSITIONS_SERIES_POINTS`).
+- `amsha_series(engine, eop, from_utc, to_utc, step_minutes, location,
+  aya_config, amsha_requests, include_grahas)` — fixed-cadence slim varga
+  charts. Grid semantics match `graha_positions_series`; the varga lagna is
+  always computed, the nine grahas are added when `include_grahas` is set;
+  charts are in request order. Types: `AmshaSeries`, `AmshaSeriesPoint`,
+  `AmshaSeriesChart`; cap `MAX_AMSHA_SERIES_CELLS` (100,000 = points x unique
+  requests).
+- `panchang_events(engine, eop, from_utc, to_utc, include_mask, config,
+  max_events)` — exact boundary sweep over location-independent panchang
+  elements only (`include_mask` restricted to
+  `PANCHANG_INCLUDE_LOCATION_INDEPENDENT` bits). Returns
+  `PanchangEventsResult` with per-kind `Vec`s of the existing per-moment
+  `*Info` structs plus `truncated`/`next_from_utc`; cap `MAX_PANCHANG_EVENTS`
+  (50,000, `max_events = 0` selects the ceiling).
+- `amsha_lagna_events(engine, eop, from_utc, to_utc, location, aya_config,
+  amsha_requests, max_segments)` — exact varga-lagna rashi segments via
+  root-found division-boundary crossings (no sampling grid). Returns
+  `AmshaLagnaEventsResult` with one `AmshaLagnaEvents` entry per unique
+  request and `AmshaLagnaSegment` items plus `truncated`/`next_from_utc`;
+  cap `MAX_AMSHA_LAGNA_SEGMENTS` (50,000).
+
+The pure boundary helper `next_amsha_boundary_longitude(sidereal_lon, amsha,
+variation)` lives in `dhruv_vedic_base::amsha` (re-exported from
+`dhruv_vedic_math`) and returns the next longitude at which the varga rashi
+changes.
+
 ### Re-Export Policy
 
 `dhruv_rs` intentionally re-exports a selected set of high-level config/result

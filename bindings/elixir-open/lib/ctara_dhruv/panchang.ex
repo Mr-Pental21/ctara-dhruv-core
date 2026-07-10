@@ -36,6 +36,21 @@ defmodule CtaraDhruv.Panchang do
   def daily(engine, request),
     do: Native.call_engine(&Native.panchang_run/2, engine, Map.put(request, :op, :daily))
 
+  @doc """
+  Panchang boundary events over `[from_utc, to_utc]`.
+
+  The request takes `:from_utc` and `:to_utc`, an optional `:include_mask`
+  restricted to location-independent elements (`tithi`, `karana`, `yoga`,
+  `nakshatra`, `masa`, `ayana`, `varsha`; defaults to all of them), and an
+  optional `:max_events` cap (default `0` selects the 50,000 ceiling).
+  Returns per-kind lists in the same shape as the per-moment ops plus
+  `"truncated"` and `"next_from_utc"`; consecutive segments of one kind chain
+  exactly (`end == next start`). On truncation resume from `next_from_utc`
+  and deduplicate on `{kind, start}`.
+  """
+  def events(engine, request),
+    do: Native.call_engine(&Native.panchang_run/2, engine, Map.put(request, :op, :events))
+
   def elongation_at(engine, request),
     do: Native.call_engine(&Native.panchang_run/2, engine, Map.put(request, :op, :elongation_at))
 

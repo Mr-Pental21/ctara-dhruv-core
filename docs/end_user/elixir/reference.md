@@ -91,6 +91,25 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
   `time_upagraha_jd/1`, `all_sphutas/1`, `calculate_ashtakavarga/1`,
   `calculate_bav/1`, `calculate_all_bav/1`, `calculate_sav/1`,
   `trikona_sodhana/1`, `ekadhipatya_sodhana/1`
+- engine-free amsha helpers:
+  `amsha_rashi_infos/1`, `amsha_variations/1`, `amsha_variations_many/1`
+
+`amsha_rashi_infos/1` is an engine-free batched varga mapping. The request
+takes `:longitudes` (list of sidereal longitudes in degrees) and
+`:amsha_requests` (`[%{code: 9}, %{code: 2, variation: 1}, ...]`); the result
+carries `:entries` — one list per input longitude with one map per request
+carrying `:amsha_longitude`, `:rashi`, `:rashi_index`, `:degrees_in_rashi`,
+and `:dms`:
+
+```elixir
+{:ok, %{entries: [[d9, d10]]}} =
+  CtaraDhruv.Math.amsha_rashi_infos(%{
+    longitudes: [123.456],
+    amsha_requests: [%{code: 9}, %{code: 10}]
+  })
+
+d9.rashi_index  # 0-based varga rashi of the first longitude in D9
+```
 
 `CtaraDhruv.Vedic`:
 
@@ -132,6 +151,7 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
 - `ghatika_from_sunrises/2`
 - `ghatika_from_elapsed/1`
 - `ghatikas_since_sunrise/1`
+- `events/2`
 
 `daily/2` accepts an optional `:include_mask` selecting which panchang
 elements are computed: an integer mask, a single element/group name string
@@ -142,6 +162,30 @@ names OR-ed together. When omitted it defaults to the core elements
 elements (masa, ayana, varsha) via the mask. `:location` is optional and
 required only when the selection includes a location-dependent element
 (vaar, hora, ghatika). Only selected elements are computed and returned.
+
+`events/2` streams exact panchang element segments over a UTC range. The
+request takes `:from_utc` and `:to_utc`, an optional `:include_mask`
+restricted to location-independent elements (`tithi`, `karana`, `yoga`,
+`nakshatra`, `masa`, `ayana`, `varsha`; defaults to all of them — integer
+mask, name, or list of names/atoms, like `Panchang.daily/2`), and an
+optional `:max_events` cap (default `0` selects the 50,000 ceiling). The
+result carries per-kind lists in the same shape as the per-moment ops
+(unselected kinds are `[]`) plus `:truncated` and `:next_from_utc`;
+consecutive segments of one kind chain exactly (`end == next start`). On
+truncation, resume from `:next_from_utc` and deduplicate on `{kind, start}`:
+
+```elixir
+{:ok, events} =
+  CtaraDhruv.Panchang.events(engine, %{
+    from_utc: %{year: 2026, month: 4, day: 1, hour: 0, minute: 0, second: 0.0},
+    to_utc: %{year: 2026, month: 5, day: 1, hour: 0, minute: 0, second: 0.0},
+    include_mask: [:tithi, :masa]
+  })
+
+[first_tithi | _] = events.tithi   # %{tithi: ..., start: ..., end: ...}
+[masa | _] = events.masa
+refute events.truncated
+```
 
 `CtaraDhruv.Jyotish`:
 
@@ -183,11 +227,63 @@ required only when the selection includes a location-dependent element
   same entry/state outputs, and sensitive-point distance mode can also surface
   bhava-cusp distance arrays
 - `amsha/2`
+- `amsha_series/2`
+- `amsha_lagna_events/2`
 
 - `CtaraDhruv.Jyotish.graha_positions_series/2` — fixed-cadence sampling
   of `graha_positions/2` via `:from_utc`, `:to_utc`, `:step_minutes`
   (endpoints inclusive on the grid, max 10,000 points); returns
   `%{points: [%{utc: ..., jd_utc: ..., positions: ...}]}`.
+
+`amsha_series/2` samples slim varga charts at a fixed cadence over
+`[from_utc, to_utc]`, with the same grid semantics as
+`graha_positions_series/2`. The request takes `:from_utc`, `:to_utc`,
+`:step_minutes`, `:location`, and `:amsha_requests`
+(`[%{code: 9}, %{code: 2, variation: 1}, ...]`), plus an optional
+`:include_grahas` boolean (default `false`) that adds the nine graha varga
+entries per chart. At most 100,000 cells (points x unique requests). Each
+point carries `:utc`, `:jd_utc`, and `:charts` in request order; each chart
+carries `:amsha`, `:variation_code`, `:lagna`, and `:grahas` (`nil` unless
+requested), with entries in the single-epoch `amsha/2` entry shape:
+
+```elixir
+{:ok, series} =
+  CtaraDhruv.Jyotish.amsha_series(engine, %{
+    from_utc: %{year: 2026, month: 4, day: 17, hour: 0, minute: 0, second: 0.0},
+    to_utc: %{year: 2026, month: 4, day: 18, hour: 0, minute: 0, second: 0.0},
+    step_minutes: 60,
+    location: %{latitude_deg: 28.6139, longitude_deg: 77.2090, altitude_m: 0.0},
+    amsha_requests: [%{code: 9}, %{code: 10}],
+    include_grahas: true
+  })
+
+[point | _] = series.points
+[d9_chart, _d10_chart] = point.charts
+d9_chart.lagna.rashi_index
+```
+
+`amsha_lagna_events/2` returns exact varga-lagna rashi segments over
+`[from_utc, to_utc]` (root-found transitions, no sampling grid, so fast
+vargas such as D60 cannot alias). The request takes `:from_utc`, `:to_utc`,
+`:location`, and `:amsha_requests`, plus an optional `:max_segments` cap
+(default `0` selects the 50,000 ceiling). The result carries `:entries`
+(one per unique request, each with `:amsha`, `:variation_code`, and
+`:segments` maps of `:rashi`, `:rashi_index`, `:start`, `:end`),
+`:truncated`, and `:next_from_utc`. On truncation resume from
+`:next_from_utc`:
+
+```elixir
+{:ok, events} =
+  CtaraDhruv.Jyotish.amsha_lagna_events(engine, %{
+    from_utc: %{year: 2026, month: 4, day: 17, hour: 0, minute: 0, second: 0.0},
+    to_utc: %{year: 2026, month: 4, day: 18, hour: 0, minute: 0, second: 0.0},
+    location: %{latitude_deg: 28.6139, longitude_deg: 77.2090, altitude_m: 0.0},
+    amsha_requests: [%{code: 60}]
+  })
+
+[d60_entry] = events.entries
+[segment | _] = d60_entry.segments  # %{rashi: ..., rashi_index: ..., start: ..., end: ...}
+```
 
 Grahan results also carry apparent equatorial coordinates at greatest
 grahan: `moon_right_ascension_deg`/`moon_declination_deg` on chandra

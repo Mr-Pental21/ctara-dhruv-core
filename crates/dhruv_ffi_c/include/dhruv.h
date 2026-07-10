@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       76
+#define DHRUV_API_VERSION       77
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -340,6 +340,9 @@ typedef int32_t DhruvStatus;
 #define DHRUV_MAX_AMSHA_REQUESTS      40
 #define DHRUV_MAX_DASHA_SYSTEMS       23
 #define DHRUV_MAX_CHARAKARAKA_ENTRIES 8
+#define DHRUV_MAX_AMSHA_SERIES_CELLS   100000
+#define DHRUV_MAX_PANCHANG_EVENTS       50000
+#define DHRUV_MAX_AMSHA_LAGNA_SEGMENTS  50000
 
 /* Charakaraka schemes */
 #define DHRUV_CHARAKARAKA_SCHEME_EIGHT             0
@@ -1380,6 +1383,26 @@ typedef struct {
     DhruvAmshaEntry special_lagnas[8];
 } DhruvAmshaChart;
 
+/* Slim varga chart within an amsha series point. grahas is populated
+   (grahas_valid = 1) when the series was requested with include_grahas. */
+typedef struct {
+    uint16_t        amsha_code;
+    uint8_t         variation_code;
+    DhruvAmshaEntry lagna;
+    uint8_t         grahas_valid;
+    DhruvAmshaEntry grahas[9];
+} DhruvAmshaSeriesChart;
+
+/* One varga-lagna rashi segment. The first segment of a sweep starts at the
+   requested from_utc; later segments start at the exact transition. end is
+   the exact transition time (the last segment's end is the first transition
+   at or after to_utc). */
+typedef struct {
+    uint8_t      rashi_index;   /* 0-based rashi index (0-11) */
+    DhruvUtcTime start;
+    DhruvUtcTime end;
+} DhruvAmshaLagnaSegment;
+
 /* --- Charakaraka --- */
 
 typedef struct {
@@ -2191,6 +2214,81 @@ DhruvStatus dhruv_panchang_compute_ex(
     const DhruvPanchangComputeRequest *request,
     DhruvPanchangOperationResult *out);
 
+/* --- Panchang events (range sweep) ---
+   Streams exact panchang element segments overlapping [from_utc, to_utc].
+   include_mask must contain only DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT
+   bits; max_events 0 selects the hard ceiling DHRUV_MAX_PANCHANG_EVENTS.
+   Consecutive segments of one kind chain exactly (end == next.start); the
+   first segment of each kind may start before from_utc and the last may end
+   after to_utc. When truncated, dhruv_panchang_events_meta yields the resume
+   point. The returned handle must be freed with dhruv_panchang_events_free. */
+typedef void *DhruvPanchangEventsHandle;
+
+DhruvStatus dhruv_panchang_events(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *from_utc,
+    const DhruvUtcTime *to_utc,
+    uint32_t include_mask,
+    const DhruvSankrantiConfig *sankranti_config,
+    uint32_t max_events,
+    DhruvPanchangEventsHandle *out);
+DhruvStatus dhruv_panchang_events_tithi_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_tithi_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvTithiInfo *out);
+DhruvStatus dhruv_panchang_events_karana_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_karana_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvKaranaInfo *out);
+DhruvStatus dhruv_panchang_events_yoga_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_yoga_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvYogaInfo *out);
+DhruvStatus dhruv_panchang_events_nakshatra_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_nakshatra_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvPanchangNakshatraInfo *out);
+DhruvStatus dhruv_panchang_events_masa_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_masa_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvMasaInfo *out);
+DhruvStatus dhruv_panchang_events_ayana_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_ayana_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvAyanaInfo *out);
+DhruvStatus dhruv_panchang_events_varsha_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_varsha_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvVarshaInfo *out);
+DhruvStatus dhruv_panchang_events_meta(
+    DhruvPanchangEventsHandle handle,
+    uint8_t *out_truncated,
+    uint8_t *out_next_from_valid,
+    DhruvUtcTime *out_next_from_utc);
+void dhruv_panchang_events_free(DhruvPanchangEventsHandle handle);
+
 /* --- Panchang name lookups --- */
 const char *dhruv_tithi_name(uint32_t index);
 const char *dhruv_karana_name(uint32_t index);
@@ -2656,6 +2754,95 @@ DhruvStatus dhruv_amsha_variations_many(
     const uint16_t *amsha_codes,
     uint32_t count,
     DhruvAmshaVariationCatalogs *out);
+
+/* --- Amsha series (fixed-cadence slim varga charts) ---
+   Grid semantics match dhruv_graha_positions_series: one point per
+   step_minutes starting at from_utc, endpoints inclusive when on the grid.
+   Each point carries one chart per request, in request order (duplicates
+   repeated); variation_codes may be NULL (all default). The varga lagna is
+   always computed; graha entries are added when include_grahas is non-zero.
+   Rejects step_minutes == 0, reversed ranges, empty or invalid request
+   lists, and grids whose points * unique_requests exceed
+   DHRUV_MAX_AMSHA_SERIES_CELLS. The returned handle must be freed with
+   dhruv_amsha_series_free. */
+typedef void *DhruvAmshaSeriesHandle;
+
+DhruvStatus dhruv_amsha_series(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *from_utc,
+    const DhruvUtcTime *to_utc,
+    uint32_t step_minutes,
+    const DhruvGeoLocation *location,
+    const DhruvSankrantiConfig *sankranti_config,
+    const uint16_t *amsha_codes,
+    const uint8_t *variation_codes,
+    uint32_t request_count,
+    uint8_t include_grahas,
+    DhruvAmshaSeriesHandle *out);
+DhruvStatus dhruv_amsha_series_point_count(
+    DhruvAmshaSeriesHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_amsha_series_chart_count(
+    DhruvAmshaSeriesHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_amsha_series_point_at(
+    DhruvAmshaSeriesHandle handle,
+    uint32_t idx,
+    DhruvUtcTime *out_utc,
+    double *out_jd_utc);
+DhruvStatus dhruv_amsha_series_chart_at(
+    DhruvAmshaSeriesHandle handle,
+    uint32_t point_idx,
+    uint32_t chart_idx,
+    DhruvAmshaSeriesChart *out);
+void dhruv_amsha_series_free(DhruvAmshaSeriesHandle handle);
+
+/* --- Amsha lagna events (exact varga-lagna transitions) ---
+   Streams exact varga-lagna rashi segments overlapping [from_utc, to_utc],
+   one entry per unique request (duplicates collapsed), in request order;
+   variation_codes may be NULL (all default). max_segments caps the total
+   segments across all amshas (0 selects the hard ceiling
+   DHRUV_MAX_AMSHA_LAGNA_SEGMENTS). When truncated,
+   dhruv_amsha_lagna_events_meta yields the resume point. The returned
+   handle must be freed with dhruv_amsha_lagna_events_free. */
+typedef void *DhruvAmshaLagnaEventsHandle;
+
+DhruvStatus dhruv_amsha_lagna_events(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *from_utc,
+    const DhruvUtcTime *to_utc,
+    const DhruvGeoLocation *location,
+    const DhruvSankrantiConfig *sankranti_config,
+    const uint16_t *amsha_codes,
+    const uint8_t *variation_codes,
+    uint32_t request_count,
+    uint32_t max_segments,
+    DhruvAmshaLagnaEventsHandle *out);
+DhruvStatus dhruv_amsha_lagna_events_entry_count(
+    DhruvAmshaLagnaEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_amsha_lagna_events_entry_info(
+    DhruvAmshaLagnaEventsHandle handle,
+    uint32_t entry_idx,
+    uint16_t *out_amsha_code,
+    uint8_t *out_variation_code);
+DhruvStatus dhruv_amsha_lagna_events_segment_count(
+    DhruvAmshaLagnaEventsHandle handle,
+    uint32_t entry_idx,
+    uint32_t *out);
+DhruvStatus dhruv_amsha_lagna_events_segment_at(
+    DhruvAmshaLagnaEventsHandle handle,
+    uint32_t entry_idx,
+    uint32_t seg_idx,
+    DhruvAmshaLagnaSegment *out);
+DhruvStatus dhruv_amsha_lagna_events_meta(
+    DhruvAmshaLagnaEventsHandle handle,
+    uint8_t *out_truncated,
+    uint8_t *out_next_from_valid,
+    DhruvUtcTime *out_next_from_utc);
+void dhruv_amsha_lagna_events_free(DhruvAmshaLagnaEventsHandle handle);
 
 /* --- Charakaraka --- */
 DhruvStatus dhruv_charakaraka_for_date(

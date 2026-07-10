@@ -369,7 +369,7 @@ pub fn nakshatra_at(
 ///
 /// Finds the JD TDB where `f(t) = target_deg` by searching for a zero of
 /// `normalize(f(t) - target_deg)`. Searches from `jd_start` in the given direction.
-fn find_angle_boundary(
+pub(crate) fn find_angle_boundary(
     f: &dyn Fn(f64) -> Result<f64, SearchError>,
     jd_start: f64,
     target_deg: f64,

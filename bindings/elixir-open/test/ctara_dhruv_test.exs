@@ -427,6 +427,134 @@ defmodule CtaraDhruvTest do
     end
   end
 
+  test "elixir math exposes engine-free batched amsha mapping" do
+    assert {:ok, %{entries: [first, second]}} =
+             Math.amsha_rashi_infos(%{
+               longitudes: [15.0, 100.0],
+               amsha_requests: [%{code: 1}, %{code: 9}]
+             })
+
+    assert [d1, d9] = first
+    assert d1.rashi_index == 0
+    assert_in_delta d1.degrees_in_rashi, 15.0, 1.0e-9
+    assert_in_delta d1.amsha_longitude, 15.0, 1.0e-9
+    assert d9.rashi_index == 4
+    assert_in_delta d9.amsha_longitude, 135.0, 1.0e-9
+
+    assert [d1b, d9b] = second
+    assert d1b.rashi_index == 3
+    assert_in_delta d1b.degrees_in_rashi, 10.0, 1.0e-9
+    assert d9b.rashi_index == 6
+    assert_in_delta d9b.amsha_longitude, 180.0, 1.0e-9
+
+    assert {:error, %CtaraDhruv.Error{}} =
+             Math.amsha_rashi_infos(%{
+               longitudes: [15.0],
+               amsha_requests: [%{code: 13}]
+             })
+  end
+
+  test "elixir batch sweep ops: amsha_series, amsha_lagna_events, panchang events" do
+    case with_engine() do
+      :skip ->
+        assert true
+
+      {:ok, engine} ->
+        if File.exists?(@eop) do
+          assert {:ok, _} = Engine.load_eop(engine, @eop)
+
+          location = %{latitude_deg: 28.6139, longitude_deg: 77.2090, altitude_m: 0.0}
+          from_utc = %{year: 2015, month: 1, day: 15, hour: 6, minute: 0, second: 0.0}
+          to_utc = %{from_utc | hour: 7}
+
+          assert {:ok, series} =
+                   Jyotish.amsha_series(engine, %{
+                     from_utc: from_utc,
+                     to_utc: to_utc,
+                     step_minutes: 30,
+                     location: location,
+                     amsha_requests: [%{code: 1}, %{code: 9}]
+                   })
+
+          assert length(series.points) == 3
+          [point | _] = series.points
+          assert is_float(point.jd_utc)
+          assert [d1_chart, d9_chart] = point.charts
+          assert d1_chart.amsha == "d1"
+          assert d9_chart.amsha == "d9"
+          assert d1_chart.variation_code == 0
+          assert is_float(d1_chart.lagna.sidereal_longitude)
+          assert is_nil(d1_chart.grahas)
+
+          assert {:ok, series_with_grahas} =
+                   Jyotish.amsha_series(engine, %{
+                     from_utc: from_utc,
+                     to_utc: to_utc,
+                     step_minutes: 30,
+                     location: location,
+                     amsha_requests: [%{code: 9}],
+                     include_grahas: true
+                   })
+
+          [point | _] = series_with_grahas.points
+          assert [chart] = point.charts
+          assert length(chart.grahas) == 9
+
+          assert {:error, %CtaraDhruv.Error{}} =
+                   Jyotish.amsha_series(engine, %{
+                     from_utc: from_utc,
+                     to_utc: to_utc,
+                     step_minutes: 0,
+                     location: location,
+                     amsha_requests: [%{code: 1}]
+                   })
+
+          assert {:ok, events} =
+                   Jyotish.amsha_lagna_events(engine, %{
+                     from_utc: from_utc,
+                     to_utc: %{from_utc | hour: 12},
+                     location: location,
+                     amsha_requests: [%{code: 1}]
+                   })
+
+          assert [entry] = events.entries
+          assert entry.amsha == "d1"
+          assert length(entry.segments) >= 2
+          refute events.truncated
+          assert is_nil(events.next_from_utc)
+
+          entry.segments
+          |> Enum.chunk_every(2, 1, :discard)
+          |> Enum.each(fn [a, b] -> assert Map.fetch!(a, :end) == b.start end)
+
+          assert {:ok, panchang_events} =
+                   Panchang.events(engine, %{
+                     from_utc: from_utc,
+                     to_utc: %{from_utc | day: 18},
+                     include_mask: [:tithi, :nakshatra]
+                   })
+
+          assert length(panchang_events.tithi) >= 3
+          assert length(panchang_events.nakshatra) >= 3
+          assert panchang_events.karana == []
+          refute panchang_events.truncated
+
+          panchang_events.tithi
+          |> Enum.chunk_every(2, 1, :discard)
+          |> Enum.each(fn [a, b] -> assert Map.fetch!(a, :end) == b.start end)
+
+          assert {:error, %CtaraDhruv.Error{}} =
+                   Panchang.events(engine, %{
+                     from_utc: from_utc,
+                     to_utc: %{from_utc | day: 18},
+                     include_mask: [:vaar]
+                   })
+        else
+          assert true
+        end
+    end
+  end
+
   test "elixir math exposes amsha variation catalogs" do
     assert {:ok, d2} = Math.amsha_variations(%{amsha_code: 2})
     assert d2.amsha_code == 2

@@ -19,21 +19,23 @@ use dhruv_search::operations::{
 use dhruv_search::{
     GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
     GocharTransitBody, NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL_CORE,
-    SankrantiConfig, StationaryConfig, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
-    TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent, ayanamsha,
+    PANCHANG_INCLUDE_LOCATION_INDEPENDENT, SankrantiConfig, StationaryConfig, TajakaReturnBasis,
+    TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner,
+    TransitToNatalAspectEvent, amsha_lagna_events, ayanamsha,
     body_ecliptic_lon_lat, conjunction, dasha_child_period_for_birth,
     dasha_child_period_with_inputs, dasha_children_for_birth, dasha_children_with_inputs,
     dasha_complete_level_for_birth, dasha_complete_level_with_inputs, dasha_hierarchy_for_birth,
     dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth, dasha_level0_entity_with_inputs,
     dasha_level0_for_birth, dasha_level0_with_inputs, dasha_snapshot_at, dasha_snapshot_with_inputs,
     elongation_at, full_kundali_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes,
-    hora_from_sunrises, karana_at, lunar_node, motion, nakshatra_at, panchang,
+    hora_from_sunrises, karana_at, lunar_node, motion, nakshatra_at, panchang, panchang_events,
     panchang_include_bits, set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at,
     vaar_from_sunrises, vedic_day_sunrises, yoga_at,
 };
 use dhruv_search::{
     GrahaLongitudeKind, GrahaLongitudesConfig, all_upagrahas_for_date,
-    all_upagrahas_for_date_with_config, amsha_charts_for_date, arudha_padas_for_date,
+    all_upagrahas_for_date_with_config, amsha_charts_for_date, amsha_series,
+    arudha_padas_for_date,
     ashtakavarga_for_date, avastha_for_date, balas_for_date, bhavabala_for_date,
     charakaraka_for_date, core_bindus, drishti_for_date, graha_positions as graha_positions_fn,
     moving_osculating_apogees_for_date, shadbala_for_date, sidereal_bhavas_for_date,
@@ -48,6 +50,7 @@ use dhruv_time::{
     TimeConversionPolicy, TimeDiagnostics, TimeWarning, TtUtcSource, UtcTime, jd_to_tdb_seconds,
     tdb_seconds_to_jd,
 };
+use dhruv_vedic_base::amsha::amsha_rashi_infos;
 use dhruv_vedic_base::bhava_types::ALL_BHAVA_SYSTEMS;
 use dhruv_vedic_base::bhava_types::SayanadiGhatikaRounding;
 use dhruv_vedic_base::combustion::{
@@ -258,6 +261,9 @@ struct VedicRequest {
 struct PanchangRequest {
     op: String,
     utc: Option<UtcInput>,
+    from_utc: Option<UtcInput>,
+    to_utc: Option<UtcInput>,
+    max_events: Option<u32>,
     jd_tdb: Option<f64>,
     query_jd: Option<f64>,
     sunrise_jd: Option<f64>,
@@ -327,6 +333,8 @@ struct JyotishRequest {
     from_utc: Option<UtcInput>,
     to_utc: Option<UtcInput>,
     step_minutes: Option<u32>,
+    include_grahas: Option<bool>,
+    max_segments: Option<u32>,
     location: Option<GeoLocationInput>,
     kind: Option<EnumInput>,
     system: Option<EnumInput>,
@@ -2031,6 +2039,30 @@ fn to_amsha_selection(
     Ok(selection)
 }
 
+/// Decode `[%{code, variation}]` request maps into library `AmshaRequest`s,
+/// validating codes and per-amsha variation codes.
+fn to_amsha_requests(input: Option<&[AmshaRequestInput]>) -> Result<Vec<AmshaRequest>, Value> {
+    input
+        .unwrap_or_default()
+        .iter()
+        .map(|request| {
+            let amsha = Amsha::from_code(request.code)
+                .ok_or_else(|| error_payload("invalid_request", "unknown amsha code"))?;
+            let variation = match request.variation {
+                Some(code) if is_valid_amsha_variation(amsha, code) => Some(code),
+                Some(_) => {
+                    return Err(error_payload(
+                        "invalid_request",
+                        "unknown amsha variation for amsha code",
+                    ));
+                }
+                None => None,
+            };
+            Ok(AmshaRequest { amsha, variation })
+        })
+        .collect()
+}
+
 fn to_full_kundali_config(
     state: &EngineState,
     input: Option<&FullKundaliConfigInput>,
@@ -3163,6 +3195,82 @@ fn amsha_result_json(result: dhruv_search::AmshaResult) -> Value {
     })
 }
 
+fn amsha_series_chart_json(chart: dhruv_search::AmshaSeriesChart) -> Value {
+    json!({
+        "amsha": debug_name(chart.amsha),
+        "variation_code": chart.variation_code,
+        "lagna": amsha_entry_json(chart.lagna),
+        "grahas": chart
+            .grahas
+            .map(|entries| entries.into_iter().map(amsha_entry_json).collect::<Vec<_>>())
+    })
+}
+
+fn amsha_series_json(series: dhruv_search::AmshaSeries) -> Value {
+    json!({
+        "points": series
+            .points
+            .into_iter()
+            .map(|point| json!({
+                "utc": utc_json(point.utc),
+                "jd_utc": point.jd_utc,
+                "charts": point
+                    .charts
+                    .into_iter()
+                    .map(amsha_series_chart_json)
+                    .collect::<Vec<_>>(),
+            }))
+            .collect::<Vec<_>>()
+    })
+}
+
+fn amsha_lagna_segment_json(segment: dhruv_search::AmshaLagnaSegment) -> Value {
+    json!({
+        "rashi": debug_name(segment.rashi),
+        "rashi_index": segment.rashi_index,
+        "start": utc_json(segment.start),
+        "end": utc_json(segment.end),
+    })
+}
+
+fn amsha_lagna_events_json(result: dhruv_search::AmshaLagnaEventsResult) -> Value {
+    json!({
+        "entries": result
+            .entries
+            .into_iter()
+            .map(|entry| json!({
+                "amsha": debug_name(entry.amsha),
+                "variation_code": entry.variation_code,
+                "segments": entry
+                    .segments
+                    .into_iter()
+                    .map(amsha_lagna_segment_json)
+                    .collect::<Vec<_>>(),
+            }))
+            .collect::<Vec<_>>(),
+        "truncated": result.truncated,
+        "next_from_utc": result.next_from_utc.map(utc_json),
+    })
+}
+
+fn panchang_events_json(result: dhruv_search::PanchangEventsResult) -> Value {
+    json!({
+        "tithi": result.tithi.into_iter().map(tithi_json).collect::<Vec<_>>(),
+        "karana": result.karana.into_iter().map(karana_json).collect::<Vec<_>>(),
+        "yoga": result.yoga.into_iter().map(yoga_json).collect::<Vec<_>>(),
+        "nakshatra": result
+            .nakshatra
+            .into_iter()
+            .map(nakshatra_json)
+            .collect::<Vec<_>>(),
+        "masa": result.masa.into_iter().map(masa_json).collect::<Vec<_>>(),
+        "ayana": result.ayana.into_iter().map(ayana_json).collect::<Vec<_>>(),
+        "varsha": result.varsha.into_iter().map(varsha_json).collect::<Vec<_>>(),
+        "truncated": result.truncated,
+        "next_from_utc": result.next_from_utc.map(utc_json),
+    })
+}
+
 fn amsha_variation_catalog_json(amsha: Amsha) -> Value {
     let catalog = amsha_variation_catalog(amsha);
     json!({
@@ -3823,6 +3931,7 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                     panchang(engine, eop, &op).map_err(|err| map_error("search_error", err))?;
                 panchang_value_json(&result)
             }
+            "events" => handle_panchang_events(engine, eop, &request, &sankranti_config)?,
             "elongation_at" => json!({
                 "value": elongation_at(
                     engine,
@@ -4176,6 +4285,105 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
     })
 }
 
+/// Decode a required `[from_utc, to_utc]` range from a jyotish request.
+fn jyotish_range_utc(request: &JyotishRequest) -> Result<(UtcTime, UtcTime), Value> {
+    let from_utc = parse_utc(
+        request
+            .from_utc
+            .ok_or_else(|| error_payload("invalid_request", "from_utc is required"))?,
+    )?;
+    let to_utc = parse_utc(
+        request
+            .to_utc
+            .ok_or_else(|| error_payload("invalid_request", "to_utc is required"))?,
+    )?;
+    Ok((from_utc, to_utc))
+}
+
+fn handle_amsha_series(
+    engine: &Engine,
+    eop: &EopKernel,
+    request: &JyotishRequest,
+    location: Option<GeoLocation>,
+    sankranti_config: &SankrantiConfig,
+) -> JsonResult {
+    let (from_utc, to_utc) = jyotish_range_utc(request)?;
+    let step_minutes = request
+        .step_minutes
+        .ok_or_else(|| error_payload("invalid_request", "step_minutes is required"))?;
+    let requests = to_amsha_requests(request.amsha_requests.as_deref())?;
+    let series = amsha_series(
+        engine,
+        eop,
+        &from_utc,
+        &to_utc,
+        step_minutes,
+        &location.ok_or_else(|| error_payload("invalid_request", "location is required"))?,
+        sankranti_config,
+        &requests,
+        request.include_grahas.unwrap_or(false),
+    )
+    .map_err(|err| map_error("search_error", err))?;
+    Ok(amsha_series_json(series))
+}
+
+fn handle_amsha_lagna_events(
+    engine: &Engine,
+    eop: &EopKernel,
+    request: &JyotishRequest,
+    location: Option<GeoLocation>,
+    sankranti_config: &SankrantiConfig,
+) -> JsonResult {
+    let (from_utc, to_utc) = jyotish_range_utc(request)?;
+    let requests = to_amsha_requests(request.amsha_requests.as_deref())?;
+    let result = amsha_lagna_events(
+        engine,
+        eop,
+        &from_utc,
+        &to_utc,
+        &location.ok_or_else(|| error_payload("invalid_request", "location is required"))?,
+        sankranti_config,
+        &requests,
+        request.max_segments.unwrap_or(0),
+    )
+    .map_err(|err| map_error("search_error", err))?;
+    Ok(amsha_lagna_events_json(result))
+}
+
+fn handle_panchang_events(
+    engine: &Engine,
+    eop: &EopKernel,
+    request: &PanchangRequest,
+    sankranti_config: &SankrantiConfig,
+) -> JsonResult {
+    let from_utc = parse_utc(
+        request
+            .from_utc
+            .ok_or_else(|| error_payload("invalid_request", "from_utc is required"))?,
+    )?;
+    let to_utc = parse_utc(
+        request
+            .to_utc
+            .ok_or_else(|| error_payload("invalid_request", "to_utc is required"))?,
+    )?;
+    // Default covers every supported (location-independent) element.
+    let include_mask = match request.include_mask.as_ref() {
+        Some(input) => parse_panchang_include_mask(input)?,
+        None => PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
+    };
+    let result = panchang_events(
+        engine,
+        eop,
+        &from_utc,
+        &to_utc,
+        include_mask,
+        sankranti_config,
+        request.max_events.unwrap_or(0),
+    )
+    .map_err(|err| map_error("search_error", err))?;
+    Ok(panchang_events_json(result))
+}
+
 fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishRequest) -> JsonResult {
     read_state(resource, |state| {
         let engine = require_engine(state)?;
@@ -4483,29 +4691,15 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
             )
             .map(full_kundali_json)
             .map_err(|err| map_error("search_error", err)),
+            "amsha_series" => {
+                handle_amsha_series(engine, eop, &request, location, &sankranti_config)
+            }
+            "amsha_lagna_events" => {
+                handle_amsha_lagna_events(engine, eop, &request, location, &sankranti_config)
+            }
             "amsha" => {
                 let scope = to_amsha_scope(request.amsha_scope.as_ref());
-                let requests = request
-                    .amsha_requests
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|request| {
-                        let amsha = Amsha::from_code(request.code).ok_or_else(|| {
-                            error_payload("invalid_request", "unknown amsha code")
-                        })?;
-                        let variation = match request.variation {
-                            Some(code) if is_valid_amsha_variation(amsha, code) => Some(code),
-                            Some(_) => {
-                                return Err(error_payload(
-                                    "invalid_request",
-                                    "unknown amsha variation for amsha code",
-                                ));
-                            }
-                            None => None,
-                        };
-                        Ok(AmshaRequest { amsha, variation })
-                    })
-                    .collect::<Result<Vec<_>, Value>>()?;
+                let requests = to_amsha_requests(request.amsha_requests.as_deref())?;
                 amsha_charts_for_date(
                     engine,
                     eop,
@@ -5297,6 +5491,42 @@ fn util_run<'a>(env: Env<'a>, request: Term<'a>) -> Result<Term<'a>, rustler::Er
             .ok_or(rustler::Error::BadArg)?;
             Ok(amsha_variation_catalog_json(amsha))
         }
+        "amsha_rashi_infos" => {
+            let longitudes = raw
+                .get("longitudes")
+                .and_then(Value::as_array)
+                .ok_or(rustler::Error::BadArg)?
+                .iter()
+                .map(|value| value.as_f64().ok_or(rustler::Error::BadArg))
+                .collect::<Result<Vec<_>, rustler::Error>>()?;
+            let inputs: Vec<AmshaRequestInput> = raw
+                .get("amsha_requests")
+                .cloned()
+                .ok_or(rustler::Error::BadArg)
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|_| rustler::Error::BadArg)
+                })?;
+            to_amsha_requests(Some(&inputs)).map(|requests| {
+                json!({
+                    "entries": longitudes
+                        .into_iter()
+                        .map(|sidereal_lon| {
+                            amsha_rashi_infos(sidereal_lon, &requests)
+                                .into_iter()
+                                .map(|info| {
+                                    let mut value = rashi_info_json(info);
+                                    value["amsha_longitude"] = json!(
+                                        f64::from(info.rashi_index) * 30.0
+                                            + info.degrees_in_rashi
+                                    );
+                                    value
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+        }
         "amsha_variations_many" => {
             let amsha_codes = raw
                 .get("amsha_codes")
@@ -5772,6 +6002,65 @@ mod tests {
         assert_eq!(selection.variations[0], 0);
         assert_eq!(selection.codes[1], 2);
         assert_eq!(selection.variations[1], 1);
+    }
+
+    #[test]
+    fn amsha_requests_conversion_preserves_codes_and_variations() {
+        let requests = to_amsha_requests(Some(&[
+            AmshaRequestInput {
+                code: 9,
+                variation: None,
+            },
+            AmshaRequestInput {
+                code: 2,
+                variation: Some(1),
+            },
+        ]))
+        .expect("amsha requests should parse");
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].amsha, Amsha::D9);
+        assert_eq!(requests[0].variation, None);
+        assert_eq!(requests[1].amsha, Amsha::D2);
+        assert_eq!(requests[1].variation, Some(1));
+        assert!(to_amsha_requests(None).expect("no input is empty").is_empty());
+    }
+
+    #[test]
+    fn amsha_requests_conversion_rejects_invalid_input() {
+        let err = to_amsha_requests(Some(&[AmshaRequestInput {
+            code: 13,
+            variation: None,
+        }]))
+        .expect_err("unknown amsha code should be rejected");
+        assert_eq!(err["kind"], "invalid_request");
+
+        let err = to_amsha_requests(Some(&[AmshaRequestInput {
+            code: 9,
+            variation: Some(200),
+        }]))
+        .expect_err("unknown variation should be rejected");
+        assert_eq!(err["kind"], "invalid_request");
+    }
+
+    #[test]
+    fn panchang_include_mask_parses_events_selections() {
+        let mask = parse_panchang_include_mask(&PanchangIncludeInput::List(vec![
+            "tithi".to_string(),
+            "masa".to_string(),
+        ]))
+        .expect("name list should parse");
+        assert_eq!(
+            mask,
+            panchang_include_bits("tithi").unwrap() | panchang_include_bits("masa").unwrap()
+        );
+
+        let independent =
+            parse_panchang_include_mask(&PanchangIncludeInput::Str(
+                "location_independent".to_string(),
+            ))
+            .expect("group name should parse");
+        assert_eq!(independent, PANCHANG_INCLUDE_LOCATION_INDEPENDENT);
+        assert_eq!(independent & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT, 0);
     }
 
     #[test]

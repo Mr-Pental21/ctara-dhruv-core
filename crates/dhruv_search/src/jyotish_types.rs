@@ -430,6 +430,37 @@ pub struct AmshaResult {
     pub charts: Vec<AmshaChart>,
 }
 
+/// Maximum total cells (grid points x amsha requests) in an amsha series.
+pub const MAX_AMSHA_SERIES_CELLS: usize = 100_000;
+
+/// One slim varga chart within an amsha series point: the varga lagna,
+/// plus graha entries when requested.
+#[derive(Debug, Clone, Copy)]
+pub struct AmshaSeriesChart {
+    pub amsha: Amsha,
+    pub variation_code: u8,
+    /// Varga position of the ascendant.
+    pub lagna: AmshaEntry,
+    /// Varga positions of the nine grahas (Surya..Ketu). Present when the
+    /// series was requested with `include_grahas`.
+    pub grahas: Option<[AmshaEntry; 9]>,
+}
+
+/// One epoch in an amsha series.
+#[derive(Debug, Clone)]
+pub struct AmshaSeriesPoint {
+    pub utc: UtcTime,
+    pub jd_utc: f64,
+    /// One chart per request, in request order.
+    pub charts: Vec<AmshaSeriesChart>,
+}
+
+/// Fixed-cadence series of slim varga charts.
+#[derive(Debug, Clone)]
+pub struct AmshaSeries {
+    pub points: Vec<AmshaSeriesPoint>,
+}
+
 /// Fixed-size amsha selection for FullKundaliConfig (Copy-compatible).
 #[derive(Debug, Clone, Copy)]
 pub struct AmshaSelectionConfig {

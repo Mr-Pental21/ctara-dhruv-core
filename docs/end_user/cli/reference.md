@@ -128,6 +128,7 @@ Rise/set, lagna, and bhava:
 Panchang:
 
 - `panchang`
+- `panchang-events`
 - `tithi`
 - `karana`
 - `yoga`
@@ -159,6 +160,21 @@ dhruv panchang --date 2026-04-17T13:25:39Z --elements location_independent
 
 # Location required for vaar/hora/ghatika
 dhruv panchang --date 2026-04-17T13:25:39Z --lat 28.6 --lon 77.2 --elements vaar,hora,ghatika
+```
+
+`panchang-events` streams every element boundary in a UTC range in one call,
+instead of one per-moment `panchang` call per day. It supports
+location-independent elements only (`tithi`, `karana`, `yoga`, `nakshatra`,
+`masa`, `ayana`, `varsha`, or the group `location_independent`, the default),
+so it takes no location flags. Segment boundaries are exact and consecutive
+segments of one kind chain exactly; the first segment may start before
+`--start` and the last may end after `--end`. `--max-events` caps the total
+segments across all elements (0 = the 50,000 library ceiling); when hit, the
+output is marked truncated with a resume time:
+
+```bash
+dhruv panchang-events --start 2026-04-01T00:00:00Z --end 2026-05-01T00:00:00Z \
+  --elements tithi,masa
 ```
 
 Jyotish and chart building:
@@ -219,6 +235,29 @@ Amsha:
 
 - `amsha`
 - `amsha-chart`
+- `amsha-series`
+- `amsha-lagna-events`
+
+`amsha-series` samples slim varga charts (varga lagna always, the nine grahas
+with `--include-grahas`) at a fixed cadence from `--date` to `--to-date`,
+using the same grid semantics as the `graha-positions` series mode. The grid
+is capped at 100,000 cells (points x unique amsha requests):
+
+```bash
+dhruv amsha-series --date 2026-04-17T00:00:00Z --to-date 2026-04-18T00:00:00Z \
+  --step-minutes 60 --lat 28.6 --lon 77.2 --amsha D9,D10 --include-grahas
+```
+
+`amsha-lagna-events` returns the exact times the varga lagna changes rashi
+between `--start` and `--end`, one segment list per unique amsha request.
+Boundaries are root-found rather than sampled, so fast vargas such as D60
+cannot skip segments. `--max-segments` caps the total segments across all
+amshas (0 = the 50,000 library ceiling):
+
+```bash
+dhruv amsha-lagna-events --start 2026-04-17T00:00:00Z --end 2026-04-18T00:00:00Z \
+  --lat 28.6 --lon 77.2 --amsha D9,D60
+```
 
 Pure scalar jyotish formulas:
 

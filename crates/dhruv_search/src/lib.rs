@@ -8,6 +8,7 @@
 //! - Stationary point search (retrograde/direct stations)
 //! - Max-speed search (velocity extrema)
 
+pub mod amsha_events;
 pub mod conjunction;
 pub mod conjunction_types;
 pub mod dasha;
@@ -22,6 +23,7 @@ pub mod lunar_phase;
 pub mod lunar_phase_types;
 pub mod operations;
 pub mod panchang;
+pub mod panchang_events;
 pub mod panchang_types;
 pub mod sankranti;
 pub mod sankranti_types;
@@ -29,6 +31,10 @@ pub(crate) mod search_util;
 pub mod stationary;
 pub mod stationary_types;
 
+pub use amsha_events::{
+    AmshaLagnaEvents, AmshaLagnaEventsResult, AmshaLagnaSegment, MAX_AMSHA_LAGNA_SEGMENTS,
+    amsha_lagna_events,
+};
 pub use conjunction::{
     body_ecliptic_lon_lat, body_lon_lat_on_plane, next_conjunction, prev_conjunction,
     search_conjunctions,
@@ -62,8 +68,8 @@ pub use grahan_types::{
 };
 pub use jyotish::{
     all_upagrahas_for_date, all_upagrahas_for_date_with_config, amsha_charts_for_date,
-    amsha_charts_from_kundali, arudha_padas_for_date, ashtakavarga_for_date, avastha_for_date,
-    avastha_for_graha, balas_for_date, bhavabala_for_bhava, bhavabala_for_date,
+    amsha_charts_from_kundali, amsha_series, arudha_padas_for_date, ashtakavarga_for_date,
+    avastha_for_date, avastha_for_graha, balas_for_date, bhavabala_for_bhava, bhavabala_for_date,
     charakaraka_for_date, core_bindus, drishti_for_date, full_kundali_for_date, graha_longitudes,
     graha_positions, graha_positions_series, moving_osculating_apogees,
     moving_osculating_apogees_for_date,
@@ -73,11 +79,12 @@ pub use jyotish::{
     tropical_to_sidereal_longitude, vimsopaka_for_date, vimsopaka_for_graha,
 };
 pub use jyotish_types::{
-    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BalaBundleResult,
-    BasicStatesConfig, BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig,
-    DashaSnapshotTime, DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult,
-    GrahaEntry, GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
-    GrahaPositionsConfig, GrahaPositionsPoint, GrahaPositionsSeries, MAX_AMSHA_REQUESTS,
+    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, AmshaSeries,
+    AmshaSeriesChart, AmshaSeriesPoint, BalaBundleResult, BasicStatesConfig, BhavaResultSet,
+    BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig,
+    DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind,
+    GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig,
+    GrahaPositionsPoint, GrahaPositionsSeries, MAX_AMSHA_REQUESTS, MAX_AMSHA_SERIES_CELLS,
     MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry, MovingOsculatingApogees,
     ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
 };
@@ -107,6 +114,7 @@ pub use panchang::{
     vaar_for_date, vaar_from_sunrises, varsha_for_date, varsha_for_date_with_eop,
     vedic_day_sunrises, yoga_at, yoga_for_date,
 };
+pub use panchang_events::{MAX_PANCHANG_EVENTS, PanchangEventsResult, panchang_events};
 pub use panchang_types::{
     AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, TithiInfo,
     VaarInfo, VarshaInfo, YogaInfo,
