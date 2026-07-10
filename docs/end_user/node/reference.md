@@ -131,9 +131,16 @@ optional and only needed for the location-dependent elements (`VAAR`, `HORA`,
 `STATUS.INVALID_SEARCH_CONFIG`. When `includeMask` is omitted it defaults to
 `PANCHANG_INCLUDE.ALL` with a location and
 `PANCHANG_INCLUDE.LOCATION_INDEPENDENT` without one. `riseSetConfig` and
-`sankrantiConfig` fall back to library defaults when omitted. The result
-carries per-element `*Valid` flags (`tithiValid`, `vaarValid`, `masaValid`,
-...) alongside the element payloads.
+`sankrantiConfig` fall back to library defaults when omitted. The optional
+request properties `knownMasa`, `knownAyana`, and `knownVarsha` accept
+caller-cached calendar values from a previous result (the same shapes the
+result emits as `masa`, `ayana`, and `varsha`). A known value is reused
+verbatim only when its element is selected in `includeMask` and the requested
+moment falls inside its `[start, end)` window; stale or invalid values are
+silently ignored and recomputed. Feeding these back lets repeated nearby
+calls skip the expensive new-moon/sankranti searches. The result carries
+per-element `*Valid` flags (`tithiValid`, `vaarValid`, `masaValid`, ...)
+alongside the element payloads.
 
 `panchangEvents(engine, eop, fromUtc, toUtc, includeMask, sankrantiConfig,
 maxEvents)` streams the exact panchang element segments overlapping

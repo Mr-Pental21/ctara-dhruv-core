@@ -186,10 +186,20 @@ function varshaForDate(engine, utc, config = addon.sankrantiConfigDefault()) {
 //   (vaar, hora, ghatika); requesting those bits without a location fails
 //   with INVALID_SEARCH_CONFIG.
 // - `riseSetConfig`, `sankrantiConfig`: optional, library defaults when omitted.
+// - `knownMasa`, `knownAyana`, `knownVarsha`: optional caller-cached calendar
+//   values from a previous result (same shapes the result emits as `masa`,
+//   `ayana`, `varsha`). A known value is reused verbatim only when its
+//   element is selected in `includeMask` and the requested moment falls
+//   inside its `[start, end)` window; stale or invalid values are silently
+//   ignored and recomputed. Feeding these back lets repeated nearby calls
+//   skip the expensive new-moon/sankranti searches.
 // The result carries per-element `*Valid` flags alongside the payloads.
 function panchangComputeEx(engine, eop, lsk, request) {
   const req = { ...request };
   if (req.location == null) delete req.location;
+  if (req.knownMasa == null) delete req.knownMasa;
+  if (req.knownAyana == null) delete req.knownAyana;
+  if (req.knownVarsha == null) delete req.knownVarsha;
   if (req.includeMask == null) {
     req.includeMask = req.location
       ? PANCHANG_INCLUDE.ALL

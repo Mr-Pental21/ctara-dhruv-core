@@ -27,8 +27,8 @@ use crate::operations::{
     PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
 };
 use crate::panchang_types::{
-    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, PanchangResult,
-    TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo,
+    PanchangPrecomputed, PanchangResult, TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
 };
 use crate::sankranti::{next_specific_sankranti, prev_specific_sankranti};
 use crate::sankranti_types::SankrantiConfig;
@@ -757,6 +757,12 @@ pub fn ghatika_from_sunrises(
 ///
 /// `location` is required only when a location-dependent element (vaar,
 /// hora, ghatika) is selected; it may be `None` otherwise.
+///
+/// `known` carries caller-supplied precomputed calendar elements; a value is
+/// reused instead of recomputed when `utc` falls inside its `[start, end)`
+/// window (see [`PanchangPrecomputed`]). Pass
+/// `&PanchangPrecomputed::default()` when nothing is cached.
+#[allow(clippy::too_many_arguments)]
 pub fn panchang_for_date(
     engine: &Engine,
     eop: &EopKernel,
@@ -765,6 +771,7 @@ pub fn panchang_for_date(
     riseset_config: &RiseSetConfig,
     config: &SankrantiConfig,
     include_mask: u32,
+    known: &PanchangPrecomputed,
 ) -> Result<PanchangResult, SearchError> {
     if include_mask == 0 {
         return Err(SearchError::InvalidConfig("include_mask must be non-zero"));
@@ -823,14 +830,28 @@ pub fn panchang_for_date(
         }
     }
 
+    let window_contains = |start: &UtcTime, end: &UtcTime| -> bool {
+        let start_jd = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), start);
+        let end_jd = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), end);
+        start_jd <= jd && jd < end_jd
+    };
     if include(PANCHANG_INCLUDE_MASA) {
-        result.masa = Some(masa_for_date_with_eop(engine, Some(eop), utc, config)?);
+        result.masa = match known.masa {
+            Some(k) if window_contains(&k.start, &k.end) => Some(k),
+            _ => Some(masa_for_date_with_eop(engine, Some(eop), utc, config)?),
+        };
     }
     if include(PANCHANG_INCLUDE_AYANA) {
-        result.ayana = Some(ayana_for_date_with_eop(engine, Some(eop), utc, config)?);
+        result.ayana = match known.ayana {
+            Some(k) if window_contains(&k.start, &k.end) => Some(k),
+            _ => Some(ayana_for_date_with_eop(engine, Some(eop), utc, config)?),
+        };
     }
     if include(PANCHANG_INCLUDE_VARSHA) {
-        result.varsha = Some(varsha_for_date_with_eop(engine, Some(eop), utc, config)?);
+        result.varsha = match known.varsha {
+            Some(k) if window_contains(&k.start, &k.end) => Some(k),
+            _ => Some(varsha_for_date_with_eop(engine, Some(eop), utc, config)?),
+        };
     }
 
     Ok(result)

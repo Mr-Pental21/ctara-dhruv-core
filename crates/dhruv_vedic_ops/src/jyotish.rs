@@ -1475,6 +1475,7 @@ pub fn full_kundali_for_date(
             riseset_config,
             aya_config,
             config.panchang_include_mask,
+            &crate::panchang_types::PanchangPrecomputed::default(),
         )?)
     } else {
         None

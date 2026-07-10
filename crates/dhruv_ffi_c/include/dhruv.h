@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       77
+#define DHRUV_API_VERSION       78
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -914,6 +914,17 @@ typedef struct {
     DhruvGeoLocation location;
     DhruvRiseSetConfig  riseset_config;
     DhruvSankrantiConfig sankranti_config;
+    /* Caller-cached calendar elements from a previous result. A known value
+     * is reused only when the requested moment falls inside its [start, end)
+     * window and its element is selected in include_mask; stale or invalid
+     * values are ignored and the element is recomputed. Each known_* field
+     * is read only when its known_*_valid flag is non-zero. */
+    uint8_t         known_masa_valid;
+    DhruvMasaInfo   known_masa;
+    uint8_t         known_ayana_valid;
+    DhruvAyanaInfo  known_ayana;
+    uint8_t         known_varsha_valid;
+    DhruvVarshaInfo known_varsha;
 } DhruvPanchangComputeRequest;
 
 typedef struct {

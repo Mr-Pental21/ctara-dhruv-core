@@ -358,6 +358,7 @@ fn full_kundali_mixed_sections_match_standalone_results() {
         &riseset_config,
         &aya_config,
         dhruv_search::PANCHANG_INCLUDE_ALL,
+        &dhruv_search::PanchangPrecomputed::default(),
     )
     .expect("standalone panchang should succeed");
 

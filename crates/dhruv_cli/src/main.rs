@@ -4699,6 +4699,7 @@ fn main() {
                 riseset_config: rs_config,
                 sankranti_config: config,
                 include_mask,
+                known: Default::default(),
             };
             match dhruv_vedic_ops::panchang(&engine, &eop_kernel, &op) {
                 Ok(info) => {

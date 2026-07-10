@@ -23,7 +23,7 @@ use dhruv_vedic_base::{
 };
 use dhruv_vedic_ops::{
     AyanamshaMode, AyanamshaOperation, NodeBackend, NodeOperation, PanchangOperation,
-    PanchangResult, TaraOperation, TaraOutputKind, TaraResult,
+    PanchangPrecomputed, PanchangResult, TaraOperation, TaraOutputKind, TaraResult,
 };
 
 use crate::context::DhruvContext;
@@ -437,6 +437,9 @@ pub struct PanchangRequest {
     pub riseset_config: Option<RiseSetConfig>,
     pub sankranti_config: Option<SankrantiConfig>,
     pub include_mask: u32,
+    /// Caller-supplied precomputed calendar elements; each is reused only
+    /// when `at` falls inside its `[start, end)` window.
+    pub known: PanchangPrecomputed,
 }
 
 fn resolve_riseset_config(
@@ -471,6 +474,7 @@ pub fn panchang_op(
         riseset_config: resolve_riseset_config(ctx, request.riseset_config)?,
         sankranti_config: resolve_sankranti_config(ctx, request.sankranti_config)?,
         include_mask: request.include_mask,
+        known: request.known,
     };
     Ok(dhruv_vedic_ops::panchang(eng, eop, &op)?)
 }

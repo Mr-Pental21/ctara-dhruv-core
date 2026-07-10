@@ -274,6 +274,14 @@ location-dependent elements (vaar, hora, ghatika) without a location raises
 `DhruvError`. The returned `PanchangResult` keeps every element `Optional` —
 each of the ten fields is `None` unless requested and computed.
 
+`panchang(...)` also accepts optional `known_masa` (`MasaInfo`),
+`known_ayana` (`AyanaInfo`), and `known_varsha` (`VarshaInfo`) keyword
+arguments — the exact dataclasses returned by a previous `panchang` call.
+A known value is reused verbatim (skipping the new-moon/sankranti search)
+only when its element is selected in `include_mask` and the requested moment
+falls inside the value's `[start, end)` window; stale or out-of-window
+values are silently ignored and the element is recomputed.
+
 `panchang_events(engine, eop, from_utc, to_utc,
 include_mask=INCLUDE_LOCATION_INDEPENDENT, sankranti_config=None,
 max_events=0)` streams exact panchang element segments overlapping

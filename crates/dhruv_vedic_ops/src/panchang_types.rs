@@ -4,6 +4,6 @@
 //! re-exports them so existing `dhruv_vedic_ops` paths keep working.
 
 pub use dhruv_search::panchang_types::{
-    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, PanchangResult,
-    TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo,
+    PanchangPrecomputed, PanchangResult, TithiInfo, VaarInfo, VarshaInfo, YogaInfo,
 };

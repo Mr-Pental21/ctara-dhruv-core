@@ -3076,6 +3076,7 @@ pub fn full_kundali_for_date(
             riseset_config,
             aya_config,
             config.panchang_include_mask,
+            &crate::panchang_types::PanchangPrecomputed::default(),
         )?;
         if let Some(masa) = info.masa {
             ctx.masa_info = Some(masa);

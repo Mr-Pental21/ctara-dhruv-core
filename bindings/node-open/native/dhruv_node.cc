@@ -1338,6 +1338,34 @@ napi_value WriteVarshaInfo(napi_env env, const DhruvVarshaInfo& v) {
     return obj;
 }
 
+bool ReadMasaInfo(napi_env env, napi_value obj, DhruvMasaInfo* out) {
+    napi_value v;
+    if (!GetNamedProperty(env, obj, "masaIndex", &v) || !GetInt32(env, v, &out->masa_index)) return false;
+    bool adhika = false;
+    if (!GetNamedProperty(env, obj, "adhika", &v) || !GetBool(env, v, &adhika)) return false;
+    out->adhika = adhika ? 1 : 0;
+    if (!GetNamedProperty(env, obj, "start", &v) || !ReadUtcTime(env, v, &out->start)) return false;
+    if (!GetNamedProperty(env, obj, "end", &v) || !ReadUtcTime(env, v, &out->end)) return false;
+    return true;
+}
+
+bool ReadAyanaInfo(napi_env env, napi_value obj, DhruvAyanaInfo* out) {
+    napi_value v;
+    if (!GetNamedProperty(env, obj, "ayana", &v) || !GetInt32(env, v, &out->ayana)) return false;
+    if (!GetNamedProperty(env, obj, "start", &v) || !ReadUtcTime(env, v, &out->start)) return false;
+    if (!GetNamedProperty(env, obj, "end", &v) || !ReadUtcTime(env, v, &out->end)) return false;
+    return true;
+}
+
+bool ReadVarshaInfo(napi_env env, napi_value obj, DhruvVarshaInfo* out) {
+    napi_value v;
+    if (!GetNamedProperty(env, obj, "samvatsaraIndex", &v) || !GetInt32(env, v, &out->samvatsara_index)) return false;
+    if (!GetNamedProperty(env, obj, "order", &v) || !GetInt32(env, v, &out->order)) return false;
+    if (!GetNamedProperty(env, obj, "start", &v) || !ReadUtcTime(env, v, &out->start)) return false;
+    if (!GetNamedProperty(env, obj, "end", &v) || !ReadUtcTime(env, v, &out->end)) return false;
+    return true;
+}
+
 bool ReadPanchangComputeRequest(napi_env env, napi_value obj, DhruvPanchangComputeRequest* out) {
     napi_value v;
     if (!GetNamedProperty(env, obj, "timeKind", &v) || !GetInt32(env, v, &out->time_kind)) return false;
@@ -1353,6 +1381,30 @@ bool ReadPanchangComputeRequest(napi_env env, napi_value obj, DhruvPanchangCompu
     }
     if (!GetNamedProperty(env, obj, "riseSetConfig", &v) || !ReadRiseSetConfig(env, v, &out->riseset_config)) return false;
     if (!GetNamedProperty(env, obj, "sankrantiConfig", &v) || !ReadSankrantiConfig(env, v, &out->sankranti_config)) return false;
+    // Optional caller-cached calendar values (same shapes the result emits).
+    // Absent properties leave the valid flags 0; the caller must pass a
+    // zero-initialized request struct.
+    out->known_masa_valid = 0;
+    out->known_ayana_valid = 0;
+    out->known_varsha_valid = 0;
+    bool has_known = false;
+    if (!GetOptionalNamedProperty(env, obj, "knownMasa", &v, &has_known)) return false;
+    if (has_known) {
+        if (!ReadMasaInfo(env, v, &out->known_masa)) return false;
+        out->known_masa_valid = 1;
+    }
+    has_known = false;
+    if (!GetOptionalNamedProperty(env, obj, "knownAyana", &v, &has_known)) return false;
+    if (has_known) {
+        if (!ReadAyanaInfo(env, v, &out->known_ayana)) return false;
+        out->known_ayana_valid = 1;
+    }
+    has_known = false;
+    if (!GetOptionalNamedProperty(env, obj, "knownVarsha", &v, &has_known)) return false;
+    if (has_known) {
+        if (!ReadVarshaInfo(env, v, &out->known_varsha)) return false;
+        out->known_varsha_valid = 1;
+    }
     return true;
 }
 

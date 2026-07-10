@@ -163,6 +163,14 @@ elements (masa, ayana, varsha) via the mask. `:location` is optional and
 required only when the selection includes a location-dependent element
 (vaar, hora, ghatika). Only selected elements are computed and returned.
 
+`daily/2` also accepts optional `:known_masa`, `:known_ayana`, and
+`:known_varsha` — the calendar maps a previous `daily`/`events` result
+returned, fed back verbatim. A known value is reused (its
+new-moon/sankranti searches skipped) only when its element is selected and
+the requested moment lies inside the value's `start`/`end` window; stale
+values are silently recomputed. Unknown enum names are rejected with
+`:invalid_request`.
+
 `events/2` streams exact panchang element segments over a UTC range. The
 request takes `:from_utc` and `:to_utc`, an optional `:include_mask`
 restricted to location-independent elements (`tithi`, `karana`, `yoga`,

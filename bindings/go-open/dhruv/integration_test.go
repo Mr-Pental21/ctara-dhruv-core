@@ -412,6 +412,44 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 		t.Fatalf("expected location-dependent elements with location")
 	}
 
+	// Known calendar values are reused verbatim inside their validity window
+	// and silently recomputed when stale.
+	calReq := PanchangComputeRequest{
+		TimeKind:        QueryTimeUTC,
+		UTC:             UtcTime{Year: 2024, Month: 1, Day: 15, Hour: 12},
+		IncludeMask:     PanchangIncludeAllCalendar,
+		SankrantiConfig: SankrantiConfigDefault(),
+	}
+	first, err := eng.PanchangComputeEx(eop, lsk, calReq)
+	if err != nil {
+		t.Fatalf("PanchangComputeEx calendar: %v", err)
+	}
+	if !first.MasaValid || !first.AyanaValid || !first.VarshaValid {
+		t.Fatalf("expected calendar elements in calendar-mask result")
+	}
+	calReq.UTC = UtcTime{Year: 2024, Month: 1, Day: 20, Hour: 12}
+	calReq.KnownMasa = &first.Masa
+	calReq.KnownAyana = &first.Ayana
+	calReq.KnownVarsha = &first.Varsha
+	reused, err := eng.PanchangComputeEx(eop, lsk, calReq)
+	if err != nil {
+		t.Fatalf("PanchangComputeEx with known calendar values: %v", err)
+	}
+	if reused.Masa != first.Masa || reused.Ayana != first.Ayana || reused.Varsha != first.Varsha {
+		t.Fatalf("known calendar values must be reused verbatim inside their windows")
+	}
+	calReq.UTC = UtcTime{Year: 2024, Month: 5, Day: 20, Hour: 12}
+	recomputed, err := eng.PanchangComputeEx(eop, lsk, calReq)
+	if err != nil {
+		t.Fatalf("PanchangComputeEx with stale known calendar values: %v", err)
+	}
+	if !recomputed.MasaValid {
+		t.Fatalf("expected recomputed masa for stale known value")
+	}
+	if recomputed.Masa == first.Masa {
+		t.Fatalf("stale known masa must be recomputed, not echoed")
+	}
+
 	bhava := BhavaConfigDefault()
 	if !bhava.UseRashiBhavaForBalaAvastha {
 		t.Fatalf("expected rashi-bhava bala/avastha default on")

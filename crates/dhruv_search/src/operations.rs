@@ -746,9 +746,12 @@ pub struct PanchangOperation {
     pub sankranti_config: SankrantiConfig,
     /// Include mask with `PANCHANG_INCLUDE_*` bits.
     pub include_mask: u32,
+    /// Caller-supplied precomputed calendar elements, reused when their
+    /// validity window contains `at_utc` (see [`PanchangPrecomputed`]).
+    pub known: PanchangPrecomputed,
 }
 
-pub use crate::panchang_types::PanchangResult;
+pub use crate::panchang_types::{PanchangPrecomputed, PanchangResult};
 
 /// Execute a panchang operation request.
 ///
@@ -767,6 +770,7 @@ pub fn panchang(
         &op.riseset_config,
         &op.sankranti_config,
         op.include_mask,
+        &op.known,
     )
 }
 

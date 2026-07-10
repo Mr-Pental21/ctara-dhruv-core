@@ -110,6 +110,14 @@ elements (vaar, hora, ghatika) without a location raises `DhruvError`.
 `include_mask` accepts the `INCLUDE_*` constants including the convenience
 masks `INCLUDE_LOCATION_INDEPENDENT` and `INCLUDE_LOCATION_DEPENDENT`.
 
+Repeated nearby calls can skip the expensive new-moon/sankranti searches by
+feeding calendar values from a previous result back in via the optional
+`known_masa` (`MasaInfo`), `known_ayana` (`AyanaInfo`), and `known_varsha`
+(`VarshaInfo`) keyword arguments. A known value is reused verbatim only when
+its element is selected in `include_mask` and the requested moment falls
+inside its `[start, end)` window; stale values are silently ignored and the
+element is recomputed.
+
 The full-kundali panchang section is selected with
 `config.panchang_include_mask` (same `INCLUDE_*` bits; `0` omits the section —
 this replaces the former `include_panchang`/`include_calendar` flags), and

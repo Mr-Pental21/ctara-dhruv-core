@@ -101,11 +101,13 @@ pub use operations::{
     PANCHANG_INCLUDE_HORA, PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_LOCATION_DEPENDENT,
     PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_NAKSHATRA,
     PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
-    PanchangOperation, PanchangResult, QueryMode, SankrantiOperation, SankrantiQuery,
+    PanchangOperation, PanchangPrecomputed, PanchangResult, QueryMode, SankrantiOperation,
+    SankrantiQuery,
     SankrantiResult, SankrantiTarget, TaraOperation, TaraOutputKind, TaraResult, ayanamsha,
     conjunction, grahan, lunar_node, lunar_phase, motion, panchang, panchang_include_bits,
     sankranti, tara,
 };
+
 pub use panchang::{
     ayana_for_date, ayana_for_date_with_eop, elongation_at, ghatika_for_date,
     ghatika_from_sunrises, hora_for_date, hora_from_sunrises, karana_at, karana_for_date,

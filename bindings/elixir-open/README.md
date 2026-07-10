@@ -354,6 +354,31 @@ The result map carries `nil` for elements not selected.
 `:location` is optional for `daily/2`; it is only required when a
 location-dependent element (`vaar`, `hora`, `ghatika`) is selected.
 
+`daily/2` also accepts optional `:known_masa`, `:known_ayana`, and
+`:known_varsha` fields carrying a previously returned masa/ayana/varsha map
+verbatim (same shape as the `daily`/`events` results: element name or index,
+`adhika`/`order` where applicable, and `start`/`end` UTC maps). Calendar
+elements are interval-valid (masa ~a month, ayana ~half a year, varsha ~a
+year), so loops over nearby dates can feed the previous values back and skip
+the expensive new-moon/sankranti searches. A known value is reused (echoed
+verbatim in the result) only when its element is selected in the include mask
+and the requested moment lies inside its `[start, end)` window; otherwise it
+is silently ignored and recomputed, so stale values can never corrupt a
+result. Unknown element names, however, are rejected with `invalid_request`.
+
+```elixir
+{:ok, day1} = CtaraDhruv.Panchang.daily(engine, %{utc: utc, include_mask: [:tithi, :masa, :ayana, :varsha]})
+
+{:ok, day2} =
+  CtaraDhruv.Panchang.daily(engine, %{
+    utc: next_day,
+    include_mask: [:tithi, :masa, :ayana, :varsha],
+    known_masa: day1.masa,
+    known_ayana: day1.ayana,
+    known_varsha: day1.varsha
+  })
+```
+
 `full_kundali_config` selects embedded panchang output with
 `:panchang_include_mask`, accepting the same integer/name/list forms
 (default `0` omits panchang). It replaces the former

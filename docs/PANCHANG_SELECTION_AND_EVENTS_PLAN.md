@@ -6,7 +6,10 @@ and Phases 2–3 (`amsha_series`, `panchang_events`, `amsha_lagna_events`,
 across all surfaces (C ABI v77, CLI, dhruv_rs, Python, Go, Node, Elixir),
 integration-tested (`crates/dhruv_search/tests/range_events.rs` plus
 per-wrapper suites), and documented (`clean_room_range_events.md`, reference
-and end-user docs).
+and end-user docs). Follow-up (also complete): caller-cached calendar
+context — `PanchangPrecomputed` (`known_masa`/`known_ayana`/`known_varsha`)
+on the panchang request across all surfaces (C ABI v78); values are reused
+only inside their `[start, end)` validity window.
 
 ## Goals
 

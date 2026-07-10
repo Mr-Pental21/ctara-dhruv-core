@@ -103,6 +103,12 @@ group masks `PANCHANG_INCLUDE_ALL`, `PANCHANG_INCLUDE_ALL_CORE`,
 `PANCHANG_INCLUDE_ALL_CALENDAR`, `PANCHANG_INCLUDE_LOCATION_INDEPENDENT`,
 `PANCHANG_INCLUDE_LOCATION_DEPENDENT`, and the name resolver
 `panchang_include_bits(name)` (element and group names, case-insensitive).
+`PanchangRequest.known: PanchangPrecomputed` carries caller-cached
+masa/ayana/varsha values from a previous result; each is reused verbatim
+(skipping its new-moon/sankranti searches) only when its element is selected
+and the requested moment lies inside the value's `[start, end)` window —
+stale values are silently recomputed. Use `PanchangPrecomputed::default()`
+when nothing is cached.
 `FullKundaliConfig.panchang_include_mask: u32` (default 0 = omit the panchang
 section) replaces the former `include_panchang`/`include_calendar` booleans;
 `FullKundaliResult.panchang` is `Option<PanchangResult>` containing only the

@@ -208,6 +208,29 @@ def _panchang_result_from_c(out) -> PanchangResult:
     )
 
 
+def _fill_known_masa(dst, masa: MasaInfo) -> None:
+    """Copy a Python MasaInfo back into a C DhruvMasaInfo struct."""
+    dst.masa_index = int(masa.masa_index)
+    dst.adhika = 1 if masa.adhika else 0
+    _fill_utc(dst.start, masa.start)
+    _fill_utc(dst.end, masa.end)
+
+
+def _fill_known_ayana(dst, ayana: AyanaInfo) -> None:
+    """Copy a Python AyanaInfo back into a C DhruvAyanaInfo struct."""
+    dst.ayana = int(ayana.ayana)
+    _fill_utc(dst.start, ayana.start)
+    _fill_utc(dst.end, ayana.end)
+
+
+def _fill_known_varsha(dst, varsha: VarshaInfo) -> None:
+    """Copy a Python VarshaInfo back into a C DhruvVarshaInfo struct."""
+    dst.samvatsara_index = int(varsha.samvatsara_index)
+    dst.order = int(varsha.order)
+    _fill_utc(dst.start, varsha.start)
+    _fill_utc(dst.end, varsha.end)
+
+
 # ---------------------------------------------------------------------------
 # Unified panchang (dhruv_panchang_compute_ex)
 # ---------------------------------------------------------------------------
@@ -222,6 +245,9 @@ def panchang(
     include_mask: int = INCLUDE_ALL,
     riseset_config=None,
     sankranti_config=None,
+    known_masa: Optional[MasaInfo] = None,
+    known_ayana: Optional[AyanaInfo] = None,
+    known_varsha: Optional[VarshaInfo] = None,
 ) -> PanchangResult:
     """Compute panchang for a given time and (optionally) location.
 
@@ -240,6 +266,15 @@ def panchang(
             library default when ``None``.
         sankranti_config: Optional ``DhruvSankrantiConfig`` (C struct).  Uses
             library default when ``None``.
+        known_masa: Optional ``MasaInfo`` from a previous result.  Reused
+            verbatim (skipping the new-moon search) when ``INCLUDE_MASA`` is
+            selected and the requested moment falls inside its
+            ``[start, end)`` window; otherwise silently ignored and the masa
+            is recomputed.
+        known_ayana: Optional ``AyanaInfo`` from a previous result.  Same
+            reuse rule as *known_masa* (element: ``INCLUDE_AYANA``).
+        known_varsha: Optional ``VarshaInfo`` from a previous result.  Same
+            reuse rule as *known_masa* (element: ``INCLUDE_VARSHA``).
 
     Returns:
         A ``PanchangResult`` with requested fields populated.
@@ -266,6 +301,16 @@ def panchang(
         req.sankranti_config = sankranti_config
     else:
         req.sankranti_config = lib.dhruv_sankranti_config_default()
+
+    if known_masa is not None:
+        req.known_masa_valid = 1
+        _fill_known_masa(req.known_masa, known_masa)
+    if known_ayana is not None:
+        req.known_ayana_valid = 1
+        _fill_known_ayana(req.known_ayana, known_ayana)
+    if known_varsha is not None:
+        req.known_varsha_valid = 1
+        _fill_known_varsha(req.known_varsha, known_varsha)
 
     out = ffi.new("DhruvPanchangOperationResult *")
     check(

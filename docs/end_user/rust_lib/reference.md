@@ -217,7 +217,10 @@ group masks (`PANCHANG_INCLUDE_ALL`, `PANCHANG_INCLUDE_ALL_CORE`,
 re-exported from `dhruv_rs`.
 
 ```rust
-use dhruv_rs::{PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PanchangRequest, TimeInput, panchang_op};
+use dhruv_rs::{
+    PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PanchangPrecomputed, PanchangRequest, TimeInput,
+    panchang_op,
+};
 
 let request = PanchangRequest {
     at: TimeInput::Utc(utc),
@@ -225,10 +228,25 @@ let request = PanchangRequest {
     riseset_config: None,
     sankranti_config: None,
     include_mask: PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
+    known: PanchangPrecomputed::default(),
 };
 let result = panchang_op(&ctx, &request, &eop)?;
 assert!(result.tithi.is_some());
 assert!(result.vaar.is_none()); // not selected, never computed
+
+// Repeated nearby calls can feed calendar values back: each known value is
+// reused verbatim (its new-moon/sankranti searches skipped) only while the
+// requested moment stays inside its [start, end) window; stale values are
+// silently recomputed.
+let next_request = PanchangRequest {
+    at: TimeInput::Utc(next_day),
+    known: PanchangPrecomputed {
+        masa: result.masa,
+        ayana: result.ayana,
+        varsha: result.varsha,
+    },
+    ..request
+};
 ```
 
 In full-kundali requests, `FullKundaliConfig.panchang_include_mask: u32`

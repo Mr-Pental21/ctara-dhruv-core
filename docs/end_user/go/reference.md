@@ -331,6 +331,13 @@ Panchang and vedic basics:
   when the mask includes location-dependent elements
   (`PanchangIncludeLocationDependent`, i.e. vaar/hora/ghatika); requesting
   those bits without `HasLocation` fails with an invalid-search-config error.
+  The optional request fields `KnownMasa`, `KnownAyana`, and `KnownVarsha`
+  (`*MasaInfo`, `*AyanaInfo`, `*VarshaInfo`; nil means absent) accept
+  caller-cached calendar values from a previous result. A known value is
+  reused verbatim only when its element is selected in `IncludeMask` and the
+  requested moment falls inside its `[Start, End)` window; stale or invalid
+  values are silently ignored and recomputed. Feeding these back lets
+  repeated nearby calls skip the expensive new-moon/sankranti searches.
 - `(*Engine).PanchangEvents(eop, fromUTC, toUTC, includeMask, sankrantiCfg, maxEvents)`
   Range sweep returning `PanchangEventsResult` with exact per-kind segment
   slices (`Tithis`, `Karanas`, `Yogas`, `Nakshatras`, `Masas`, `Ayanas`,

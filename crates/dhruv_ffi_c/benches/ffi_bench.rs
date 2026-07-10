@@ -2079,6 +2079,13 @@ fn ffi_panchang_runtime_bench(c: &mut Criterion) {
         location: loc_ffi,
         riseset_config: rs_cfg_ffi,
         sankranti_config: sank_cfg_ffi,
+        // SAFETY of zeroed: all fields are plain scalars/structs of scalars.
+        known_masa_valid: 0,
+        known_masa: unsafe { std::mem::zeroed() },
+        known_ayana_valid: 0,
+        known_ayana: unsafe { std::mem::zeroed() },
+        known_varsha_valid: 0,
+        known_varsha: unsafe { std::mem::zeroed() },
     };
     bench_pair(
         &mut group,
@@ -2092,6 +2099,7 @@ fn ffi_panchang_runtime_bench(c: &mut Criterion) {
                 black_box(&rs_cfg_rust),
                 black_box(&sank_cfg_rust),
                 black_box(dhruv_search::PANCHANG_INCLUDE_ALL),
+                black_box(&dhruv_search::PanchangPrecomputed::default()),
             )
             .expect("panchang_for_date")
             .tithi

@@ -135,6 +135,21 @@ pub struct PanchangNakshatraInfo {
     pub end: UtcTime,
 }
 
+/// Caller-supplied precomputed calendar elements.
+///
+/// Calendar elements are interval-valid (masa ~a month, ayana ~half a year,
+/// varsha ~a year), so callers issuing many nearby requests can pass back a
+/// previously returned value: it is reused only when the requested moment
+/// falls inside its `[start, end)` window and its element is selected;
+/// otherwise it is ignored and the element is recomputed. Stale or
+/// irrelevant values can therefore never corrupt a result.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PanchangPrecomputed {
+    pub masa: Option<MasaInfo>,
+    pub ayana: Option<AyanaInfo>,
+    pub varsha: Option<VarshaInfo>,
+}
+
 /// Combined panchang result for a single moment.
 ///
 /// Each element is present exactly when its `PANCHANG_INCLUDE_*` bit was set

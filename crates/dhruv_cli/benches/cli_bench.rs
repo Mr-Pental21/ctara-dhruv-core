@@ -80,6 +80,7 @@ fn cli_like_panchang_bench(c: &mut Criterion) {
                 black_box(&ctx.riseset_config),
                 black_box(&ctx.sankranti_config),
                 black_box(PANCHANG_INCLUDE_ALL),
+                black_box(&dhruv_search::PanchangPrecomputed::default()),
             )
             .expect("panchang should succeed")
         })

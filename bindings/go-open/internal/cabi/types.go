@@ -713,6 +713,16 @@ type PanchangComputeRequest struct {
 	Location        GeoLocation
 	RiseSetConfig   RiseSetConfig
 	SankrantiConfig SankrantiConfig
+	// KnownMasa, KnownAyana, and KnownVarsha optionally carry caller-cached
+	// calendar values from a previous PanchangOperationResult; nil means
+	// absent. A known value is reused verbatim only when its element is
+	// selected in IncludeMask and the requested moment falls inside its
+	// [Start, End) window; stale or invalid values are silently ignored and
+	// the element is recomputed. Feeding these back lets repeated nearby
+	// calls skip the expensive new-moon/sankranti searches.
+	KnownMasa   *MasaInfo
+	KnownAyana  *AyanaInfo
+	KnownVarsha *VarshaInfo
 }
 
 type PanchangOperationResult struct {

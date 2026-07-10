@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=77`
+- ABI target: `DHRUV_API_VERSION=78`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -81,7 +81,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v77).
+symbols from `dhruv.h` (ABI v78).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -136,6 +136,14 @@ Location is optional: set `PanchangComputeRequest.HasLocation` (plus
 `Location`) only when the mask requests location-dependent elements (vaar,
 hora, ghatika). Those bits without `HasLocation` fail with an
 invalid-search-config error; location-independent masks need no location.
+
+Repeated nearby calls can skip the expensive new-moon/sankranti searches by
+feeding calendar values from a previous result back through the optional
+request fields `KnownMasa`, `KnownAyana`, and `KnownVarsha` (`*MasaInfo`,
+`*AyanaInfo`, `*VarshaInfo`; nil means absent). A known value is reused
+verbatim only when its element is selected in `IncludeMask` and the requested
+moment falls inside its `[Start, End)` window; stale or invalid values are
+silently ignored and recomputed.
 
 `FullKundaliConfig.PanchangIncludeMask` selects the embedded panchang section
 of `FullKundaliForDate` with the same bits (0 omits the section, replacing the

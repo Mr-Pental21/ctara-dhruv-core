@@ -209,6 +209,8 @@ Interim implementation may expose both legacy and canonical paths while parity t
 - `riseset_config: RiseSetConfig`
 - `sankranti_config: SankrantiConfig`
 - `include_mask: u32` (bitset over `PANCHANG_INCLUDE_*`)
+- `known: PanchangPrecomputed` (optional caller-cached `masa`/`ayana`/`varsha`
+  from a previous result; default empty)
 
 Include bits:
 - `PANCHANG_INCLUDE_TITHI`
@@ -241,6 +243,10 @@ Semantics:
 - `include_mask == 0` -> `InvalidConfig`.
 - Location-dependent bit set with `location: None` ->
   `InvalidConfig("location required for vaar/hora/ghatika")`.
+- A `known` calendar value is reused verbatim (its searches skipped) only
+  when its element is selected and the requested moment lies inside the
+  value's `[start, end)` window; stale or irrelevant values are silently
+  ignored and recomputed.
 
 ## Result
 

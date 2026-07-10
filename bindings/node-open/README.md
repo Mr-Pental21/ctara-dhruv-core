@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=77`
+- ABI target: `DHRUV_API_VERSION=78`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 - Primary distribution: npm package with bundled platform prebuilds from unified `vX.Y.Z` tags
@@ -116,6 +116,14 @@ without a location fails with `STATUS.INVALID_SEARCH_CONFIG`. When
 `includeMask` is omitted it defaults to `PANCHANG_INCLUDE.ALL` with a location
 and `PANCHANG_INCLUDE.LOCATION_INDEPENDENT` without one. `riseSetConfig` and
 `sankrantiConfig` default to the library defaults when omitted.
+
+Repeated nearby calls can skip the expensive new-moon/sankranti searches by
+feeding calendar values from a previous result back through the optional
+request properties `knownMasa`, `knownAyana`, and `knownVarsha` (the same
+shapes the result emits as `masa`, `ayana`, and `varsha`). A known value is
+reused verbatim only when its element is selected in `includeMask` and the
+requested moment falls inside its `[start, end)` window; stale or invalid
+values are silently ignored and recomputed.
 
 The result carries per-element `*Valid` flags (`tithiValid`, `vaarValid`,
 `masaValid`, ...) alongside the element payloads.

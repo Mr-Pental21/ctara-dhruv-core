@@ -555,6 +555,78 @@ defmodule CtaraDhruvTest do
     end
   end
 
+  test "elixir panchang daily reuses known calendar elements" do
+    case with_engine() do
+      :skip ->
+        assert true
+
+      {:ok, engine} ->
+        if File.exists?(@eop) do
+          assert {:ok, _} = Engine.load_eop(engine, @eop)
+
+          utc = %{year: 2015, month: 1, day: 15, hour: 6, minute: 0, second: 0.0}
+          mask = [:tithi, :masa, :ayana, :varsha]
+
+          assert {:ok, base} = Panchang.daily(engine, %{utc: utc, include_mask: mask})
+          assert is_map(base.masa)
+          assert is_map(base.ayana)
+          assert is_map(base.varsha)
+
+          # A nearby date inside the validity windows echoes the fed-back
+          # values verbatim instead of recomputing them.
+          nearby = %{utc | day: 16}
+
+          assert {:ok, reused} =
+                   Panchang.daily(engine, %{
+                     utc: nearby,
+                     include_mask: mask,
+                     known_masa: base.masa,
+                     known_ayana: base.ayana,
+                     known_varsha: base.varsha
+                   })
+
+          assert reused.masa == base.masa
+          assert reused.ayana == base.ayana
+          assert reused.varsha == base.varsha
+
+          # The known value is echoed verbatim, not recomputed: a tagged copy
+          # (flipped adhika) inside the window comes back with the tag intact.
+          tagged_masa = %{base.masa | adhika: not base.masa.adhika}
+
+          assert {:ok, tagged} =
+                   Panchang.daily(engine, %{
+                     utc: nearby,
+                     include_mask: mask,
+                     known_masa: tagged_masa
+                   })
+
+          assert tagged.masa == tagged_masa
+
+          # Outside the masa window the stale value is ignored and recomputed.
+          far = %{utc | month: 7}
+
+          assert {:ok, recomputed} =
+                   Panchang.daily(engine, %{
+                     utc: far,
+                     include_mask: mask,
+                     known_masa: base.masa
+                   })
+
+          assert recomputed.masa != base.masa
+
+          # Unknown enum names are rejected loudly, not silently dropped.
+          assert {:error, %CtaraDhruv.Error{kind: :invalid_request}} =
+                   Panchang.daily(engine, %{
+                     utc: nearby,
+                     include_mask: mask,
+                     known_masa: %{base.masa | masa: "not_a_masa"}
+                   })
+        else
+          assert true
+        end
+    end
+  end
+
   test "elixir math exposes amsha variation catalogs" do
     assert {:ok, d2} = Math.amsha_variations(%{amsha_code: 2})
     assert d2.amsha_code == 2

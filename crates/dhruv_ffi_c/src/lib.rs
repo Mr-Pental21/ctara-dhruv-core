@@ -65,7 +65,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 77;
+pub const DHRUV_API_VERSION: u32 = 78;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -5081,6 +5081,24 @@ pub struct DhruvPanchangComputeRequest {
     pub riseset_config: DhruvRiseSetConfig,
     /// Ayanamsha config for sidereal-dependent elements.
     pub sankranti_config: DhruvSankrantiConfig,
+    /// 1 when `known_masa` carries a caller-cached masa from a previous
+    /// result. A known calendar value is reused only when the requested
+    /// moment falls inside its `[start, end)` window and its element is
+    /// selected; otherwise it is ignored and the element is recomputed.
+    pub known_masa_valid: u8,
+    /// Previously returned masa. Read only when `known_masa_valid` is
+    /// non-zero.
+    pub known_masa: DhruvMasaInfo,
+    /// 1 when `known_ayana` carries a caller-cached ayana.
+    pub known_ayana_valid: u8,
+    /// Previously returned ayana. Read only when `known_ayana_valid` is
+    /// non-zero.
+    pub known_ayana: DhruvAyanaInfo,
+    /// 1 when `known_varsha` carries a caller-cached varsha.
+    pub known_varsha_valid: u8,
+    /// Previously returned varsha. Read only when `known_varsha_valid` is
+    /// non-zero.
+    pub known_varsha: DhruvVarshaInfo,
 }
 
 /// C-compatible panchang response with per-field validity flags.
@@ -7874,6 +7892,7 @@ pub unsafe extern "C" fn dhruv_panchang_compute_ex(
             riseset_config,
             sankranti_config: cfg,
             include_mask,
+            known: known_from_ffi(req),
         };
 
         let engine_ref = unsafe { &*engine };
@@ -8075,6 +8094,65 @@ fn varsha_info_to_ffi(info: &dhruv_search::VarshaInfo) -> DhruvVarshaInfo {
         order: info.order as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+    }
+}
+
+fn utc_time_from_ffi(utc: &DhruvUtcTime) -> UtcTime {
+    UtcTime::new(utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second)
+}
+
+/// Decode caller-supplied precomputed calendar elements from the request.
+///
+/// Entries with an unset validity flag or an out-of-range enum index decode
+/// to `None`; the engine then recomputes that element (a malformed known
+/// value can never corrupt a result).
+fn known_from_ffi(req: &DhruvPanchangComputeRequest) -> dhruv_search::PanchangPrecomputed {
+    let masa = (req.known_masa_valid != 0)
+        .then(|| {
+            let k = &req.known_masa;
+            let masa = usize::try_from(k.masa_index)
+                .ok()
+                .and_then(|i| dhruv_vedic_base::masa::ALL_MASAS.get(i))?;
+            Some(dhruv_search::MasaInfo {
+                masa: *masa,
+                adhika: k.adhika != 0,
+                start: utc_time_from_ffi(&k.start),
+                end: utc_time_from_ffi(&k.end),
+            })
+        })
+        .flatten();
+    let ayana = (req.known_ayana_valid != 0)
+        .then(|| {
+            let k = &req.known_ayana;
+            let ayana = usize::try_from(k.ayana)
+                .ok()
+                .and_then(|i| dhruv_vedic_base::ayana_type::ALL_AYANAS.get(i))?;
+            Some(dhruv_search::AyanaInfo {
+                ayana: *ayana,
+                start: utc_time_from_ffi(&k.start),
+                end: utc_time_from_ffi(&k.end),
+            })
+        })
+        .flatten();
+    let varsha = (req.known_varsha_valid != 0)
+        .then(|| {
+            let k = &req.known_varsha;
+            let samvatsara = usize::try_from(k.samvatsara_index)
+                .ok()
+                .and_then(|i| dhruv_vedic_base::samvatsara::ALL_SAMVATSARAS.get(i))?;
+            let order = u8::try_from(k.order).ok().filter(|o| (1..=60).contains(o))?;
+            Some(dhruv_search::VarshaInfo {
+                samvatsara: *samvatsara,
+                order,
+                start: utc_time_from_ffi(&k.start),
+                end: utc_time_from_ffi(&k.end),
+            })
+        })
+        .flatten();
+    dhruv_search::PanchangPrecomputed {
+        masa,
+        ayana,
+        varsha,
     }
 }
 
@@ -16885,6 +16963,12 @@ mod tests {
             },
             riseset_config: dhruv_riseset_config_default(),
             sankranti_config: dhruv_sankranti_config_default(),
+            known_masa_valid: 0,
+            known_masa: zeroed_masa_info(),
+            known_ayana_valid: 0,
+            known_ayana: zeroed_ayana_info(),
+            known_varsha_valid: 0,
+            known_varsha: zeroed_varsha_info(),
         };
         let mut out = DhruvPanchangOperationResult {
             tithi_valid: 0,
@@ -16945,6 +17029,12 @@ mod tests {
             },
             riseset_config: dhruv_riseset_config_default(),
             sankranti_config: dhruv_sankranti_config_default(),
+            known_masa_valid: 0,
+            known_masa: zeroed_masa_info(),
+            known_ayana_valid: 0,
+            known_ayana: zeroed_ayana_info(),
+            known_varsha_valid: 0,
+            known_varsha: zeroed_varsha_info(),
         };
         let mut out = DhruvPanchangOperationResult {
             tithi_valid: 0,

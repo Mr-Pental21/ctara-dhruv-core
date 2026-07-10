@@ -108,7 +108,7 @@ pub use dhruv_search::operations::{
     PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_LOCATION_DEPENDENT,
     PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_NAKSHATRA,
     PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
-    PanchangOperation, PanchangResult, panchang_include_bits,
+    PanchangOperation, PanchangPrecomputed, PanchangResult, panchang_include_bits,
 };
 
 /// Execute a panchang operation request.

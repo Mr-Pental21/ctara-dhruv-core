@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 77`
+**ABI version:** `DHRUV_API_VERSION = 78`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -656,11 +656,23 @@ typedef struct {
     DhruvGeoLocation     location;
     DhruvRiseSetConfig   riseset_config;
     DhruvSankrantiConfig sankranti_config;
+    uint8_t              known_masa_valid;   // 1 when known_masa is set
+    DhruvMasaInfo        known_masa;
+    uint8_t              known_ayana_valid;  // 1 when known_ayana is set
+    DhruvAyanaInfo       known_ayana;
+    uint8_t              known_varsha_valid; // 1 when known_varsha is set
+    DhruvVarshaInfo      known_varsha;
 } DhruvPanchangComputeRequest;
 ```
 
 `location` is required only when a location-dependent element (vaar, hora,
 ghatika) is selected in `include_mask`; set `has_location = 0` to ignore it.
+
+The `known_*` fields carry caller-cached calendar values from a previous
+result. A known value is reused verbatim (skipping its new-moon/sankranti
+searches) only when its element is selected in `include_mask` and the
+requested moment falls inside the value's `[start, end)` window; stale or
+invalid values are silently ignored and recomputed.
 
 ### DhruvPanchangOperationResult
 
@@ -2489,6 +2501,15 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v78**: `DhruvPanchangComputeRequest` gained caller-cached calendar
+context: trailing fields `known_masa_valid`/`known_masa`,
+`known_ayana_valid`/`known_ayana`, and `known_varsha_valid`/`known_varsha`.
+A known value is reused verbatim (skipping its new-moon/sankranti searches)
+only when its element is selected in `include_mask` and the requested moment
+falls inside the value's `[start, end)` window; stale or invalid values are
+silently ignored and the element is recomputed. Set the `known_*_valid`
+flags to 0 when nothing is cached.
 
 **v77**: Added three range operations. Amsha series (fixed-cadence slim varga
 charts): new type `DhruvAmshaSeriesChart` and handle-based entrypoints

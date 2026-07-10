@@ -38,8 +38,8 @@ pub use operations::{
     PANCHANG_INCLUDE_LOCATION_DEPENDENT, PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
     PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_NAKSHATRA, PANCHANG_INCLUDE_TITHI,
     PANCHANG_INCLUDE_VAAR, PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA, PanchangOperation,
-    PanchangResult, QueryMode, TaraOperation, TaraOutputKind, TaraResult, ayanamsha, lunar_node,
-    panchang, panchang_include_bits, tara,
+    PanchangPrecomputed, PanchangResult, QueryMode, TaraOperation, TaraOutputKind, TaraResult,
+    ayanamsha, lunar_node, panchang, panchang_include_bits, tara,
 };
 pub use panchang::{
     ayana_for_date, ayana_for_date_with_eop, elongation_at, ghatika_for_date,

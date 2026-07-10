@@ -183,6 +183,33 @@ struct GeoLocationInput {
     altitude_m: Option<f64>,
 }
 
+/// Caller-supplied precomputed masa input. Mirrors the map emitted for masa
+/// results so a previous `daily`/`events` value can be fed back verbatim.
+#[derive(Debug, Clone, Deserialize)]
+struct KnownMasaInput {
+    masa: EnumInput,
+    adhika: bool,
+    start: UtcInput,
+    end: UtcInput,
+}
+
+/// Caller-supplied precomputed ayana input (same shape as ayana results).
+#[derive(Debug, Clone, Deserialize)]
+struct KnownAyanaInput {
+    ayana: EnumInput,
+    start: UtcInput,
+    end: UtcInput,
+}
+
+/// Caller-supplied precomputed varsha input (same shape as varsha results).
+#[derive(Debug, Clone, Deserialize)]
+struct KnownVarshaInput {
+    samvatsara: EnumInput,
+    order: u8,
+    start: UtcInput,
+    end: UtcInput,
+}
+
 /// Panchang include-mask input: an integer mask, an element/group name
 /// (e.g. `"all"`, `"location_independent"`, `"tithi"`, `"none"`), or a list
 /// of element/group names OR-ed together.
@@ -272,6 +299,9 @@ struct PanchangRequest {
     body: Option<EnumInput>,
     location: Option<GeoLocationInput>,
     include_mask: Option<PanchangIncludeInput>,
+    known_masa: Option<KnownMasaInput>,
+    known_ayana: Option<KnownAyanaInput>,
+    known_varsha: Option<KnownVarshaInput>,
     riseset_config: Option<RiseSetConfigInput>,
     sankranti_config: Option<SankrantiConfigInput>,
 }
@@ -1316,6 +1346,73 @@ fn parse_samvatsara(input: &EnumInput) -> Result<dhruv_vedic_base::Samvatsara, V
         EnumInput::Str(value) => parse_named(value, &ALL_SAMVATSARAS)
             .ok_or_else(|| error_payload("invalid_request", "unknown samvatsara")),
     }
+}
+
+fn parse_ayana(input: &EnumInput) -> Result<dhruv_vedic_base::ayana_type::Ayana, Value> {
+    use dhruv_vedic_base::ayana_type::ALL_AYANAS;
+    match input {
+        EnumInput::Int(value) => ALL_AYANAS
+            .get(*value as usize)
+            .copied()
+            .ok_or_else(|| error_payload("invalid_request", "unknown ayana")),
+        EnumInput::Str(value) => parse_named(value, &ALL_AYANAS)
+            .ok_or_else(|| error_payload("invalid_request", "unknown ayana")),
+    }
+}
+
+/// Decodes the optional `known_masa`/`known_ayana`/`known_varsha` request
+/// fields into the engine's caller-supplied precomputed calendar elements.
+/// Unknown enum names are rejected loudly; stale validity windows are handled
+/// (silently recomputed) by the engine itself.
+fn to_panchang_precomputed(
+    request: &PanchangRequest,
+) -> Result<dhruv_search::PanchangPrecomputed, Value> {
+    let masa = request
+        .known_masa
+        .as_ref()
+        .map(|input| -> Result<dhruv_search::MasaInfo, Value> {
+            Ok(dhruv_search::MasaInfo {
+                masa: parse_masa(&input.masa)?,
+                adhika: input.adhika,
+                start: parse_utc(input.start)?,
+                end: parse_utc(input.end)?,
+            })
+        })
+        .transpose()?;
+    let ayana = request
+        .known_ayana
+        .as_ref()
+        .map(|input| -> Result<dhruv_search::AyanaInfo, Value> {
+            Ok(dhruv_search::AyanaInfo {
+                ayana: parse_ayana(&input.ayana)?,
+                start: parse_utc(input.start)?,
+                end: parse_utc(input.end)?,
+            })
+        })
+        .transpose()?;
+    let varsha = request
+        .known_varsha
+        .as_ref()
+        .map(|input| -> Result<dhruv_search::VarshaInfo, Value> {
+            if !(1..=60).contains(&input.order) {
+                return Err(error_payload(
+                    "invalid_request",
+                    "known_varsha order must be in 1..=60",
+                ));
+            }
+            Ok(dhruv_search::VarshaInfo {
+                samvatsara: parse_samvatsara(&input.samvatsara)?,
+                order: input.order,
+                start: parse_utc(input.start)?,
+                end: parse_utc(input.end)?,
+            })
+        })
+        .transpose()?;
+    Ok(dhruv_search::PanchangPrecomputed {
+        masa,
+        ayana,
+        varsha,
+    })
 }
 
 fn parse_upagraha(input: &EnumInput) -> Result<Upagraha, Value> {
@@ -3926,6 +4023,7 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                     riseset_config,
                     sankranti_config,
                     include_mask,
+                    known: to_panchang_precomputed(&request)?,
                 };
                 let result =
                     panchang(engine, eop, &op).map_err(|err| map_error("search_error", err))?;
@@ -6039,6 +6137,120 @@ mod tests {
             variation: Some(200),
         }]))
         .expect_err("unknown variation should be rejected");
+        assert_eq!(err["kind"], "invalid_request");
+    }
+
+    fn known_request(patch: Value) -> PanchangRequest {
+        let mut base = json!({ "op": "daily" });
+        base.as_object_mut()
+            .unwrap()
+            .extend(patch.as_object().unwrap().clone());
+        serde_json::from_value(base).expect("panchang request should decode")
+    }
+
+    fn utc_map(year: i32, month: u32, day: u32) -> Value {
+        json!({
+            "year": year, "month": month, "day": day,
+            "hour": 0, "minute": 0, "second": 0.0
+        })
+    }
+
+    #[test]
+    fn panchang_known_inputs_round_trip_names_and_indices() {
+        let request = known_request(json!({
+            "known_masa": {
+                "masa": "chaitra",
+                "adhika": true,
+                "start": utc_map(2015, 3, 21),
+                "end": utc_map(2015, 4, 18)
+            },
+            "known_ayana": {
+                "ayana": "uttarayana",
+                "start": utc_map(2015, 1, 14),
+                "end": utc_map(2015, 7, 16)
+            },
+            "known_varsha": {
+                "samvatsara": "vishvavasu",
+                "order": 39,
+                "start": utc_map(2015, 3, 21),
+                "end": utc_map(2016, 4, 8)
+            }
+        }));
+        let known = to_panchang_precomputed(&request).expect("known inputs should decode");
+        let masa = known.masa.expect("masa should be present");
+        assert_eq!(masa.masa, dhruv_vedic_base::Masa::Chaitra);
+        assert!(masa.adhika);
+        assert_eq!(masa.start.month, 3);
+        assert_eq!(masa.end.day, 18);
+        assert_eq!(
+            known.ayana.unwrap().ayana,
+            dhruv_vedic_base::ayana_type::Ayana::Uttarayana
+        );
+        let varsha = known.varsha.expect("varsha should be present");
+        assert_eq!(varsha.samvatsara, dhruv_vedic_base::Samvatsara::Vishvavasu);
+        assert_eq!(varsha.order, 39);
+
+        // Integer indices follow the same index-ordered arrays as the names.
+        let request = known_request(json!({
+            "known_masa": {
+                "masa": 1,
+                "adhika": false,
+                "start": utc_map(2015, 4, 18),
+                "end": utc_map(2015, 5, 18)
+            },
+            "known_ayana": {
+                "ayana": 1,
+                "start": utc_map(2015, 7, 16),
+                "end": utc_map(2016, 1, 15)
+            }
+        }));
+        let known = to_panchang_precomputed(&request).expect("indices should decode");
+        assert_eq!(known.masa.unwrap().masa, dhruv_vedic_base::Masa::Vaishakha);
+        assert_eq!(
+            known.ayana.unwrap().ayana,
+            dhruv_vedic_base::ayana_type::Ayana::Dakshinayana
+        );
+        assert!(known.varsha.is_none());
+
+        // Nothing supplied decodes to the all-None default.
+        let request = known_request(json!({}));
+        let known = to_panchang_precomputed(&request).expect("empty known should decode");
+        assert_eq!(known, dhruv_search::PanchangPrecomputed::default());
+    }
+
+    #[test]
+    fn panchang_known_inputs_reject_invalid_values() {
+        let request = known_request(json!({
+            "known_masa": {
+                "masa": "not_a_masa",
+                "adhika": false,
+                "start": utc_map(2015, 3, 21),
+                "end": utc_map(2015, 4, 18)
+            }
+        }));
+        let err = to_panchang_precomputed(&request).expect_err("unknown masa should be rejected");
+        assert_eq!(err["kind"], "invalid_request");
+
+        let request = known_request(json!({
+            "known_ayana": {
+                "ayana": "sideways",
+                "start": utc_map(2015, 1, 14),
+                "end": utc_map(2015, 7, 16)
+            }
+        }));
+        let err = to_panchang_precomputed(&request).expect_err("unknown ayana should be rejected");
+        assert_eq!(err["kind"], "invalid_request");
+
+        let request = known_request(json!({
+            "known_varsha": {
+                "samvatsara": "vishvavasu",
+                "order": 61,
+                "start": utc_map(2015, 3, 21),
+                "end": utc_map(2016, 4, 8)
+            }
+        }));
+        let err =
+            to_panchang_precomputed(&request).expect_err("out-of-range order should be rejected");
         assert_eq!(err["kind"], "invalid_request");
     }
 

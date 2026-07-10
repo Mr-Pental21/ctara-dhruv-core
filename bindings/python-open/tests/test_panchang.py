@@ -57,6 +57,70 @@ class TestPanchangCompute:
         assert result.tithi is not None
 
 
+class TestAbiVersion:
+    def test_api_version_is_78(self):
+        """Library and embedded header agree on ABI v78."""
+        from ctara_dhruv._ffi import lib
+        from ctara_dhruv._cdef import EXPECTED_API_VERSION
+        assert EXPECTED_API_VERSION == 78
+        assert lib.dhruv_api_version() == 78
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestKnownCalendarReuse:
+    """known_masa/known_ayana/known_varsha caller-cache reuse (ABI v78)."""
+
+    def _compute(self, utc, **known):
+        from ctara_dhruv.panchang import panchang, INCLUDE_ALL_CALENDAR
+        from ctara_dhruv.engine import engine, lsk, eop
+        return panchang(
+            engine()._ptr, eop(), lsk(), utc,
+            include_mask=INCLUDE_ALL_CALENDAR,
+            **known,
+        )
+
+    def test_known_values_reused_at_nearby_date(self, engine_handles):
+        """Fed-back values inside their windows are returned verbatim."""
+        from ctara_dhruv.types import UtcTime
+        first = self._compute(UtcTime(2024, 6, 15, 12, 0, 0.0))
+        assert first.masa is not None
+        assert first.ayana is not None
+        assert first.varsha is not None
+
+        # One day later: well inside the masa/ayana/varsha windows.
+        second = self._compute(
+            UtcTime(2024, 6, 16, 12, 0, 0.0),
+            known_masa=first.masa,
+            known_ayana=first.ayana,
+            known_varsha=first.varsha,
+        )
+        assert second.masa == first.masa
+        assert second.ayana == first.ayana
+        assert second.varsha == first.varsha
+
+    def test_stale_known_values_recomputed_at_far_date(self, engine_handles):
+        """Values whose windows do not cover the moment are ignored."""
+        from ctara_dhruv.types import UtcTime
+        first = self._compute(UtcTime(2024, 6, 15, 12, 0, 0.0))
+
+        # Six months later: masa window no longer covers the moment.
+        far = self._compute(
+            UtcTime(2024, 12, 15, 12, 0, 0.0),
+            known_masa=first.masa,
+            known_ayana=first.ayana,
+            known_varsha=first.varsha,
+        )
+        assert far.masa is not None
+        assert far.masa.masa_index != first.masa.masa_index
+        assert far.masa.start != first.masa.start
+        # Recomputed result matches a plain (no known_*) computation.
+        plain = self._compute(UtcTime(2024, 12, 15, 12, 0, 0.0))
+        assert far.masa == plain.masa
+        assert far.ayana == plain.ayana
+        assert far.varsha == plain.varsha
+
+
 @skip_no_kernels
 @skip_no_eop
 class TestIndividualPanchang:

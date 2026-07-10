@@ -10,8 +10,9 @@ use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::panchang_types::{AyanaInfo, MasaInfo, VarshaInfo};
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::{
-    PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CORE, PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
-    PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, SearchError, ayana_for_date, elongation_at,
+    PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_ALL_CORE,
+    PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR,
+    PanchangPrecomputed, SearchError, ayana_for_date, elongation_at,
     ghatika_for_date, ghatika_from_sunrises, hora_for_date, hora_from_sunrises, karana_at,
     karana_for_date, masa_for_date, moon_sidereal_longitude_at, nakshatra_at, nakshatra_for_date,
     panchang_for_date, sidereal_sum_at, tithi_at, tithi_for_date, vaar_for_date,
@@ -311,6 +312,7 @@ fn panchang_combined_matches_individual() {
         &rs,
         &config,
         PANCHANG_INCLUDE_ALL_CORE,
+        &PanchangPrecomputed::default(),
     )
     .unwrap();
 
@@ -361,6 +363,7 @@ fn panchang_with_calendar() {
         &rs,
         &config,
         PANCHANG_INCLUDE_ALL,
+        &PanchangPrecomputed::default(),
     )
     .unwrap();
 
@@ -397,6 +400,7 @@ fn panchang_location_independent_without_location() {
         &rs,
         &config,
         PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
+        &PanchangPrecomputed::default(),
     )
     .unwrap();
 
@@ -429,13 +433,89 @@ fn panchang_location_dependent_requires_location() {
         &rs,
         &config,
         PANCHANG_INCLUDE_VAAR,
+        &PanchangPrecomputed::default(),
     )
     .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
 
-    let err =
-        panchang_for_date(&engine, &eop, &utc, None, &rs, &config, 0).unwrap_err();
+    let err = panchang_for_date(
+        &engine,
+        &eop,
+        &utc,
+        None,
+        &rs,
+        &config,
+        0,
+        &PanchangPrecomputed::default(),
+    )
+    .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
+}
+
+/// Known calendar values are reused verbatim inside their validity window
+/// and recomputed when stale.
+#[test]
+fn panchang_known_calendar_reuse() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let rs = RiseSetConfig::default();
+    let config = default_config();
+    let utc = UtcTime::new(2024, 1, 15, 12, 0, 0.0);
+    let later_same_masa = UtcTime::new(2024, 1, 20, 12, 0, 0.0);
+    let other_masa = UtcTime::new(2024, 5, 20, 12, 0, 0.0);
+
+    let first = panchang_for_date(
+        &engine,
+        &eop,
+        &utc,
+        None,
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_ALL_CALENDAR,
+        &PanchangPrecomputed::default(),
+    )
+    .unwrap();
+    let known = PanchangPrecomputed {
+        masa: first.masa,
+        ayana: first.ayana,
+        varsha: first.varsha,
+    };
+
+    // Inside the windows: all three come back exactly as supplied.
+    let reused = panchang_for_date(
+        &engine,
+        &eop,
+        &later_same_masa,
+        None,
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_ALL_CALENDAR,
+        &known,
+    )
+    .unwrap();
+    assert_eq!(reused.masa, first.masa, "masa should be reused verbatim");
+    assert_eq!(reused.ayana, first.ayana, "ayana should be reused verbatim");
+    assert_eq!(reused.varsha, first.varsha, "varsha should be reused");
+
+    // Past the masa window: the stale masa is recomputed, not echoed.
+    let recomputed = panchang_for_date(
+        &engine,
+        &eop,
+        &other_masa,
+        None,
+        &rs,
+        &config,
+        PANCHANG_INCLUDE_ALL_CALENDAR,
+        &known,
+    )
+    .unwrap();
+    let direct = masa_for_date(&engine, &other_masa, &config).unwrap();
+    assert_eq!(
+        recomputed.masa,
+        Some(direct),
+        "stale known masa must be recomputed"
+    );
+    assert_ne!(recomputed.masa, first.masa);
 }
 
 /// A single-element mask populates exactly that element.
@@ -455,6 +535,7 @@ fn panchang_single_element_mask() {
         &rs,
         &config,
         PANCHANG_INCLUDE_TITHI,
+        &PanchangPrecomputed::default(),
     )
     .unwrap();
 

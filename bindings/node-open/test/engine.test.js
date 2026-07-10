@@ -10,6 +10,7 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
+  assert.equal(dhruv.EXPECTED_API_VERSION, 78);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
 });
@@ -369,6 +370,40 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
   assert.equal(panchangNoLoc.vaarValid, false);
   assert.equal(panchangNoLoc.horaValid, false);
   assert.equal(panchangNoLoc.ghatikaValid, false);
+
+  // Known calendar values are reused verbatim inside their validity window
+  // and silently recomputed when stale.
+  const calendarReq = {
+    timeKind: 1,
+    jdTdb: -1,
+    utc: { year: 2024, month: 1, day: 15, hour: 12, minute: 0, second: 0 },
+    includeMask: dhruv.PANCHANG_INCLUDE.ALL_CALENDAR,
+  };
+  const firstCalendar = dhruv.panchangComputeEx(engine, eop, lsk, calendarReq);
+  assert.equal(firstCalendar.masaValid, true);
+  assert.equal(firstCalendar.ayanaValid, true);
+  assert.equal(firstCalendar.varshaValid, true);
+
+  const reusedCalendar = dhruv.panchangComputeEx(engine, eop, lsk, {
+    ...calendarReq,
+    utc: { year: 2024, month: 1, day: 20, hour: 12, minute: 0, second: 0 },
+    knownMasa: firstCalendar.masa,
+    knownAyana: firstCalendar.ayana,
+    knownVarsha: firstCalendar.varsha,
+  });
+  assert.deepEqual(reusedCalendar.masa, firstCalendar.masa);
+  assert.deepEqual(reusedCalendar.ayana, firstCalendar.ayana);
+  assert.deepEqual(reusedCalendar.varsha, firstCalendar.varsha);
+
+  const recomputedCalendar = dhruv.panchangComputeEx(engine, eop, lsk, {
+    ...calendarReq,
+    utc: { year: 2024, month: 5, day: 20, hour: 12, minute: 0, second: 0 },
+    knownMasa: firstCalendar.masa,
+    knownAyana: firstCalendar.ayana,
+    knownVarsha: firstCalendar.varsha,
+  });
+  assert.equal(recomputedCalendar.masaValid, true);
+  assert.notDeepEqual(recomputedCalendar.masa, firstCalendar.masa);
 
   assert.throws(
     () => dhruv.panchangComputeEx(engine, eop, lsk, {

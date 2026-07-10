@@ -1337,6 +1337,18 @@ func goPanchangOperationResult(out C.DhruvPanchangOperationResult) PanchangOpera
 	}
 }
 
+func cMasaInfo(v MasaInfo) C.DhruvMasaInfo {
+	return C.DhruvMasaInfo{masa_index: C.int32_t(v.MasaIndex), adhika: boolU8(v.Adhika), start: cUTC(v.Start), end: cUTC(v.End)}
+}
+
+func cAyanaInfo(v AyanaInfo) C.DhruvAyanaInfo {
+	return C.DhruvAyanaInfo{ayana: C.int32_t(v.Ayana), start: cUTC(v.Start), end: cUTC(v.End)}
+}
+
+func cVarshaInfo(v VarshaInfo) C.DhruvVarshaInfo {
+	return C.DhruvVarshaInfo{samvatsara_index: C.int32_t(v.SamvatsaraIndex), order: C.int32_t(v.Order), start: cUTC(v.Start), end: cUTC(v.End)}
+}
+
 func PanchangComputeEx(engine EngineHandle, eop EopHandle, lsk LskHandle, req PanchangComputeRequest) (PanchangOperationResult, Status) {
 	creq := C.DhruvPanchangComputeRequest{
 		time_kind:        C.int32_t(req.TimeKind),
@@ -1347,6 +1359,18 @@ func PanchangComputeEx(engine EngineHandle, eop EopHandle, lsk LskHandle, req Pa
 		location:         cGeo(req.Location),
 		riseset_config:   cRiseSetConfig(req.RiseSetConfig),
 		sankranti_config: cSankrantiConfig(req.SankrantiConfig),
+	}
+	if req.KnownMasa != nil {
+		creq.known_masa_valid = 1
+		creq.known_masa = cMasaInfo(*req.KnownMasa)
+	}
+	if req.KnownAyana != nil {
+		creq.known_ayana_valid = 1
+		creq.known_ayana = cAyanaInfo(*req.KnownAyana)
+	}
+	if req.KnownVarsha != nil {
+		creq.known_varsha_valid = 1
+		creq.known_varsha = cVarshaInfo(*req.KnownVarsha)
 	}
 	var out C.DhruvPanchangOperationResult
 	st := Status(C.dhruv_panchang_compute_ex(engine.ptr, eop.ptr, lsk.ptr, &creq, &out))
