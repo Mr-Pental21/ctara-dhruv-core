@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 76
+const ExpectedAPIVersion = 77
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -11,6 +11,15 @@ const (
 	SphutaCount           = cabi.SphutaCount
 	MaxDashaSystems       = cabi.MaxDashaSystems
 	MaxCharakarakaEntries = cabi.MaxCharakarakaEntries
+)
+
+// Hard ceilings for the range-sweep operations (AmshaSeries, PanchangEvents,
+// AmshaLagnaEvents). PanchangEvents/AmshaLagnaEvents select their ceiling
+// when the caller passes a cap of 0.
+const (
+	MaxAmshaSeriesCells   = cabi.MaxAmshaSeriesCells
+	MaxPanchangEvents     = cabi.MaxPanchangEvents
+	MaxAmshaLagnaSegments = cabi.MaxAmshaLagnaSegments
 )
 
 const (
@@ -377,6 +386,14 @@ type (
 	AmshaChart            = cabi.AmshaChart
 	AmshaVariationInfo    = cabi.AmshaVariationInfo
 	AmshaVariationCatalog = cabi.AmshaVariationCatalog
+
+	AmshaRequest           = cabi.AmshaRequest
+	AmshaSeriesChart       = cabi.AmshaSeriesChart
+	AmshaSeriesPoint       = cabi.AmshaSeriesPoint
+	PanchangEventsResult   = cabi.PanchangEventsResult
+	AmshaLagnaSegment      = cabi.AmshaLagnaSegment
+	AmshaLagnaEntry        = cabi.AmshaLagnaEntry
+	AmshaLagnaEventsResult = cabi.AmshaLagnaEventsResult
 )
 
 type GocharEventWindow[T any] = cabi.GocharEventWindow[T]

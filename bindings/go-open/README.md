@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=76`
+- ABI target: `DHRUV_API_VERSION=77`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -81,7 +81,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v76).
+symbols from `dhruv.h` (ABI v77).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -109,6 +109,10 @@ The public `dhruv` package includes wrappers for:
   with structured UTC on the high-level time-bearing result objects alongside JD
 - grouped `gochar_events` return-chart and transit-aspect API with caller-named natal targets, including `GocharTransitRahu` and `GocharTransitKetu` alongside physical-body codes
 - panchang and calendar date APIs
+- range-sweep APIs: `(*Engine).AmshaSeries` (fixed-cadence slim varga
+  charts), `(*Engine).PanchangEvents` (exact location-independent panchang
+  segments with truncation/resume metadata), and
+  `(*Engine).AmshaLagnaEvents` (exact varga-lagna rashi transitions)
 - panchang/classifier/math helper APIs
 - graha longitude and jyotish date APIs
 - shadbala, vimsopaka, and avastha date APIs
@@ -138,6 +142,35 @@ of `FullKundaliForDate` with the same bits (0 omits the section, replacing the
 former `IncludePanchang`/`IncludeCalendar` booleans). The result section
 `FullKundaliResult.Panchang` is a `*PanchangOperationResult` with the same
 per-element `*Valid` flags as the standalone call.
+
+## Range Sweeps
+
+Three engine methods sweep a UTC range instead of a single epoch:
+
+- `(*Engine).AmshaSeries(eop, fromUTC, toUTC, stepMinutes, loc, sankrantiCfg,
+  requests, includeGrahas)` returns `[]AmshaSeriesPoint` on the same grid as
+  `GrahaPositionsSeriesForDate` (one point per `stepMinutes` starting at
+  `fromUTC`, endpoints inclusive when on the grid). Each point carries one
+  slim `AmshaSeriesChart` per `AmshaRequest{AmshaCode, VariationCode}` in
+  request order (duplicates repeated); the varga lagna is always present and
+  `Grahas`/`GrahasValid` are filled when `includeGrahas` is true. Points times
+  unique requests must stay within `MaxAmshaSeriesCells` (100,000).
+- `(*Engine).PanchangEvents(eop, fromUTC, toUTC, includeMask, sankrantiCfg,
+  maxEvents)` returns `PanchangEventsResult` with per-kind slices (`Tithis`,
+  `Karanas`, `Yogas`, `Nakshatras`, `Masas`, `Ayanas`, `Varshas`). The mask
+  must contain only `PanchangIncludeLocationIndependent` bits. Segments of a
+  kind chain exactly (`End` == next `Start`); the first may start before
+  `fromUTC` and the last may end after `toUTC`. `maxEvents` caps the total
+  events across kinds (0 selects `MaxPanchangEvents`, 50,000).
+- `(*Engine).AmshaLagnaEvents(eop, fromUTC, toUTC, loc, sankrantiCfg,
+  requests, maxSegments)` returns `AmshaLagnaEventsResult` with one
+  `AmshaLagnaEntry` per unique request (duplicates collapsed) holding exact
+  `AmshaLagnaSegment` rashi transitions. `maxSegments` caps total segments
+  (0 selects `MaxAmshaLagnaSegments`, 50,000).
+
+The two event sweeps report truncation on the result: when `Truncated` is
+true, call again with `fromUTC = *NextFromUTC` and drop resumed events whose
+(kind, `Start`) you already collected.
 
 ## Time-Based Upagraha Config
 

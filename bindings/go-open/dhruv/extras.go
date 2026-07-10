@@ -435,3 +435,31 @@ func (e *Engine) AmshaChartForDate(ep *EOP, utc UtcTime, loc GeoLocation, bhavaC
 	out, st := cabi.AmshaChartForDate(e.h, ep.h, utc, loc, bhavaCfg, riseCfg, ayanamshaSystem, useNutation, amshaCode, variationCode, scope)
 	return out, statusErr("amsha_chart_for_date", st)
 }
+
+// AmshaSeries samples slim varga charts at a fixed cadence: one point per
+// stepMinutes starting at fromUTC, endpoints inclusive when they fall on the
+// grid (the same grid semantics as GrahaPositionsSeriesForDate). Each point
+// carries one chart per request, in request order (duplicates repeated);
+// VariationCode 0 selects that amsha's default variation. The varga lagna is
+// always computed; per-graha entries are added when includeGrahas is true.
+// The ayanamsha system and nutation flag come from sankrantiCfg. Rejects
+// stepMinutes == 0, reversed ranges, empty or invalid request lists, and
+// grids whose points * unique requests exceed MaxAmshaSeriesCells.
+func (e *Engine) AmshaSeries(ep *EOP, fromUTC, toUTC UtcTime, stepMinutes uint32, loc GeoLocation, sankrantiCfg SankrantiConfig, requests []AmshaRequest, includeGrahas bool) ([]AmshaSeriesPoint, error) {
+	out, st := cabi.AmshaSeries(e.h, ep.h, fromUTC, toUTC, stepMinutes, loc, sankrantiCfg, requests, includeGrahas)
+	return out, statusErr("amsha_series", st)
+}
+
+// AmshaLagnaEvents streams exact varga-lagna rashi segments overlapping
+// [fromUTC, toUTC], one entry per unique request (duplicates collapsed), in
+// request order; VariationCode 0 selects that amsha's default variation.
+// Within an entry, segments chain exactly (End == next Start); the first
+// segment starts at fromUTC and the last ends at the first transition at or
+// after toUTC. maxSegments caps the total segments across all amshas (0
+// selects MaxAmshaLagnaSegments). When the result is Truncated, resume the
+// sweep from *NextFromUTC and drop resumed segments whose Start was already
+// seen for the same entry.
+func (e *Engine) AmshaLagnaEvents(ep *EOP, fromUTC, toUTC UtcTime, loc GeoLocation, sankrantiCfg SankrantiConfig, requests []AmshaRequest, maxSegments uint32) (AmshaLagnaEventsResult, error) {
+	out, st := cabi.AmshaLagnaEvents(e.h, ep.h, fromUTC, toUTC, loc, sankrantiCfg, requests, maxSegments)
+	return out, statusErr("amsha_lagna_events", st)
+}

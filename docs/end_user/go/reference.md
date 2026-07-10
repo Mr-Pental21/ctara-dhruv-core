@@ -81,6 +81,19 @@ and `FullKundaliConfig.PanchangIncludeMask`):
   `PanchangIncludeLocationIndependent` (everything except vaar/hora/ghatika),
   and `PanchangIncludeLocationDependent` (vaar/hora/ghatika)
 
+Range-sweep types and caps:
+
+- `AmshaRequest`, `AmshaSeriesChart`, `AmshaSeriesPoint` (for
+  `(*Engine).AmshaSeries`)
+- `PanchangEventsResult` (for `(*Engine).PanchangEvents`)
+- `AmshaLagnaSegment`, `AmshaLagnaEntry`, `AmshaLagnaEventsResult` (for
+  `(*Engine).AmshaLagnaEvents`)
+- Hard ceilings: `MaxAmshaSeriesCells` (100,000 points times unique
+  requests), `MaxPanchangEvents` (50,000 events), `MaxAmshaLagnaSegments`
+  (50,000 segments). The event sweeps select their ceiling when the caller
+  passes a cap of 0 and report overflow through `Truncated`/`NextFromUTC`
+  instead of failing.
+
 ## Package-Level Function Inventory
 
 Lifecycle and runtime:
@@ -318,6 +331,18 @@ Panchang and vedic basics:
   when the mask includes location-dependent elements
   (`PanchangIncludeLocationDependent`, i.e. vaar/hora/ghatika); requesting
   those bits without `HasLocation` fails with an invalid-search-config error.
+- `(*Engine).PanchangEvents(eop, fromUTC, toUTC, includeMask, sankrantiCfg, maxEvents)`
+  Range sweep returning `PanchangEventsResult` with exact per-kind segment
+  slices (`Tithis`, `Karanas`, `Yogas`, `Nakshatras`, `Masas`, `Ayanas`,
+  `Varshas`) overlapping `[fromUTC, toUTC]`. The mask must be non-zero and
+  contain only `PanchangIncludeLocationIndependent` bits; location-dependent
+  bits (vaar/hora/ghatika) are rejected. Consecutive segments of one kind
+  chain exactly (`End` == next `Start`); the first segment of each kind may
+  start before `fromUTC` and the last may end after `toUTC`. `maxEvents`
+  caps total events across all kinds (0 selects `MaxPanchangEvents` =
+  50,000). When `Truncated` is true, `NextFromUTC` (a `*UtcTime`, nil when
+  not truncated) is the resume point: call again from `*NextFromUTC` and
+  drop resumed events whose (kind, `Start`) was already collected.
 - `(*Engine).ElongationAt`
 - `(*Engine).SiderealSumAt`
 - `(*Engine).VedicDaySunrises`
@@ -380,6 +405,28 @@ Strength, dasha, amsha, and tara:
 - `(*Engine).AmshaChartForDate`
   Amsha chart `Grahas` stay length 9; `OuterPlanets` carries transformed
   Uranus, Neptune, and Pluto entries when the scope enables them.
+- `(*Engine).AmshaSeries(eop, fromUTC, toUTC, stepMinutes, loc, sankrantiCfg, requests, includeGrahas)`
+  Fixed-cadence slim varga charts, returned as `[]AmshaSeriesPoint`. Grid
+  semantics match `GrahaPositionsSeriesForDate`: one point per `stepMinutes`
+  starting at `fromUTC`, endpoints inclusive when on the grid. Each point
+  carries `Utc`, `JdUtc`, and one `AmshaSeriesChart` per
+  `AmshaRequest{AmshaCode, VariationCode}` in request order (duplicates
+  repeated; `VariationCode` 0 = that amsha's default). The varga `Lagna` is
+  always computed; `Grahas` (with `GrahasValid`) are added when
+  `includeGrahas` is true. The ayanamsha system and nutation flag come from
+  `sankrantiCfg`. Rejects `stepMinutes == 0`, reversed ranges, empty or
+  invalid request lists, and grids whose points times unique requests exceed
+  `MaxAmshaSeriesCells` (100,000).
+- `(*Engine).AmshaLagnaEvents(eop, fromUTC, toUTC, loc, sankrantiCfg, requests, maxSegments)`
+  Exact varga-lagna rashi transitions over `[fromUTC, toUTC]`, returned as
+  `AmshaLagnaEventsResult` with one `AmshaLagnaEntry` per unique request
+  (duplicates collapsed), in request order. Each `AmshaLagnaSegment` carries
+  `RashiIndex`, `Start`, and `End`; segments chain exactly, the first starts
+  at `fromUTC`, and the last ends at the first transition at or after
+  `toUTC`. `maxSegments` caps total segments across all amshas (0 selects
+  `MaxAmshaLagnaSegments` = 50,000). When `Truncated` is true, resume from
+  `*NextFromUTC` and drop resumed segments whose `Start` was already
+  collected for the same entry.
 - `(*TaraCatalog).Compute`
 - `(*TaraCatalog).GalacticCenterEcliptic`
 - `TaraPropagatePosition`

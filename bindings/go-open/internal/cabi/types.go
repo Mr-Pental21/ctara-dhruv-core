@@ -11,6 +11,20 @@ const (
 	MaxCharakarakaEntries = 8
 )
 
+// Hard ceilings for the range-sweep operations. They mirror
+// DHRUV_MAX_AMSHA_SERIES_CELLS, DHRUV_MAX_PANCHANG_EVENTS, and
+// DHRUV_MAX_AMSHA_LAGNA_SEGMENTS from the C ABI.
+const (
+	// MaxAmshaSeriesCells caps points * unique requests for AmshaSeries.
+	MaxAmshaSeriesCells = 100000
+	// MaxPanchangEvents caps total events across kinds for PanchangEvents
+	// (also selected by maxEvents == 0).
+	MaxPanchangEvents = 50000
+	// MaxAmshaLagnaSegments caps total segments across amshas for
+	// AmshaLagnaEvents (also selected by maxSegments == 0).
+	MaxAmshaLagnaSegments = 50000
+)
+
 const (
 	CharakarakaSchemeEight           uint8 = 0
 	CharakarakaSchemeSevenNoPitri    uint8 = 1
@@ -1079,6 +1093,80 @@ type AmshaChart struct {
 	SphutasValid               bool
 	SpecialLagnasValid         bool
 	OuterPlanetsValid          bool
+}
+
+// AmshaRequest selects one varga chart: an amsha code plus a variation code
+// (0 = that amsha's default variation).
+type AmshaRequest struct {
+	AmshaCode     uint16
+	VariationCode uint8
+}
+
+// AmshaSeriesChart is one slim varga chart within an amsha series point.
+// Grahas is populated (GrahasValid = true) when the series was requested
+// with includeGrahas.
+type AmshaSeriesChart struct {
+	AmshaCode     uint16
+	VariationCode uint8
+	Lagna         AmshaEntry
+	GrahasValid   bool
+	Grahas        [GrahaCount]AmshaEntry
+}
+
+// AmshaSeriesPoint is one epoch of a fixed-cadence amsha series: the epoch
+// as Gregorian UTC and JD UTC, plus one chart per request in request order
+// (duplicates repeated).
+type AmshaSeriesPoint struct {
+	Utc    UtcTime
+	JdUtc  float64
+	Charts []AmshaSeriesChart
+}
+
+// PanchangEventsResult holds exact panchang element segments overlapping the
+// requested range, one slice per selected kind. Consecutive segments of one
+// kind chain exactly (End == next Start); the first segment of each kind may
+// start before the requested from and the last may end after to. When
+// Truncated, NextFromUTC is the resume point (dedup resumed events on their
+// kind plus Start).
+type PanchangEventsResult struct {
+	Tithis     []TithiInfo
+	Karanas    []KaranaInfo
+	Yogas      []YogaInfo
+	Nakshatras []PanchangNakshatraInfo
+	Masas      []MasaInfo
+	Ayanas     []AyanaInfo
+	Varshas    []VarshaInfo
+	Truncated  bool
+	// NextFromUTC is the resume point when Truncated; nil otherwise.
+	NextFromUTC *UtcTime
+}
+
+// AmshaLagnaSegment is one varga-lagna rashi segment. The first segment of a
+// sweep starts at the requested from; later segments start at the exact
+// transition. End is the exact transition time (the last segment's End is
+// the first transition at or after the requested to).
+type AmshaLagnaSegment struct {
+	RashiIndex uint8
+	Start      UtcTime
+	End        UtcTime
+}
+
+// AmshaLagnaEntry carries the exact varga-lagna segments for one unique
+// amsha request.
+type AmshaLagnaEntry struct {
+	AmshaCode     uint16
+	VariationCode uint8
+	Segments      []AmshaLagnaSegment
+}
+
+// AmshaLagnaEventsResult holds one entry per unique request (duplicates
+// collapsed), in request order. When Truncated, NextFromUTC is the resume
+// point.
+type AmshaLagnaEventsResult struct {
+	Entries   []AmshaLagnaEntry
+	Truncated bool
+	// NextFromUTC is the resume point when Truncated; nil otherwise.
+	NextFromUTC *UtcTime
 }
 
 type AmshaVariationInfo struct {

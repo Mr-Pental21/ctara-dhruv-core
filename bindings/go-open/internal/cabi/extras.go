@@ -997,6 +997,271 @@ func AmshaVariations(amshaCode uint16) (AmshaVariationCatalog, Status) {
 	return goAmshaVariationCatalog(out), st
 }
 
+// cAmshaRequestArrays converts requests to parallel C code/variation arrays.
+// The returned slices keep the C arrays alive; the pointers are nil for an
+// empty request list (the C ABI rejects empty lists).
+func cAmshaRequestArrays(requests []AmshaRequest) (*C.uint16_t, *C.uint8_t, []C.uint16_t, []C.uint8_t) {
+	if len(requests) == 0 {
+		return nil, nil, nil, nil
+	}
+	codes := make([]C.uint16_t, len(requests))
+	vars := make([]C.uint8_t, len(requests))
+	for i, r := range requests {
+		codes[i] = C.uint16_t(r.AmshaCode)
+		vars[i] = C.uint8_t(r.VariationCode)
+	}
+	return &codes[0], &vars[0], codes, vars
+}
+
+func goAmshaSeriesChart(v C.DhruvAmshaSeriesChart) AmshaSeriesChart {
+	chart := AmshaSeriesChart{
+		AmshaCode:     uint16(v.amsha_code),
+		VariationCode: uint8(v.variation_code),
+		Lagna:         goAmshaEntry(v.lagna),
+		GrahasValid:   v.grahas_valid != 0,
+	}
+	for g := 0; g < GrahaCount; g++ {
+		chart.Grahas[g] = goAmshaEntry(v.grahas[g])
+	}
+	return chart
+}
+
+func AmshaSeries(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, stepMinutes uint32, loc GeoLocation, sankrantiCfg SankrantiConfig, requests []AmshaRequest, includeGrahas bool) ([]AmshaSeriesPoint, Status) {
+	cfrom, cto, cloc := cUTC(fromUTC), cUTC(toUTC), cGeo(loc)
+	csank := cSankrantiConfig(sankrantiCfg)
+	codesPtr, varsPtr, codes, vars := cAmshaRequestArrays(requests)
+	var handle C.DhruvAmshaSeriesHandle
+	st := Status(C.dhruv_amsha_series(
+		engine.ptr,
+		eop.ptr,
+		&cfrom,
+		&cto,
+		C.uint32_t(stepMinutes),
+		&cloc,
+		&csank,
+		codesPtr,
+		varsPtr,
+		C.uint32_t(len(requests)),
+		boolU8(includeGrahas),
+		&handle,
+	))
+	_, _ = codes, vars // keep C arrays alive through the call
+	if st != StatusOK {
+		return nil, st
+	}
+	defer C.dhruv_amsha_series_free(handle)
+
+	var pointCount, chartCount C.uint32_t
+	if st := Status(C.dhruv_amsha_series_point_count(handle, &pointCount)); st != StatusOK {
+		return nil, st
+	}
+	if st := Status(C.dhruv_amsha_series_chart_count(handle, &chartCount)); st != StatusOK {
+		return nil, st
+	}
+	points := make([]AmshaSeriesPoint, int(pointCount))
+	for i := 0; i < int(pointCount); i++ {
+		var cutc C.DhruvUtcTime
+		var jdUtc C.double
+		if st := Status(C.dhruv_amsha_series_point_at(handle, C.uint32_t(i), &cutc, &jdUtc)); st != StatusOK {
+			return nil, st
+		}
+		charts := make([]AmshaSeriesChart, int(chartCount))
+		for j := 0; j < int(chartCount); j++ {
+			var cchart C.DhruvAmshaSeriesChart
+			if st := Status(C.dhruv_amsha_series_chart_at(handle, C.uint32_t(i), C.uint32_t(j), &cchart)); st != StatusOK {
+				return nil, st
+			}
+			charts[j] = goAmshaSeriesChart(cchart)
+		}
+		points[i] = AmshaSeriesPoint{Utc: goUTC(cutc), JdUtc: float64(jdUtc), Charts: charts}
+	}
+	return points, StatusOK
+}
+
+func PanchangEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, includeMask uint32, sankrantiCfg SankrantiConfig, maxEvents uint32) (PanchangEventsResult, Status) {
+	cfrom, cto := cUTC(fromUTC), cUTC(toUTC)
+	csank := cSankrantiConfig(sankrantiCfg)
+	var handle C.DhruvPanchangEventsHandle
+	st := Status(C.dhruv_panchang_events(
+		engine.ptr,
+		eop.ptr,
+		&cfrom,
+		&cto,
+		C.uint32_t(includeMask),
+		&csank,
+		C.uint32_t(maxEvents),
+		&handle,
+	))
+	if st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	defer C.dhruv_panchang_events_free(handle)
+
+	var res PanchangEventsResult
+	var count C.uint32_t
+
+	if st := Status(C.dhruv_panchang_events_tithi_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Tithis = make([]TithiInfo, int(count))
+	for i := range res.Tithis {
+		var v C.DhruvTithiInfo
+		if st := Status(C.dhruv_panchang_events_tithi_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Tithis[i] = goTithiInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_karana_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Karanas = make([]KaranaInfo, int(count))
+	for i := range res.Karanas {
+		var v C.DhruvKaranaInfo
+		if st := Status(C.dhruv_panchang_events_karana_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Karanas[i] = goKaranaInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_yoga_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Yogas = make([]YogaInfo, int(count))
+	for i := range res.Yogas {
+		var v C.DhruvYogaInfo
+		if st := Status(C.dhruv_panchang_events_yoga_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Yogas[i] = goYogaInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_nakshatra_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Nakshatras = make([]PanchangNakshatraInfo, int(count))
+	for i := range res.Nakshatras {
+		var v C.DhruvPanchangNakshatraInfo
+		if st := Status(C.dhruv_panchang_events_nakshatra_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Nakshatras[i] = goNakshatraInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_masa_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Masas = make([]MasaInfo, int(count))
+	for i := range res.Masas {
+		var v C.DhruvMasaInfo
+		if st := Status(C.dhruv_panchang_events_masa_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Masas[i] = goMasaInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_ayana_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Ayanas = make([]AyanaInfo, int(count))
+	for i := range res.Ayanas {
+		var v C.DhruvAyanaInfo
+		if st := Status(C.dhruv_panchang_events_ayana_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Ayanas[i] = goAyanaInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_varsha_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Varshas = make([]VarshaInfo, int(count))
+	for i := range res.Varshas {
+		var v C.DhruvVarshaInfo
+		if st := Status(C.dhruv_panchang_events_varsha_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Varshas[i] = goVarshaInfo(v)
+	}
+
+	var truncated, nextValid C.uint8_t
+	var nextUTC C.DhruvUtcTime
+	if st := Status(C.dhruv_panchang_events_meta(handle, &truncated, &nextValid, &nextUTC)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Truncated = truncated != 0
+	res.NextFromUTC = goOptionalUTC(nextValid != 0, nextUTC)
+	return res, StatusOK
+}
+
+func AmshaLagnaEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, loc GeoLocation, sankrantiCfg SankrantiConfig, requests []AmshaRequest, maxSegments uint32) (AmshaLagnaEventsResult, Status) {
+	cfrom, cto, cloc := cUTC(fromUTC), cUTC(toUTC), cGeo(loc)
+	csank := cSankrantiConfig(sankrantiCfg)
+	codesPtr, varsPtr, codes, vars := cAmshaRequestArrays(requests)
+	var handle C.DhruvAmshaLagnaEventsHandle
+	st := Status(C.dhruv_amsha_lagna_events(
+		engine.ptr,
+		eop.ptr,
+		&cfrom,
+		&cto,
+		&cloc,
+		&csank,
+		codesPtr,
+		varsPtr,
+		C.uint32_t(len(requests)),
+		C.uint32_t(maxSegments),
+		&handle,
+	))
+	_, _ = codes, vars // keep C arrays alive through the call
+	if st != StatusOK {
+		return AmshaLagnaEventsResult{}, st
+	}
+	defer C.dhruv_amsha_lagna_events_free(handle)
+
+	var entryCount C.uint32_t
+	if st := Status(C.dhruv_amsha_lagna_events_entry_count(handle, &entryCount)); st != StatusOK {
+		return AmshaLagnaEventsResult{}, st
+	}
+	res := AmshaLagnaEventsResult{Entries: make([]AmshaLagnaEntry, int(entryCount))}
+	for e := 0; e < int(entryCount); e++ {
+		var amshaCode C.uint16_t
+		var variationCode C.uint8_t
+		if st := Status(C.dhruv_amsha_lagna_events_entry_info(handle, C.uint32_t(e), &amshaCode, &variationCode)); st != StatusOK {
+			return AmshaLagnaEventsResult{}, st
+		}
+		var segCount C.uint32_t
+		if st := Status(C.dhruv_amsha_lagna_events_segment_count(handle, C.uint32_t(e), &segCount)); st != StatusOK {
+			return AmshaLagnaEventsResult{}, st
+		}
+		segments := make([]AmshaLagnaSegment, int(segCount))
+		for s := 0; s < int(segCount); s++ {
+			var cseg C.DhruvAmshaLagnaSegment
+			if st := Status(C.dhruv_amsha_lagna_events_segment_at(handle, C.uint32_t(e), C.uint32_t(s), &cseg)); st != StatusOK {
+				return AmshaLagnaEventsResult{}, st
+			}
+			segments[s] = AmshaLagnaSegment{
+				RashiIndex: uint8(cseg.rashi_index),
+				Start:      goUTC(cseg.start),
+				End:        goUTC(cseg.end),
+			}
+		}
+		res.Entries[e] = AmshaLagnaEntry{
+			AmshaCode:     uint16(amshaCode),
+			VariationCode: uint8(variationCode),
+			Segments:      segments,
+		}
+	}
+
+	var truncated, nextValid C.uint8_t
+	var nextUTC C.DhruvUtcTime
+	if st := Status(C.dhruv_amsha_lagna_events_meta(handle, &truncated, &nextValid, &nextUTC)); st != StatusOK {
+		return AmshaLagnaEventsResult{}, st
+	}
+	res.Truncated = truncated != 0
+	res.NextFromUTC = goOptionalUTC(nextValid != 0, nextUTC)
+	return res, StatusOK
+}
+
 func AmshaVariationsMany(amshaCodes []uint16) ([]AmshaVariationCatalog, Status, error) {
 	var out C.DhruvAmshaVariationCatalogs
 	if len(amshaCodes) == 0 {

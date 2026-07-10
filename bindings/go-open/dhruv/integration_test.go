@@ -579,6 +579,287 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 	}
 }
 
+// utcJD converts a UtcTime to an approximate JD (UTC) for ordering and
+// closeness assertions in tests.
+func utcJD(u UtcTime) float64 {
+	y, m := int(u.Year), int(u.Month)
+	a := (14 - m) / 12
+	yy := y + 4800 - a
+	mm := m + 12*a - 3
+	jdn := int(u.Day) + (153*mm+2)/5 + 365*yy + yy/4 - yy/100 + yy/400 - 32045
+	return float64(jdn) - 0.5 + (float64(u.Hour)+(float64(u.Minute)+u.Second/60.0)/60.0)/24.0
+}
+
+func angularSepDeg(a, b float64) float64 {
+	d := math.Mod(math.Abs(a-b), 360)
+	if d > 180 {
+		d = 360 - d
+	}
+	return d
+}
+
+func newRangeOpsFixtures(t *testing.T) (*Engine, *EOP) {
+	t.Helper()
+	spk, lskPath, eopPath, ok := kernelPaths(t)
+	if !ok {
+		t.Skip("kernel files missing; skipping integration test")
+	}
+	eng, err := NewEngine(EngineConfig{
+		SpkPaths:         []string{spk},
+		LskPath:          lskPath,
+		CacheCapacity:    64,
+		StrictValidation: false,
+	})
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	t.Cleanup(func() { eng.Close() })
+	eop, err := LoadEOP(eopPath)
+	if err != nil {
+		t.Fatalf("LoadEOP: %v", err)
+	}
+	t.Cleanup(func() { eop.Close() })
+	return eng, eop
+}
+
+func TestAmshaSeriesMatchesSingleEpochChart(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	from := UtcTime{Year: 1990, Month: 1, Day: 15, Hour: 6, Minute: 30, Second: 0}
+	to := from
+	to.Hour += 2
+	loc := GeoLocation{LatitudeDeg: 28.6139, LongitudeDeg: 77.2090, AltitudeM: 0}
+	sank := SankrantiConfigDefault()
+
+	// D9, D1, duplicate D9: charts come back in request order, duplicates
+	// repeated.
+	requests := []AmshaRequest{{AmshaCode: 9}, {AmshaCode: 1}, {AmshaCode: 9}}
+	points, err := eng.AmshaSeries(eop, from, to, 60, loc, sank, requests, true)
+	if err != nil {
+		t.Fatalf("AmshaSeries: %v", err)
+	}
+	if len(points) != 3 {
+		t.Fatalf("expected 3 series points over 2h at 60min step, got %d", len(points))
+	}
+	if math.Abs(points[0].JdUtc-utcJD(from)) > 1e-5 {
+		t.Fatalf("first point JD %v does not match from %v", points[0].JdUtc, utcJD(from))
+	}
+	for i, pt := range points {
+		if len(pt.Charts) != 3 {
+			t.Fatalf("point %d: expected 3 charts, got %d", i, len(pt.Charts))
+		}
+		if pt.Charts[0].AmshaCode != 9 || pt.Charts[1].AmshaCode != 1 || pt.Charts[2].AmshaCode != 9 {
+			t.Fatalf("point %d: charts not in request order: %d/%d/%d",
+				i, pt.Charts[0].AmshaCode, pt.Charts[1].AmshaCode, pt.Charts[2].AmshaCode)
+		}
+		if pt.Charts[0].Lagna.SiderealLongitude != pt.Charts[2].Lagna.SiderealLongitude {
+			t.Fatalf("point %d: duplicate D9 charts differ", i)
+		}
+		if !pt.Charts[0].GrahasValid {
+			t.Fatalf("point %d: expected GrahasValid with includeGrahas", i)
+		}
+	}
+
+	// The first-epoch D9 chart must match the single-epoch op.
+	single, err := eng.AmshaChartForDate(
+		eop, from, loc, BhavaConfigDefault(), RiseSetConfigDefault(),
+		uint32(sank.AyanamshaSystem), sank.UseNutation, 9, 0, AmshaChartScope{},
+	)
+	if err != nil {
+		t.Fatalf("AmshaChartForDate: %v", err)
+	}
+	chart0 := points[0].Charts[0]
+	if sep := angularSepDeg(chart0.Lagna.SiderealLongitude, single.Lagna.SiderealLongitude); sep > 1e-6 {
+		t.Fatalf("series lagna %v vs single-epoch lagna %v (sep %v)",
+			chart0.Lagna.SiderealLongitude, single.Lagna.SiderealLongitude, sep)
+	}
+	for g := 0; g < GrahaCount; g++ {
+		if sep := angularSepDeg(chart0.Grahas[g].SiderealLongitude, single.Grahas[g].SiderealLongitude); sep > 1e-6 {
+			t.Fatalf("graha %d: series %v vs single %v (sep %v)",
+				g, chart0.Grahas[g].SiderealLongitude, single.Grahas[g].SiderealLongitude, sep)
+		}
+	}
+
+	// Invalid requests are rejected.
+	if _, err := eng.AmshaSeries(eop, from, to, 0, loc, sank, requests, true); err == nil {
+		t.Fatalf("expected error for stepMinutes == 0")
+	}
+	if _, err := eng.AmshaSeries(eop, from, to, 60, loc, sank, nil, true); err == nil {
+		t.Fatalf("expected error for empty request list")
+	}
+	if _, err := eng.AmshaSeries(eop, to, from, 60, loc, sank, requests, true); err == nil {
+		t.Fatalf("expected error for reversed range")
+	}
+}
+
+func TestPanchangEventsTithiChainingAndResume(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	from := UtcTime{Year: 2024, Month: 1, Day: 1}
+	to := UtcTime{Year: 2024, Month: 2, Day: 5}
+	sank := SankrantiConfigDefault()
+
+	full, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi, sank, 0)
+	if err != nil {
+		t.Fatalf("PanchangEvents: %v", err)
+	}
+	// ~35 days of tithis (mean tithi length is a bit under one day).
+	if len(full.Tithis) < 34 || len(full.Tithis) > 40 {
+		t.Fatalf("unexpected tithi count over 35 days: %d", len(full.Tithis))
+	}
+	for i, ti := range full.Tithis {
+		if ti.TithiIndex < 0 || ti.TithiIndex >= 30 {
+			t.Fatalf("tithi %d: index out of range: %d", i, ti.TithiIndex)
+		}
+		if i > 0 {
+			prev := full.Tithis[i-1]
+			if prev.End != ti.Start {
+				t.Fatalf("tithi %d does not chain: prev.End=%+v start=%+v", i, prev.End, ti.Start)
+			}
+			if ti.TithiIndex != (prev.TithiIndex+1)%30 {
+				t.Fatalf("tithi %d index not consecutive: prev=%d cur=%d", i, prev.TithiIndex, ti.TithiIndex)
+			}
+		}
+	}
+	if utcJD(full.Tithis[0].Start) > utcJD(from)+1e-5 {
+		t.Fatalf("first tithi must start at or before from: %+v", full.Tithis[0].Start)
+	}
+	if utcJD(full.Tithis[len(full.Tithis)-1].End) < utcJD(to)-1e-5 {
+		t.Fatalf("last tithi must end at or after to: %+v", full.Tithis[len(full.Tithis)-1].End)
+	}
+	if len(full.Karanas) != 0 || len(full.Masas) != 0 || len(full.Varshas) != 0 {
+		t.Fatalf("unselected kinds must be empty")
+	}
+	if full.Truncated || full.NextFromUTC != nil {
+		t.Fatalf("full sweep must not be truncated: truncated=%v next=%v", full.Truncated, full.NextFromUTC)
+	}
+
+	// A tiny event budget truncates and yields a resume point; resuming from
+	// NextFromUTC with dedup on Start reproduces the full sweep.
+	small, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi, sank, 5)
+	if err != nil {
+		t.Fatalf("PanchangEvents truncated: %v", err)
+	}
+	if len(small.Tithis) != 5 {
+		t.Fatalf("expected 5 tithis under maxEvents=5, got %d", len(small.Tithis))
+	}
+	if !small.Truncated || small.NextFromUTC == nil {
+		t.Fatalf("expected truncation metadata: truncated=%v next=%v", small.Truncated, small.NextFromUTC)
+	}
+	if utcJD(*small.NextFromUTC) <= utcJD(from) {
+		t.Fatalf("resume point must be after from: %+v", *small.NextFromUTC)
+	}
+	resumed, err := eng.PanchangEvents(eop, *small.NextFromUTC, to, PanchangIncludeTithi, sank, 0)
+	if err != nil {
+		t.Fatalf("PanchangEvents resumed: %v", err)
+	}
+	// Dedup on (kind, start) with a one-second tolerance: separate sweeps
+	// re-solve segment boundaries, so starts agree to well under a second
+	// but not bit-exactly.
+	const tolDays = 1.0 / 86400.0
+	var seenStarts []float64
+	seen := func(jd float64) bool {
+		for _, s := range seenStarts {
+			if math.Abs(s-jd) < tolDays {
+				return true
+			}
+		}
+		return false
+	}
+	var combined []TithiInfo
+	for _, ti := range small.Tithis {
+		seenStarts = append(seenStarts, utcJD(ti.Start))
+		combined = append(combined, ti)
+	}
+	for _, ti := range resumed.Tithis {
+		if seen(utcJD(ti.Start)) {
+			continue
+		}
+		seenStarts = append(seenStarts, utcJD(ti.Start))
+		combined = append(combined, ti)
+	}
+	if len(combined) != len(full.Tithis) {
+		t.Fatalf("resumed+deduped sweep has %d tithis, full sweep has %d", len(combined), len(full.Tithis))
+	}
+	for i := range combined {
+		want := full.Tithis[i]
+		if combined[i].TithiIndex != want.TithiIndex ||
+			math.Abs(utcJD(combined[i].Start)-utcJD(want.Start)) > tolDays ||
+			math.Abs(utcJD(combined[i].End)-utcJD(want.End)) > tolDays {
+			t.Fatalf("resumed tithi %d mismatch: %+v vs %+v", i, combined[i], want)
+		}
+	}
+
+	// Invalid masks are rejected: zero and location-dependent bits.
+	if _, err := eng.PanchangEvents(eop, from, to, 0, sank, 0); err == nil {
+		t.Fatalf("expected error for zero include mask")
+	}
+	if _, err := eng.PanchangEvents(eop, from, to, PanchangIncludeVaar, sank, 0); err == nil {
+		t.Fatalf("expected error for location-dependent include mask")
+	}
+	if _, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi|PanchangIncludeHora, sank, 0); err == nil {
+		t.Fatalf("expected error for mixed location-dependent include mask")
+	}
+}
+
+func TestAmshaLagnaEventsD1Chaining(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	from := UtcTime{Year: 2024, Month: 1, Day: 15}
+	to := UtcTime{Year: 2024, Month: 1, Day: 16}
+	loc := GeoLocation{LatitudeDeg: 28.6139, LongitudeDeg: 77.2090, AltitudeM: 0}
+	sank := SankrantiConfigDefault()
+
+	// Duplicate D1 requests collapse into one entry.
+	res, err := eng.AmshaLagnaEvents(eop, from, to, loc, sank, []AmshaRequest{{AmshaCode: 1}, {AmshaCode: 1}}, 0)
+	if err != nil {
+		t.Fatalf("AmshaLagnaEvents: %v", err)
+	}
+	if len(res.Entries) != 1 {
+		t.Fatalf("expected duplicate requests collapsed into 1 entry, got %d", len(res.Entries))
+	}
+	entry := res.Entries[0]
+	if entry.AmshaCode != 1 || entry.VariationCode != 0 {
+		t.Fatalf("unexpected entry identity: code=%d variation=%d", entry.AmshaCode, entry.VariationCode)
+	}
+	// The D1 lagna sweeps all 12 rashis in about one sidereal day.
+	if len(entry.Segments) < 12 || len(entry.Segments) > 14 {
+		t.Fatalf("unexpected D1 segment count over 24h: %d", len(entry.Segments))
+	}
+	if entry.Segments[0].Start != from {
+		t.Fatalf("first segment must start at from: %+v", entry.Segments[0].Start)
+	}
+	for i, seg := range entry.Segments {
+		if seg.RashiIndex > 11 {
+			t.Fatalf("segment %d: rashi index out of range: %d", i, seg.RashiIndex)
+		}
+		if utcJD(seg.End) <= utcJD(seg.Start) {
+			t.Fatalf("segment %d: end not after start: %+v", i, seg)
+		}
+		if i > 0 {
+			prev := entry.Segments[i-1]
+			if prev.End != seg.Start {
+				t.Fatalf("segment %d does not chain: prev.End=%+v start=%+v", i, prev.End, seg.Start)
+			}
+			if seg.RashiIndex != (prev.RashiIndex+1)%12 {
+				t.Fatalf("segment %d rashi not consecutive: prev=%d cur=%d", i, prev.RashiIndex, seg.RashiIndex)
+			}
+		}
+	}
+	last := entry.Segments[len(entry.Segments)-1]
+	if utcJD(last.End) < utcJD(to)-1e-5 {
+		t.Fatalf("last segment must end at or after to: %+v", last.End)
+	}
+	if res.Truncated || res.NextFromUTC != nil {
+		t.Fatalf("expected untruncated result: truncated=%v next=%v", res.Truncated, res.NextFromUTC)
+	}
+
+	// Empty request lists are rejected.
+	if _, err := eng.AmshaLagnaEvents(eop, from, to, loc, sank, nil, 0); err == nil {
+		t.Fatalf("expected error for empty request list")
+	}
+}
+
 func TestAmshaSelectionFlowsThroughBalaWrappers(t *testing.T) {
 	spk, lskPath, eopPath, ok := kernelPaths(t)
 	if !ok {

@@ -150,3 +150,19 @@ func (e *Engine) PanchangComputeEx(ep *EOP, lsk *LSK, req PanchangComputeRequest
 	out, st := cabi.PanchangComputeEx(e.h, ep.h, lsk.h, req)
 	return out, statusErr("panchang_compute_ex", st)
 }
+
+// PanchangEvents streams exact panchang element segments overlapping
+// [fromUTC, toUTC] for the kinds selected by includeMask. The mask must be
+// non-zero and contain only PanchangIncludeLocationIndependent bits (tithi,
+// karana, yoga, nakshatra, masa, ayana, varsha); location-dependent bits
+// (vaar, hora, ghatika) are rejected.
+//
+// Consecutive segments of one kind chain exactly (End == next Start); the
+// first segment of each kind may start before fromUTC and the last may end
+// after toUTC. maxEvents caps the total events across all kinds (0 selects
+// MaxPanchangEvents). When the result is Truncated, resume the sweep from
+// *NextFromUTC and drop resumed events whose (kind, Start) was already seen.
+func (e *Engine) PanchangEvents(ep *EOP, fromUTC, toUTC UtcTime, includeMask uint32, sankrantiCfg SankrantiConfig, maxEvents uint32) (PanchangEventsResult, error) {
+	out, st := cabi.PanchangEvents(e.h, ep.h, fromUTC, toUTC, includeMask, sankrantiCfg, maxEvents)
+	return out, statusErr("panchang_events", st)
+}
