@@ -153,16 +153,23 @@ func (e *Engine) PanchangComputeEx(ep *EOP, lsk *LSK, req PanchangComputeRequest
 
 // PanchangEvents streams exact panchang element segments overlapping
 // [fromUTC, toUTC] for the kinds selected by includeMask. The mask must be
-// non-zero and contain only PanchangIncludeLocationIndependent bits (tithi,
-// karana, yoga, nakshatra, masa, ayana, varsha); location-dependent bits
-// (vaar, hora, ghatika) are rejected.
+// non-zero; any combination of PanchangInclude* element bits is allowed.
+//
+// Location is optional: pass a non-nil location only when the mask selects
+// location-dependent elements (PanchangIncludeVaar, PanchangIncludeHora,
+// PanchangIncludeGhatika, grouped as PanchangIncludeLocationDependent);
+// requesting those bits with a nil location fails with an
+// invalid-search-config error. risesetCfg is read only for those elements;
+// nil selects the library defaults (RiseSetConfigDefault).
 //
 // Consecutive segments of one kind chain exactly (End == next Start); the
 // first segment of each kind may start before fromUTC and the last may end
-// after toUTC. maxEvents caps the total events across all kinds (0 selects
-// MaxPanchangEvents). When the result is Truncated, resume the sweep from
-// *NextFromUTC and drop resumed events whose (kind, Start) was already seen.
-func (e *Engine) PanchangEvents(ep *EOP, fromUTC, toUTC UtcTime, includeMask uint32, sankrantiCfg SankrantiConfig, maxEvents uint32) (PanchangEventsResult, error) {
-	out, st := cabi.PanchangEvents(e.h, ep.h, fromUTC, toUTC, includeMask, sankrantiCfg, maxEvents)
+// after toUTC. Vaar segments are sunrise-to-sunrise Vedic days, hora/ghatika
+// their 24/60 subdivisions. maxEvents caps the total events across all kinds
+// (0 selects MaxPanchangEvents). When the result is Truncated, resume the
+// sweep from *NextFromUTC and drop resumed events whose (kind, Start) was
+// already seen.
+func (e *Engine) PanchangEvents(ep *EOP, fromUTC, toUTC UtcTime, includeMask uint32, location *GeoLocation, risesetCfg *RiseSetConfig, sankrantiCfg SankrantiConfig, maxEvents uint32) (PanchangEventsResult, error) {
+	out, st := cabi.PanchangEvents(e.h, ep.h, fromUTC, toUTC, includeMask, location, risesetCfg, sankrantiCfg, maxEvents)
 	return out, statusErr("panchang_events", st)
 }

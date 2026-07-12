@@ -38,8 +38,7 @@ use dhruv_vedic_base::{
 use dhruv_vedic_base::{BhavaConfig, ChandraBeneficRule};
 use dhruv_vedic_ops::{
     NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_LOCATION_DEPENDENT,
-    PANCHANG_INCLUDE_LOCATION_INDEPENDENT, PanchangOperation, TaraOperation, TaraOutputKind,
-    TaraResult, panchang_include_bits,
+    PanchangOperation, TaraOperation, TaraOutputKind, TaraResult, panchang_include_bits,
 };
 
 #[derive(Parser)]
@@ -471,9 +470,20 @@ struct PanchangEventsArgs {
     /// UTC end datetime (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
     end: String,
-    /// Panchang elements to include, comma-separated element or group names
-    /// (location-independent only):
-    /// tithi,karana,yoga,nakshatra,masa,ayana,varsha,location_independent
+    /// Latitude in degrees (north positive). Required only for
+    /// location-dependent elements (vaar, hora, ghatika)
+    #[arg(long)]
+    lat: Option<f64>,
+    /// Longitude in degrees (east positive). Required only for
+    /// location-dependent elements (vaar, hora, ghatika)
+    #[arg(long)]
+    lon: Option<f64>,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Panchang elements to include, comma-separated element or group names:
+    /// tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,
+    /// all,all_core,all_calendar,location_independent,location_dependent
     #[arg(long, default_value = "location_independent")]
     elements: String,
     /// Maximum total segments across all elements (0 = library ceiling of 50000)
@@ -2688,7 +2698,7 @@ enum Commands {
     ArudhaPadas(ArudhaPadasArgs),
     /// Combined panchang: tithi, karana, yoga, vaar, hora, ghatika
     Panchang(PanchangArgs),
-    /// Panchang element boundary events over a UTC range (location-independent elements)
+    /// Panchang element boundary events over a UTC range
     PanchangEvents(PanchangEventsArgs),
     /// Compute Ashtakavarga (BAV + SAV) for a date and location
     Ashtakavarga(AshtakavargaArgs),
@@ -4798,15 +4808,25 @@ fn main() {
             let system = require_aya_system(args.ayanamsha);
             let engine = load_engine(&args.bsp, &args.lsk);
             let eop_kernel = load_eop(&args.eop);
+            let location = match (args.lat, args.lon) {
+                (Some(lat), Some(lon)) => Some(GeoLocation::new(lat, lon, args.alt)),
+                (None, None) => None,
+                _ => {
+                    eprintln!("Error: --lat and --lon must be provided together");
+                    std::process::exit(1);
+                }
+            };
+            let rs_config = RiseSetConfig::default();
             let config = SankrantiConfig::new(system, args.nutation);
             let include_mask = parse_panchang_elements(&args.elements).unwrap_or_else(|e| {
                 eprintln!("Invalid --elements value: {e}");
                 std::process::exit(1);
             });
-            if include_mask & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT != 0 {
+            if include_mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT != 0 && location.is_none() {
                 eprintln!(
-                    "Error: panchang-events supports location-independent elements only \
-                     (tithi, karana, yoga, nakshatra, masa, ayana, varsha)"
+                    "Error: --lat/--lon required for location-dependent elements \
+                     (vaar, hora, ghatika); provide a location or select only \
+                     location-independent elements via --elements"
                 );
                 std::process::exit(1);
             }
@@ -4816,6 +4836,8 @@ fn main() {
                 &from_utc,
                 &to_utc,
                 include_mask,
+                location.as_ref(),
+                &rs_config,
                 &config,
                 args.max_events,
             )
@@ -4870,6 +4892,40 @@ fn main() {
                         "  {:<20} (index {:>2})  {}  ->  {}",
                         info.nakshatra.name(),
                         info.nakshatra_index,
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.vaar.is_empty() {
+                println!("Vaar ({} segments):", result.vaar.len());
+                for info in &result.vaar {
+                    println!(
+                        "  {:<20} {}  ->  {}",
+                        info.vaar.name(),
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.hora.is_empty() {
+                println!("Hora ({} segments):", result.hora.len());
+                for info in &result.hora {
+                    println!(
+                        "  {:<20} (position {:>2})  {}  ->  {}",
+                        info.hora.name(),
+                        info.hora_index,
+                        info.start,
+                        info.end
+                    );
+                }
+            }
+            if !result.ghatika.is_empty() {
+                println!("Ghatika ({} segments):", result.ghatika.len());
+                for info in &result.ghatika {
+                    println!(
+                        "  {:<20} {}  ->  {}",
+                        format!("{}/60", info.value),
                         info.start,
                         info.end
                     );
@@ -11964,6 +12020,7 @@ fn print_kundali(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dhruv_vedic_ops::PANCHANG_INCLUDE_LOCATION_INDEPENDENT;
 
     fn default_charakaraka_scheme() -> dhruv_vedic_base::CharakarakaScheme {
         dhruv_vedic_base::CharakarakaScheme::default()
@@ -12846,6 +12903,9 @@ mod tests {
         };
         assert_eq!(args.elements, "location_independent");
         assert_eq!(args.max_events, 0);
+        assert_eq!(args.lat, None);
+        assert_eq!(args.lon, None);
+        assert_eq!(args.alt, 0.0);
         let mask = parse_panchang_elements(&args.elements).expect("default elements mask");
         assert_eq!(mask, PANCHANG_INCLUDE_LOCATION_INDEPENDENT);
         assert_eq!(mask, 0x3c7);
@@ -12853,14 +12913,49 @@ mod tests {
     }
 
     #[test]
+    fn test_panchang_events_args_parse_with_location() {
+        let cli = Cli::try_parse_from([
+            "dhruv",
+            "panchang-events",
+            "--start",
+            "2024-01-01T00:00:00Z",
+            "--end",
+            "2024-01-03T00:00:00Z",
+            "--lat",
+            "28.6",
+            "--lon",
+            "77.2",
+            "--alt",
+            "216",
+            "--elements",
+            "all",
+            "--eop",
+            "finals2000A.all",
+        ])
+        .expect("panchang-events should parse");
+        let Commands::PanchangEvents(args) = cli.command else {
+            panic!("expected panchang-events command");
+        };
+        assert_eq!(args.lat, Some(28.6));
+        assert_eq!(args.lon, Some(77.2));
+        assert_eq!(args.alt, 216.0);
+        let mask = parse_panchang_elements(&args.elements).expect("mask");
+        assert_eq!(mask, PANCHANG_INCLUDE_ALL);
+    }
+
+    #[test]
     fn test_panchang_events_location_dependent_mask_detected() {
-        // The handler rejects masks with location-dependent bits; verify the
-        // guard expression flags them and passes pure element lists.
+        // The handler rejects location-dependent bits only when no location
+        // is supplied; verify the guard expression flags them and passes
+        // pure location-independent element lists.
         let mask = parse_panchang_elements("tithi,vaar").expect("mask");
-        assert_ne!(mask & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT, 0);
+        assert_ne!(mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT, 0);
+        let mask = parse_panchang_elements("vaar,hora,ghatika").expect("mask");
+        assert_eq!(mask, PANCHANG_INCLUDE_LOCATION_DEPENDENT);
         let mask = parse_panchang_elements("tithi,karana,yoga,nakshatra,masa,ayana,varsha")
             .expect("mask");
         assert_eq!(mask, PANCHANG_INCLUDE_LOCATION_INDEPENDENT);
+        assert_eq!(mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT, 0);
     }
 
     #[test]

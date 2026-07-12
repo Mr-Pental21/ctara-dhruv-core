@@ -85,7 +85,7 @@ Total runtime functions documented here: **67**.
 | `ghatika_for_date` | `engine`, `eop`, `utc`, `location`, `riseset_config` | `Result<GhatikaInfo, SearchError>` | Ghatika with boundaries. |
 | `ghatika_from_sunrises` | `jd_tdb`, `sunrise_jd`, `next_sunrise_jd`, `lsk` | `GhatikaInfo` | Ghatika from sunrise pair (pure arithmetic). |
 | `panchang_for_date` | `engine`, `eop`, `utc`, `location: Option<&GeoLocation>`, `riseset_config`, `sankranti_config`, `include_mask: u32`, `known: &PanchangPrecomputed` | `Result<PanchangResult, SearchError>` | Combined panchang; `include_mask` gates which elements are computed, `location` required only for vaar/hora/ghatika, `known` reuses caller-cached calendar values inside their windows. |
-| `panchang_events` | `engine`, `eop`, `from_utc`, `to_utc`, `include_mask`, `sankranti_config`, `max_events` | `Result<PanchangEventsResult, SearchError>` | Exact element segments over a range (location-independent bits only); segments chain exactly; `max_events` 0 = 50,000 ceiling with `truncated`/`next_from_utc` resume. |
+| `panchang_events` | `engine`, `eop`, `from_utc`, `to_utc`, `include_mask`, `location: Option<&GeoLocation>`, `riseset_config`, `sankranti_config`, `max_events` | `Result<PanchangEventsResult, SearchError>` | Exact element segments over a range (all ten elements; location required only for vaar/hora/ghatika); segments chain exactly; `max_events` 0 = 50,000 ceiling with `truncated`/`next_from_utc` resume. |
 
 ## Jyotish Orchestration (13)
 

@@ -65,7 +65,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 78;
+pub const DHRUV_API_VERSION: u32 = 79;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -8168,18 +8168,25 @@ pub type DhruvPanchangEventsHandle = *mut std::ffi::c_void;
 
 /// Stream panchang element segments overlapping `[from_utc, to_utc]`.
 ///
-/// `include_mask` selects elements with `DHRUV_PANCHANG_INCLUDE_*` bits and
-/// must contain only bits from `DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT`.
-/// `max_events` caps the total number of returned segments across all kinds
-/// (`0` selects the hard ceiling `DHRUV_MAX_PANCHANG_EVENTS`); when the cap
-/// is reached the result is marked truncated and carries a resume point (see
-/// `dhruv_panchang_events_meta`). Consecutive segments of one kind chain
-/// exactly (`end == next.start`); the first segment of each kind may start
-/// before `from_utc` and the last may end after `to_utc`. On success `*out`
-/// receives a handle that must be freed with `dhruv_panchang_events_free`.
+/// `include_mask` selects elements with `DHRUV_PANCHANG_INCLUDE_*` bits; any
+/// combination of element bits is allowed. When a location-dependent bit
+/// (`DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT`: vaar, hora, ghatika) is
+/// set, `has_location` must be non-zero and `location` must point to the
+/// observer location (rejected with an invalid-config error otherwise);
+/// `riseset_config` may be NULL for defaults and is read only for those
+/// elements. `max_events` caps the total number of returned segments across
+/// all kinds (`0` selects the hard ceiling `DHRUV_MAX_PANCHANG_EVENTS`);
+/// when the cap is reached the result is marked truncated and carries a
+/// resume point (see `dhruv_panchang_events_meta`). Consecutive segments of
+/// one kind chain exactly (`end == next.start`); vaar segments are
+/// sunrise-to-sunrise Vedic days, hora/ghatika their 24/60 subdivisions.
+/// The first segment of each kind may start before `from_utc` and the last
+/// may end after `to_utc`. On success `*out` receives a handle that must be
+/// freed with `dhruv_panchang_events_free`.
 ///
 /// # Safety
-/// All pointers must be valid. `out` must be non-null.
+/// All pointers must be valid. `location` is read only when `has_location`
+/// is non-zero. `out` must be non-null.
 #[allow(clippy::too_many_arguments)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dhruv_panchang_events(
@@ -8188,12 +8195,18 @@ pub unsafe extern "C" fn dhruv_panchang_events(
     from_utc: *const DhruvUtcTime,
     to_utc: *const DhruvUtcTime,
     include_mask: u32,
+    has_location: u8,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
     sankranti_config: *const DhruvSankrantiConfig,
     max_events: u32,
     out: *mut DhruvPanchangEventsHandle,
 ) -> DhruvStatus {
     if engine.is_null() || eop.is_null() || from_utc.is_null() || to_utc.is_null() || out.is_null()
     {
+        return DhruvStatus::NullPointer;
+    }
+    if has_location != 0 && location.is_null() {
         return DhruvStatus::NullPointer;
     }
 
@@ -8207,12 +8220,32 @@ pub unsafe extern "C" fn dhruv_panchang_events(
     let from_time = ffi_to_utc_time(unsafe { &*from_utc });
     let to_time = ffi_to_utc_time(unsafe { &*to_utc });
 
+    let location = (has_location != 0).then(|| {
+        let loc_c = unsafe { &*location };
+        GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m)
+    });
+
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
     let cfg = match resolve_sankranti_config_ptr(sankranti_config) {
         Ok(c) => c,
         Err(status) => return status,
     };
 
-    match dhruv_search::panchang_events(engine, eop, &from_time, &to_time, mask, &cfg, max_events) {
+    match dhruv_search::panchang_events(
+        engine,
+        eop,
+        &from_time,
+        &to_time,
+        mask,
+        location.as_ref(),
+        &rs_config,
+        &cfg,
+        max_events,
+    ) {
         Ok(result) => {
             let boxed = Box::new(result);
             unsafe { *out = Box::into_raw(boxed) as DhruvPanchangEventsHandle };
@@ -8378,6 +8411,125 @@ pub unsafe extern "C" fn dhruv_panchang_events_nakshatra_at(
         None => return DhruvStatus::InvalidInput,
     };
     unsafe { *out = panchang_nakshatra_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of vaar segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_vaar_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.vaar.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one vaar segment from a panchang-events handle by index.
+///
+/// Each segment is one sunrise-to-sunrise Vedic day.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_vaar_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvVaarInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.vaar.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = vaar_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of hora segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_hora_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.hora.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one hora segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_hora_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvHoraInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.hora.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = hora_info_to_ffi(info) };
+    DhruvStatus::Ok
+}
+
+/// Get the number of ghatika segments in a panchang-events handle.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_ghatika_count(
+    handle: DhruvPanchangEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    unsafe { *out = result.ghatika.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one ghatika segment from a panchang-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid panchang-events handle. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_panchang_events_ghatika_at(
+    handle: DhruvPanchangEventsHandle,
+    idx: u32,
+    out: *mut DhruvGhatikaInfo,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::PanchangEventsResult) };
+    let info = match result.ghatika.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = ghatika_info_to_ffi(info) };
     DhruvStatus::Ok
 }
 
@@ -19754,6 +19906,9 @@ mod tests {
                 &from,
                 &to,
                 DHRUV_PANCHANG_INCLUDE_TITHI,
+                0,
+                ptr::null(),
+                ptr::null(),
                 ptr::null(),
                 0,
                 &mut handle,

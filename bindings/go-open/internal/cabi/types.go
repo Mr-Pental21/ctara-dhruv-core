@@ -1135,14 +1135,18 @@ type AmshaSeriesPoint struct {
 // PanchangEventsResult holds exact panchang element segments overlapping the
 // requested range, one slice per selected kind. Consecutive segments of one
 // kind chain exactly (End == next Start); the first segment of each kind may
-// start before the requested from and the last may end after to. When
-// Truncated, NextFromUTC is the resume point (dedup resumed events on their
-// kind plus Start).
+// start before the requested from and the last may end after to. Vaars are
+// sunrise-to-sunrise Vedic days, Horas/Ghatikas their 24/60 subdivisions
+// (all three require an observer location). When Truncated, NextFromUTC is
+// the resume point (dedup resumed events on their kind plus Start).
 type PanchangEventsResult struct {
 	Tithis     []TithiInfo
 	Karanas    []KaranaInfo
 	Yogas      []YogaInfo
 	Nakshatras []PanchangNakshatraInfo
+	Vaars      []VaarInfo
+	Horas      []HoraInfo
+	Ghatikas   []GhatikaInfo
 	Masas      []MasaInfo
 	Ayanas     []AyanaInfo
 	Varshas    []VarshaInfo

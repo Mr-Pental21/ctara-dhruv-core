@@ -129,12 +129,20 @@ The result carries per-element `*Valid` flags (`tithiValid`, `vaarValid`,
 `masaValid`, ...) alongside the element payloads.
 
 `panchangEvents(engine, eop, fromUtc, toUtc, includeMask, sankrantiConfig,
-maxEvents)` streams the exact element segments overlapping the range (no
-sampling). `includeMask` must be a subset of
-`PANCHANG_INCLUDE.LOCATION_INDEPENDENT`; `maxEvents` of `0` selects the
-`MAX_PANCHANG_EVENTS` ceiling. Segments of one kind chain exactly; on
-truncation (`truncated: true`) resume from `nextFromUtc` and deduplicate on
-`(kind, start)`.
+maxEvents, location, riseSetConfig)` streams the exact element segments
+overlapping the range (no sampling). `includeMask` may combine any
+`PANCHANG_INCLUDE` element bits; the location-dependent bits (`VAAR`, `HORA`,
+`GHATIKA`) additionally require `location` and fail with
+`STATUS.INVALID_SEARCH_CONFIG` without one. `riseSetConfig` is read only for
+those elements (`null` selects the library defaults); both optional
+parameters are appended after `maxEvents` so existing positional callers
+keep working. Vaar segments are sunrise-to-sunrise Vedic days, hora/ghatika
+their 24/60 subdivisions. `maxEvents` of `0` selects the
+`MAX_PANCHANG_EVENTS` ceiling. Segments of one kind chain exactly, including
+across Vedic-day rolls; on truncation (`truncated: true`) resume from
+`nextFromUtc` and deduplicate on `(kind, start)`. The result carries
+`tithis`, `karanas`, `yogas`, `nakshatras`, `vaars`, `horas`, `ghatikas`,
+`masas`, `ayanas`, and `varshas` arrays.
 
 `fullKundaliConfig` selects its embedded panchang section with the same mask
 through `panchangIncludeMask` (`0` omits the section; it replaces the former

@@ -213,15 +213,23 @@ function panchangComputeEx(engine, eop, lsk, request) {
 }
 
 // Exact panchang element segments overlapping [fromUtc, toUtc], without
-// sampling. `includeMask` must be a subset of
-// PANCHANG_INCLUDE.LOCATION_INDEPENDENT (tithi, karana, yoga, nakshatra,
-// masa, ayana, varsha). `maxEvents` caps the total segments across all kinds
-// (0 selects MAX_PANCHANG_EVENTS). Consecutive segments of one kind chain
-// exactly (`end` equals the next segment's `start`); the first segment per
-// kind may start before `fromUtc` and the last may end after `toUtc`.
-// Returns { tithis, karanas, yogas, nakshatras, masas, ayanas, varshas,
-// truncated, nextFromUtc }. When `truncated` is true, resume the sweep from
-// `nextFromUtc` and deduplicate on (kind, start).
+// sampling. `includeMask` may combine any PANCHANG_INCLUDE element bits.
+// The location-dependent bits (VAAR, HORA, GHATIKA, grouped as
+// PANCHANG_INCLUDE.LOCATION_DEPENDENT) additionally require `location`;
+// requesting them with `location` null fails with INVALID_SEARCH_CONFIG.
+// `riseSetConfig` is read only for those elements; null selects the library
+// defaults. `maxEvents` caps the total segments across all kinds (0 selects
+// MAX_PANCHANG_EVENTS). Consecutive segments of one kind chain exactly
+// (`end` equals the next segment's `start`), including across
+// sunrise-to-sunrise Vedic-day rolls for vaar/hora/ghatika; the first
+// segment per kind may start before `fromUtc` and the last may end after
+// `toUtc`. Returns { tithis, karanas, yogas, nakshatras, vaars, horas,
+// ghatikas, masas, ayanas, varshas, truncated, nextFromUtc }. When
+// `truncated` is true, resume the sweep from `nextFromUtc` and deduplicate
+// on (kind, start).
+//
+// Parameter order: the new optional `location` and `riseSetConfig` are
+// appended after `maxEvents` so existing positional callers keep working.
 function panchangEvents(
   engine,
   eop,
@@ -230,6 +238,8 @@ function panchangEvents(
   includeMask = PANCHANG_INCLUDE.LOCATION_INDEPENDENT,
   sankrantiConfig = addon.sankrantiConfigDefault(),
   maxEvents = 0,
+  location = null,
+  riseSetConfig = null,
 ) {
   const r = addon.panchangEvents(
     engine._handle,
@@ -239,6 +249,8 @@ function panchangEvents(
     includeMask,
     sankrantiConfig,
     maxEvents,
+    location,
+    riseSetConfig,
   );
   checkStatus('panchang_events', r.status);
   return r.result;

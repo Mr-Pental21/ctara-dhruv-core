@@ -258,26 +258,34 @@ selected elements.
 ## Panchang Events Over a Range
 
 `panchang_events` (re-exported from `dhruv_search`) streams every element
-segment overlapping a UTC range in one call, with exact boundary times. It
-supports location-independent elements only — the `include_mask` must stay
-within `PANCHANG_INCLUDE_LOCATION_INDEPENDENT` bits — and returns per-kind
-`Vec`s of the same `*Info` structs the per-moment ops use. Consecutive
-segments of one kind chain exactly (`end == next.start`); the first segment
-may start before `from_utc` and the last may end after `to_utc`. `max_events`
-caps the total segments across all kinds (`0` selects the
-`MAX_PANCHANG_EVENTS` = 50,000 ceiling); a capped result sets `truncated` and
-`next_from_utc` for resuming (deduplicate on `(kind, start)`). Nakshatra
-events report the segment-start pada (always 1).
+segment overlapping a UTC range in one call, with exact boundary times. All
+ten elements are supported; a location (with a rise/set config) is required
+only when a location-dependent element (vaar, hora, ghatika) is selected —
+those kinds cost one sunrise search per Vedic day, with hora/ghatika
+subdivisions computed arithmetically. Results are per-kind `Vec`s of the
+same `*Info` structs the per-moment ops use. Consecutive segments of one
+kind chain exactly (`end == next.start`), including across Vedic-day rolls;
+the first segment may start before `from_utc` and the last may end after
+`to_utc`. `max_events` caps the total segments across all kinds (`0`
+selects the `MAX_PANCHANG_EVENTS` = 50,000 ceiling); a capped result sets
+`truncated` and `next_from_utc` for resuming (deduplicate on
+`(kind, start)`). Nakshatra events report the segment-start pada (always 1).
 
 ```rust
-use dhruv_rs::{PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_TITHI, panchang_events};
+use dhruv_rs::{
+    PANCHANG_INCLUDE_GHATIKA, PANCHANG_INCLUDE_MASA, PANCHANG_INCLUDE_TITHI, RiseSetConfig,
+    panchang_events,
+};
 
+// Location-independent kinds need no location at all.
 let events = panchang_events(
     ctx.engine(),
     &eop,
     &from_utc,
     &to_utc,
     PANCHANG_INCLUDE_TITHI | PANCHANG_INCLUDE_MASA,
+    None,
+    &RiseSetConfig::default(),
     &SankrantiConfig::default_lahiri(),
     0, // library ceiling
 )?;
@@ -285,6 +293,20 @@ for tithi in &events.tithi {
     println!("{:?}: {:?} -> {:?}", tithi.tithi, tithi.start, tithi.end);
 }
 assert!(!events.truncated);
+
+// Sunrise-anchored kinds (e.g. ghatika lanes) take a location.
+let lanes = panchang_events(
+    ctx.engine(),
+    &eop,
+    &from_utc,
+    &to_utc,
+    PANCHANG_INCLUDE_GHATIKA,
+    Some(&location),
+    &RiseSetConfig::default(),
+    &SankrantiConfig::default_lahiri(),
+    0,
+)?;
+assert_eq!(lanes.ghatika.first().map(|g| g.value % 60 + 1), lanes.ghatika.get(1).map(|g| g.value));
 ```
 
 ## Amsha Series and Amsha Lagna Events

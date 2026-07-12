@@ -697,9 +697,13 @@ class PanchangEventsResult:
     """Exact panchang element segments overlapping a UTC range.
 
     Each per-kind list chains exactly within its kind
-    (``item.end == next_item.start``). The first segment of each kind may
-    start before the requested ``from_utc`` and the last may end after
-    ``to_utc``. Kinds not selected by the include mask are empty lists.
+    (``item.end == next_item.start``), including across Vedic-day rolls for
+    the location-dependent kinds. The first segment of each kind may start
+    before the requested ``from_utc`` and the last may end after ``to_utc``.
+    Kinds not selected by the include mask are empty lists.
+
+    The location-dependent kinds (``vaars``, ``horas``, ``ghatikas``) are
+    populated only when the sweep was given an observer location.
 
     ``truncated``: True when the sweep hit the event cap before covering the
     full range. ``next_from``: resume point (only set when truncated) —
@@ -709,6 +713,9 @@ class PanchangEventsResult:
     tithis: list[TithiInfo]
     karanas: list[KaranaInfo]
     yogas: list[YogaInfo]
+    vaars: list[VaarInfo]
+    horas: list[HoraInfo]
+    ghatikas: list[GhatikaInfo]
     nakshatras: list[PanchangNakshatraInfo]
     masas: list[MasaInfo]
     ayanas: list[AyanaInfo]

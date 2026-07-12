@@ -283,21 +283,27 @@ falls inside the value's `[start, end)` window; stale or out-of-window
 values are silently ignored and the element is recomputed.
 
 `panchang_events(engine, eop, from_utc, to_utc,
-include_mask=INCLUDE_LOCATION_INDEPENDENT, sankranti_config=None,
-max_events=0)` streams exact panchang element segments overlapping
-`[from_utc, to_utc]` (both `UtcTime`) and returns a `PanchangEventsResult`
-with per-kind lists (`tithis`, `karanas`, `yogas`, `nakshatras`, `masas`,
+include_mask=INCLUDE_LOCATION_INDEPENDENT, location=None,
+riseset_config=None, sankranti_config=None, max_events=0)` streams exact
+panchang element segments overlapping `[from_utc, to_utc]` (both `UtcTime`)
+and returns a `PanchangEventsResult` with per-kind lists (`tithis`,
+`karanas`, `yogas`, `vaars`, `horas`, `ghatikas`, `nakshatras`, `masas`,
 `ayanas`, `varshas`) of the same `TithiInfo`/`KaranaInfo`/... dataclasses
-used by the single-instant calls. Only location-independent kinds are
-supported: `include_mask` must be a subset of
-`INCLUDE_LOCATION_INDEPENDENT`; any vaar/hora/ghatika bit raises
-`DhruvError`. Consecutive segments of one kind chain exactly
-(`end == next.start`); the first segment of each kind may start before
-`from_utc` and the last may end after `to_utc`. `max_events` caps the total
-events across all kinds (`0` selects the hard ceiling
-`MAX_PANCHANG_EVENTS` = 50,000). When the cap is hit, `truncated` is `True`
-and `next_from` carries the resume point: call again with
-`from_utc=result.next_from` and deduplicate on `(kind, start)`.
+used by the single-instant calls. All ten kinds are supported. `location`
+(`GeoLocation`) is required only when `include_mask` selects a
+location-dependent kind (vaar, hora, ghatika —
+`INCLUDE_LOCATION_DEPENDENT`); requesting those without a location raises
+`InvalidSearchConfigError`. `riseset_config` is an optional
+`DhruvRiseSetConfig` pointer (library defaults when `None`) read only for
+those kinds. Consecutive segments of one kind chain exactly
+(`end == next.start`), including across Vedic-day rolls; vaar segments are
+sunrise-to-sunrise Vedic days, hora/ghatika their 24/60 subdivisions. The
+first segment of each kind may start before `from_utc` and the last may
+end after `to_utc`. `max_events` caps the total events across all kinds
+(`0` selects the hard ceiling `MAX_PANCHANG_EVENTS` = 50,000). When the
+cap is hit, `truncated` is `True` and `next_from` carries the resume
+point: call again with `from_utc=result.next_from` and deduplicate on
+`(kind, start)`.
 
 `kundali`:
 

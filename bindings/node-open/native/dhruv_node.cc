@@ -5299,8 +5299,8 @@ napi_value PanchangComputeEx(napi_env env, napi_callback_info info) {
 }
 
 napi_value PanchangEvents(napi_env env, napi_callback_info info) {
-    size_t argc = 7;
-    napi_value args[7];
+    size_t argc = 9;
+    napi_value args[9];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
     if (argc < 7) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     void* e_ptr = nullptr;
@@ -5316,6 +5316,29 @@ napi_value PanchangEvents(napi_env env, napi_callback_info info) {
         !GetUint32(env, args[6], &max_events)) {
         return MakeStatusResult(env, STATUS_INVALID_INPUT);
     }
+    // Optional trailing args: location object (args[7], null/undefined when
+    // absent) and rise/set config (args[8], null/undefined selects the
+    // library defaults).
+    bool has_location = false;
+    DhruvGeoLocation location{};
+    if (argc >= 8) {
+        napi_valuetype t = napi_undefined;
+        napi_typeof(env, args[7], &t);
+        if (t != napi_null && t != napi_undefined) {
+            if (!ReadGeoLocation(env, args[7], &location)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            has_location = true;
+        }
+    }
+    bool has_riseset = false;
+    DhruvRiseSetConfig rise_cfg{};
+    if (argc >= 9) {
+        napi_valuetype t = napi_undefined;
+        napi_typeof(env, args[8], &t);
+        if (t != napi_null && t != napi_undefined) {
+            if (!ReadRiseSetConfig(env, args[8], &rise_cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            has_riseset = true;
+        }
+    }
     DhruvPanchangEventsHandle handle = nullptr;
     int32_t status = dhruv_panchang_events(
         static_cast<const DhruvEngineHandle*>(e_ptr),
@@ -5323,6 +5346,9 @@ napi_value PanchangEvents(napi_env env, napi_callback_info info) {
         &from_utc,
         &to_utc,
         include_mask,
+        has_location ? 1 : 0,
+        has_location ? &location : nullptr,
+        has_riseset ? &rise_cfg : nullptr,
         &sank_cfg,
         max_events,
         &handle);
@@ -5358,6 +5384,9 @@ napi_value PanchangEvents(napi_env env, napi_callback_info info) {
     DHRUV_NODE_PANCHANG_EVENT_KIND("karanas", dhruv_panchang_events_karana_count, dhruv_panchang_events_karana_at, DhruvKaranaInfo, WriteKaranaInfo);
     DHRUV_NODE_PANCHANG_EVENT_KIND("yogas", dhruv_panchang_events_yoga_count, dhruv_panchang_events_yoga_at, DhruvYogaInfo, WriteYogaInfo);
     DHRUV_NODE_PANCHANG_EVENT_KIND("nakshatras", dhruv_panchang_events_nakshatra_count, dhruv_panchang_events_nakshatra_at, DhruvPanchangNakshatraInfo, WritePanchangNakshatraInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("vaars", dhruv_panchang_events_vaar_count, dhruv_panchang_events_vaar_at, DhruvVaarInfo, WriteVaarInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("horas", dhruv_panchang_events_hora_count, dhruv_panchang_events_hora_at, DhruvHoraInfo, WriteHoraInfo);
+    DHRUV_NODE_PANCHANG_EVENT_KIND("ghatikas", dhruv_panchang_events_ghatika_count, dhruv_panchang_events_ghatika_at, DhruvGhatikaInfo, WriteGhatikaInfo);
     DHRUV_NODE_PANCHANG_EVENT_KIND("masas", dhruv_panchang_events_masa_count, dhruv_panchang_events_masa_at, DhruvMasaInfo, WriteMasaInfo);
     DHRUV_NODE_PANCHANG_EVENT_KIND("ayanas", dhruv_panchang_events_ayana_count, dhruv_panchang_events_ayana_at, DhruvAyanaInfo, WriteAyanaInfo);
     DHRUV_NODE_PANCHANG_EVENT_KIND("varshas", dhruv_panchang_events_varsha_count, dhruv_panchang_events_varsha_at, DhruvVarshaInfo, WriteVarshaInfo);

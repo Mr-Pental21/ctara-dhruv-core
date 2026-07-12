@@ -8,9 +8,10 @@ use std::path::Path;
 use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::{
-    AmshaChartScope, PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR,
-    SearchError, amsha_charts_for_date, amsha_lagna_events, amsha_series, masa_for_date,
-    panchang_events, sidereal_lagna_for_date, tithi_for_date,
+    AmshaChartScope, PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_GHATIKA,
+    PANCHANG_INCLUDE_HORA, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, SearchError,
+    amsha_charts_for_date, amsha_lagna_events, amsha_series, hora_for_date, masa_for_date,
+    panchang_events, sidereal_lagna_for_date, tithi_for_date, vaar_for_date,
 };
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::amsha::amsha_rashi_info;
@@ -147,6 +148,8 @@ fn panchang_events_tithi_chain_matches_per_moment() {
         &from,
         &to,
         PANCHANG_INCLUDE_TITHI,
+        None,
+        &RiseSetConfig::default(),
         &aya(),
         0,
     )
@@ -204,6 +207,8 @@ fn panchang_events_calendar_kinds() {
         &from,
         &to,
         PANCHANG_INCLUDE_ALL_CALENDAR,
+        None,
+        &RiseSetConfig::default(),
         &aya(),
         0,
     )
@@ -235,20 +240,63 @@ fn panchang_events_validation_and_truncation() {
     let from = UtcTime::new(2024, 1, 1, 0, 0, 0.0);
     let to = UtcTime::new(2024, 1, 31, 0, 0, 0.0);
 
-    let err = panchang_events(&engine, &eop, &from, &to, PANCHANG_INCLUDE_VAAR, &aya(), 0)
-        .unwrap_err();
+    let rs = RiseSetConfig::default();
+    // A location-dependent element without a location is invalid.
+    let err = panchang_events(
+        &engine,
+        &eop,
+        &from,
+        &to,
+        PANCHANG_INCLUDE_VAAR,
+        None,
+        &rs,
+        &aya(),
+        0,
+    )
+    .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
-    let err = panchang_events(&engine, &eop, &from, &to, 0, &aya(), 0).unwrap_err();
+    let err =
+        panchang_events(&engine, &eop, &from, &to, 0, None, &rs, &aya(), 0).unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
-    let err = panchang_events(&engine, &eop, &to, &from, PANCHANG_INCLUDE_TITHI, &aya(), 0)
-        .unwrap_err();
+    let err = panchang_events(
+        &engine,
+        &eop,
+        &to,
+        &from,
+        PANCHANG_INCLUDE_TITHI,
+        None,
+        &rs,
+        &aya(),
+        0,
+    )
+    .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
 
     // Truncation with resume covers the same events as one big call.
-    let full = panchang_events(&engine, &eop, &from, &to, PANCHANG_INCLUDE_TITHI, &aya(), 0)
-        .expect("full sweep");
-    let first = panchang_events(&engine, &eop, &from, &to, PANCHANG_INCLUDE_TITHI, &aya(), 5)
-        .expect("capped sweep");
+    let full = panchang_events(
+        &engine,
+        &eop,
+        &from,
+        &to,
+        PANCHANG_INCLUDE_TITHI,
+        None,
+        &rs,
+        &aya(),
+        0,
+    )
+    .expect("full sweep");
+    let first = panchang_events(
+        &engine,
+        &eop,
+        &from,
+        &to,
+        PANCHANG_INCLUDE_TITHI,
+        None,
+        &rs,
+        &aya(),
+        5,
+    )
+    .expect("capped sweep");
     assert!(first.truncated);
     assert_eq!(first.tithi.len(), 5);
     let resume_at = first.next_from_utc.expect("resume point");
@@ -258,6 +306,8 @@ fn panchang_events_validation_and_truncation() {
         &resume_at,
         &to,
         PANCHANG_INCLUDE_TITHI,
+        None,
+        &RiseSetConfig::default(),
         &aya(),
         0,
     )
@@ -274,6 +324,86 @@ fn panchang_events_validation_and_truncation() {
         }
     }
     assert_eq!(all.len(), full.tithi.len(), "stitched sweep must match full");
+}
+
+#[test]
+fn panchang_events_sunrise_anchored_kinds() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let from = UtcTime::new(2024, 1, 1, 0, 0, 0.0);
+    let to = UtcTime::new(2024, 1, 8, 0, 0, 0.0);
+    let loc = new_delhi();
+    let rs = RiseSetConfig::default();
+
+    let result = panchang_events(
+        &engine,
+        &eop,
+        &from,
+        &to,
+        PANCHANG_INCLUDE_VAAR | PANCHANG_INCLUDE_HORA | PANCHANG_INCLUDE_GHATIKA,
+        Some(&loc),
+        &rs,
+        &aya(),
+        0,
+    )
+    .expect("sunrise-anchored events should compute");
+    assert!(!result.truncated);
+
+    // 7 days: 7-8 vedic days, 24 horas and 60 ghatikas per day.
+    assert!(
+        result.vaar.len() >= 7 && result.vaar.len() <= 9,
+        "vaar count {}",
+        result.vaar.len()
+    );
+    assert!(
+        result.hora.len() >= 7 * 24 && result.hora.len() <= 9 * 24,
+        "hora count {}",
+        result.hora.len()
+    );
+    assert!(
+        result.ghatika.len() >= 7 * 60 && result.ghatika.len() <= 9 * 60,
+        "ghatika count {}",
+        result.ghatika.len()
+    );
+
+    // Segments chain exactly, including across Vedic-day rolls.
+    for pair in result.vaar.windows(2) {
+        assert_eq!(pair[0].end, pair[1].start, "vaar segments must chain");
+        assert_ne!(pair[0].vaar, pair[1].vaar, "consecutive vaars must differ");
+    }
+    for pair in result.hora.windows(2) {
+        assert_eq!(pair[0].end, pair[1].start, "hora segments must chain");
+    }
+    for pair in result.ghatika.windows(2) {
+        assert_eq!(pair[0].end, pair[1].start, "ghatika segments must chain");
+    }
+
+    // Hora indices cycle 0..23; ghatika values cycle 1..60.
+    for pair in result.hora.windows(2) {
+        let expected = (pair[0].hora_index + 1) % 24;
+        assert_eq!(pair[1].hora_index, expected, "hora indices must cycle");
+    }
+    for pair in result.ghatika.windows(2) {
+        let expected = pair[0].value % 60 + 1;
+        assert_eq!(pair[1].value, expected, "ghatika values must cycle");
+    }
+
+    // Cross-check against the per-moment API at segment midpoints.
+    for info in result.vaar.iter().take(3) {
+        let mid_jd = 0.5 * (jd(&engine, &info.start) + jd(&engine, &info.end));
+        let mid = UtcTime::from_jd_tdb(mid_jd, engine.lsk());
+        let direct = vaar_for_date(&engine, &eop, &mid, &loc, &rs).expect("per-moment vaar");
+        assert_eq!(direct.vaar, info.vaar);
+        assert!((jd(&engine, &direct.start) - jd(&engine, &info.start)).abs() < 2e-6);
+        assert!((jd(&engine, &direct.end) - jd(&engine, &info.end)).abs() < 2e-6);
+    }
+    for info in result.hora.iter().take(30).skip(20) {
+        let mid_jd = 0.5 * (jd(&engine, &info.start) + jd(&engine, &info.end));
+        let mid = UtcTime::from_jd_tdb(mid_jd, engine.lsk());
+        let direct = hora_for_date(&engine, &eop, &mid, &loc, &rs).expect("per-moment hora");
+        assert_eq!(direct.hora, info.hora);
+        assert_eq!(direct.hora_index, info.hora_index);
+    }
 }
 
 // ---------------------------------------------------------------------------

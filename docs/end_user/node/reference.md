@@ -143,14 +143,20 @@ per-element `*Valid` flags (`tithiValid`, `vaarValid`, `masaValid`, ...)
 alongside the element payloads.
 
 `panchangEvents(engine, eop, fromUtc, toUtc, includeMask, sankrantiConfig,
-maxEvents)` streams the exact panchang element segments overlapping
-`[fromUtc, toUtc]` without a sampling grid. `includeMask` must be a subset of
-`PANCHANG_INCLUDE.LOCATION_INDEPENDENT` (`TITHI`, `KARANA`, `YOGA`,
-`NAKSHATRA`, `MASA`, `AYANA`, `VARSHA`; it defaults to the full
-location-independent set). The location-dependent bits (`VAAR`, `HORA`,
-`GHATIKA`), a zero mask, or unknown bits are rejected. `maxEvents` caps the
-total segments across all requested kinds; `0` selects the hard ceiling
-`MAX_PANCHANG_EVENTS` (50,000). The result is:
+maxEvents, location, riseSetConfig)` streams the exact panchang element
+segments overlapping `[fromUtc, toUtc]` without a sampling grid.
+`includeMask` may combine any `PANCHANG_INCLUDE` element bits (`TITHI`,
+`KARANA`, `YOGA`, `VAAR`, `HORA`, `GHATIKA`, `NAKSHATRA`, `MASA`, `AYANA`,
+`VARSHA`; it defaults to `PANCHANG_INCLUDE.LOCATION_INDEPENDENT`). The
+location-dependent bits (`VAAR`, `HORA`, `GHATIKA`, grouped as
+`PANCHANG_INCLUDE.LOCATION_DEPENDENT`) additionally require `location`
+(`{ latitudeDeg, longitudeDeg, altitudeM }`); requesting them with `location`
+null fails with `STATUS.INVALID_SEARCH_CONFIG`, as do a zero mask or unknown
+bits. `riseSetConfig` is read only for those elements; `null` selects the
+library defaults. The optional `location` and `riseSetConfig` parameters are
+appended after `maxEvents`, so existing positional callers keep working.
+`maxEvents` caps the total segments across all requested kinds; `0` selects
+the hard ceiling `MAX_PANCHANG_EVENTS` (50,000). The result is:
 
 ```js
 {
@@ -158,6 +164,9 @@ total segments across all requested kinds; `0` selects the hard ceiling
   karanas: [{ karanaIndex, karanaNameIndex, start, end }, ...],
   yogas: [{ yogaIndex, start, end }, ...],
   nakshatras: [{ nakshatraIndex, pada, start, end }, ...],
+  vaars: [{ vaarIndex, start, end }, ...],
+  horas: [{ horaIndex, horaPosition, start, end }, ...],
+  ghatikas: [{ value, start, end }, ...],
   masas: [{ masaIndex, adhika, start, end }, ...],
   ayanas: [{ ayana, start, end }, ...],
   varshas: [{ samvatsaraIndex, order, start, end }, ...],
@@ -169,10 +178,12 @@ total segments across all requested kinds; `0` selects the hard ceiling
 Arrays for kinds not present in `includeMask` are empty. Consecutive segments
 of one kind chain exactly (`end` equals the next segment's `start`); the
 first segment of each kind may start before `fromUtc` and the last may end
-after `toUtc`. When the cap is hit, `truncated` is `true` and `nextFromUtc`
-carries the resume point: call `panchangEvents` again from `nextFromUtc` and
-deduplicate merged segments on `(kind, start)` (resumed sweeps re-solve
-boundaries, so match starts with a small tolerance).
+after `toUtc`. Vaar segments are sunrise-to-sunrise Vedic days and hora and
+ghatika segments their 24 and 60 subdivisions; their chaining holds across
+Vedic-day rolls too. When the cap is hit, `truncated` is `true` and
+`nextFromUtc` carries the resume point: call `panchangEvents` again from
+`nextFromUtc` and deduplicate merged segments on `(kind, start)` (resumed
+sweeps re-solve boundaries, so match starts with a small tolerance).
 
 `jyotish.js` exports:
 

@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       78
+#define DHRUV_API_VERSION       79
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -2245,12 +2245,18 @@ DhruvStatus dhruv_panchang_compute_ex(
 
 /* --- Panchang events (range sweep) ---
    Streams exact panchang element segments overlapping [from_utc, to_utc].
-   include_mask must contain only DHRUV_PANCHANG_INCLUDE_LOCATION_INDEPENDENT
-   bits; max_events 0 selects the hard ceiling DHRUV_MAX_PANCHANG_EVENTS.
-   Consecutive segments of one kind chain exactly (end == next.start); the
-   first segment of each kind may start before from_utc and the last may end
-   after to_utc. When truncated, dhruv_panchang_events_meta yields the resume
-   point. The returned handle must be freed with dhruv_panchang_events_free. */
+   include_mask selects any DHRUV_PANCHANG_INCLUDE_* element bits; when a
+   location-dependent bit (DHRUV_PANCHANG_INCLUDE_LOCATION_DEPENDENT: vaar,
+   hora, ghatika) is set, has_location must be non-zero and location must
+   point to the observer location (rejected otherwise); riseset_config may
+   be NULL for defaults and is read only for those elements. max_events 0
+   selects the hard ceiling DHRUV_MAX_PANCHANG_EVENTS. Consecutive segments
+   of one kind chain exactly (end == next.start); vaar segments are
+   sunrise-to-sunrise Vedic days, hora/ghatika their 24/60 subdivisions.
+   The first segment of each kind may start before from_utc and the last
+   may end after to_utc. When truncated, dhruv_panchang_events_meta yields
+   the resume point. The returned handle must be freed with
+   dhruv_panchang_events_free. */
 typedef void *DhruvPanchangEventsHandle;
 
 DhruvStatus dhruv_panchang_events(
@@ -2259,6 +2265,9 @@ DhruvStatus dhruv_panchang_events(
     const DhruvUtcTime *from_utc,
     const DhruvUtcTime *to_utc,
     uint32_t include_mask,
+    uint8_t has_location,
+    const DhruvGeoLocation *location,
+    const DhruvRiseSetConfig *riseset_config,
     const DhruvSankrantiConfig *sankranti_config,
     uint32_t max_events,
     DhruvPanchangEventsHandle *out);
@@ -2290,6 +2299,27 @@ DhruvStatus dhruv_panchang_events_nakshatra_at(
     DhruvPanchangEventsHandle handle,
     uint32_t idx,
     DhruvPanchangNakshatraInfo *out);
+DhruvStatus dhruv_panchang_events_vaar_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_vaar_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvVaarInfo *out);
+DhruvStatus dhruv_panchang_events_hora_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_hora_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvHoraInfo *out);
+DhruvStatus dhruv_panchang_events_ghatika_count(
+    DhruvPanchangEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_panchang_events_ghatika_at(
+    DhruvPanchangEventsHandle handle,
+    uint32_t idx,
+    DhruvGhatikaInfo *out);
 DhruvStatus dhruv_panchang_events_masa_count(
     DhruvPanchangEventsHandle handle,
     uint32_t *out);

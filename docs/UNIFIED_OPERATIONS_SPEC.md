@@ -271,9 +271,11 @@ accessors, a CLI subcommand, and wrapper ops.
 ## Request
 
 - `from_utc: UtcTime`, `to_utc: UtcTime` (`to_utc > from_utc`)
-- `include_mask: u32` — non-zero, restricted to
-  `PANCHANG_INCLUDE_LOCATION_INDEPENDENT` bits
-  (tithi|karana|yoga|nakshatra|masa|ayana|varsha)
+- `include_mask: u32` — must select at least one `PANCHANG_INCLUDE_*`
+  element bit; all ten elements are supported
+- `location: Option<GeoLocation>` + `riseset_config: RiseSetConfig` —
+  required only when a location-dependent element (vaar, hora, ghatika) is
+  selected
 - `config: SankrantiConfig`
 - `max_events: u32` (`0` = ceiling `MAX_PANCHANG_EVENTS` = 50,000)
 
@@ -282,7 +284,8 @@ accessors, a CLI subcommand, and wrapper ops.
 `PanchangEventsResult` fields:
 - per-kind `Vec`s of the existing per-moment info structs: `tithi:
   Vec<TithiInfo>`, `karana: Vec<KaranaInfo>`, `yoga: Vec<YogaInfo>`,
-  `nakshatra: Vec<PanchangNakshatraInfo>`, `masa: Vec<MasaInfo>`,
+  `nakshatra: Vec<PanchangNakshatraInfo>`, `vaar: Vec<VaarInfo>`,
+  `hora: Vec<HoraInfo>`, `ghatika: Vec<GhatikaInfo>`, `masa: Vec<MasaInfo>`,
   `ayana: Vec<AyanaInfo>`, `varsha: Vec<VarshaInfo>`
 - `truncated: bool`
 - `next_from_utc: Option<UtcTime>` (resume point; dedup on `(kind, start)`)

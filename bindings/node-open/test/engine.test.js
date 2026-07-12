@@ -10,7 +10,7 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
-  assert.equal(dhruv.EXPECTED_API_VERSION, 78);
+  assert.equal(dhruv.EXPECTED_API_VERSION, 79);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
 });
@@ -959,6 +959,9 @@ test('range operations: amshaSeries, panchangEvents, amshaLagnaEvents', { skip: 
   const events = dhruv.panchangEvents(engine, eop, utc, weekTo, dhruv.PANCHANG_INCLUDE.TITHI);
   assert.ok(events.tithis.length >= 6);
   assert.equal(events.karanas.length, 0);
+  assert.equal(events.vaars.length, 0);
+  assert.equal(events.horas.length, 0);
+  assert.equal(events.ghatikas.length, 0);
   assert.equal(events.truncated, false);
   assert.equal(events.nextFromUtc, null);
   for (let i = 0; i + 1 < events.tithis.length; i += 1) {
@@ -989,9 +992,59 @@ test('range operations: amshaSeries, panchangEvents, amshaLagnaEvents', { skip: 
     assert.equal(merged[i].tithiIndex, events.tithis[i].tithiIndex);
   }
 
-  // panchangEvents rejections: zero mask, location-dependent bit, unknown bit.
+  // --- panchangEvents with a location: vaar/hora segments over 3 days.
+  const threeDaysTo = { ...utc, day: utc.day + 3 };
+  const located = dhruv.panchangEvents(
+    engine, eop, utc, threeDaysTo,
+    dhruv.PANCHANG_INCLUDE.VAAR | dhruv.PANCHANG_INCLUDE.HORA,
+    sankCfg, 0, loc,
+  );
+  // 3 days cover 3-5 sunrise-to-sunrise Vedic days and 72-120 horas.
+  assert.ok(located.vaars.length >= 3 && located.vaars.length <= 5,
+    `vaar count ${located.vaars.length}`);
+  assert.ok(located.horas.length >= 72 && located.horas.length <= 120,
+    `hora count ${located.horas.length}`);
+  assert.equal(located.ghatikas.length, 0);
+  assert.equal(located.tithis.length, 0);
+  // Vaar segments chain exactly and advance the weekday cyclically.
+  for (let i = 0; i + 1 < located.vaars.length; i += 1) {
+    assert.deepEqual(located.vaars[i].end, located.vaars[i + 1].start);
+    assert.equal(located.vaars[i + 1].vaarIndex, (located.vaars[i].vaarIndex + 1) % 7);
+  }
+  // Hora segments chain exactly, including across Vedic-day rolls; the lord
+  // cycles through the Chaldean sequence and the position cycles 0..23.
+  for (let i = 0; i + 1 < located.horas.length; i += 1) {
+    assert.deepEqual(located.horas[i].end, located.horas[i + 1].start);
+    assert.equal(located.horas[i + 1].horaIndex, (located.horas[i].horaIndex + 1) % 7);
+    assert.equal(located.horas[i + 1].horaPosition, (located.horas[i].horaPosition + 1) % 24);
+  }
+  // An explicit rise/set config equal to the defaults reproduces the sweep.
+  const locatedExplicit = dhruv.panchangEvents(
+    engine, eop, utc, threeDaysTo,
+    dhruv.PANCHANG_INCLUDE.VAAR | dhruv.PANCHANG_INCLUDE.HORA,
+    sankCfg, 0, loc, riseCfg,
+  );
+  assert.equal(locatedExplicit.vaars.length, located.vaars.length);
+  assert.equal(locatedExplicit.horas.length, located.horas.length);
+  // Ghatikas chain with values cycling 1..60.
+  const dayTo = { ...utc, day: utc.day + 1 };
+  const gh = dhruv.panchangEvents(
+    engine, eop, utc, dayTo, dhruv.PANCHANG_INCLUDE.GHATIKA, sankCfg, 0, loc,
+  );
+  assert.ok(gh.ghatikas.length >= 60 && gh.ghatikas.length <= 120,
+    `ghatika count ${gh.ghatikas.length}`);
+  for (let i = 0; i + 1 < gh.ghatikas.length; i += 1) {
+    assert.deepEqual(gh.ghatikas[i].end, gh.ghatikas[i + 1].start);
+    assert.equal(gh.ghatikas[i + 1].value, (gh.ghatikas[i].value % 60) + 1);
+  }
+
+  // panchangEvents rejections: zero mask, location-dependent bits without a
+  // location, unknown bit.
   assert.throws(() => dhruv.panchangEvents(engine, eop, utc, weekTo, 0));
   assert.throws(() => dhruv.panchangEvents(engine, eop, utc, weekTo, dhruv.PANCHANG_INCLUDE.VAAR));
+  assert.throws(() => dhruv.panchangEvents(
+    engine, eop, utc, weekTo, dhruv.PANCHANG_INCLUDE.TITHI | dhruv.PANCHANG_INCLUDE.HORA,
+  ));
   assert.throws(() => dhruv.panchangEvents(engine, eop, utc, weekTo, 1 << 20));
 
   // --- amshaLagnaEvents: D1 lagna segments over 6h chain exactly and

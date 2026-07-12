@@ -58,12 +58,12 @@ class TestPanchangCompute:
 
 
 class TestAbiVersion:
-    def test_api_version_is_78(self):
-        """Library and embedded header agree on ABI v78."""
+    def test_api_version_is_79(self):
+        """Library and embedded header agree on ABI v79."""
         from ctara_dhruv._ffi import lib
         from ctara_dhruv._cdef import EXPECTED_API_VERSION
-        assert EXPECTED_API_VERSION == 78
-        assert lib.dhruv_api_version() == 78
+        assert EXPECTED_API_VERSION == 79
+        assert lib.dhruv_api_version() == 79
 
 
 @skip_no_kernels
@@ -336,14 +336,64 @@ class TestPanchangEvents:
         for a, b in zip(result.nakshatras, result.nakshatras[1:]):
             assert a.end == b.start
 
-    def test_invalid_mask_raises(self, engine_handles):
-        """Location-dependent bits (vaar/hora/ghatika) must be rejected."""
-        from ctara_dhruv import DhruvError
+    def test_location_dependent_sweep(self, engine_handles):
+        """3-day vaar+hora sweep with a location: counts, chaining, cycling."""
+        from ctara_dhruv.panchang import (
+            panchang_events,
+            INCLUDE_VAAR,
+            INCLUDE_HORA,
+        )
+        from ctara_dhruv.types import UtcTime, GeoLocation
+        from ctara_dhruv.engine import engine, eop
+
+        delhi = GeoLocation(lat_deg=28.6139, lon_deg=77.2090)
+        result = panchang_events(
+            engine()._ptr, eop(),
+            UtcTime(2024, 1, 1, 0, 0, 0.0), UtcTime(2024, 1, 4, 0, 0, 0.0),
+            include_mask=INCLUDE_VAAR | INCLUDE_HORA,
+            location=delhi,
+        )
+        assert not result.truncated
+        assert result.next_from is None
+
+        # ~3 Vedic days: 3-5 vaar segments, 24 horas per vaar.
+        vaars = result.vaars
+        horas = result.horas
+        assert 3 <= len(vaars) <= 5
+        assert 72 <= len(horas) <= 120
+        # Unselected kinds stay empty.
+        assert result.tithis == []
+        assert result.ghatikas == []
+
+        # First segment may start before `from`, last may end after `to`.
+        assert vaars[0].start.to_datetime() <= UtcTime(2024, 1, 1, 0, 0, 0.0).to_datetime()
+        assert vaars[-1].end.to_datetime() >= UtcTime(2024, 1, 4, 0, 0, 0.0).to_datetime()
+
+        # Vaar segments chain exactly (sunrise-to-sunrise Vedic days) and the
+        # weekday advances by 1 mod 7.
+        for a, b in zip(vaars, vaars[1:]):
+            assert a.end == b.start
+            assert (a.vaar_index + 1) % 7 == b.vaar_index
+        for v in vaars:
+            assert 0 <= v.vaar_index <= 6
+
+        # Hora segments chain exactly, including across Vedic-day rolls, and
+        # the 0-based hora position cycles 0..23 within each Vedic day.
+        for a, b in zip(horas, horas[1:]):
+            assert a.end == b.start
+            assert b.hora_position == (a.hora_position + 1) % 24
+        for h in horas:
+            assert 0 <= h.hora_index <= 6
+            assert 0 <= h.hora_position <= 23
+
+    def test_vaar_without_location_raises(self, engine_handles):
+        """Location-dependent bits without a location must be rejected."""
+        from ctara_dhruv._check import InvalidSearchConfigError
         from ctara_dhruv.panchang import panchang_events, INCLUDE_VAAR
         from ctara_dhruv.types import UtcTime
         from ctara_dhruv.engine import engine, eop
 
-        with pytest.raises(DhruvError):
+        with pytest.raises(InvalidSearchConfigError):
             panchang_events(
                 engine()._ptr, eop(),
                 UtcTime(2024, 1, 1, 0, 0, 0.0), UtcTime(2024, 1, 2, 0, 0, 0.0),

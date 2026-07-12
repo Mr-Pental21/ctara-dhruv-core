@@ -3,13 +3,17 @@
 ## Unreleased
 
 - Added three range operations across `dhruv_search`/`dhruv_rs`, the C ABI
-  (v77), the CLI, and wrappers: `amsha_series` (fixed-cadence slim varga
-  charts), `panchang_events` (exact boundary sweep over location-independent
-  panchang elements), and `amsha_lagna_events` (exact varga-lagna rashi
-  transitions, no sampling grid). New pure helper
-  `next_amsha_boundary_longitude` in `dhruv_vedic_base::amsha`. The
-  inclusive-grid slack in `graha_positions_series`/`amsha_series` was widened
-  so endpoints exactly on the grid are reliably included.
+  (v77-v79), the CLI, and wrappers: `amsha_series` (fixed-cadence slim varga
+  charts), `panchang_events` (exact boundary sweep over all ten panchang
+  elements; a location is required only for the sunrise-anchored
+  vaar/hora/ghatika kinds), and `amsha_lagna_events` (exact varga-lagna
+  rashi transitions, no sampling grid). New pure helper
+  `next_amsha_boundary_longitude` in `dhruv_vedic_base::amsha`. The panchang
+  request additionally accepts caller-cached calendar context
+  (`known_masa`/`known_ayana`/`known_varsha`), reused only inside each
+  value's validity window. The inclusive-grid slack in
+  `graha_positions_series`/`amsha_series` was widened so endpoints exactly
+  on the grid are reliably included.
 - Added unified `vX.Y.Z` release automation across Python, Node, Go verification,
   Elixir, `dhruv_rs`, CLI, and the C ABI.
 - Added GitHub Release packaging for CLI and C ABI bundles, npm prebuild

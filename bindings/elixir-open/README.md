@@ -386,13 +386,20 @@ result. Unknown element names, however, are rejected with `invalid_request`.
 
 `CtaraDhruv.Panchang.events/2` streams exact element boundaries over a range
 instead of computing one moment at a time: pass `:from_utc` and `:to_utc`,
-an optional `:include_mask` restricted to the location-independent elements
-(`tithi`, `karana`, `yoga`, `nakshatra`, `masa`, `ayana`, `varsha`; default
-all of them), and an optional `:max_events` cap (`0` selects the 50,000
-ceiling). The result carries one list per kind in the per-moment shapes plus
-`"truncated"` and `"next_from_utc"`; consecutive segments of one kind chain
-exactly (`end == next start`). On truncation resume from `next_from_utc` and
-deduplicate on `{kind, start}`.
+an optional `:include_mask` accepting any element names or bits (including
+`"all"`), and an optional `:max_events` cap (`0` selects the 50,000
+ceiling). The default mask is unchanged: when `:include_mask` is omitted,
+the location-independent elements (`tithi`, `karana`, `yoga`, `nakshatra`,
+`masa`, `ayana`, `varsha`) are selected. The location-dependent elements
+(`vaar`, `hora`, `ghatika`) are now supported too; selecting any of them
+requires the optional `:location` (an optional `:riseset_config` tunes the
+underlying sunrise searches), otherwise the call fails with a
+`:search_error` (`"location required for vaar/hora/ghatika"`). The result
+carries one list per kind in the per-moment shapes (empty lists for
+unselected kinds) plus `"truncated"` and `"next_from_utc"`; consecutive
+segments of one kind chain exactly (`end == next start`), including vaar,
+hora, and ghatika across Vedic-day rolls. On truncation resume from
+`next_from_utc` and deduplicate on `{kind, start}`.
 
 ## Time-Based Upagraha Config
 

@@ -3355,6 +3355,13 @@ fn panchang_events_json(result: dhruv_search::PanchangEventsResult) -> Value {
         "tithi": result.tithi.into_iter().map(tithi_json).collect::<Vec<_>>(),
         "karana": result.karana.into_iter().map(karana_json).collect::<Vec<_>>(),
         "yoga": result.yoga.into_iter().map(yoga_json).collect::<Vec<_>>(),
+        "vaar": result.vaar.into_iter().map(vaar_json).collect::<Vec<_>>(),
+        "hora": result.hora.into_iter().map(hora_json).collect::<Vec<_>>(),
+        "ghatika": result
+            .ghatika
+            .into_iter()
+            .map(ghatika_json)
+            .collect::<Vec<_>>(),
         "nakshatra": result
             .nakshatra
             .into_iter()
@@ -4029,7 +4036,14 @@ fn handle_panchang(resource: &ResourceArc<EngineResource>, request: PanchangRequ
                     panchang(engine, eop, &op).map_err(|err| map_error("search_error", err))?;
                 panchang_value_json(&result)
             }
-            "events" => handle_panchang_events(engine, eop, &request, &sankranti_config)?,
+            "events" => handle_panchang_events(
+                engine,
+                eop,
+                &request,
+                location.as_ref(),
+                &riseset_config,
+                &sankranti_config,
+            )?,
             "elongation_at" => json!({
                 "value": elongation_at(
                     engine,
@@ -4452,6 +4466,8 @@ fn handle_panchang_events(
     engine: &Engine,
     eop: &EopKernel,
     request: &PanchangRequest,
+    location: Option<&GeoLocation>,
+    riseset_config: &RiseSetConfig,
     sankranti_config: &SankrantiConfig,
 ) -> JsonResult {
     let from_utc = parse_utc(
@@ -4464,7 +4480,9 @@ fn handle_panchang_events(
             .to_utc
             .ok_or_else(|| error_payload("invalid_request", "to_utc is required"))?,
     )?;
-    // Default covers every supported (location-independent) element.
+    // Default preserves the historical payload: location-independent elements
+    // only. Location-dependent elements (vaar/hora/ghatika) are opt-in via the
+    // mask and validated by the engine (location required when selected).
     let include_mask = match request.include_mask.as_ref() {
         Some(input) => parse_panchang_include_mask(input)?,
         None => PANCHANG_INCLUDE_LOCATION_INDEPENDENT,
@@ -4475,6 +4493,8 @@ fn handle_panchang_events(
         &from_utc,
         &to_utc,
         include_mask,
+        location,
+        riseset_config,
         sankranti_config,
         request.max_events.unwrap_or(0),
     )

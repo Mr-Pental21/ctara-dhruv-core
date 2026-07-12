@@ -3,33 +3,37 @@
 //! Produces the full stream of element segments overlapping a UTC range in
 //! a single call, instead of one per-moment call per day. Each consecutive
 //! boundary search is seeded from the previous boundary, so a sweep costs
-//! roughly one root-find per emitted segment.
+//! roughly one root-find per emitted segment; the sunrise-anchored elements
+//! (vaar, hora, ghatika) cost one sunrise search per Vedic day and pure
+//! arithmetic for the subdivisions.
 //!
-//! Only location-independent elements (tithi, karana, yoga, nakshatra,
-//! masa, ayana, varsha) are supported; sunrise-anchored elements have no
-//! location-free boundary stream.
+//! A location is required only when a location-dependent element is
+//! selected; location-independent selections take no location at all.
 
 use dhruv_core::Engine;
 use dhruv_time::{EopKernel, UtcTime};
+use dhruv_vedic_base::riseset_types::{GeoLocation, RiseSetConfig};
 use dhruv_vedic_base::{
-    KARANA_SEGMENT_DEG, NAKSHATRA_SPAN_27, TITHI_SEGMENT_DEG, YOGA_SEGMENT_DEG,
+    HORA_COUNT, KARANA_SEGMENT_DEG, NAKSHATRA_SPAN_27, TITHI_SEGMENT_DEG, YOGA_SEGMENT_DEG,
     karana_from_elongation, nakshatra_from_longitude, tithi_from_elongation, yoga_from_sum,
 };
 
 use crate::error::SearchError;
-use crate::operations::PANCHANG_INCLUDE_LOCATION_INDEPENDENT;
 use crate::operations::{
-    PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_MASA,
-    PANCHANG_INCLUDE_NAKSHATRA, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VARSHA,
-    PANCHANG_INCLUDE_YOGA,
+    PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_GHATIKA, PANCHANG_INCLUDE_HORA,
+    PANCHANG_INCLUDE_KARANA, PANCHANG_INCLUDE_LOCATION_DEPENDENT, PANCHANG_INCLUDE_MASA,
+    PANCHANG_INCLUDE_NAKSHATRA, PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR,
+    PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
 };
 use crate::panchang::{
-    ayana_for_date_with_eop, elongation_at, find_angle_boundary, karana_at,
-    masa_for_date_with_eop, moon_sidereal_longitude_at, nakshatra_at, sidereal_sum_at, tithi_at,
-    varsha_for_date_with_eop, yoga_at,
+    ayana_for_date_with_eop, elongation_at, find_angle_boundary, ghatika_from_sunrises,
+    hora_from_sunrises, karana_at, masa_for_date_with_eop, moon_sidereal_longitude_at,
+    nakshatra_at, sidereal_sum_at, tithi_at, vaar_from_sunrises, varsha_for_date_with_eop,
+    vedic_day_sunrises, yoga_at,
 };
 use crate::panchang_types::{
-    AyanaInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, TithiInfo, VarshaInfo, YogaInfo,
+    AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, TithiInfo,
+    VaarInfo, VarshaInfo, YogaInfo,
 };
 use crate::sankranti_types::SankrantiConfig;
 use crate::search_util::utc_to_jd_tdb_with_eop;
@@ -61,6 +65,9 @@ pub struct PanchangEventsResult {
     pub karana: Vec<KaranaInfo>,
     pub yoga: Vec<YogaInfo>,
     pub nakshatra: Vec<PanchangNakshatraInfo>,
+    pub vaar: Vec<VaarInfo>,
+    pub hora: Vec<HoraInfo>,
+    pub ghatika: Vec<GhatikaInfo>,
     pub masa: Vec<MasaInfo>,
     pub ayana: Vec<AyanaInfo>,
     pub varsha: Vec<VarshaInfo>,
@@ -148,6 +155,85 @@ enum Sweeper {
         start_jd: f64,
         end_jd: f64,
     },
+    Vaar {
+        current: VaarInfo,
+        day: VedicDayCursor,
+    },
+    Hora {
+        current: HoraInfo,
+        day: VedicDayCursor,
+        /// 0-based hora index of the pending segment within the Vedic day.
+        index: u16,
+        start_jd: f64,
+        end_jd: f64,
+    },
+    Ghatika {
+        current: GhatikaInfo,
+        day: VedicDayCursor,
+        /// 0-based ghatika index of the pending segment within the Vedic day.
+        index: u16,
+        start_jd: f64,
+        end_jd: f64,
+    },
+}
+
+/// Sunrise-to-sunrise bracket (JD TDB) shared by the sunrise-anchored
+/// sweepers; one sunrise search per Vedic day, subdivisions are arithmetic.
+#[derive(Debug, Clone, Copy)]
+struct VedicDayCursor {
+    start_jd: f64,
+    end_jd: f64,
+    start_utc: UtcTime,
+    end_utc: UtcTime,
+}
+
+impl VedicDayCursor {
+    fn at(
+        engine: &Engine,
+        eop: &EopKernel,
+        utc: &UtcTime,
+        location: &GeoLocation,
+        riseset_config: &RiseSetConfig,
+    ) -> Result<Self, SearchError> {
+        let (start_jd, end_jd) = vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
+        Ok(Self {
+            start_jd,
+            end_jd,
+            start_utc: UtcTime::from_jd_tdb(start_jd, engine.lsk()),
+            end_utc: UtcTime::from_jd_tdb(end_jd, engine.lsk()),
+        })
+    }
+
+    /// Bracket of the following Vedic day; the recomputed shared sunrise is
+    /// snapped to this bracket's end so consecutive days chain exactly.
+    fn next(
+        &self,
+        engine: &Engine,
+        eop: &EopKernel,
+        location: &GeoLocation,
+        riseset_config: &RiseSetConfig,
+    ) -> Result<Self, SearchError> {
+        let probe = UtcTime::from_jd_tdb(self.end_jd + 0.5, engine.lsk());
+        let mut next = Self::at(engine, eop, &probe, location, riseset_config)?;
+        if (next.start_jd - self.end_jd).abs() < CALENDAR_SNAP_DAYS {
+            next.start_jd = self.end_jd;
+            next.start_utc = self.end_utc;
+        }
+        Ok(next)
+    }
+
+    /// [start, end) (JD TDB) of the `index`-th of `count` equal divisions.
+    fn division(&self, index: u16, count: u16) -> (f64, f64) {
+        let len = (self.end_jd - self.start_jd) / count as f64;
+        let start = self.start_jd + index as f64 * len;
+        (start, start + len)
+    }
+
+    /// Moment safely inside the `index`-th of `count` equal divisions.
+    fn division_probe(&self, index: u16, count: u16) -> f64 {
+        let (start, end) = self.division(index, count);
+        0.5 * (start + end)
+    }
 }
 
 /// The classified-but-unemitted angular segment held by an angular sweeper.
@@ -166,7 +252,10 @@ impl Sweeper {
             Self::Angular { end_jd, .. }
             | Self::Masa { end_jd, .. }
             | Self::Ayana { end_jd, .. }
-            | Self::Varsha { end_jd, .. } => *end_jd,
+            | Self::Varsha { end_jd, .. }
+            | Self::Hora { end_jd, .. }
+            | Self::Ghatika { end_jd, .. } => *end_jd,
+            Self::Vaar { day, .. } => day.end_jd,
         }
     }
 
@@ -176,7 +265,10 @@ impl Sweeper {
             Self::Angular { start_jd, .. }
             | Self::Masa { start_jd, .. }
             | Self::Ayana { start_jd, .. }
-            | Self::Varsha { start_jd, .. } => *start_jd,
+            | Self::Varsha { start_jd, .. }
+            | Self::Hora { start_jd, .. }
+            | Self::Ghatika { start_jd, .. } => *start_jd,
+            Self::Vaar { day, .. } => day.start_jd,
         }
     }
 
@@ -192,6 +284,9 @@ impl Sweeper {
             Self::Masa { current, .. } => result.masa.push(*current),
             Self::Ayana { current, .. } => result.ayana.push(*current),
             Self::Varsha { current, .. } => result.varsha.push(*current),
+            Self::Vaar { current, .. } => result.vaar.push(*current),
+            Self::Hora { current, .. } => result.hora.push(*current),
+            Self::Ghatika { current, .. } => result.ghatika.push(*current),
         }
     }
 
@@ -202,6 +297,8 @@ impl Sweeper {
         engine: &Engine,
         eop: &EopKernel,
         config: &SankrantiConfig,
+        location: Option<&GeoLocation>,
+        riseset_config: &RiseSetConfig,
     ) -> Result<(), SearchError> {
         match self {
             Self::Angular {
@@ -313,6 +410,68 @@ impl Sweeper {
                 *current = next;
                 Ok(())
             }
+            Self::Vaar { current, day } => {
+                let location = location.expect("validated: location present");
+                let next_day = day.next(engine, eop, location, riseset_config)?;
+                *current = vaar_from_sunrises(next_day.start_jd, next_day.end_jd, engine.lsk());
+                *day = next_day;
+                Ok(())
+            }
+            Self::Hora {
+                current,
+                day,
+                index,
+                start_jd,
+                end_jd,
+            } => {
+                let count = HORA_COUNT as u16;
+                let next_index = if *index + 1 < count {
+                    *index + 1
+                } else {
+                    let location = location.expect("validated: location present");
+                    *day = day.next(engine, eop, location, riseset_config)?;
+                    0
+                };
+                let prev_end = current.end;
+                let probe = day.division_probe(next_index, count);
+                let mut next = hora_from_sunrises(probe, day.start_jd, day.end_jd, engine.lsk());
+                // Chain exactly: subdivision arithmetic can differ from the
+                // previous end by one ulp.
+                next.start = prev_end;
+                let (s, e) = day.division(next_index, count);
+                *current = next;
+                *index = next_index;
+                *start_jd = s;
+                *end_jd = e;
+                Ok(())
+            }
+            Self::Ghatika {
+                current,
+                day,
+                index,
+                start_jd,
+                end_jd,
+            } => {
+                let count: u16 = 60;
+                let next_index = if *index + 1 < count {
+                    *index + 1
+                } else {
+                    let location = location.expect("validated: location present");
+                    *day = day.next(engine, eop, location, riseset_config)?;
+                    0
+                };
+                let prev_end = current.end;
+                let probe = day.division_probe(next_index, count);
+                let mut next =
+                    ghatika_from_sunrises(probe, day.start_jd, day.end_jd, engine.lsk());
+                next.start = prev_end;
+                let (s, e) = day.division(next_index, count);
+                *current = next;
+                *index = next_index;
+                *start_jd = s;
+                *end_jd = e;
+                Ok(())
+            }
         }
     }
 }
@@ -390,29 +549,38 @@ fn angular_sweeper(
 
 /// Stream panchang element segments overlapping `[from_utc, to_utc]`.
 ///
-/// `include_mask` selects elements with the usual `PANCHANG_INCLUDE_*` bits
-/// and must contain only location-independent bits. `max_events` caps the
-/// total number of returned segments across all kinds (`0` selects the
-/// hard ceiling [`MAX_PANCHANG_EVENTS`]); when the cap is reached the
-/// result is marked `truncated` and `next_from_utc` gives the resume point.
+/// `include_mask` selects elements with the usual `PANCHANG_INCLUDE_*`
+/// bits. A `location` (with `riseset_config`) is required only when a
+/// location-dependent element (vaar, hora, ghatika) is selected; it may be
+/// `None` otherwise. `max_events` caps the total number of returned
+/// segments across all kinds (`0` selects the hard ceiling
+/// [`MAX_PANCHANG_EVENTS`]); when the cap is reached the result is marked
+/// `truncated` and `next_from_utc` gives the resume point.
 ///
 /// Segments are exact: consecutive segments of one kind share a boundary
 /// (`end == next.start`), and boundary times match the per-moment API.
+/// Sunrise-anchored kinds cost one sunrise search per Vedic day; hora and
+/// ghatika subdivisions are arithmetic.
+#[allow(clippy::too_many_arguments)]
 pub fn panchang_events(
     engine: &Engine,
     eop: &EopKernel,
     from_utc: &UtcTime,
     to_utc: &UtcTime,
     include_mask: u32,
+    location: Option<&GeoLocation>,
+    riseset_config: &RiseSetConfig,
     config: &SankrantiConfig,
     max_events: u32,
 ) -> Result<PanchangEventsResult, SearchError> {
-    if include_mask == 0 {
-        return Err(SearchError::InvalidConfig("include_mask must be non-zero"));
-    }
-    if include_mask & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT != 0 {
+    if include_mask & PANCHANG_INCLUDE_ALL == 0 {
         return Err(SearchError::InvalidConfig(
-            "panchang_events supports location-independent elements only",
+            "include_mask must select at least one element",
+        ));
+    }
+    if include_mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT != 0 && location.is_none() {
+        return Err(SearchError::InvalidConfig(
+            "location required for vaar/hora/ghatika",
         ));
     }
     let from_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), from_utc);
@@ -490,6 +658,40 @@ pub fn panchang_events(
             current,
         });
     }
+    if include_mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT != 0 {
+        let location = location.expect("validated: location present");
+        let day = VedicDayCursor::at(engine, eop, from_utc, location, riseset_config)?;
+        if include(PANCHANG_INCLUDE_VAAR) {
+            sweepers.push(Sweeper::Vaar {
+                current: vaar_from_sunrises(day.start_jd, day.end_jd, engine.lsk()),
+                day,
+            });
+        }
+        if include(PANCHANG_INCLUDE_HORA) {
+            let current = hora_from_sunrises(from_jd, day.start_jd, day.end_jd, engine.lsk());
+            let index = current.hora_index as u16;
+            let (start_jd, end_jd) = day.division(index, HORA_COUNT as u16);
+            sweepers.push(Sweeper::Hora {
+                current,
+                day,
+                index,
+                start_jd,
+                end_jd,
+            });
+        }
+        if include(PANCHANG_INCLUDE_GHATIKA) {
+            let current = ghatika_from_sunrises(from_jd, day.start_jd, day.end_jd, engine.lsk());
+            let index = (current.value - 1) as u16;
+            let (start_jd, end_jd) = day.division(index, 60);
+            sweepers.push(Sweeper::Ghatika {
+                current,
+                day,
+                index,
+                start_jd,
+                end_jd,
+            });
+        }
+    }
 
     let mut result = PanchangEventsResult::default();
     let mut active: Vec<bool> = vec![true; sweepers.len()];
@@ -523,7 +725,7 @@ pub fn panchang_events(
         if sweepers[i].end_jd() >= to_jd {
             active[i] = false;
         } else {
-            sweepers[i].advance(engine, eop, config)?;
+            sweepers[i].advance(engine, eop, config, location, riseset_config)?;
         }
     }
 

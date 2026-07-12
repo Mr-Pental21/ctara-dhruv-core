@@ -4554,6 +4554,9 @@ fn ffi_panchang_events_tithi_count_and_chaining() {
             &from,
             &to,
             DHRUV_PANCHANG_INCLUDE_TITHI,
+            0,
+            ptr::null(),
+            ptr::null(),
             &sankranti,
             0,
             &mut handle,
@@ -4630,6 +4633,9 @@ fn ffi_panchang_events_tithi_count_and_chaining() {
             &from,
             &to,
             DHRUV_PANCHANG_INCLUDE_TITHI,
+            0,
+            ptr::null(),
+            ptr::null(),
             &sankranti,
             5,
             &mut small,
@@ -4649,6 +4655,126 @@ fn ffi_panchang_events_tithi_count_and_chaining() {
     assert!(utc_to_jd_approx(&next_utc) > utc_to_jd_approx(&from));
     unsafe { dhruv_panchang_events_free(small) };
 
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_panchang_events_vaar_hora_with_location() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(v) => v,
+        None => return,
+    };
+    let (_, loc, _, rs_cfg) = kundali_test_params();
+    let from = DhruvUtcTime {
+        year: 2024,
+        month: 1,
+        day: 15,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
+    let to = DhruvUtcTime { day: 18, ..from };
+    let sankranti = dhruv_sankranti_config_default();
+
+    let mut handle: DhruvPanchangEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_panchang_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            DHRUV_PANCHANG_INCLUDE_VAAR | DHRUV_PANCHANG_INCLUDE_HORA,
+            1,
+            &loc,
+            &rs_cfg,
+            &sankranti,
+            0,
+            &mut handle,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(!handle.is_null());
+
+    // ~3 days of Vedic days (sunrise-to-sunrise).
+    let mut vaar_count = 0u32;
+    let s = unsafe { dhruv_panchang_events_vaar_count(handle, &mut vaar_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(
+        (3..=5).contains(&vaar_count),
+        "unexpected vaar count over 3 days: {vaar_count}"
+    );
+
+    // Vaar segments chain exactly and step through the weekday cycle.
+    let mut prev_vaar: DhruvVaarInfo = unsafe { std::mem::zeroed() };
+    for idx in 0..vaar_count {
+        let mut info: DhruvVaarInfo = unsafe { std::mem::zeroed() };
+        let s = unsafe { dhruv_panchang_events_vaar_at(handle, idx, &mut info) };
+        assert_eq!(s, DhruvStatus::Ok);
+        assert!((0..7).contains(&info.vaar_index));
+        assert!(utc_to_jd_approx(&info.end) > utc_to_jd_approx(&info.start));
+        if idx > 0 {
+            assert!(
+                utc_fields_eq(&prev_vaar.end, &info.start),
+                "vaar segment {idx} does not chain: prev.end != start"
+            );
+            assert_eq!(
+                info.vaar_index,
+                (prev_vaar.vaar_index + 1) % 7,
+                "vaar segment {idx} index not consecutive"
+            );
+        }
+        prev_vaar = info;
+    }
+    let mut first_vaar: DhruvVaarInfo = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_panchang_events_vaar_at(handle, 0, &mut first_vaar) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(utc_to_jd_approx(&first_vaar.start) <= utc_to_jd_approx(&from) + 1e-5);
+    assert!(utc_to_jd_approx(&prev_vaar.end) >= utc_to_jd_approx(&to) - 1e-5);
+
+    // 24 horas per Vedic day.
+    let mut hora_count = 0u32;
+    let s = unsafe { dhruv_panchang_events_hora_count(handle, &mut hora_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(
+        (72..=120).contains(&hora_count),
+        "unexpected hora count over 3 days: {hora_count}"
+    );
+
+    // Hora segments chain exactly and cycle positions modulo 24.
+    let mut prev_hora: DhruvHoraInfo = unsafe { std::mem::zeroed() };
+    for idx in 0..hora_count {
+        let mut info: DhruvHoraInfo = unsafe { std::mem::zeroed() };
+        let s = unsafe { dhruv_panchang_events_hora_at(handle, idx, &mut info) };
+        assert_eq!(s, DhruvStatus::Ok);
+        assert!((0..7).contains(&info.hora_index));
+        assert!((0..24).contains(&info.hora_position));
+        if idx > 0 {
+            assert!(
+                utc_fields_eq(&prev_hora.end, &info.start),
+                "hora segment {idx} does not chain: prev.end != start"
+            );
+            assert_eq!(
+                info.hora_position,
+                (prev_hora.hora_position + 1) % 24,
+                "hora segment {idx} position not consecutive"
+            );
+        }
+        prev_hora = info;
+    }
+
+    // Index out of bounds.
+    let mut oob: DhruvVaarInfo = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_panchang_events_vaar_at(handle, vaar_count, &mut oob) };
+    assert_eq!(s, DhruvStatus::InvalidInput);
+
+    // Unselected kinds are empty.
+    let mut ghatika_count = 99u32;
+    let s = unsafe { dhruv_panchang_events_ghatika_count(handle, &mut ghatika_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(ghatika_count, 0);
+
+    unsafe { dhruv_panchang_events_free(handle) };
     unsafe { dhruv_eop_free(eop_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };
 }
@@ -4774,11 +4900,24 @@ fn ffi_range_ops_reject_invalid_masks_and_empty_requests() {
     // panchang_events: zero mask.
     let mut pe: DhruvPanchangEventsHandle = ptr::null_mut();
     let s = unsafe {
-        dhruv_panchang_events(engine_ptr, eop_ptr, &from, &to, 0, &sankranti, 0, &mut pe)
+        dhruv_panchang_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            0,
+            0,
+            ptr::null(),
+            ptr::null(),
+            &sankranti,
+            0,
+            &mut pe,
+        )
     };
     assert_eq!(s, DhruvStatus::InvalidSearchConfig);
 
-    // panchang_events: location-dependent bit (vaar) is rejected.
+    // panchang_events: a location-dependent bit (vaar) is rejected only
+    // when no location is supplied.
     let s = unsafe {
         dhruv_panchang_events(
             engine_ptr,
@@ -4786,12 +4925,33 @@ fn ffi_range_ops_reject_invalid_masks_and_empty_requests() {
             &from,
             &to,
             DHRUV_PANCHANG_INCLUDE_TITHI | DHRUV_PANCHANG_INCLUDE_VAAR,
+            0,
+            ptr::null(),
+            ptr::null(),
             &sankranti,
             0,
             &mut pe,
         )
     };
     assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+    let s = unsafe {
+        dhruv_panchang_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            DHRUV_PANCHANG_INCLUDE_TITHI | DHRUV_PANCHANG_INCLUDE_VAAR,
+            1,
+            &loc,
+            ptr::null(),
+            &sankranti,
+            0,
+            &mut pe,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    unsafe { dhruv_panchang_events_free(pe) };
+    pe = ptr::null_mut();
 
     // panchang_events: unknown bit.
     let s = unsafe {
@@ -4801,6 +4961,9 @@ fn ffi_range_ops_reject_invalid_masks_and_empty_requests() {
             &from,
             &to,
             1 << 10,
+            0,
+            ptr::null(),
+            ptr::null(),
             &sankranti,
             0,
             &mut pe,

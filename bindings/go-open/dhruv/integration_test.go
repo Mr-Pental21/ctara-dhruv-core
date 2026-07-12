@@ -737,7 +737,7 @@ func TestPanchangEventsTithiChainingAndResume(t *testing.T) {
 	to := UtcTime{Year: 2024, Month: 2, Day: 5}
 	sank := SankrantiConfigDefault()
 
-	full, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi, sank, 0)
+	full, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi, nil, nil, sank, 0)
 	if err != nil {
 		t.Fatalf("PanchangEvents: %v", err)
 	}
@@ -774,7 +774,7 @@ func TestPanchangEventsTithiChainingAndResume(t *testing.T) {
 
 	// A tiny event budget truncates and yields a resume point; resuming from
 	// NextFromUTC with dedup on Start reproduces the full sweep.
-	small, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi, sank, 5)
+	small, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi, nil, nil, sank, 5)
 	if err != nil {
 		t.Fatalf("PanchangEvents truncated: %v", err)
 	}
@@ -787,7 +787,7 @@ func TestPanchangEventsTithiChainingAndResume(t *testing.T) {
 	if utcJD(*small.NextFromUTC) <= utcJD(from) {
 		t.Fatalf("resume point must be after from: %+v", *small.NextFromUTC)
 	}
-	resumed, err := eng.PanchangEvents(eop, *small.NextFromUTC, to, PanchangIncludeTithi, sank, 0)
+	resumed, err := eng.PanchangEvents(eop, *small.NextFromUTC, to, PanchangIncludeTithi, nil, nil, sank, 0)
 	if err != nil {
 		t.Fatalf("PanchangEvents resumed: %v", err)
 	}
@@ -828,15 +828,140 @@ func TestPanchangEventsTithiChainingAndResume(t *testing.T) {
 		}
 	}
 
-	// Invalid masks are rejected: zero and location-dependent bits.
-	if _, err := eng.PanchangEvents(eop, from, to, 0, sank, 0); err == nil {
+	// Invalid masks are rejected: zero, and location-dependent bits without
+	// a location.
+	if _, err := eng.PanchangEvents(eop, from, to, 0, nil, nil, sank, 0); err == nil {
 		t.Fatalf("expected error for zero include mask")
 	}
-	if _, err := eng.PanchangEvents(eop, from, to, PanchangIncludeVaar, sank, 0); err == nil {
-		t.Fatalf("expected error for location-dependent include mask")
+	if _, err := eng.PanchangEvents(eop, from, to, PanchangIncludeVaar, nil, nil, sank, 0); err == nil {
+		t.Fatalf("expected error for location-dependent include mask without location")
 	}
-	if _, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi|PanchangIncludeHora, sank, 0); err == nil {
-		t.Fatalf("expected error for mixed location-dependent include mask")
+	if _, err := eng.PanchangEvents(eop, from, to, PanchangIncludeTithi|PanchangIncludeHora, nil, nil, sank, 0); err == nil {
+		t.Fatalf("expected error for mixed location-dependent include mask without location")
+	}
+}
+
+func TestPanchangEventsLocationDependent(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	from := UtcTime{Year: 2024, Month: 1, Day: 1}
+	to := UtcTime{Year: 2024, Month: 1, Day: 4}
+	loc := GeoLocation{LatitudeDeg: 28.6139, LongitudeDeg: 77.2090, AltitudeM: 0}
+	sank := SankrantiConfigDefault()
+
+	res, err := eng.PanchangEvents(eop, from, to, PanchangIncludeVaar|PanchangIncludeHora, &loc, nil, sank, 0)
+	if err != nil {
+		t.Fatalf("PanchangEvents with location: %v", err)
+	}
+
+	// Three days cover 3-5 sunrise-to-sunrise Vedic days and their 24
+	// horas each.
+	if len(res.Vaars) < 3 || len(res.Vaars) > 5 {
+		t.Fatalf("unexpected vaar count over 3 days: %d", len(res.Vaars))
+	}
+	if len(res.Horas) < 72 || len(res.Horas) > 120 {
+		t.Fatalf("unexpected hora count over 3 days: %d", len(res.Horas))
+	}
+	if len(res.Ghatikas) != 0 || len(res.Tithis) != 0 {
+		t.Fatalf("unselected kinds must be empty")
+	}
+
+	// Vaar segments chain exactly and advance the weekday cyclically.
+	for i, v := range res.Vaars {
+		if v.VaarIndex < 0 || v.VaarIndex >= 7 {
+			t.Fatalf("vaar %d: index out of range: %d", i, v.VaarIndex)
+		}
+		if i > 0 {
+			prev := res.Vaars[i-1]
+			if prev.End != v.Start {
+				t.Fatalf("vaar %d does not chain: prev.End=%+v start=%+v", i, prev.End, v.Start)
+			}
+			if v.VaarIndex != (prev.VaarIndex+1)%7 {
+				t.Fatalf("vaar %d weekday not consecutive: prev=%d cur=%d", i, prev.VaarIndex, v.VaarIndex)
+			}
+		}
+	}
+	if utcJD(res.Vaars[0].Start) > utcJD(from)+1e-5 {
+		t.Fatalf("first vaar must start at or before from: %+v", res.Vaars[0].Start)
+	}
+	if utcJD(res.Vaars[len(res.Vaars)-1].End) < utcJD(to)-1e-5 {
+		t.Fatalf("last vaar must end at or after to: %+v", res.Vaars[len(res.Vaars)-1].End)
+	}
+
+	// Hora segments chain exactly, including across Vedic-day rolls, and
+	// the lord cycles through the Chaldean sequence while the position
+	// cycles 0..23.
+	for i, h := range res.Horas {
+		if h.HoraIndex < 0 || h.HoraIndex >= 7 {
+			t.Fatalf("hora %d: lord index out of range: %d", i, h.HoraIndex)
+		}
+		if h.HoraPosition < 0 || h.HoraPosition >= 24 {
+			t.Fatalf("hora %d: position out of range: %d", i, h.HoraPosition)
+		}
+		if i > 0 {
+			prev := res.Horas[i-1]
+			if prev.End != h.Start {
+				t.Fatalf("hora %d does not chain: prev.End=%+v start=%+v", i, prev.End, h.Start)
+			}
+			if h.HoraIndex != (prev.HoraIndex+1)%7 {
+				t.Fatalf("hora %d lord not cycling: prev=%d cur=%d", i, prev.HoraIndex, h.HoraIndex)
+			}
+			if h.HoraPosition != (prev.HoraPosition+1)%24 {
+				t.Fatalf("hora %d position not cycling: prev=%d cur=%d", i, prev.HoraPosition, h.HoraPosition)
+			}
+		}
+	}
+
+	// The hora stream tiles each Vedic day: day rolls align with vaar
+	// boundaries.
+	for i, h := range res.Horas {
+		if h.HoraPosition == 0 && i > 0 {
+			found := false
+			for _, v := range res.Vaars {
+				if v.Start == h.Start {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("hora %d day roll at %+v does not match any vaar start", i, h.Start)
+			}
+		}
+	}
+
+	// An explicit rise/set config equal to the defaults reproduces the
+	// default-config sweep.
+	riseCfg := RiseSetConfigDefault()
+	res2, err := eng.PanchangEvents(eop, from, to, PanchangIncludeVaar|PanchangIncludeHora, &loc, &riseCfg, sank, 0)
+	if err != nil {
+		t.Fatalf("PanchangEvents with explicit riseset config: %v", err)
+	}
+	if len(res2.Vaars) != len(res.Vaars) || len(res2.Horas) != len(res.Horas) {
+		t.Fatalf("explicit default riseset config changed results: vaars %d vs %d, horas %d vs %d",
+			len(res2.Vaars), len(res.Vaars), len(res2.Horas), len(res.Horas))
+	}
+
+	// Ghatikas: 60 per Vedic day, chaining with values cycling 1..60.
+	gh, err := eng.PanchangEvents(eop, from, UtcTime{Year: 2024, Month: 1, Day: 2}, PanchangIncludeGhatika, &loc, nil, sank, 0)
+	if err != nil {
+		t.Fatalf("PanchangEvents ghatika: %v", err)
+	}
+	if len(gh.Ghatikas) < 60 || len(gh.Ghatikas) > 120 {
+		t.Fatalf("unexpected ghatika count over 1 day: %d", len(gh.Ghatikas))
+	}
+	for i, g := range gh.Ghatikas {
+		if g.Value < 1 || g.Value > 60 {
+			t.Fatalf("ghatika %d: value out of range: %d", i, g.Value)
+		}
+		if i > 0 {
+			prev := gh.Ghatikas[i-1]
+			if prev.End != g.Start {
+				t.Fatalf("ghatika %d does not chain: prev.End=%+v start=%+v", i, prev.End, g.Start)
+			}
+			if g.Value != prev.Value%60+1 {
+				t.Fatalf("ghatika %d value not cycling: prev=%d cur=%d", i, prev.Value, g.Value)
+			}
+		}
 	}
 }
 

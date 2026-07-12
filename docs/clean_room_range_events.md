@@ -46,6 +46,18 @@ monotonically increasing angular quantity (mod 360):
 | masa      | new-moon bracketing             | one lunation    |
 | ayana     | solar sankranti (Karka/Makara)  | half solar year |
 | varsha    | Chaitra Pratipada               | one Vedic year  |
+| vaar      | local sunrise                   | one Vedic day   |
+| hora      | Vedic-day 24-division           | 1/24 Vedic day  |
+| ghatika   | Vedic-day 60-division           | 1/60 Vedic day  |
+
+The sunrise-anchored elements (vaar, hora, ghatika; supplied `location`
+required) share one Vedic-day cursor: each day roll is a single sunrise
+search (the existing `vedic_day_sunrises` bracket, probed half a day past
+the previous sunrise and snapped to it within ~1 minute so days chain
+exactly), and the hora/ghatika subdivisions inside a day are pure
+arithmetic reusing `hora_from_sunrises`/`ghatika_from_sunrises` — zero
+root-finds per subdivision. Chained starts are copied from the previous
+segment's end to keep the exact-chaining invariant across float rounding.
 
 The sweep classifies the segment containing `from` with the existing
 per-moment functions (which root-find both boundaries), then repeatedly

@@ -343,18 +343,23 @@ def panchang_events(
     from_utc: UtcTime,
     to_utc: UtcTime,
     include_mask: int = INCLUDE_LOCATION_INDEPENDENT,
+    location: Optional[GeoLocation] = None,
+    riseset_config=None,
     sankranti_config=None,
     max_events: int = 0,
 ) -> PanchangEventsResult:
     """Stream exact panchang element segments overlapping [from_utc, to_utc].
 
-    Only location-independent kinds are supported: *include_mask* must be a
-    subset of ``INCLUDE_LOCATION_INDEPENDENT`` (tithi, karana, yoga,
-    nakshatra, masa, ayana, varsha); any other bit raises ``DhruvError``.
+    All ten element kinds are supported. *location* is required only when
+    *include_mask* selects a location-dependent kind (vaar, hora, ghatika --
+    ``INCLUDE_LOCATION_DEPENDENT``); requesting those without a location
+    raises ``InvalidSearchConfigError``.
 
-    Consecutive segments of one kind chain exactly (``end == next.start``);
-    the first segment of each kind may start before *from_utc* and the last
-    may end after *to_utc*.
+    Consecutive segments of one kind chain exactly (``end == next.start``),
+    including across Vedic-day rolls for vaar/hora/ghatika; the first
+    segment of each kind may start before *from_utc* and the last may end
+    after *to_utc*. Vaar segments are sunrise-to-sunrise Vedic days;
+    hora/ghatika are their 24/60 subdivisions.
 
     Args:
         engine: DhruvEngineHandle pointer.
@@ -362,6 +367,12 @@ def panchang_events(
         from_utc: Range start as ``UtcTime``.
         to_utc: Range end as ``UtcTime`` (must be after *from_utc*).
         include_mask: Bitmask of INCLUDE_* constants selecting kinds.
+        location: Optional observer location.  Required only when
+            *include_mask* selects location-dependent kinds (vaar, hora,
+            ghatika).
+        riseset_config: Optional ``DhruvRiseSetConfig`` pointer (e.g.
+            ``ffi.new("DhruvRiseSetConfig *", ...)``). Library default when
+            ``None``; read only for the location-dependent kinds.
         sankranti_config: Optional ``DhruvSankrantiConfig`` pointer (e.g.
             ``ffi.new("DhruvSankrantiConfig *", ...)``). Library default
             when ``None``.
@@ -375,12 +386,20 @@ def panchang_events(
     """
     c_from = _make_utc_c(from_utc)
     c_to = _make_utc_c(to_utc)
+    if location is not None:
+        has_location = 1
+        c_loc = _make_location_c(location)
+    else:
+        has_location = 0
+        c_loc = ffi.NULL
+    rs_cfg = riseset_config if riseset_config is not None else ffi.NULL
     cfg = sankranti_config if sankranti_config is not None else ffi.NULL
 
     handle = ffi.new("DhruvPanchangEventsHandle *")
     check(
         lib.dhruv_panchang_events(
-            engine, eop, c_from, c_to, include_mask, cfg, max_events, handle
+            engine, eop, c_from, c_to, include_mask,
+            has_location, c_loc, rs_cfg, cfg, max_events, handle,
         ),
         "panchang_events",
     )
@@ -400,6 +419,21 @@ def panchang_events(
             h, lib.dhruv_panchang_events_yoga_count,
             lib.dhruv_panchang_events_yoga_at,
             "DhruvYogaInfo *", _yoga_from_c, "yoga",
+        )
+        vaars = _collect_events(
+            h, lib.dhruv_panchang_events_vaar_count,
+            lib.dhruv_panchang_events_vaar_at,
+            "DhruvVaarInfo *", _vaar_from_c, "vaar",
+        )
+        horas = _collect_events(
+            h, lib.dhruv_panchang_events_hora_count,
+            lib.dhruv_panchang_events_hora_at,
+            "DhruvHoraInfo *", _hora_from_c, "hora",
+        )
+        ghatikas = _collect_events(
+            h, lib.dhruv_panchang_events_ghatika_count,
+            lib.dhruv_panchang_events_ghatika_at,
+            "DhruvGhatikaInfo *", _ghatika_from_c, "ghatika",
         )
         nakshatras = _collect_events(
             h, lib.dhruv_panchang_events_nakshatra_count,
@@ -435,6 +469,9 @@ def panchang_events(
             tithis=tithis,
             karanas=karanas,
             yogas=yogas,
+            vaars=vaars,
+            horas=horas,
+            ghatikas=ghatikas,
             nakshatras=nakshatras,
             masas=masas,
             ayanas=ayanas,

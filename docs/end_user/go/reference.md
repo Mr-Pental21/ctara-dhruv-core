@@ -338,18 +338,24 @@ Panchang and vedic basics:
   requested moment falls inside its `[Start, End)` window; stale or invalid
   values are silently ignored and recomputed. Feeding these back lets
   repeated nearby calls skip the expensive new-moon/sankranti searches.
-- `(*Engine).PanchangEvents(eop, fromUTC, toUTC, includeMask, sankrantiCfg, maxEvents)`
+- `(*Engine).PanchangEvents(eop, fromUTC, toUTC, includeMask, location, risesetCfg, sankrantiCfg, maxEvents)`
   Range sweep returning `PanchangEventsResult` with exact per-kind segment
-  slices (`Tithis`, `Karanas`, `Yogas`, `Nakshatras`, `Masas`, `Ayanas`,
-  `Varshas`) overlapping `[fromUTC, toUTC]`. The mask must be non-zero and
-  contain only `PanchangIncludeLocationIndependent` bits; location-dependent
-  bits (vaar/hora/ghatika) are rejected. Consecutive segments of one kind
-  chain exactly (`End` == next `Start`); the first segment of each kind may
-  start before `fromUTC` and the last may end after `toUTC`. `maxEvents`
-  caps total events across all kinds (0 selects `MaxPanchangEvents` =
-  50,000). When `Truncated` is true, `NextFromUTC` (a `*UtcTime`, nil when
-  not truncated) is the resume point: call again from `*NextFromUTC` and
-  drop resumed events whose (kind, `Start`) was already collected.
+  slices (`Tithis`, `Karanas`, `Yogas`, `Nakshatras`, `Vaars`, `Horas`,
+  `Ghatikas`, `Masas`, `Ayanas`, `Varshas`) overlapping `[fromUTC, toUTC]`.
+  The mask must be non-zero; any combination of `PanchangInclude*` element
+  bits is allowed. The location-dependent bits (vaar/hora/ghatika,
+  `PanchangIncludeLocationDependent`) require a non-nil
+  `location *GeoLocation` and fail with an invalid-search-config error
+  otherwise; `risesetCfg *RiseSetConfig` is read only for those elements
+  (nil selects the library defaults). Vaar segments are sunrise-to-sunrise
+  Vedic days, hora/ghatika their 24/60 subdivisions. Consecutive segments of
+  one kind chain exactly (`End` == next `Start`), including across Vedic-day
+  rolls; the first segment of each kind may start before `fromUTC` and the
+  last may end after `toUTC`. `maxEvents` caps total events across all kinds
+  (0 selects `MaxPanchangEvents` = 50,000). When `Truncated` is true,
+  `NextFromUTC` (a `*UtcTime`, nil when not truncated) is the resume point:
+  call again from `*NextFromUTC` and drop resumed events whose (kind,
+  `Start`) was already collected.
 - `(*Engine).ElongationAt`
 - `(*Engine).SiderealSumAt`
 - `(*Engine).VedicDaySunrises`

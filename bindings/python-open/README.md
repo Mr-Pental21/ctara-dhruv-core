@@ -5,7 +5,7 @@ canonical C ABI (`dhruv_ffi_c`) via `cffi`.
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=76`
+- ABI target: `DHRUV_API_VERSION=79`
 - Package root: `bindings/python-open`
 - Runtime dependency: `cffi`
 - Primary distribution: PyPI wheels plus sdist from unified `vX.Y.Z` tags
@@ -125,11 +125,17 @@ this replaces the former `include_panchang`/`include_calendar` flags), and
 fields, identical to the standalone panchang op.
 
 `ctara_dhruv.panchang.panchang_events(...)` streams exact panchang element
-segments over a UTC range for the location-independent kinds (tithi, karana,
-yoga, nakshatra, masa, ayana, varsha). Segments of one kind chain exactly
-(`end == next.start`); the first may start before `from_utc` and the last may
-end after `to_utc`. Sweeps are capped at `MAX_PANCHANG_EVENTS` (50,000)
-events; a truncated result carries a `next_from` resume point (dedup on
+segments over a UTC range for all ten kinds (tithi, karana, yoga, vaar,
+hora, ghatika, nakshatra, masa, ayana, varsha). The location-dependent
+kinds (vaar, hora, ghatika) require the optional `location` argument
+(`GeoLocation`); requesting them without one raises
+`InvalidSearchConfigError`. An optional `riseset_config` pointer tunes the
+sunrise model for those kinds. Segments of one kind chain exactly
+(`end == next.start`), including across Vedic-day rolls; vaar segments are
+sunrise-to-sunrise Vedic days, hora/ghatika their 24/60 subdivisions. The
+first segment may start before `from_utc` and the last may end after
+`to_utc`. Sweeps are capped at `MAX_PANCHANG_EVENTS` (50,000) events; a
+truncated result carries a `next_from` resume point (dedup on
 `(kind, start)` when merging).
 
 ## Amsha Surface

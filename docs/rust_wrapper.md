@@ -128,10 +128,10 @@ selected elements.
   charts are in request order. Types: `AmshaSeries`, `AmshaSeriesPoint`,
   `AmshaSeriesChart`; cap `MAX_AMSHA_SERIES_CELLS` (100,000 = points x unique
   requests).
-- `panchang_events(engine, eop, from_utc, to_utc, include_mask, config,
-  max_events)` — exact boundary sweep over location-independent panchang
-  elements only (`include_mask` restricted to
-  `PANCHANG_INCLUDE_LOCATION_INDEPENDENT` bits). Returns
+- `panchang_events(engine, eop, from_utc, to_utc, include_mask, location,
+  riseset_config, config, max_events)` — exact boundary sweep over any
+  panchang elements; `location: Option<GeoLocation>` is required only when a
+  location-dependent element (vaar, hora, ghatika) is selected. Returns
   `PanchangEventsResult` with per-kind `Vec`s of the existing per-moment
   `*Info` structs plus `truncated`/`next_from_utc`; cap `MAX_PANCHANG_EVENTS`
   (50,000, `max_events = 0` selects the ceiling).

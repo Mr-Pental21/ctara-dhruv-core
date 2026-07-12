@@ -172,11 +172,13 @@ values are silently recomputed. Unknown enum names are rejected with
 `:invalid_request`.
 
 `events/2` streams exact panchang element segments over a UTC range. The
-request takes `:from_utc` and `:to_utc`, an optional `:include_mask`
-restricted to location-independent elements (`tithi`, `karana`, `yoga`,
-`nakshatra`, `masa`, `ayana`, `varsha`; defaults to all of them — integer
-mask, name, or list of names/atoms, like `Panchang.daily/2`), and an
-optional `:max_events` cap (default `0` selects the 50,000 ceiling). The
+request takes `:from_utc` and `:to_utc`, an optional `:include_mask` (any
+element/group names or bits — integer mask, name, or list of names/atoms,
+like `Panchang.daily/2`; defaults to `location_independent`), an optional
+`:location` (required only when the selection includes `vaar`, `hora`, or
+`ghatika` — otherwise the call fails with a `search_error` naming the
+missing location), and an optional `:max_events` cap (default `0` selects
+the 50,000 ceiling). The
 result carries per-kind lists in the same shape as the per-moment ops
 (unselected kinds are `[]`) plus `:truncated` and `:next_from_utc`;
 consecutive segments of one kind chain exactly (`end == next start`). On

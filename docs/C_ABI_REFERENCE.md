@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 78`
+**ABI version:** `DHRUV_API_VERSION = 79`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -2501,6 +2501,18 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v79**: `dhruv_panchang_events` now supports the sunrise-anchored elements.
+The signature gained `has_location: uint8_t`, `location: const
+DhruvGeoLocation*` (nullable), and `riseset_config: const
+DhruvRiseSetConfig*` (nullable = library defaults) after `include_mask`;
+any `DHRUV_PANCHANG_INCLUDE_*` element bits are accepted, and a location is
+required only when a location-dependent bit (vaar, hora, ghatika) is set.
+New per-kind accessors `dhruv_panchang_events_vaar_count`/`_vaar_at`,
+`_hora_count`/`_hora_at`, `_ghatika_count`/`_ghatika_at` reuse the existing
+per-moment info structs. Vaar segments are sunrise-to-sunrise Vedic days
+(one sunrise search per day internally); hora/ghatika are the arithmetic
+24/60 subdivisions; segments chain exactly across Vedic-day rolls.
 
 **v78**: `DhruvPanchangComputeRequest` gained caller-cached calendar
 context: trailing fields `known_masa_valid`/`known_masa`,

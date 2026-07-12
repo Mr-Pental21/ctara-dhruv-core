@@ -1078,9 +1078,19 @@ func AmshaSeries(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, ste
 	return points, StatusOK
 }
 
-func PanchangEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, includeMask uint32, sankrantiCfg SankrantiConfig, maxEvents uint32) (PanchangEventsResult, Status) {
+func PanchangEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, includeMask uint32, location *GeoLocation, risesetCfg *RiseSetConfig, sankrantiCfg SankrantiConfig, maxEvents uint32) (PanchangEventsResult, Status) {
 	cfrom, cto := cUTC(fromUTC), cUTC(toUTC)
 	csank := cSankrantiConfig(sankrantiCfg)
+	var locPtr *C.DhruvGeoLocation
+	if location != nil {
+		cloc := cGeo(*location)
+		locPtr = &cloc
+	}
+	var risePtr *C.DhruvRiseSetConfig
+	if risesetCfg != nil {
+		crise := cRiseSetConfig(*risesetCfg)
+		risePtr = &crise
+	}
 	var handle C.DhruvPanchangEventsHandle
 	st := Status(C.dhruv_panchang_events(
 		engine.ptr,
@@ -1088,6 +1098,9 @@ func PanchangEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, 
 		&cfrom,
 		&cto,
 		C.uint32_t(includeMask),
+		boolU8(location != nil),
+		locPtr,
+		risePtr,
 		&csank,
 		C.uint32_t(maxEvents),
 		&handle,
@@ -1146,6 +1159,42 @@ func PanchangEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, 
 			return PanchangEventsResult{}, st
 		}
 		res.Nakshatras[i] = goNakshatraInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_vaar_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Vaars = make([]VaarInfo, int(count))
+	for i := range res.Vaars {
+		var v C.DhruvVaarInfo
+		if st := Status(C.dhruv_panchang_events_vaar_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Vaars[i] = goVaarInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_hora_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Horas = make([]HoraInfo, int(count))
+	for i := range res.Horas {
+		var v C.DhruvHoraInfo
+		if st := Status(C.dhruv_panchang_events_hora_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Horas[i] = goHoraInfo(v)
+	}
+
+	if st := Status(C.dhruv_panchang_events_ghatika_count(handle, &count)); st != StatusOK {
+		return PanchangEventsResult{}, st
+	}
+	res.Ghatikas = make([]GhatikaInfo, int(count))
+	for i := range res.Ghatikas {
+		var v C.DhruvGhatikaInfo
+		if st := Status(C.dhruv_panchang_events_ghatika_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return PanchangEventsResult{}, st
+		}
+		res.Ghatikas[i] = goGhatikaInfo(v)
 	}
 
 	if st := Status(C.dhruv_panchang_events_masa_count(handle, &count)); st != StatusOK {

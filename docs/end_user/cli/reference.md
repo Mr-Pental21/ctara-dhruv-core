@@ -163,18 +163,24 @@ dhruv panchang --date 2026-04-17T13:25:39Z --lat 28.6 --lon 77.2 --elements vaar
 ```
 
 `panchang-events` streams every element boundary in a UTC range in one call,
-instead of one per-moment `panchang` call per day. It supports
-location-independent elements only (`tithi`, `karana`, `yoga`, `nakshatra`,
-`masa`, `ayana`, `varsha`, or the group `location_independent`, the default),
-so it takes no location flags. Segment boundaries are exact and consecutive
-segments of one kind chain exactly; the first segment may start before
-`--start` and the last may end after `--end`. `--max-events` caps the total
-segments across all elements (0 = the 50,000 library ceiling); when hit, the
-output is marked truncated with a resume time:
+instead of one per-moment `panchang` call per day. All ten elements are
+supported; `--lat`/`--lon` are required only when the selection includes a
+location-dependent element (`vaar`, `hora`, `ghatika`) — the default
+selection (`location_independent`) needs no location flags. Segment
+boundaries are exact and consecutive segments of one kind chain exactly
+(including across sunrise rolls for vaar/hora/ghatika); the first segment
+may start before `--start` and the last may end after `--end`.
+`--max-events` caps the total segments across all elements (0 = the 50,000
+library ceiling); when hit, the output is marked truncated with a resume
+time:
 
 ```bash
 dhruv panchang-events --start 2026-04-01T00:00:00Z --end 2026-05-01T00:00:00Z \
   --elements tithi,masa
+
+# Ghatika lanes for a day need a location:
+dhruv panchang-events --start 2026-04-01T00:00:00Z --end 2026-04-02T00:00:00Z \
+  --elements ghatika --lat 28.6139 --lon 77.2090
 ```
 
 Jyotish and chart building:

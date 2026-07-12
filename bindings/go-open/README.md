@@ -110,8 +110,9 @@ The public `dhruv` package includes wrappers for:
 - grouped `gochar_events` return-chart and transit-aspect API with caller-named natal targets, including `GocharTransitRahu` and `GocharTransitKetu` alongside physical-body codes
 - panchang and calendar date APIs
 - range-sweep APIs: `(*Engine).AmshaSeries` (fixed-cadence slim varga
-  charts), `(*Engine).PanchangEvents` (exact location-independent panchang
-  segments with truncation/resume metadata), and
+  charts), `(*Engine).PanchangEvents` (exact panchang segments for all ten
+  elements, with an optional observer location for vaar/hora/ghatika and
+  truncation/resume metadata), and
   `(*Engine).AmshaLagnaEvents` (exact varga-lagna rashi transitions)
 - panchang/classifier/math helper APIs
 - graha longitude and jyotish date APIs
@@ -163,13 +164,19 @@ Three engine methods sweep a UTC range instead of a single epoch:
   request order (duplicates repeated); the varga lagna is always present and
   `Grahas`/`GrahasValid` are filled when `includeGrahas` is true. Points times
   unique requests must stay within `MaxAmshaSeriesCells` (100,000).
-- `(*Engine).PanchangEvents(eop, fromUTC, toUTC, includeMask, sankrantiCfg,
-  maxEvents)` returns `PanchangEventsResult` with per-kind slices (`Tithis`,
-  `Karanas`, `Yogas`, `Nakshatras`, `Masas`, `Ayanas`, `Varshas`). The mask
-  must contain only `PanchangIncludeLocationIndependent` bits. Segments of a
-  kind chain exactly (`End` == next `Start`); the first may start before
-  `fromUTC` and the last may end after `toUTC`. `maxEvents` caps the total
-  events across kinds (0 selects `MaxPanchangEvents`, 50,000).
+- `(*Engine).PanchangEvents(eop, fromUTC, toUTC, includeMask, location,
+  risesetCfg, sankrantiCfg, maxEvents)` returns `PanchangEventsResult` with
+  per-kind slices (`Tithis`, `Karanas`, `Yogas`, `Nakshatras`, `Vaars`,
+  `Horas`, `Ghatikas`, `Masas`, `Ayanas`, `Varshas`). Any combination of
+  `PanchangInclude*` element bits is allowed; the location-dependent bits
+  (vaar, hora, ghatika) require a non-nil `location *GeoLocation` and fail
+  with an invalid-search-config error otherwise. `risesetCfg *RiseSetConfig`
+  is read only for those elements (nil selects the library defaults). Vaar
+  segments are sunrise-to-sunrise Vedic days, hora/ghatika their 24/60
+  subdivisions. Segments of a kind chain exactly (`End` == next `Start`),
+  including across Vedic-day rolls; the first may start before `fromUTC` and
+  the last may end after `toUTC`. `maxEvents` caps the total events across
+  kinds (0 selects `MaxPanchangEvents`, 50,000).
 - `(*Engine).AmshaLagnaEvents(eop, fromUTC, toUTC, loc, sankrantiCfg,
   requests, maxSegments)` returns `AmshaLagnaEventsResult` with one
   `AmshaLagnaEntry` per unique request (duplicates collapsed) holding exact

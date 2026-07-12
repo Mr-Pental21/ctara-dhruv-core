@@ -543,12 +543,42 @@ defmodule CtaraDhruvTest do
           |> Enum.chunk_every(2, 1, :discard)
           |> Enum.each(fn [a, b] -> assert Map.fetch!(a, :end) == b.start end)
 
-          assert {:error, %CtaraDhruv.Error{}} =
+          # Location-dependent elements are opt-in and need :location.
+          assert {:ok, located_events} =
+                   Panchang.events(engine, %{
+                     from_utc: from_utc,
+                     to_utc: %{from_utc | day: 18},
+                     location: location,
+                     include_mask: [:vaar, :hora, :ghatika]
+                   })
+
+          assert length(located_events.vaar) in 3..5
+          assert length(located_events.hora) in 72..120
+          assert located_events.ghatika != []
+          assert located_events.tithi == []
+          refute located_events.truncated
+
+          for kind <- [:vaar, :hora, :ghatika] do
+            located_events
+            |> Map.fetch!(kind)
+            |> Enum.chunk_every(2, 1, :discard)
+            |> Enum.each(fn [a, b] -> assert Map.fetch!(a, :end) == b.start end)
+          end
+
+          # Hora indices cycle 0..23, including across Vedic-day rolls.
+          located_events.hora
+          |> Enum.chunk_every(2, 1, :discard)
+          |> Enum.each(fn [a, b] -> assert b.hora_index == rem(a.hora_index + 1, 24) end)
+
+          # Selecting a location-dependent element without a location fails.
+          assert {:error, %CtaraDhruv.Error{kind: :search_error, message: message}} =
                    Panchang.events(engine, %{
                      from_utc: from_utc,
                      to_utc: %{from_utc | day: 18},
                      include_mask: [:vaar]
                    })
+
+          assert message =~ "location required"
         else
           assert true
         end

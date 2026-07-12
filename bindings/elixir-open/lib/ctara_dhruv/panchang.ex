@@ -40,13 +40,16 @@ defmodule CtaraDhruv.Panchang do
   Panchang boundary events over `[from_utc, to_utc]`.
 
   The request takes `:from_utc` and `:to_utc`, an optional `:include_mask`
-  restricted to location-independent elements (`tithi`, `karana`, `yoga`,
-  `nakshatra`, `masa`, `ayana`, `varsha`; defaults to all of them), and an
-  optional `:max_events` cap (default `0` selects the 50,000 ceiling).
-  Returns per-kind lists in the same shape as the per-moment ops plus
-  `"truncated"` and `"next_from_utc"`; consecutive segments of one kind chain
-  exactly (`end == next start`). On truncation resume from `next_from_utc`
-  and deduplicate on `{kind, start}`.
+  accepting any element names or bits (defaults to the location-independent
+  elements `tithi`, `karana`, `yoga`, `nakshatra`, `masa`, `ayana`,
+  `varsha`), and an optional `:max_events` cap (default `0` selects the
+  50,000 ceiling). Location-dependent elements (`vaar`, `hora`, `ghatika`)
+  require `:location`; an optional `:riseset_config` tunes the underlying
+  sunrise searches. Returns per-kind lists in the same shape as the
+  per-moment ops (empty when unselected) plus `"truncated"` and
+  `"next_from_utc"`; consecutive segments of one kind chain exactly
+  (`end == next start`), including across Vedic-day rolls. On truncation
+  resume from `next_from_utc` and deduplicate on `{kind, start}`.
   """
   def events(engine, request),
     do: Native.call_engine(&Native.panchang_run/2, engine, Map.put(request, :op, :events))

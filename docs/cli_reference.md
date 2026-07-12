@@ -238,13 +238,15 @@ dhruv panchang-events --start 2024-03-01T00:00:00Z --end 2024-04-01T00:00:00Z \
 ```
 
 Streams exact element segments overlapping `[start, end]`, one warm-seeded
-boundary search per emitted segment. Location-independent elements only, so
-there are no location flags.
+boundary search per emitted segment (sunrise-anchored elements cost one
+sunrise search per Vedic day). `--lat`/`--lon` are required only when the
+selection includes a location-dependent element (vaar, hora, ghatika).
 
 | Flag | Description |
 |---|---|
 | `--start` / `--end` | UTC range (`YYYY-MM-DDThh:mm:ssZ`) |
-| `--elements` | Comma-separated element or group names (location-independent only, default `location_independent`): `tithi,karana,yoga,nakshatra,masa,ayana,varsha,location_independent` |
+| `--elements` | Comma-separated element or group names (default `location_independent`): `tithi,karana,yoga,vaar,hora,ghatika,nakshatra,masa,ayana,varsha,all,all_core,all_calendar,location_independent,location_dependent` |
+| `--lat` / `--lon` / `--alt` | Observer location; required only for vaar/hora/ghatika selections |
 | `--max-events` | Maximum total segments across all elements (0 = library ceiling of 50000) |
 
 Consecutive segments of one kind chain exactly (`end == next start`); the
