@@ -31,6 +31,12 @@ This repository is clean-room and permissive-license only.
 - `ctara-dhruv-core` is the primary open-source project scope.
 - Do not add proprietary-only logic through flags, generated code, or shared files.
 
+## General-Purpose Library Boundary
+
+- Dhruv is a general-purpose library intended for use by many independent applications and projects.
+- Keep core behavior, public APIs, configuration, examples, and documentation application-neutral. Do not add consumer-specific names, schemas, tables, migration instructions, or special-case behavior to this repository.
+- A downstream application may be used to discover requirements, but implement and describe the resulting capability generically. Keep application-specific integration and migration guidance in that application's repository.
+
 ## Dependency Rules
 
 - New dependency requires allowlist verification.

@@ -35,6 +35,12 @@ Scope: this file governs AI agent behavior in `ctara-dhruv-core`.
 - This repository is fully open source.
 - Do not introduce proprietary-only behavior through feature flags, shared files, generated artifacts, or build-time hooks.
 
+## General-Purpose Library Boundary
+
+- Dhruv is a general-purpose library intended for use by many independent applications and projects.
+- Keep core behavior, public APIs, configuration, examples, and documentation application-neutral. Do not add consumer-specific names, schemas, tables, migration instructions, or special-case behavior to this repository.
+- A downstream application may be used to discover requirements, but implement and describe the resulting capability generically. Keep application-specific integration and migration guidance in that application's repository.
+
 ## Required Workflow For Agent Changes
 
 1. Before adding a dependency, verify license allowlist compliance.
