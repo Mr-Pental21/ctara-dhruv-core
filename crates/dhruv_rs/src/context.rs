@@ -1,6 +1,6 @@
 use dhruv_config::ConfigResolver;
 use dhruv_core::{Engine, EngineConfig, LoadedSpkInfo, SpkReplaceReport};
-use dhruv_time::TimeConversionPolicy;
+use dhruv_time::{EopKernel, TimeConversionPolicy};
 use std::path::PathBuf;
 
 use crate::DhruvError;
@@ -13,6 +13,7 @@ pub struct DhruvContext {
     engine: Engine,
     resolver: Option<ConfigResolver>,
     time_policy: TimeConversionPolicy,
+    eop: Option<EopKernel>,
 }
 
 impl DhruvContext {
@@ -23,6 +24,7 @@ impl DhruvContext {
             engine,
             resolver: None,
             time_policy: TimeConversionPolicy::default(),
+            eop: None,
         })
     }
 
@@ -36,7 +38,20 @@ impl DhruvContext {
             engine,
             resolver: Some(resolver),
             time_policy: TimeConversionPolicy::default(),
+            eop: None,
         })
+    }
+
+    /// Attach caller-loaded Earth orientation data used by geographic eclipse
+    /// and rise/set calculations.
+    pub fn with_eop(mut self, eop: EopKernel) -> Self {
+        self.eop = Some(eop);
+        self
+    }
+
+    /// Borrow the optional Earth orientation kernel.
+    pub fn eop(&self) -> Option<&EopKernel> {
+        self.eop.as_ref()
     }
 
     /// Borrow the loaded engine.

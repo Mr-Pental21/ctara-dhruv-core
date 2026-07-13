@@ -7,12 +7,15 @@ use std::path::Path;
 
 use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::{
-    ChandraGrahanType, GrahanConfig, next_chandra_grahan, next_surya_grahan, prev_chandra_grahan,
-    prev_surya_grahan, search_chandra_grahan, search_surya_grahan,
+    ChandraGrahanType, GeoLocation, GrahanConfig, SuryaGrahanType, next_chandra_grahan,
+    next_surya_grahan, prev_chandra_grahan, prev_surya_grahan, search_chandra_grahan,
+    search_surya_grahan,
 };
+use dhruv_time::EopKernel;
 
 const SPK_PATH: &str = "../../kernels/data/de442s.bsp";
 const LSK_PATH: &str = "../../kernels/data/naif0012.tls";
+const EOP_PATH: &str = "../../kernels/data/finals2000A.all";
 
 fn load_engine() -> Option<Engine> {
     if !Path::new(SPK_PATH).exists() || !Path::new(LSK_PATH).exists() {
@@ -158,15 +161,14 @@ fn prev_chandra_grahan_from_2024() {
 // Surya grahan (solar eclipses)
 // ---------------------------------------------------------------------------
 
-/// 2024-Apr-08: Surya grahan (Total for surface observers).
-/// NASA catalog: Greatest eclipse 18:18 UTC.
-/// Geocentric classification may differ from surface classification.
+/// 2024-Apr-08: total eclipse with a North American central path.
 #[test]
 fn surya_grahan_2024_apr() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2024, 3, 1.0);
     let config = GrahanConfig::default();
-    let result = next_surya_grahan(&engine, jd_start, &config).expect("search should succeed");
+    let result =
+        next_surya_grahan(&engine, None, jd_start, None, &config).expect("search should succeed");
     let grahan = result.expect("should find a surya grahan");
 
     let expected_jd = jd_from_date(2024, 4, 8.763); // ~18:18 UTC
@@ -177,8 +179,7 @@ fn surya_grahan_2024_apr() {
         grahan.greatest_grahan_jd,
         expected_jd
     );
-    // Geocentric: could be Partial or Total depending on exact geometry
-    // Magnitude should be close to 1.0 (Moon is close to Sun's size)
+    assert_eq!(grahan.grahan_type, SuryaGrahanType::Total);
     assert!(
         grahan.magnitude > 0.90,
         "surya grahan magnitude = {}, expected > 0.90",
@@ -197,17 +198,24 @@ fn surya_grahan_2024_apr() {
         "sun declination {} outside golden band",
         grahan.sun_declination_deg
     );
+    assert!(
+        (grahan.gamma - 0.343).abs() < 0.02,
+        "gamma={}",
+        grahan.gamma
+    );
+    let point = grahan.greatest_location.expect("greatest location");
+    assert!((point.latitude_deg - 25.3).abs() < 1.0);
+    assert!((point.longitude_deg + 104.3).abs() < 1.0);
 }
 
-/// 2024-Oct-02: Surya grahan (Annular for surface observers).
-/// NASA catalog: Greatest eclipse ~18:45 UTC.
-/// Geocentric classification may differ from surface classification.
+/// 2024-Oct-02: annular eclipse.
 #[test]
 fn surya_grahan_2024_oct() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2024, 9, 1.0);
     let config = GrahanConfig::default();
-    let result = next_surya_grahan(&engine, jd_start, &config).expect("search should succeed");
+    let result =
+        next_surya_grahan(&engine, None, jd_start, None, &config).expect("search should succeed");
     let grahan = result.expect("should find a surya grahan");
 
     let expected_jd = jd_from_date(2024, 10, 2.78); // ~18:45 UTC
@@ -217,12 +225,123 @@ fn surya_grahan_2024_oct() {
         "surya grahan off by {diff_hours:.1}h, got JD {}",
         grahan.greatest_grahan_jd
     );
-    // Geocentric: could be Partial or Annular
+    assert_eq!(grahan.grahan_type, SuryaGrahanType::Annular);
     assert!(
         grahan.magnitude > 0.90,
         "surya grahan magnitude = {}, expected > 0.90",
         grahan.magnitude
     );
+}
+
+#[test]
+fn surya_grahan_path_and_local_circumstances() {
+    let Some(engine) = load_engine() else { return };
+    let Ok(eop) = EopKernel::load(Path::new(EOP_PATH)) else {
+        return;
+    };
+    let config = GrahanConfig {
+        include_path: true,
+        path_step_minutes: 5,
+        boundary_step_deg: 10,
+        ..Default::default()
+    };
+    let location = GeoLocation::new(25.2854, -104.3, 0.0);
+    let grahan = next_surya_grahan(
+        &engine,
+        Some(&eop),
+        jd_from_date(2024, 3, 1.0),
+        Some(location),
+        &config,
+    )
+    .expect("search")
+    .expect("eclipse");
+    assert!(grahan.path.len() > 30);
+    assert!(grahan.footprints.len() > 50);
+    let peak = &grahan.path[grahan.path.len() / 2];
+    assert!(
+        (50.0..400.0).contains(&peak.width_km),
+        "width={}",
+        peak.width_km
+    );
+    assert!((120.0..420.0).contains(&peak.central_duration_seconds));
+    let local = grahan.local.expect("local circumstances");
+    assert!(local.visible);
+    assert_eq!(local.grahan_type, Some(SuryaGrahanType::Total));
+    assert!((240.0..300.0).contains(&local.central_duration_seconds));
+}
+
+#[test]
+fn surya_hybrid_and_noncentral_classification() {
+    let Some(engine) = load_engine() else { return };
+    let config = GrahanConfig::default();
+    let hybrid = next_surya_grahan(&engine, None, jd_from_date(2013, 10, 1.0), None, &config)
+        .expect("search")
+        .expect("hybrid");
+    assert_eq!(hybrid.grahan_type, SuryaGrahanType::Hybrid);
+
+    let noncentral = next_surya_grahan(&engine, None, jd_from_date(2014, 4, 1.0), None, &config)
+        .expect("search")
+        .expect("noncentral annular");
+    assert_eq!(noncentral.grahan_type, SuryaGrahanType::Annular);
+}
+
+#[test]
+fn surya_antimeridian_and_polar_footprint_geometry() {
+    let Some(engine) = load_engine() else { return };
+    let config = GrahanConfig {
+        include_path: true,
+        path_step_minutes: 10,
+        boundary_step_deg: 10,
+        ..Default::default()
+    };
+    let antimeridian = next_surya_grahan(&engine, None, jd_from_date(2002, 6, 1.0), None, &config)
+        .expect("search")
+        .expect("annular eclipse");
+    assert_eq!(antimeridian.grahan_type, SuryaGrahanType::Annular);
+    assert!(antimeridian.path.windows(2).any(|pair| {
+        (pair[1].center.longitude_deg - pair[0].center.longitude_deg).abs() > 180.0
+    }));
+    assert!(antimeridian.path.iter().all(|point| {
+        (-180.0..=180.0).contains(&point.center.longitude_deg)
+            && (-90.0..=90.0).contains(&point.center.latitude_deg)
+    }));
+
+    let polar = next_surya_grahan(&engine, None, jd_from_date(2025, 3, 1.0), None, &config)
+        .expect("search")
+        .expect("partial eclipse");
+    assert_eq!(polar.grahan_type, SuryaGrahanType::Partial);
+    assert!(polar.path.is_empty());
+    assert!(polar.footprints.iter().any(|footprint| {
+        footprint
+            .boundary
+            .iter()
+            .any(|point| point.latitude_deg > 80.0)
+    }));
+}
+
+#[test]
+fn surya_2001_2100_catalog_distribution() {
+    let Some(engine) = load_engine() else { return };
+    let events = search_surya_grahan(
+        &engine,
+        None,
+        jd_from_date(2001, 1, 1.0),
+        jd_from_date(2101, 1, 1.0),
+        None,
+        &GrahanConfig::default(),
+    )
+    .expect("century search");
+    let count = |kind| {
+        events
+            .iter()
+            .filter(|event| event.grahan_type == kind)
+            .count()
+    };
+    assert_eq!(events.len(), 224);
+    assert_eq!(count(SuryaGrahanType::Partial), 77);
+    assert_eq!(count(SuryaGrahanType::Annular), 72);
+    assert_eq!(count(SuryaGrahanType::Total), 68);
+    assert_eq!(count(SuryaGrahanType::Hybrid), 7);
 }
 
 /// Search for surya grahan in 2024 — should find 2 (Apr total, Oct annular).
@@ -232,8 +351,8 @@ fn surya_grahan_2024_count() {
     let jd_start = jd_from_date(2024, 1, 1.0);
     let jd_end = jd_from_date(2025, 1, 1.0);
     let config = GrahanConfig::default();
-    let results =
-        search_surya_grahan(&engine, jd_start, jd_end, &config).expect("search should succeed");
+    let results = search_surya_grahan(&engine, None, jd_start, jd_end, None, &config)
+        .expect("search should succeed");
 
     assert!(
         results.len() >= 2,
@@ -248,7 +367,8 @@ fn prev_surya_grahan_from_2024() {
     let Some(engine) = load_engine() else { return };
     let jd = jd_from_date(2024, 3, 1.0);
     let config = GrahanConfig::default();
-    let result = prev_surya_grahan(&engine, jd, &config).expect("search should succeed");
+    let result =
+        prev_surya_grahan(&engine, None, jd, None, &config).expect("search should succeed");
     let grahan = result.expect("should find previous surya grahan");
 
     assert!(grahan.greatest_grahan_jd < jd);

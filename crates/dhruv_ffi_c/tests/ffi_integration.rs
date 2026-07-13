@@ -17,6 +17,11 @@ const ZEROED_UTC: DhruvUtcTime = DhruvUtcTime {
     minute: 0,
     second: 0.0,
 };
+const ZEROED_LOCATION: DhruvGeoLocation = DhruvGeoLocation {
+    latitude_deg: 0.0,
+    longitude_deg: 0.0,
+    altitude_m: 0.0,
+};
 
 fn kernel_base() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../kernels/data")
@@ -1709,6 +1714,8 @@ fn ffi_utc_chandra_grahan_roundtrip() {
         start_utc: ZEROED_UTC,
         end_utc: ZEROED_UTC,
         config: dhruv_grahan_config_default(),
+        location_valid: 0,
+        location: ZEROED_LOCATION,
     };
     let mut jd_result: DhruvChandraGrahanResult = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
@@ -1812,6 +1819,10 @@ fn ffi_utc_surya_grahan_roundtrip() {
     assert_eq!(status, DhruvStatus::Ok);
 
     let jd_start = calendar_to_jd(2024, 3, 1.0);
+    let mut grahan_config = dhruv_grahan_config_default();
+    grahan_config.include_path = 1;
+    grahan_config.path_step_minutes = 15;
+    grahan_config.boundary_step_deg = 15;
     let request_jd = DhruvGrahanSearchRequest {
         grahan_kind: DHRUV_GRAHAN_KIND_SURYA,
         query_mode: DHRUV_GRAHAN_QUERY_MODE_NEXT,
@@ -1822,7 +1833,9 @@ fn ffi_utc_surya_grahan_roundtrip() {
         at_utc: ZEROED_UTC,
         start_utc: ZEROED_UTC,
         end_utc: ZEROED_UTC,
-        config: dhruv_grahan_config_default(),
+        config: grahan_config,
+        location_valid: 0,
+        location: ZEROED_LOCATION,
     };
     let mut jd_result: DhruvSuryaGrahanResult = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
@@ -1908,6 +1921,28 @@ fn ffi_utc_surya_grahan_roundtrip() {
         jd_result.c4_jd < 0.0,
         "c4 presence mismatch"
     );
+    assert!(jd_result.path_count > 0);
+    assert!(jd_result.footprint_count > 0);
+    let mut path_point: DhruvSuryaGrahanPathPoint = unsafe { std::mem::zeroed() };
+    let status =
+        unsafe { dhruv_surya_grahan_path_point_at(jd_result.geometry_handle, 0, &mut path_point) };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!((-90.0..=90.0).contains(&path_point.center.latitude_deg));
+    let mut footprint: DhruvSuryaGrahanFootprint = unsafe { std::mem::zeroed() };
+    let status =
+        unsafe { dhruv_surya_grahan_footprint_at(jd_result.geometry_handle, 0, &mut footprint) };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!(footprint.boundary_count > 0);
+    let mut boundary_point: DhruvEclipseGeoPoint = unsafe { std::mem::zeroed() };
+    let status = unsafe {
+        dhruv_surya_grahan_footprint_point_at(jd_result.geometry_handle, 0, 0, &mut boundary_point)
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!((-180.0..=180.0).contains(&boundary_point.longitude_deg));
+    unsafe {
+        dhruv_surya_grahan_geometry_free(jd_result.geometry_handle);
+        dhruv_surya_grahan_geometry_free(utc_path_result.geometry_handle);
+    }
 
     unsafe { dhruv_lsk_free(lsk_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };

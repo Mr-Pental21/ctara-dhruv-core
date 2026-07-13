@@ -443,6 +443,9 @@ type ConjunctionEvent struct {
 type GrahanConfig struct {
 	IncludePenumbral   bool
 	IncludePeakDetails bool
+	IncludePath        bool
+	PathStepMinutes    uint32
+	BoundaryStepDeg    uint32
 }
 
 type GrahanSearchRequest struct {
@@ -456,6 +459,7 @@ type GrahanSearchRequest struct {
 	StartUTC   UtcTime
 	EndUTC     UtcTime
 	Config     GrahanConfig
+	Location   *GeoLocation
 }
 
 type ChandraGrahanResult struct {
@@ -484,25 +488,83 @@ type ChandraGrahanResult struct {
 	MoonDeclinationDeg    float64
 }
 
+type EclipseGeoPoint struct {
+	LatitudeDeg  float64
+	LongitudeDeg float64
+}
+
+type SuryaGrahanPathPoint struct {
+	JdTdb                  float64
+	UTC                    UtcTime
+	Center                 EclipseGeoPoint
+	NorthernLimit          *EclipseGeoPoint
+	SouthernLimit          *EclipseGeoPoint
+	WidthKm                float64
+	CentralDurationSeconds float64
+	SunAltitudeDeg         float64
+	SunAzimuthDeg          float64
+	GrahanType             int32
+}
+
+type SuryaGrahanFootprint struct {
+	JdTdb    float64
+	UTC      UtcTime
+	Boundary []EclipseGeoPoint
+}
+
 type SuryaGrahanResult struct {
-	GrahanType           int32
-	Magnitude            float64
-	GreatestGrahanUTC    UtcTime
-	GreatestGrahanJd     float64
-	C1UTC                *UtcTime
-	C1Jd                 float64
-	C2UTC                *UtcTime
-	C2Jd                 float64
-	C3UTC                *UtcTime
-	C3Jd                 float64
-	C4UTC                *UtcTime
-	C4Jd                 float64
-	MoonEclipticLatDeg   float64
-	AngularSeparationDeg float64
+	GrahanType            int32
+	Magnitude             float64
+	Obscuration           float64
+	ApparentDiameterRatio float64
+	Gamma                 float64
+	GreatestGrahanUTC     UtcTime
+	GreatestGrahanJd      float64
+	C1UTC                 *UtcTime
+	C1Jd                  float64
+	C2UTC                 *UtcTime
+	C2Jd                  float64
+	C3UTC                 *UtcTime
+	C3Jd                  float64
+	C4UTC                 *UtcTime
+	C4Jd                  float64
+	MoonEclipticLatDeg    float64
+	AngularSeparationDeg  float64
 	// Sun's apparent geocentric RA/declination at greatest grahan, degrees
 	// (equinox of date, nutation applied).
-	SunRightAscensionDeg float64
-	SunDeclinationDeg    float64
+	SunRightAscensionDeg        float64
+	SunDeclinationDeg           float64
+	GreatestLocation            *GeoLocation
+	BesselX                     float64
+	BesselY                     float64
+	BesselDdeg                  float64
+	BesselMuDeg                 float64
+	BesselL1                    float64
+	BesselL2                    float64
+	BesselTanF1                 float64
+	BesselTanF2                 float64
+	PathCount                   uint32
+	FootprintCount              uint32
+	Path                        []SuryaGrahanPathPoint
+	Footprints                  []SuryaGrahanFootprint
+	LocalValid                  bool
+	LocalVisible                bool
+	LocalGrahanType             int32
+	LocalMaximumJd              float64
+	LocalMaximumUTC             *UtcTime
+	LocalC1Jd                   float64
+	LocalC1UTC                  *UtcTime
+	LocalC2Jd                   float64
+	LocalC2UTC                  *UtcTime
+	LocalC3Jd                   float64
+	LocalC3UTC                  *UtcTime
+	LocalC4Jd                   float64
+	LocalC4UTC                  *UtcTime
+	LocalMagnitude              float64
+	LocalObscuration            float64
+	LocalSunAltitudeDeg         float64
+	LocalSunAzimuthDeg          float64
+	LocalCentralDurationSeconds float64
 }
 
 type StationaryConfig struct {

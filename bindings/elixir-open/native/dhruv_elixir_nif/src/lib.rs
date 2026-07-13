@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -471,6 +473,9 @@ struct SearchConfigInput {
     convergence_days: Option<f64>,
     include_penumbral: Option<bool>,
     include_peak_details: Option<bool>,
+    include_path: Option<bool>,
+    path_step_minutes: Option<u32>,
+    boundary_step_deg: Option<u32>,
     numerical_step_days: Option<f64>,
 }
 
@@ -1978,6 +1983,15 @@ fn to_grahan_config(
         if let Some(include_peak_details) = input.include_peak_details {
             config.include_peak_details = include_peak_details;
         }
+        if let Some(include_path) = input.include_path {
+            config.include_path = include_path;
+        }
+        if let Some(path_step_minutes) = input.path_step_minutes {
+            config.path_step_minutes = path_step_minutes;
+        }
+        if let Some(boundary_step_deg) = input.boundary_step_deg {
+            config.boundary_step_deg = boundary_step_deg;
+        }
     }
     config
 }
@@ -2844,13 +2858,13 @@ fn conjunction_event_json(event: dhruv_search::ConjunctionEvent) -> Value {
 fn grahan_result_json(result: GrahanResult) -> Value {
     match result {
         GrahanResult::ChandraSingle(event) => {
-            json!({ "kind": "chandra", "events": event.map(chandra_grahan_json) })
+            json!({ "kind": "chandra", "events": event.map(|value| chandra_grahan_json(*value)) })
         }
         GrahanResult::ChandraMany(events) => {
             json!({ "kind": "chandra", "events": events.into_iter().map(chandra_grahan_json).collect::<Vec<_>>() })
         }
         GrahanResult::SuryaSingle(event) => {
-            json!({ "kind": "surya", "events": event.map(surya_grahan_json) })
+            json!({ "kind": "surya", "events": event.map(|value| surya_grahan_json(*value)) })
         }
         GrahanResult::SuryaMany(events) => {
             json!({ "kind": "surya", "events": events.into_iter().map(surya_grahan_json).collect::<Vec<_>>() })
@@ -2888,6 +2902,9 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
     json!({
         "grahan_type": debug_name(event.grahan_type),
         "magnitude": event.magnitude,
+        "obscuration": event.obscuration,
+        "apparent_diameter_ratio": event.apparent_diameter_ratio,
+        "gamma": event.gamma,
         "greatest_grahan_utc": utc_json(event.greatest_grahan_utc),
         "greatest_grahan_jd": event.greatest_grahan_jd,
         "c1_utc": event.c1_utc.map(utc_json),
@@ -2901,7 +2918,43 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
         "moon_ecliptic_lat_deg": event.moon_ecliptic_lat_deg,
         "angular_separation_deg": event.angular_separation_deg,
         "sun_right_ascension_deg": event.sun_right_ascension_deg,
-        "sun_declination_deg": event.sun_declination_deg
+        "sun_declination_deg": event.sun_declination_deg,
+        "greatest_location": event.greatest_location.map(|p| json!({
+            "latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg
+        })),
+        "besselian": {
+            "utc": utc_json(event.besselian.utc),
+            "jd_tdb": event.besselian.jd_tdb,
+            "x": event.besselian.x, "y": event.besselian.y,
+            "d_deg": event.besselian.d_deg, "mu_deg": event.besselian.mu_deg,
+            "l1": event.besselian.l1, "l2": event.besselian.l2,
+            "tan_f1": event.besselian.tan_f1, "tan_f2": event.besselian.tan_f2
+        },
+        "path": event.path.into_iter().map(|p| json!({
+            "utc": utc_json(p.utc), "jd_tdb": p.jd_tdb,
+            "center": {"latitude_deg": p.center.latitude_deg, "longitude_deg": p.center.longitude_deg},
+            "northern_limit": p.northern_limit.map(|v| json!({"latitude_deg": v.latitude_deg, "longitude_deg": v.longitude_deg})),
+            "southern_limit": p.southern_limit.map(|v| json!({"latitude_deg": v.latitude_deg, "longitude_deg": v.longitude_deg})),
+            "width_km": p.width_km, "central_duration_seconds": p.central_duration_seconds,
+            "sun_altitude_deg": p.sun_altitude_deg, "sun_azimuth_deg": p.sun_azimuth_deg,
+            "grahan_type": debug_name(p.grahan_type)
+        })).collect::<Vec<_>>(),
+        "footprints": event.footprints.into_iter().map(|f| json!({
+            "utc": utc_json(f.utc), "jd_tdb": f.jd_tdb,
+            "boundary": f.boundary.into_iter().map(|p| json!({"latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg})).collect::<Vec<_>>()
+        })).collect::<Vec<_>>(),
+        "local": event.local.map(|l| json!({
+            "location": {"latitude_deg": l.location.latitude_deg, "longitude_deg": l.location.longitude_deg, "altitude_m": l.location.altitude_m},
+            "visible": l.visible, "grahan_type": l.grahan_type.map(debug_name),
+            "maximum_utc": l.maximum_utc.map(utc_json), "maximum_jd": l.maximum_jd,
+            "c1_utc": l.c1_utc.map(utc_json), "c1_jd": l.c1_jd,
+            "c2_utc": l.c2_utc.map(utc_json), "c2_jd": l.c2_jd,
+            "c3_utc": l.c3_utc.map(utc_json), "c3_jd": l.c3_jd,
+            "c4_utc": l.c4_utc.map(utc_json), "c4_jd": l.c4_jd,
+            "magnitude": l.magnitude, "obscuration": l.obscuration,
+            "sun_altitude_deg": l.sun_altitude_deg, "sun_azimuth_deg": l.sun_azimuth_deg,
+            "central_duration_seconds": l.central_duration_seconds
+        }))
     })
 }
 
@@ -4224,9 +4277,16 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                             error_payload("invalid_request", "kind is required")
                         })?)?,
                         config: to_grahan_config(state, request.config.as_ref()),
+                        location: request.location.map(|location| {
+                            dhruv_search::GeoLocation::new(
+                                location.latitude_deg,
+                                location.longitude_deg,
+                                location.altitude_m.unwrap_or(0.0),
+                            )
+                        }),
                         query,
                     };
-                dhruv_search::grahan(engine, &op)
+                dhruv_search::grahan(engine, state.eop.as_ref(), &op)
                     .map(grahan_result_json)
                     .map_err(|err| map_error("search_error", err))
             }

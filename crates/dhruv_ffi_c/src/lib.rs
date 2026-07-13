@@ -12,19 +12,20 @@ use dhruv_core::{
 };
 use dhruv_frames::PrecessionModel;
 use dhruv_search::{
-    ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, EventWindow,
-    GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig, GocharEventsOperation,
-    GocharEventsResult, GocharReference, GocharTransitBody, GrahaLongitudeKind,
-    GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent, MaxSpeedType, NatalTargetKind,
-    NatalTargetLongitude, SankrantiConfig, SearchError, StationType, StationaryConfig,
-    StationaryEvent, SuryaGrahan, SuryaGrahanType, TajakaReturnBasis, TajakaReturnEvent,
-    TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
-    amsha_charts_for_date, avastha_for_date, ayana_for_date, balas_for_date, bhavabala_for_date,
-    body_ecliptic_lon_lat, charakaraka_for_date, dasha_child_period_with_inputs,
-    dasha_children_with_inputs, dasha_complete_level_with_inputs, dasha_hierarchy_with_inputs,
-    dasha_level0_entity_with_inputs, dasha_level0_with_inputs, dasha_snapshot_with_inputs,
-    elongation_at, full_kundali_for_date, ghatika_for_date, ghatika_from_sunrises, gochar_events,
-    graha_longitudes, hora_for_date, hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
+    ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, EclipseGeoPoint,
+    EventWindow, GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig,
+    GocharEventsOperation, GocharEventsResult, GocharReference, GocharTransitBody,
+    GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent,
+    MaxSpeedType, NatalTargetKind, NatalTargetLongitude, SankrantiConfig, SearchError, StationType,
+    StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanPathPoint,
+    SuryaGrahanType, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
+    TransitAspectOwner, TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date,
+    ayana_for_date, balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat,
+    charakaraka_for_date, dasha_child_period_with_inputs, dasha_children_with_inputs,
+    dasha_complete_level_with_inputs, dasha_hierarchy_with_inputs, dasha_level0_entity_with_inputs,
+    dasha_level0_with_inputs, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
+    ghatika_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes, hora_for_date,
+    hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
     moving_osculating_apogees_for_date, nakshatra_at, nakshatra_for_date, next_amavasya,
     next_chandra_grahan, next_conjunction, next_max_speed, next_purnima, next_sankranti,
     next_specific_sankranti, next_stationary, next_surya_grahan, prev_amavasya,
@@ -65,7 +66,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 79;
+pub const DHRUV_API_VERSION: u32 = 80;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -3600,6 +3601,13 @@ pub struct DhruvGrahanConfig {
     pub include_penumbral: u8,
     /// Include ecliptic latitude and angular separation at peak: 1 = yes, 0 = no.
     pub include_peak_details: u8,
+    /// Include geographic solar path products. Dynamic path coordinates are
+    /// available through the structured Rust/Elixir surfaces.
+    pub include_path: u8,
+    /// Geographic path sampling cadence in minutes.
+    pub path_step_minutes: u32,
+    /// Shadow-boundary angular sampling in degrees.
+    pub boundary_step_deg: u32,
 }
 
 /// Grahan kind selector: lunar eclipse.
@@ -3638,6 +3646,10 @@ pub struct DhruvGrahanSearchRequest {
     pub end_utc: DhruvUtcTime,
     /// Grahan search configuration.
     pub config: DhruvGrahanConfig,
+    /// Whether `location` is present for local solar circumstances.
+    pub location_valid: u8,
+    /// Optional observer location.
+    pub location: DhruvGeoLocation,
 }
 
 /// Returns default grahan configuration.
@@ -3646,6 +3658,9 @@ pub extern "C" fn dhruv_grahan_config_default() -> DhruvGrahanConfig {
     DhruvGrahanConfig {
         include_penumbral: 1,
         include_peak_details: 1,
+        include_path: 0,
+        path_step_minutes: 1,
+        boundary_step_deg: 2,
     }
 }
 
@@ -3653,6 +3668,9 @@ fn grahan_config_from_ffi(cfg: &DhruvGrahanConfig) -> GrahanConfig {
     GrahanConfig {
         include_penumbral: cfg.include_penumbral != 0,
         include_peak_details: cfg.include_peak_details != 0,
+        include_path: cfg.include_path != 0,
+        path_step_minutes: cfg.path_step_minutes,
+        boundary_step_deg: cfg.boundary_step_deg,
     }
 }
 
@@ -3766,14 +3784,116 @@ impl From<&ChandraGrahan> for DhruvChandraGrahanResult {
     }
 }
 
-/// C-compatible surya grahan result.
+/// Opaque owner for the variable-length map geometry attached to one solar
+/// eclipse result. Free it with `dhruv_surya_grahan_geometry_free`.
+pub type DhruvSuryaGrahanGeometryHandle = *mut std::ffi::c_void;
+
+#[derive(Debug, Clone)]
+struct OwnedSuryaGrahanGeometry {
+    path: Vec<SuryaGrahanPathPoint>,
+    footprints: Vec<SuryaGrahanFootprint>,
+}
+
+/// Geographic point used by solar-eclipse map geometry.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvEclipseGeoPoint {
+    pub latitude_deg: f64,
+    pub longitude_deg: f64,
+}
+
+impl From<EclipseGeoPoint> for DhruvEclipseGeoPoint {
+    fn from(value: EclipseGeoPoint) -> Self {
+        Self {
+            latitude_deg: value.latitude_deg,
+            longitude_deg: value.longitude_deg,
+        }
+    }
+}
+
+/// One timestamped point on a solar-eclipse central path.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaGrahanPathPoint {
+    pub jd_tdb: f64,
+    pub utc: DhruvUtcTime,
+    pub center: DhruvEclipseGeoPoint,
+    pub northern_limit_valid: u8,
+    pub northern_limit: DhruvEclipseGeoPoint,
+    pub southern_limit_valid: u8,
+    pub southern_limit: DhruvEclipseGeoPoint,
+    pub width_km: f64,
+    pub central_duration_seconds: f64,
+    pub sun_altitude_deg: f64,
+    pub sun_azimuth_deg: f64,
+    pub grahan_type: i32,
+}
+
+impl From<&SuryaGrahanPathPoint> for DhruvSuryaGrahanPathPoint {
+    fn from(value: &SuryaGrahanPathPoint) -> Self {
+        Self {
+            jd_tdb: value.jd_tdb,
+            utc: utc_time_to_ffi(&value.utc),
+            center: value.center.into(),
+            northern_limit_valid: u8::from(value.northern_limit.is_some()),
+            northern_limit: value
+                .northern_limit
+                .map(Into::into)
+                .unwrap_or(DhruvEclipseGeoPoint {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                }),
+            southern_limit_valid: u8::from(value.southern_limit.is_some()),
+            southern_limit: value
+                .southern_limit
+                .map(Into::into)
+                .unwrap_or(DhruvEclipseGeoPoint {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                }),
+            width_km: value.width_km,
+            central_duration_seconds: value.central_duration_seconds,
+            sun_altitude_deg: value.sun_altitude_deg,
+            sun_azimuth_deg: value.sun_azimuth_deg,
+            grahan_type: surya_grahan_type_to_code(value.grahan_type),
+        }
+    }
+}
+
+/// Metadata for one timestamped penumbral footprint. Boundary coordinates
+/// are read with `dhruv_surya_grahan_footprint_point_at`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaGrahanFootprint {
+    pub jd_tdb: f64,
+    pub utc: DhruvUtcTime,
+    pub boundary_count: u32,
+}
+
+impl From<&SuryaGrahanFootprint> for DhruvSuryaGrahanFootprint {
+    fn from(value: &SuryaGrahanFootprint) -> Self {
+        Self {
+            jd_tdb: value.jd_tdb,
+            utc: utc_time_to_ffi(&value.utc),
+            boundary_count: value.boundary.len().min(u32::MAX as usize) as u32,
+        }
+    }
+}
+
+/// C-compatible surya grahan result.
+#[repr(C)]
+#[derive(Debug)]
 pub struct DhruvSuryaGrahanResult {
     /// Grahan type code (see DHRUV_SURYA_GRAHAN_* constants).
     pub grahan_type: i32,
-    /// Magnitude: ratio of apparent Moon diameter to Sun diameter.
+    /// Standard eclipse magnitude at the geographic point of greatest eclipse.
     pub magnitude: f64,
+    /// Fraction of the solar disk area obscured at greatest eclipse.
+    pub obscuration: f64,
+    /// Apparent Moon/Sun diameter ratio.
+    pub apparent_diameter_ratio: f64,
+    /// Signed minimum shadow-axis distance in Earth equatorial radii.
+    pub gamma: f64,
     /// Time of greatest grahan (JD TDB).
     pub greatest_grahan_jd: f64,
     /// Time of greatest grahan as structured Gregorian UTC.
@@ -3803,13 +3923,63 @@ pub struct DhruvSuryaGrahanResult {
     pub sun_right_ascension_deg: f64,
     /// Sun's apparent geocentric declination at greatest grahan, in degrees.
     pub sun_declination_deg: f64,
+    /// Whether a greatest-eclipse geographic location is present.
+    pub greatest_location_valid: u8,
+    pub greatest_latitude_deg: f64,
+    pub greatest_longitude_deg: f64,
+    /// Besselian elements at greatest eclipse.
+    pub bessel_x: f64,
+    pub bessel_y: f64,
+    pub bessel_d_deg: f64,
+    pub bessel_mu_deg: f64,
+    pub bessel_l1: f64,
+    pub bessel_l2: f64,
+    pub bessel_tan_f1: f64,
+    pub bessel_tan_f2: f64,
+    /// Number of generated path and footprint samples.
+    pub path_count: u32,
+    pub footprint_count: u32,
+    /// Opaque owner for path and footprint coordinates. Null when no map
+    /// geometry was generated. The caller owns and must free this handle.
+    pub geometry_handle: DhruvSuryaGrahanGeometryHandle,
+    /// Whether local circumstances are present.
+    pub local_valid: u8,
+    pub local_visible: u8,
+    /// Local type code, or -1 when there is no local eclipse.
+    pub local_grahan_type: i32,
+    pub local_maximum_jd: f64,
+    pub local_maximum_utc: DhruvUtcTime,
+    pub local_c1_jd: f64,
+    pub local_c1_utc: DhruvUtcTime,
+    pub local_c2_jd: f64,
+    pub local_c2_utc: DhruvUtcTime,
+    pub local_c3_jd: f64,
+    pub local_c3_utc: DhruvUtcTime,
+    pub local_c4_jd: f64,
+    pub local_c4_utc: DhruvUtcTime,
+    pub local_magnitude: f64,
+    pub local_obscuration: f64,
+    pub local_sun_altitude_deg: f64,
+    pub local_sun_azimuth_deg: f64,
+    pub local_central_duration_seconds: f64,
 }
 
 impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
     fn from(e: &SuryaGrahan) -> Self {
+        let geometry_handle = if e.path.is_empty() && e.footprints.is_empty() {
+            ptr::null_mut()
+        } else {
+            Box::into_raw(Box::new(OwnedSuryaGrahanGeometry {
+                path: e.path.clone(),
+                footprints: e.footprints.clone(),
+            })) as DhruvSuryaGrahanGeometryHandle
+        };
         Self {
             grahan_type: surya_grahan_type_to_code(e.grahan_type),
             magnitude: e.magnitude,
+            obscuration: e.obscuration,
+            apparent_diameter_ratio: e.apparent_diameter_ratio,
+            gamma: e.gamma,
             greatest_grahan_jd: e.greatest_grahan_jd,
             greatest_grahan_utc: utc_time_to_ffi(&e.greatest_grahan_utc),
             c1_jd: option_jd(e.c1_jd),
@@ -3836,7 +4006,168 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
             angular_separation_deg: e.angular_separation_deg,
             sun_right_ascension_deg: e.sun_right_ascension_deg,
             sun_declination_deg: e.sun_declination_deg,
+            greatest_location_valid: u8::from(e.greatest_location.is_some()),
+            greatest_latitude_deg: e.greatest_location.map(|p| p.latitude_deg).unwrap_or(0.0),
+            greatest_longitude_deg: e.greatest_location.map(|p| p.longitude_deg).unwrap_or(0.0),
+            bessel_x: e.besselian.x,
+            bessel_y: e.besselian.y,
+            bessel_d_deg: e.besselian.d_deg,
+            bessel_mu_deg: e.besselian.mu_deg,
+            bessel_l1: e.besselian.l1,
+            bessel_l2: e.besselian.l2,
+            bessel_tan_f1: e.besselian.tan_f1,
+            bessel_tan_f2: e.besselian.tan_f2,
+            path_count: e.path.len().min(u32::MAX as usize) as u32,
+            footprint_count: e.footprints.len().min(u32::MAX as usize) as u32,
+            geometry_handle,
+            local_valid: u8::from(e.local.is_some()),
+            local_visible: u8::from(e.local.as_ref().is_some_and(|local| local.visible)),
+            local_grahan_type: e
+                .local
+                .as_ref()
+                .and_then(|local| local.grahan_type)
+                .map(surya_grahan_type_to_code)
+                .unwrap_or(-1),
+            local_maximum_jd: option_jd(e.local.as_ref().and_then(|local| local.maximum_jd)),
+            local_maximum_utc: e
+                .local
+                .as_ref()
+                .and_then(|local| local.maximum_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_c1_jd: option_jd(e.local.as_ref().and_then(|local| local.c1_jd)),
+            local_c1_utc: e
+                .local
+                .as_ref()
+                .and_then(|local| local.c1_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_c2_jd: option_jd(e.local.as_ref().and_then(|local| local.c2_jd)),
+            local_c2_utc: e
+                .local
+                .as_ref()
+                .and_then(|local| local.c2_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_c3_jd: option_jd(e.local.as_ref().and_then(|local| local.c3_jd)),
+            local_c3_utc: e
+                .local
+                .as_ref()
+                .and_then(|local| local.c3_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_c4_jd: option_jd(e.local.as_ref().and_then(|local| local.c4_jd)),
+            local_c4_utc: e
+                .local
+                .as_ref()
+                .and_then(|local| local.c4_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_magnitude: e.local.as_ref().map(|local| local.magnitude).unwrap_or(0.0),
+            local_obscuration: e
+                .local
+                .as_ref()
+                .map(|local| local.obscuration)
+                .unwrap_or(0.0),
+            local_sun_altitude_deg: e
+                .local
+                .as_ref()
+                .map(|local| local.sun_altitude_deg)
+                .unwrap_or(0.0),
+            local_sun_azimuth_deg: e
+                .local
+                .as_ref()
+                .map(|local| local.sun_azimuth_deg)
+                .unwrap_or(0.0),
+            local_central_duration_seconds: e
+                .local
+                .as_ref()
+                .map(|local| local.central_duration_seconds)
+                .unwrap_or(0.0),
         }
+    }
+}
+
+/// Read one central-path sample from a solar-eclipse geometry handle.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_path_point_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    index: u32,
+    out: *mut DhruvSuryaGrahanPathPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(point) = geometry.path.get(index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = point.into() };
+    DhruvStatus::Ok
+}
+
+/// Read one penumbral-footprint sample from a solar-eclipse geometry handle.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_footprint_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    index: u32,
+    out: *mut DhruvSuryaGrahanFootprint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(footprint) = geometry.footprints.get(index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = footprint.into() };
+    DhruvStatus::Ok
+}
+
+/// Read one boundary coordinate from one penumbral-footprint sample.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_footprint_point_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    footprint_index: u32,
+    point_index: u32,
+    out: *mut DhruvEclipseGeoPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(point) = geometry
+        .footprints
+        .get(footprint_index as usize)
+        .and_then(|footprint| footprint.boundary.get(point_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = (*point).into() };
+    DhruvStatus::Ok
+}
+
+/// Free solar-eclipse map geometry. Passing null is a no-op.
+///
+/// # Safety
+/// `handle` must be null or a live handle returned in
+/// `DhruvSuryaGrahanResult`, and it must be freed exactly once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_geometry_free(handle: DhruvSuryaGrahanGeometryHandle) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle as *mut OwnedSuryaGrahanGeometry) };
     }
 }
 
@@ -3878,6 +4209,15 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
             return status;
         }
         let rust_config = grahan_config_from_ffi(&req.config);
+        let location = if req.location_valid != 0 {
+            Some(dhruv_search::GeoLocation::new(
+                req.location.latitude_deg,
+                req.location.longitude_deg,
+                req.location.altitude_m,
+            ))
+        } else {
+            None
+        };
 
         match (req.grahan_kind, req.query_mode) {
             (DHRUV_GRAHAN_KIND_CHANDRA, DHRUV_GRAHAN_QUERY_MODE_NEXT) => {
@@ -3986,7 +4326,7 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match next_surya_grahan(engine_ref, at, &rust_config) {
+                match next_surya_grahan(engine_ref, None, at, location, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_surya_single = DhruvSuryaGrahanResult::from(&grahan);
@@ -4014,7 +4354,7 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match prev_surya_grahan(engine_ref, at, &rust_config) {
+                match prev_surya_grahan(engine_ref, None, at, location, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_surya_single = DhruvSuryaGrahanResult::from(&grahan);
@@ -4051,7 +4391,7 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match search_surya_grahan(engine_ref, start, end, &rust_config) {
+                match search_surya_grahan(engine_ref, None, start, end, location, &rust_config) {
                     Ok(results) => {
                         let count = results.len().min(max_count as usize);
                         let out_slice = unsafe {
@@ -8098,7 +8438,9 @@ fn varsha_info_to_ffi(info: &dhruv_search::VarshaInfo) -> DhruvVarshaInfo {
 }
 
 fn utc_time_from_ffi(utc: &DhruvUtcTime) -> UtcTime {
-    UtcTime::new(utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second)
+    UtcTime::new(
+        utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second,
+    )
 }
 
 /// Decode caller-supplied precomputed calendar elements from the request.
@@ -8140,7 +8482,9 @@ fn known_from_ffi(req: &DhruvPanchangComputeRequest) -> dhruv_search::PanchangPr
             let samvatsara = usize::try_from(k.samvatsara_index)
                 .ok()
                 .and_then(|i| dhruv_vedic_base::samvatsara::ALL_SAMVATSARAS.get(i))?;
-            let order = u8::try_from(k.order).ok().filter(|o| (1..=60).contains(o))?;
+            let order = u8::try_from(k.order)
+                .ok()
+                .filter(|o| (1..=60).contains(o))?;
             Some(dhruv_search::VarshaInfo {
                 samvatsara: *samvatsara,
                 order,
@@ -17476,6 +17820,9 @@ mod tests {
         let cfg = dhruv_grahan_config_default();
         assert_eq!(cfg.include_penumbral, 1);
         assert_eq!(cfg.include_peak_details, 1);
+        assert_eq!(cfg.include_path, 0);
+        assert_eq!(cfg.path_step_minutes, 1);
+        assert_eq!(cfg.boundary_step_deg, 2);
     }
 
     #[test]
@@ -17512,6 +17859,12 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_grahan_config_default(),
+            location_valid: 0,
+            location: DhruvGeoLocation {
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+            },
         };
         let mut found: u8 = 0;
         let mut chandra = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
@@ -17544,6 +17897,12 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_grahan_config_default(),
+            location_valid: 0,
+            location: DhruvGeoLocation {
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+            },
         };
         let mut chandra = std::mem::MaybeUninit::<DhruvChandraGrahanResult>::uninit();
         let mut found: u8 = 0;
@@ -17576,6 +17935,12 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_grahan_config_default(),
+            location_valid: 0,
+            location: DhruvGeoLocation {
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+            },
         };
         let mut surya = std::mem::MaybeUninit::<DhruvSuryaGrahanResult>::uninit();
         let mut found: u8 = 0;

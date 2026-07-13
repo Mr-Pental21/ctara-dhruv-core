@@ -64,6 +64,11 @@ all-or-nothing and list output preserves active query order.
 - `gocharEventsConfigDefault`
 - `conjunctionSearch`
 - `grahanSearch`
+
+Solar grahan requests may include `location` and path sampling config. Solar
+results include obscuration, gamma, Besselian elements, greatest location,
+materialized `path` and `footprints` arrays, and complete local circumstances. See
+`docs/end_user/solar_eclipse_visibility.md`.
 - `motionSearch`
 - `lunarPhaseSearch`
 - `sankrantiSearch`

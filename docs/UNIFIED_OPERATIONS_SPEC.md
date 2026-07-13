@@ -102,9 +102,9 @@ Interim implementation may expose both legacy and canonical paths while parity t
 ## Result
 
 `GrahanResult` variants:
-- `ChandraSingle(Option<ChandraGrahan>)`
+- `ChandraSingle(Option<Box<ChandraGrahan>>)`
 - `ChandraMany(Vec<ChandraGrahan>)`
-- `SuryaSingle(Option<SuryaGrahan>)`
+- `SuryaSingle(Option<Box<SuryaGrahan>>)`
 - `SuryaMany(Vec<SuryaGrahan>)`
 
 ## Motion (Implemented)

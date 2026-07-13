@@ -2523,6 +2523,9 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
     napi_get_null(env, &nullv);
     SetNamed(env, obj, "grahanType", MakeInt32(env, g.grahan_type));
     SetNamed(env, obj, "magnitude", MakeDouble(env, g.magnitude));
+    SetNamed(env, obj, "obscuration", MakeDouble(env, g.obscuration));
+    SetNamed(env, obj, "apparentDiameterRatio", MakeDouble(env, g.apparent_diameter_ratio));
+    SetNamed(env, obj, "gamma", MakeDouble(env, g.gamma));
     SetNamed(env, obj, "greatestGrahanUtc", WriteUtcTime(env, g.greatest_grahan_utc));
     SetNamed(env, obj, "greatestGrahanJd", MakeDouble(env, g.greatest_grahan_jd));
     SetNamed(env, obj, "c1Utc", g.c1_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.c1_utc));
@@ -2537,6 +2540,110 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
     SetNamed(env, obj, "angularSeparationDeg", MakeDouble(env, g.angular_separation_deg));
     SetNamed(env, obj, "sunRightAscensionDeg", MakeDouble(env, g.sun_right_ascension_deg));
     SetNamed(env, obj, "sunDeclinationDeg", MakeDouble(env, g.sun_declination_deg));
+    if (g.greatest_location_valid != 0) {
+        napi_value location;
+        napi_create_object(env, &location);
+        SetNamed(env, location, "latitudeDeg", MakeDouble(env, g.greatest_latitude_deg));
+        SetNamed(env, location, "longitudeDeg", MakeDouble(env, g.greatest_longitude_deg));
+        SetNamed(env, location, "altitudeM", MakeDouble(env, 0.0));
+        SetNamed(env, obj, "greatestLocation", location);
+    } else {
+        SetNamed(env, obj, "greatestLocation", nullv);
+    }
+    napi_value besselian;
+    napi_create_object(env, &besselian);
+    SetNamed(env, besselian, "x", MakeDouble(env, g.bessel_x));
+    SetNamed(env, besselian, "y", MakeDouble(env, g.bessel_y));
+    SetNamed(env, besselian, "dDeg", MakeDouble(env, g.bessel_d_deg));
+    SetNamed(env, besselian, "muDeg", MakeDouble(env, g.bessel_mu_deg));
+    SetNamed(env, besselian, "l1", MakeDouble(env, g.bessel_l1));
+    SetNamed(env, besselian, "l2", MakeDouble(env, g.bessel_l2));
+    SetNamed(env, besselian, "tanF1", MakeDouble(env, g.bessel_tan_f1));
+    SetNamed(env, besselian, "tanF2", MakeDouble(env, g.bessel_tan_f2));
+    SetNamed(env, obj, "besselian", besselian);
+    SetNamed(env, obj, "pathCount", MakeUint32(env, g.path_count));
+    SetNamed(env, obj, "footprintCount", MakeUint32(env, g.footprint_count));
+    napi_value path;
+    napi_create_array_with_length(env, g.path_count, &path);
+    for (uint32_t i = 0; i < g.path_count; ++i) {
+        DhruvSuryaGrahanPathPoint point{};
+        if (dhruv_surya_grahan_path_point_at(g.geometry_handle, i, &point) != STATUS_OK) break;
+        napi_value item;
+        napi_create_object(env, &item);
+        SetNamed(env, item, "jdTdb", MakeDouble(env, point.jd_tdb));
+        SetNamed(env, item, "utc", WriteUtcTime(env, point.utc));
+        napi_value center;
+        napi_create_object(env, &center);
+        SetNamed(env, center, "latitudeDeg", MakeDouble(env, point.center.latitude_deg));
+        SetNamed(env, center, "longitudeDeg", MakeDouble(env, point.center.longitude_deg));
+        SetNamed(env, item, "center", center);
+        auto write_limit = [&](const DhruvEclipseGeoPoint& value, bool valid) {
+            if (!valid) return nullv;
+            napi_value limit;
+            napi_create_object(env, &limit);
+            SetNamed(env, limit, "latitudeDeg", MakeDouble(env, value.latitude_deg));
+            SetNamed(env, limit, "longitudeDeg", MakeDouble(env, value.longitude_deg));
+            return limit;
+        };
+        SetNamed(env, item, "northernLimit", write_limit(point.northern_limit, point.northern_limit_valid != 0));
+        SetNamed(env, item, "southernLimit", write_limit(point.southern_limit, point.southern_limit_valid != 0));
+        SetNamed(env, item, "widthKm", MakeDouble(env, point.width_km));
+        SetNamed(env, item, "centralDurationSeconds", MakeDouble(env, point.central_duration_seconds));
+        SetNamed(env, item, "sunAltitudeDeg", MakeDouble(env, point.sun_altitude_deg));
+        SetNamed(env, item, "sunAzimuthDeg", MakeDouble(env, point.sun_azimuth_deg));
+        SetNamed(env, item, "grahanType", MakeInt32(env, point.grahan_type));
+        napi_set_element(env, path, i, item);
+    }
+    SetNamed(env, obj, "path", path);
+    napi_value footprints;
+    napi_create_array_with_length(env, g.footprint_count, &footprints);
+    for (uint32_t i = 0; i < g.footprint_count; ++i) {
+        DhruvSuryaGrahanFootprint footprint{};
+        if (dhruv_surya_grahan_footprint_at(g.geometry_handle, i, &footprint) != STATUS_OK) break;
+        napi_value item;
+        napi_create_object(env, &item);
+        SetNamed(env, item, "jdTdb", MakeDouble(env, footprint.jd_tdb));
+        SetNamed(env, item, "utc", WriteUtcTime(env, footprint.utc));
+        napi_value boundary;
+        napi_create_array_with_length(env, footprint.boundary_count, &boundary);
+        for (uint32_t j = 0; j < footprint.boundary_count; ++j) {
+            DhruvEclipseGeoPoint point{};
+            if (dhruv_surya_grahan_footprint_point_at(g.geometry_handle, i, j, &point) != STATUS_OK) break;
+            napi_value coordinate;
+            napi_create_object(env, &coordinate);
+            SetNamed(env, coordinate, "latitudeDeg", MakeDouble(env, point.latitude_deg));
+            SetNamed(env, coordinate, "longitudeDeg", MakeDouble(env, point.longitude_deg));
+            napi_set_element(env, boundary, j, coordinate);
+        }
+        SetNamed(env, item, "boundary", boundary);
+        napi_set_element(env, footprints, i, item);
+    }
+    SetNamed(env, obj, "footprints", footprints);
+    if (g.local_valid != 0) {
+        napi_value local;
+        napi_create_object(env, &local);
+        SetNamed(env, local, "visible", MakeBool(env, g.local_visible != 0));
+        SetNamed(env, local, "grahanType", g.local_grahan_type < 0 ? nullv : MakeInt32(env, g.local_grahan_type));
+        SetNamed(env, local, "maximumUtc", g.local_maximum_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_maximum_utc));
+        SetNamed(env, local, "maximumJd", MakeDouble(env, g.local_maximum_jd));
+        SetNamed(env, local, "c1Utc", g.local_c1_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_c1_utc));
+        SetNamed(env, local, "c1Jd", MakeDouble(env, g.local_c1_jd));
+        SetNamed(env, local, "c2Utc", g.local_c2_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_c2_utc));
+        SetNamed(env, local, "c2Jd", MakeDouble(env, g.local_c2_jd));
+        SetNamed(env, local, "c3Utc", g.local_c3_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_c3_utc));
+        SetNamed(env, local, "c3Jd", MakeDouble(env, g.local_c3_jd));
+        SetNamed(env, local, "c4Utc", g.local_c4_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_c4_utc));
+        SetNamed(env, local, "c4Jd", MakeDouble(env, g.local_c4_jd));
+        SetNamed(env, local, "magnitude", MakeDouble(env, g.local_magnitude));
+        SetNamed(env, local, "obscuration", MakeDouble(env, g.local_obscuration));
+        SetNamed(env, local, "sunAltitudeDeg", MakeDouble(env, g.local_sun_altitude_deg));
+        SetNamed(env, local, "sunAzimuthDeg", MakeDouble(env, g.local_sun_azimuth_deg));
+        SetNamed(env, local, "centralDurationSeconds", MakeDouble(env, g.local_central_duration_seconds));
+        SetNamed(env, obj, "local", local);
+    } else {
+        SetNamed(env, obj, "local", nullv);
+    }
+    dhruv_surya_grahan_geometry_free(g.geometry_handle);
     return obj;
 }
 
@@ -4576,6 +4683,9 @@ napi_value GrahanConfigDefault(napi_env env, napi_callback_info info) {
     napi_create_object(env, &out);
     SetNamed(env, out, "includePenumbral", MakeBool(env, cfg.include_penumbral != 0));
     SetNamed(env, out, "includePeakDetails", MakeBool(env, cfg.include_peak_details != 0));
+    SetNamed(env, out, "includePath", MakeBool(env, cfg.include_path != 0));
+    SetNamed(env, out, "pathStepMinutes", MakeUint32(env, cfg.path_step_minutes));
+    SetNamed(env, out, "boundaryStepDeg", MakeUint32(env, cfg.boundary_step_deg));
     return out;
 }
 
@@ -4716,8 +4826,25 @@ napi_value GrahanSearch(napi_env env, napi_callback_info info) {
             if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
             cfg.include_peak_details = b ? 1 : 0;
         }
+        if (!GetOptionalNamedProperty(env, cfg_obj, "includePath", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present) {
+            bool b = false;
+            if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            cfg.include_path = b ? 1 : 0;
+        }
+        if (!GetOptionalNamedProperty(env, cfg_obj, "pathStepMinutes", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetUint32(env, v, &cfg.path_step_minutes)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "boundaryStepDeg", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetUint32(env, v, &cfg.boundary_step_deg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     }
     req.config = cfg;
+    bool has_location = false;
+    napi_value location_obj;
+    if (!GetOptionalNamedProperty(env, args[1], "location", &location_obj, &has_location)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_location) {
+        if (!ReadGeoLocation(env, location_obj, &req.location)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        req.location_valid = 1;
+    }
 
     uint32_t capacity = 0;
     if (!GetUint32(env, args[2], &capacity)) return MakeStatusResult(env, STATUS_INVALID_INPUT);

@@ -1652,10 +1652,31 @@ struct GrahanOpArgs {
     /// Exclude peak-detail fields in results
     #[arg(long, default_value_t = false)]
     no_peak_details: bool,
+    /// Include sampled central path and penumbral footprint geometry.
+    #[arg(long, default_value_t = false)]
+    include_path: bool,
+    /// Path sampling cadence in minutes (1-30).
+    #[arg(long, default_value_t = 1)]
+    path_step_minutes: u32,
+    /// Shadow-boundary angular sampling in degrees (1-15).
+    #[arg(long, default_value_t = 2)]
+    boundary_step_deg: u32,
+    /// Observer latitude for local solar-eclipse circumstances.
+    #[arg(long, requires = "lon")]
+    lat: Option<f64>,
+    /// Observer longitude, east positive.
+    #[arg(long, requires = "lat")]
+    lon: Option<f64>,
+    /// Observer altitude in meters.
+    #[arg(long, default_value_t = 0.0)]
+    alt: f64,
     #[arg(long)]
     bsp: Option<PathBuf>,
     #[arg(long)]
     lsk: Option<PathBuf>,
+    /// Optional IERS EOP file for precise Earth rotation.
+    #[arg(long)]
+    eop: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -6617,7 +6638,14 @@ fn main() {
             let config = GrahanConfig {
                 include_penumbral: !args.no_penumbral,
                 include_peak_details: !args.no_peak_details,
+                include_path: args.include_path,
+                path_step_minutes: args.path_step_minutes,
+                boundary_step_deg: args.boundary_step_deg,
             };
+            let eop = args.eop.as_deref().map(load_eop);
+            let location = args.lat.zip(args.lon).map(|(lat, lon)| {
+                dhruv_search::GeoLocation::new(lat, lon, args.alt)
+            });
             let query = match args.mode.as_str() {
                 "next" => {
                     let date = args.date.as_deref().unwrap_or_else(|| {
@@ -6675,9 +6703,10 @@ fn main() {
             let op = GrahanOperation {
                 kind,
                 config,
+                location,
                 query,
             };
-            match dhruv_search::grahan(&engine, &op) {
+            match dhruv_search::grahan(&engine, eop.as_ref(), &op) {
                 Ok(GrahanResult::ChandraSingle(Some(ev))) => {
                     let label = match args.mode.as_str() {
                         "next" => "Next Chandra Grahan",
@@ -6963,13 +6992,15 @@ fn main() {
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
+                ..GrahanConfig::default()
             };
             let op = GrahanOperation {
                 kind: GrahanKind::Chandra,
                 config,
+                location: None,
                 query: GrahanQuery::Next { at_jd_tdb: jd_tdb },
             };
-            match dhruv_search::grahan(&engine, &op) {
+            match dhruv_search::grahan(&engine, None, &op) {
                 Ok(GrahanResult::ChandraSingle(Some(ev))) => {
                     print_chandra_grahan("Next Chandra Grahan", &ev)
                 }
@@ -6995,13 +7026,15 @@ fn main() {
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
+                ..GrahanConfig::default()
             };
             let op = GrahanOperation {
                 kind: GrahanKind::Chandra,
                 config,
+                location: None,
                 query: GrahanQuery::Prev { at_jd_tdb: jd_tdb },
             };
-            match dhruv_search::grahan(&engine, &op) {
+            match dhruv_search::grahan(&engine, None, &op) {
                 Ok(GrahanResult::ChandraSingle(Some(ev))) => {
                     print_chandra_grahan("Previous Chandra Grahan", &ev)
                 }
@@ -7032,16 +7065,18 @@ fn main() {
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
+                ..GrahanConfig::default()
             };
             let op = GrahanOperation {
                 kind: GrahanKind::Chandra,
                 config,
+                location: None,
                 query: GrahanQuery::Range {
                     start_jd_tdb: jd_start,
                     end_jd_tdb: jd_end,
                 },
             };
-            match dhruv_search::grahan(&engine, &op) {
+            match dhruv_search::grahan(&engine, None, &op) {
                 Ok(GrahanResult::ChandraMany(events)) => {
                     println!("Found {} lunar eclipses:", events.len());
                     for ev in &events {
@@ -7069,13 +7104,15 @@ fn main() {
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
+                ..GrahanConfig::default()
             };
             let op = GrahanOperation {
                 kind: GrahanKind::Surya,
                 config,
+                location: None,
                 query: GrahanQuery::Next { at_jd_tdb: jd_tdb },
             };
-            match dhruv_search::grahan(&engine, &op) {
+            match dhruv_search::grahan(&engine, None, &op) {
                 Ok(GrahanResult::SuryaSingle(Some(ev))) => {
                     print_surya_grahan("Next Surya Grahan", &ev)
                 }
@@ -7101,13 +7138,15 @@ fn main() {
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
+                ..GrahanConfig::default()
             };
             let op = GrahanOperation {
                 kind: GrahanKind::Surya,
                 config,
+                location: None,
                 query: GrahanQuery::Prev { at_jd_tdb: jd_tdb },
             };
-            match dhruv_search::grahan(&engine, &op) {
+            match dhruv_search::grahan(&engine, None, &op) {
                 Ok(GrahanResult::SuryaSingle(Some(ev))) => {
                     print_surya_grahan("Previous Surya Grahan", &ev)
                 }
@@ -7138,16 +7177,18 @@ fn main() {
             let config = GrahanConfig {
                 include_penumbral: true,
                 include_peak_details: true,
+                ..GrahanConfig::default()
             };
             let op = GrahanOperation {
                 kind: GrahanKind::Surya,
                 config,
+                location: None,
                 query: GrahanQuery::Range {
                     start_jd_tdb: jd_start,
                     end_jd_tdb: jd_end,
                 },
             };
-            match dhruv_search::grahan(&engine, &op) {
+            match dhruv_search::grahan(&engine, None, &op) {
                 Ok(GrahanResult::SuryaMany(events)) => {
                     println!("Found {} solar eclipses:", events.len());
                     for ev in &events {
@@ -10687,7 +10728,10 @@ fn print_chandra_grahan(label: &str, ev: &dhruv_search::grahan_types::ChandraGra
 }
 
 fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan) {
-    println!("{}: {:?}  mag: {:.4}", label, ev.grahan_type, ev.magnitude);
+    println!(
+        "{}: {:?}  mag: {:.4}  obscuration: {:.4}  gamma: {:+.4}",
+        label, ev.grahan_type, ev.magnitude, ev.obscuration, ev.gamma
+    );
     println!(
         "  Greatest: UTC {}  JD TDB {:.6}",
         ev.greatest_grahan_utc, ev.greatest_grahan_jd
@@ -10716,6 +10760,44 @@ fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan)
         "  Sun at greatest: RA {:.6}°  Dec {:+.6}°",
         ev.sun_right_ascension_deg, ev.sun_declination_deg
     );
+    if let Some(point) = ev.greatest_location {
+        println!(
+            "  Greatest location: {:+.6}°, {:+.6}°",
+            point.latitude_deg, point.longitude_deg
+        );
+    }
+    println!(
+        "  Besselian: x {:+.8}  y {:+.8}  d {:+.6}°  mu {:.6}°  l1 {:.8}  l2 {:+.8}",
+        ev.besselian.x,
+        ev.besselian.y,
+        ev.besselian.d_deg,
+        ev.besselian.mu_deg,
+        ev.besselian.l1,
+        ev.besselian.l2
+    );
+    if !ev.path.is_empty() || !ev.footprints.is_empty() {
+        println!(
+            "  Geographic samples: {} path points, {} penumbral footprints",
+            ev.path.len(),
+            ev.footprints.len()
+        );
+    }
+    if let Some(local) = &ev.local {
+        println!(
+            "  Local: visible={} type={:?} max={} mag={:.4} obscuration={:.4} altitude={:+.2}° azimuth={:.2}° duration={:.1}s",
+            local.visible,
+            local.grahan_type,
+            local
+                .maximum_utc
+                .map(|utc| utc.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            local.magnitude,
+            local.obscuration,
+            local.sun_altitude_deg,
+            local.sun_azimuth_deg,
+            local.central_duration_seconds
+        );
+    }
 }
 
 fn print_stationary_event(label: &str, ev: &dhruv_search::stationary_types::StationaryEvent) {

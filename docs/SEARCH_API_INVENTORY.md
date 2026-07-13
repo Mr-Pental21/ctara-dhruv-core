@@ -64,9 +64,10 @@ Source: `crates/dhruv_search/src/grahan.rs`, `crates/dhruv_search/src/grahan_typ
 | `next_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Next lunar eclipse candidate after `jd_tdb`, classified + contacts. |
 | `prev_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Previous lunar eclipse before `jd_tdb`. |
 | `search_chandra_grahan` | `engine`, `jd_start`, `jd_end`, `config` | `Result<Vec<ChandraGrahan>, SearchError>` | All lunar eclipses in range. |
-| `next_surya_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Next geocentric solar eclipse after `jd_tdb`. |
-| `prev_surya_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Previous geocentric solar eclipse before `jd_tdb`. |
-| `search_surya_grahan` | `engine`, `jd_start`, `jd_end`, `config` | `Result<Vec<SuryaGrahan>, SearchError>` | All geocentric solar eclipses in range. |
+| `besselian_elements_at` | `engine`, `eop`, `jd_tdb` | `Result<BesselianElements, SearchError>` | Ephemeris-derived instantaneous solar-shadow elements. |
+| `next_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Next solar eclipse with optional geographic path and local circumstances. |
+| `prev_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Previous solar eclipse with optional geographic products. |
+| `search_surya_grahan` | `engine`, `eop`, `jd_start`, `jd_end`, `location`, `config` | `Result<Vec<SuryaGrahan>, SearchError>` | All solar eclipses in range. |
 | `GeoLocation::new` | `latitude_deg`, `longitude_deg`, `altitude_m` | `GeoLocation` | Constructor for grahan location struct. |
 | `GeoLocation::latitude_rad` | `self` | `f64` | Latitude in radians. |
 | `GeoLocation::longitude_rad` | `self` | `f64` | Longitude in radians. |

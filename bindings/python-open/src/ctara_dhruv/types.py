@@ -394,6 +394,33 @@ class ChandraGrahanResult:
 
 
 @dataclass(frozen=True)
+class EclipseGeoPoint:
+    latitude_deg: float
+    longitude_deg: float
+
+
+@dataclass(frozen=True)
+class SuryaGrahanPathPoint:
+    jd_tdb: float
+    utc: UtcTime
+    center: EclipseGeoPoint
+    northern_limit: Optional[EclipseGeoPoint]
+    southern_limit: Optional[EclipseGeoPoint]
+    width_km: float
+    central_duration_seconds: float
+    sun_altitude_deg: float
+    sun_azimuth_deg: float
+    grahan_type: int
+
+
+@dataclass(frozen=True)
+class SuryaGrahanFootprint:
+    jd_tdb: float
+    utc: UtcTime
+    boundary: tuple[EclipseGeoPoint, ...]
+
+
+@dataclass(frozen=True)
 class SuryaGrahanResult:
     """Solar eclipse (Surya Grahan) result.
 
@@ -418,6 +445,39 @@ class SuryaGrahanResult:
     # (equinox of date, nutation applied).
     sun_right_ascension_deg: float = 0.0
     sun_declination_deg: float = 0.0
+    obscuration: float = 0.0
+    apparent_diameter_ratio: float = 0.0
+    gamma: float = 0.0
+    greatest_location: Optional[GeoLocation] = None
+    bessel_x: float = 0.0
+    bessel_y: float = 0.0
+    bessel_d_deg: float = 0.0
+    bessel_mu_deg: float = 0.0
+    bessel_l1: float = 0.0
+    bessel_l2: float = 0.0
+    bessel_tan_f1: float = 0.0
+    bessel_tan_f2: float = 0.0
+    path_count: int = 0
+    footprint_count: int = 0
+    path: tuple[SuryaGrahanPathPoint, ...] = ()
+    footprints: tuple[SuryaGrahanFootprint, ...] = ()
+    local_visible: Optional[bool] = None
+    local_grahan_type: Optional[int] = None
+    local_maximum_utc: Optional[UtcTime] = None
+    local_maximum_jd: float = -1.0
+    local_c1_utc: Optional[UtcTime] = None
+    local_c1_jd: float = -1.0
+    local_c2_utc: Optional[UtcTime] = None
+    local_c2_jd: float = -1.0
+    local_c3_utc: Optional[UtcTime] = None
+    local_c3_jd: float = -1.0
+    local_c4_utc: Optional[UtcTime] = None
+    local_c4_jd: float = -1.0
+    local_magnitude: float = 0.0
+    local_obscuration: float = 0.0
+    local_sun_altitude_deg: float = 0.0
+    local_sun_azimuth_deg: float = 0.0
+    local_central_duration_seconds: float = 0.0
 
 
 @dataclass(frozen=True)

@@ -39,25 +39,12 @@ Found by bisection: when Moon's limb touches shadow boundaries.
 
     umbral_magnitude = (umbral_radius - offset + moon_radius) / (2 × moon_radius)
 
-## Surya Grahan (Solar Eclipse) Algorithm (Geocentric)
+## Surya Grahan (Solar Eclipse)
 
-### Classification
-
-Compares apparent Sun and Moon angular radii with their separation:
-
-- **No grahan**: separation ≥ sum of radii
-- **Partial**: disks overlap but neither fully covers the other
-- **Total**: Moon fully covers Sun (moon_r ≥ sun_r, small separation)
-- **Annular**: Sun visible as ring around Moon (sun_r > moon_r, small separation)
-
-Note: geocentric classification reflects the view from Earth's center.
-Surface observers see different types due to lunar parallax (~57').
-
-### Contact Times
-
-Found by bisection on the Sun-Moon angular separation:
-- C1/C4: external contacts (disk edges touch, separation = sum of radii)
-- C2/C3: internal contacts (one disk inside other, separation = |diff of radii|)
+The original geocentric disk-overlap implementation has been replaced by
+ephemeris-derived shadow-cone, Earth-ellipsoid, and topocentric geometry. The
+current algorithm, provenance, map products, and validation are recorded in
+`docs/clean_room_solar_eclipse_visibility.md`.
 
 ## Constants (IAU 2015 Nominal)
 

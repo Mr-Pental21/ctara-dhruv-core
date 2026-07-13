@@ -963,7 +963,13 @@ func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capaci
 
 func GrahanConfigDefault() GrahanConfig {
 	cfg := C.dhruv_grahan_config_default()
-	return GrahanConfig{IncludePenumbral: cfg.include_penumbral != 0, IncludePeakDetails: cfg.include_peak_details != 0}
+	return GrahanConfig{
+		IncludePenumbral:   cfg.include_penumbral != 0,
+		IncludePeakDetails: cfg.include_peak_details != 0,
+		IncludePath:        cfg.include_path != 0,
+		PathStepMinutes:    uint32(cfg.path_step_minutes),
+		BoundaryStepDeg:    uint32(cfg.boundary_step_deg),
+	}
 }
 
 func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32) (ChandraGrahanResult, SuryaGrahanResult, bool, []ChandraGrahanResult, []SuryaGrahanResult, Status) {
@@ -978,7 +984,17 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 		at_utc:       cUTC(req.AtUTC),
 		start_utc:    cUTC(req.StartUTC),
 		end_utc:      cUTC(req.EndUTC),
-		config:       C.DhruvGrahanConfig{include_penumbral: boolU8(req.Config.IncludePenumbral), include_peak_details: boolU8(req.Config.IncludePeakDetails)},
+		config: C.DhruvGrahanConfig{
+			include_penumbral:    boolU8(req.Config.IncludePenumbral),
+			include_peak_details: boolU8(req.Config.IncludePeakDetails),
+			include_path:         boolU8(req.Config.IncludePath),
+			path_step_minutes:    C.uint32_t(req.Config.PathStepMinutes),
+			boundary_step_deg:    C.uint32_t(req.Config.BoundaryStepDeg),
+		},
+	}
+	if req.Location != nil {
+		creq.location_valid = 1
+		creq.location = cGeo(*req.Location)
 	}
 	var outC C.DhruvChandraGrahanResult
 	var outS C.DhruvSuryaGrahanResult
@@ -997,20 +1013,20 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 	st := Status(C.dhruv_grahan_search_ex(engine.ptr, &creq, &outC, &outS, &found, cptr, sptr, C.uint32_t(capacity), &outCount))
 	toC := func(v C.DhruvChandraGrahanResult) ChandraGrahanResult {
 		return ChandraGrahanResult{
-			GrahanType:           int32(v.grahan_type),
-			Magnitude:            float64(v.magnitude),
-			PenumbralMagnitude:   float64(v.penumbral_magnitude),
-			GreatestGrahanUTC:    goUTC(v.greatest_grahan_utc),
-			GreatestGrahanJd:     float64(v.greatest_grahan_jd),
-			P1UTC:                goUTC(v.p1_utc),
-			P1Jd:                 float64(v.p1_jd),
-			U1UTC:                goOptionalUTC(float64(v.u1_jd) != -1.0, v.u1_utc),
-			U1Jd:                 float64(v.u1_jd),
-			U2UTC:                goOptionalUTC(float64(v.u2_jd) != -1.0, v.u2_utc),
-			U2Jd:                 float64(v.u2_jd),
-			U3UTC:                goOptionalUTC(float64(v.u3_jd) != -1.0, v.u3_utc),
-			U3Jd:                 float64(v.u3_jd),
-			U4UTC:                goOptionalUTC(float64(v.u4_jd) != -1.0, v.u4_utc),
+			GrahanType:            int32(v.grahan_type),
+			Magnitude:             float64(v.magnitude),
+			PenumbralMagnitude:    float64(v.penumbral_magnitude),
+			GreatestGrahanUTC:     goUTC(v.greatest_grahan_utc),
+			GreatestGrahanJd:      float64(v.greatest_grahan_jd),
+			P1UTC:                 goUTC(v.p1_utc),
+			P1Jd:                  float64(v.p1_jd),
+			U1UTC:                 goOptionalUTC(float64(v.u1_jd) != -1.0, v.u1_utc),
+			U1Jd:                  float64(v.u1_jd),
+			U2UTC:                 goOptionalUTC(float64(v.u2_jd) != -1.0, v.u2_utc),
+			U2Jd:                  float64(v.u2_jd),
+			U3UTC:                 goOptionalUTC(float64(v.u3_jd) != -1.0, v.u3_utc),
+			U3Jd:                  float64(v.u3_jd),
+			U4UTC:                 goOptionalUTC(float64(v.u4_jd) != -1.0, v.u4_utc),
 			U4Jd:                  float64(v.u4_jd),
 			P4UTC:                 goUTC(v.p4_utc),
 			P4Jd:                  float64(v.p4_jd),
@@ -1021,23 +1037,96 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 		}
 	}
 	toS := func(v C.DhruvSuryaGrahanResult) SuryaGrahanResult {
+		geometry := v.geometry_handle
+		if geometry != nil {
+			defer C.dhruv_surya_grahan_geometry_free(geometry)
+		}
+		path := make([]SuryaGrahanPathPoint, int(v.path_count))
+		for i := range path {
+			var point C.DhruvSuryaGrahanPathPoint
+			if Status(C.dhruv_surya_grahan_path_point_at(geometry, C.uint32_t(i), &point)) != StatusOK {
+				path = path[:i]
+				break
+			}
+			center := EclipseGeoPoint{LatitudeDeg: float64(point.center.latitude_deg), LongitudeDeg: float64(point.center.longitude_deg)}
+			var northern, southern *EclipseGeoPoint
+			if point.northern_limit_valid != 0 {
+				value := EclipseGeoPoint{LatitudeDeg: float64(point.northern_limit.latitude_deg), LongitudeDeg: float64(point.northern_limit.longitude_deg)}
+				northern = &value
+			}
+			if point.southern_limit_valid != 0 {
+				value := EclipseGeoPoint{LatitudeDeg: float64(point.southern_limit.latitude_deg), LongitudeDeg: float64(point.southern_limit.longitude_deg)}
+				southern = &value
+			}
+			path[i] = SuryaGrahanPathPoint{
+				JdTdb: float64(point.jd_tdb), UTC: goUTC(point.utc), Center: center,
+				NorthernLimit: northern, SouthernLimit: southern, WidthKm: float64(point.width_km),
+				CentralDurationSeconds: float64(point.central_duration_seconds),
+				SunAltitudeDeg:         float64(point.sun_altitude_deg), SunAzimuthDeg: float64(point.sun_azimuth_deg),
+				GrahanType: int32(point.grahan_type),
+			}
+		}
+		footprints := make([]SuryaGrahanFootprint, int(v.footprint_count))
+		for i := range footprints {
+			var footprint C.DhruvSuryaGrahanFootprint
+			if Status(C.dhruv_surya_grahan_footprint_at(geometry, C.uint32_t(i), &footprint)) != StatusOK {
+				footprints = footprints[:i]
+				break
+			}
+			boundary := make([]EclipseGeoPoint, int(footprint.boundary_count))
+			for j := range boundary {
+				var point C.DhruvEclipseGeoPoint
+				if Status(C.dhruv_surya_grahan_footprint_point_at(geometry, C.uint32_t(i), C.uint32_t(j), &point)) != StatusOK {
+					boundary = boundary[:j]
+					break
+				}
+				boundary[j] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
+			}
+			footprints[i] = SuryaGrahanFootprint{JdTdb: float64(footprint.jd_tdb), UTC: goUTC(footprint.utc), Boundary: boundary}
+		}
 		return SuryaGrahanResult{
-			GrahanType:           int32(v.grahan_type),
-			Magnitude:            float64(v.magnitude),
-			GreatestGrahanUTC:    goUTC(v.greatest_grahan_utc),
-			GreatestGrahanJd:     float64(v.greatest_grahan_jd),
-			C1UTC:                goOptionalUTC(float64(v.c1_jd) != -1.0, v.c1_utc),
-			C1Jd:                 float64(v.c1_jd),
-			C2UTC:                goOptionalUTC(float64(v.c2_jd) != -1.0, v.c2_utc),
-			C2Jd:                 float64(v.c2_jd),
-			C3UTC:                goOptionalUTC(float64(v.c3_jd) != -1.0, v.c3_utc),
-			C3Jd:                 float64(v.c3_jd),
-			C4UTC:                goOptionalUTC(float64(v.c4_jd) != -1.0, v.c4_utc),
-			C4Jd:                 float64(v.c4_jd),
-			MoonEclipticLatDeg:   float64(v.moon_ecliptic_lat_deg),
-			AngularSeparationDeg: float64(v.angular_separation_deg),
-			SunRightAscensionDeg: float64(v.sun_right_ascension_deg),
-			SunDeclinationDeg:    float64(v.sun_declination_deg),
+			GrahanType:            int32(v.grahan_type),
+			Magnitude:             float64(v.magnitude),
+			Obscuration:           float64(v.obscuration),
+			ApparentDiameterRatio: float64(v.apparent_diameter_ratio),
+			Gamma:                 float64(v.gamma),
+			GreatestGrahanUTC:     goUTC(v.greatest_grahan_utc),
+			GreatestGrahanJd:      float64(v.greatest_grahan_jd),
+			C1UTC:                 goOptionalUTC(float64(v.c1_jd) != -1.0, v.c1_utc),
+			C1Jd:                  float64(v.c1_jd),
+			C2UTC:                 goOptionalUTC(float64(v.c2_jd) != -1.0, v.c2_utc),
+			C2Jd:                  float64(v.c2_jd),
+			C3UTC:                 goOptionalUTC(float64(v.c3_jd) != -1.0, v.c3_utc),
+			C3Jd:                  float64(v.c3_jd),
+			C4UTC:                 goOptionalUTC(float64(v.c4_jd) != -1.0, v.c4_utc),
+			C4Jd:                  float64(v.c4_jd),
+			MoonEclipticLatDeg:    float64(v.moon_ecliptic_lat_deg),
+			AngularSeparationDeg:  float64(v.angular_separation_deg),
+			SunRightAscensionDeg:  float64(v.sun_right_ascension_deg),
+			SunDeclinationDeg:     float64(v.sun_declination_deg),
+			GreatestLocation: func() *GeoLocation {
+				if v.greatest_location_valid == 0 {
+					return nil
+				}
+				p := GeoLocation{LatitudeDeg: float64(v.greatest_latitude_deg), LongitudeDeg: float64(v.greatest_longitude_deg)}
+				return &p
+			}(),
+			BesselX: float64(v.bessel_x), BesselY: float64(v.bessel_y),
+			BesselDdeg: float64(v.bessel_d_deg), BesselMuDeg: float64(v.bessel_mu_deg),
+			BesselL1: float64(v.bessel_l1), BesselL2: float64(v.bessel_l2),
+			BesselTanF1: float64(v.bessel_tan_f1), BesselTanF2: float64(v.bessel_tan_f2),
+			PathCount: uint32(v.path_count), FootprintCount: uint32(v.footprint_count), Path: path, Footprints: footprints,
+			LocalValid: v.local_valid != 0, LocalVisible: v.local_visible != 0,
+			LocalGrahanType: int32(v.local_grahan_type),
+			LocalMaximumJd:  float64(v.local_maximum_jd),
+			LocalMaximumUTC: goOptionalUTC(float64(v.local_maximum_jd) != -1.0, v.local_maximum_utc),
+			LocalC1Jd:       float64(v.local_c1_jd), LocalC1UTC: goOptionalUTC(float64(v.local_c1_jd) != -1.0, v.local_c1_utc),
+			LocalC2Jd: float64(v.local_c2_jd), LocalC2UTC: goOptionalUTC(float64(v.local_c2_jd) != -1.0, v.local_c2_utc),
+			LocalC3Jd: float64(v.local_c3_jd), LocalC3UTC: goOptionalUTC(float64(v.local_c3_jd) != -1.0, v.local_c3_utc),
+			LocalC4Jd: float64(v.local_c4_jd), LocalC4UTC: goOptionalUTC(float64(v.local_c4_jd) != -1.0, v.local_c4_utc),
+			LocalMagnitude: float64(v.local_magnitude), LocalObscuration: float64(v.local_obscuration),
+			LocalSunAltitudeDeg: float64(v.local_sun_altitude_deg), LocalSunAzimuthDeg: float64(v.local_sun_azimuth_deg),
+			LocalCentralDurationSeconds: float64(v.local_central_duration_seconds),
 		}
 	}
 	count := int(outCount)
@@ -1663,7 +1752,7 @@ func FullKundaliConfigDefault() FullKundaliConfig {
 			IncludeOuterPlanets: cfg.graha_positions_config.include_outer_planets != 0,
 			IncludeBhava:        cfg.graha_positions_config.include_bhava != 0,
 			BasicStatesConfig: BasicStatesConfig{
-				IncludeBasicStates: cfg.graha_positions_config.basic_states_config.include_basic_states != 0,
+				IncludeBasicStates:             cfg.graha_positions_config.basic_states_config.include_basic_states != 0,
 				IncludeSensitivePointDistances: cfg.graha_positions_config.basic_states_config.include_sensitive_point_distances != 0,
 			},
 			IncludeEquatorial: cfg.graha_positions_config.include_equatorial != 0,
@@ -1761,16 +1850,16 @@ func GocharEventsConfigDefault() GocharEventsConfig {
 
 func cGocharEventsConfig(cfg GocharEventsConfig) C.DhruvGocharEventsConfig {
 	return C.DhruvGocharEventsConfig{
-		tajaka_return_basis:   C.int32_t(cfg.TajakaReturnBasis),
-		yearly_count:          C.uint32_t(cfg.YearlyCount),
-		monthly_count:         C.uint32_t(cfg.MonthlyCount),
-		transit_window_days:   C.double(cfg.TransitWindowDays),
-		include_return_charts: boolU8(cfg.IncludeReturnCharts),
-		solar_step_size_days:  C.double(cfg.SolarStepSizeDays),
-		lunar_step_size_days:  C.double(cfg.LunarStepSizeDays),
+		tajaka_return_basis:    C.int32_t(cfg.TajakaReturnBasis),
+		yearly_count:           C.uint32_t(cfg.YearlyCount),
+		monthly_count:          C.uint32_t(cfg.MonthlyCount),
+		transit_window_days:    C.double(cfg.TransitWindowDays),
+		include_return_charts:  boolU8(cfg.IncludeReturnCharts),
+		solar_step_size_days:   C.double(cfg.SolarStepSizeDays),
+		lunar_step_size_days:   C.double(cfg.LunarStepSizeDays),
 		solar_convergence_days: C.double(cfg.SolarConvergenceDays),
 		lunar_convergence_days: C.double(cfg.LunarConvergenceDays),
-		max_iterations:        C.uint32_t(cfg.MaxIterations),
+		max_iterations:         C.uint32_t(cfg.MaxIterations),
 	}
 }
 
@@ -2370,7 +2459,7 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 		res.BhavaCuspSensitivePointDistances = make([]SensitivePointDistances, 12)
 		for i := 0; i < 12; i++ {
 			res.BhavaCuspSensitivePointDistances[i] = SensitivePointDistances{
-				Mrityubhaga: float64(out.bhava_cusp_sensitive_point_distances[i].mrityubhaga),
+				Mrityubhaga:  float64(out.bhava_cusp_sensitive_point_distances[i].mrityubhaga),
 				Pushkarbhaga: float64(out.bhava_cusp_sensitive_point_distances[i].pushkarbhaga),
 			}
 		}
@@ -2379,7 +2468,7 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 		res.RashiBhavaCuspSensitivePointDistances = make([]SensitivePointDistances, 12)
 		for i := 0; i < 12; i++ {
 			res.RashiBhavaCuspSensitivePointDistances[i] = SensitivePointDistances{
-				Mrityubhaga: float64(out.rashi_bhava_cusp_sensitive_point_distances[i].mrityubhaga),
+				Mrityubhaga:  float64(out.rashi_bhava_cusp_sensitive_point_distances[i].mrityubhaga),
 				Pushkarbhaga: float64(out.rashi_bhava_cusp_sensitive_point_distances[i].pushkarbhaga),
 			}
 		}

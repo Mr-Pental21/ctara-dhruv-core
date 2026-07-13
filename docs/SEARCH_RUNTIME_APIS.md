@@ -2,7 +2,7 @@
 
 This is the runtime/query surface of `dhruv_search` re-exported from `crates/dhruv_search/src/lib.rs`.
 
-Total runtime functions documented here: **67**.
+Total runtime functions documented here: **68**.
 
 ## Conjunction / Aspect (4)
 
@@ -24,16 +24,17 @@ Total runtime functions documented here: **67**.
 | `search_purnimas` | `engine`, `start`, `end` | `Result<Vec<LunarPhaseEvent>, SearchError>` | All full moons in UTC range. |
 | `search_amavasyas` | `engine`, `start`, `end` | `Result<Vec<LunarPhaseEvent>, SearchError>` | All new moons in UTC range. |
 
-## Grahan (6)
+## Grahan (7)
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
 | `next_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Next lunar eclipse after `jd_tdb`. |
 | `prev_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Previous lunar eclipse before `jd_tdb`. |
 | `search_chandra_grahan` | `engine`, `jd_start`, `jd_end`, `config` | `Result<Vec<ChandraGrahan>, SearchError>` | All lunar eclipses in range. |
-| `next_surya_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Next geocentric solar eclipse after `jd_tdb`. |
-| `prev_surya_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Previous geocentric solar eclipse before `jd_tdb`. |
-| `search_surya_grahan` | `engine`, `jd_start`, `jd_end`, `config` | `Result<Vec<SuryaGrahan>, SearchError>` | All geocentric solar eclipses in range. |
+| `besselian_elements_at` | `engine`, `eop`, `jd_tdb` | `Result<BesselianElements, SearchError>` | Instantaneous ephemeris-derived shadow elements. |
+| `next_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Next geographic solar eclipse and optional local circumstances. |
+| `prev_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Previous geographic solar eclipse. |
+| `search_surya_grahan` | `engine`, `eop`, `jd_start`, `jd_end`, `location`, `config` | `Result<Vec<SuryaGrahan>, SearchError>` | Solar eclipses in a range, optionally including paths and footprints. |
 
 ## Sankranti (5)
 
@@ -114,4 +115,4 @@ Total runtime functions documented here: **67**.
 ## Related Detailed Docs
 
 - Full inventory (includes helper methods): `docs/SEARCH_API_INVENTORY.md`
-- Clean-room provenance: `docs/clean_room_conjunction.md`, `docs/clean_room_grahan.md`, `docs/clean_room_stationary.md`, `docs/clean_room_panchang.md`, `docs/clean_room_tithi_karana_yoga.md`, `docs/clean_room_ashtakavarga.md`, `docs/clean_room_drishti.md`, `docs/clean_room_upagraha.md`, `docs/clean_room_gochar_events.md`
+- Clean-room provenance: `docs/clean_room_conjunction.md`, `docs/clean_room_grahan.md`, `docs/clean_room_solar_eclipse_visibility.md`, `docs/clean_room_stationary.md`, `docs/clean_room_panchang.md`, `docs/clean_room_tithi_karana_yoga.md`, `docs/clean_room_ashtakavarga.md`, `docs/clean_room_drishti.md`, `docs/clean_room_upagraha.md`, `docs/clean_room_gochar_events.md`

@@ -69,6 +69,10 @@ Request-driven functions:
 - `full_kundali`
 - `gochar_events`
 
+Solar `GrahanRequest` accepts an optional observer location; `GrahanConfig`
+controls optional path and footprint sampling. See
+`docs/end_user/solar_eclipse_visibility.md` for the result fields and map use.
+
 High-level time-bearing search results default to structured Gregorian UTC on
 their main result types while retaining numeric JD/TDB alongside UTC where the
 numeric transport remains part of the public contract.

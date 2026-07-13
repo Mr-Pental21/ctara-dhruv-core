@@ -60,11 +60,13 @@ pub use gochar_events_types::{
     TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
 };
 pub use grahan::{
-    next_chandra_grahan, next_surya_grahan, prev_chandra_grahan, prev_surya_grahan,
+    besselian_elements_at, next_chandra_grahan, next_surya_grahan, prev_chandra_grahan, prev_surya_grahan,
     search_chandra_grahan, search_surya_grahan,
 };
 pub use grahan_types::{
-    ChandraGrahan, ChandraGrahanType, GeoLocation, GrahanConfig, SuryaGrahan, SuryaGrahanType,
+    BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GeoLocation,
+    GrahanConfig, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances,
+    SuryaGrahanPathPoint, SuryaGrahanType,
 };
 pub use jyotish::{
     all_upagrahas_for_date, all_upagrahas_for_date_with_config, amsha_charts_for_date,

@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 79`
+**ABI version:** `DHRUV_API_VERSION = 80`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -482,6 +482,9 @@ typedef struct {
 typedef struct {
     uint8_t include_penumbral;    // 1 = include penumbral-only chandra grahan
     uint8_t include_peak_details; // 1 = include lat/separation at peak
+    uint8_t include_path;         // 1 = generate geographic path products
+    uint32_t path_step_minutes;   // 1..30
+    uint32_t boundary_step_deg;   // 1..15
 } DhruvGrahanConfig;
 ```
 
@@ -516,7 +519,10 @@ typedef struct {
 ```c
 typedef struct {
     int32_t grahan_type;            // DHRUV_SURYA_GRAHAN_* constant
-    double  magnitude;              // Moon/Sun apparent diameter ratio
+    double  magnitude;              // Standard eclipse magnitude
+    double  obscuration;            // Solar disk area fraction obscured
+    double  apparent_diameter_ratio;
+    double  gamma;                  // Signed axis distance, Earth radii
     double  greatest_grahan_jd;     // JD TDB
     DhruvUtcTime greatest_grahan_utc;
     double  c1_jd;                  // First external contact (-1.0 if absent)
@@ -531,6 +537,15 @@ typedef struct {
     double  angular_separation_deg; // Separation at greatest grahan
 } DhruvSuryaGrahanResult;
 ```
+
+ABI v80 appends greatest-location coordinates, Besselian elements, generated
+path/footprint sample counts, an owned `geometry_handle`, and
+local-circumstance fields to this result. Use
+`dhruv_surya_grahan_path_point_at`, `dhruv_surya_grahan_footprint_at`, and
+`dhruv_surya_grahan_footprint_point_at` to read all map coordinates. Free each
+non-null handle exactly once with `dhruv_surya_grahan_geometry_free`. The
+canonical type definitions and field order are in
+`crates/dhruv_ffi_c/include/dhruv.h`.
 
 ### DhruvStationaryConfig
 
@@ -1281,6 +1296,8 @@ typedef struct {
     DhruvUtcTime      start_utc;
     DhruvUtcTime      end_utc;
     DhruvGrahanConfig config;
+    uint8_t           location_valid;
+    DhruvGeoLocation  location;
 } DhruvGrahanSearchRequest;
 
 DhruvStatus dhruv_grahan_search_ex(
@@ -1302,6 +1319,9 @@ Unified grahan entrypoint:
 - `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
 - `query_mode=NEXT/PREV` uses `out_found` and a single-result pointer.
 - `query_mode=RANGE` uses array output pointer + `out_count`.
+- Each returned solar result with a non-null geometry handle transfers
+  ownership to the caller. Read the variable-length samples through the
+  solar-geometry accessors, then free the handle exactly once.
 
 **Note:** Legacy split grahan wrappers were removed in v42. Use `dhruv_grahan_search_ex`.
 
@@ -2501,6 +2521,13 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v80**: Replaced geocentric solar-eclipse classification with ephemeris-
+derived Besselian, Earth-ellipsoid, path, footprint, and local-visibility
+geometry. Extended unified grahan config/request/result structs with path
+sampling, optional location, Besselian summary, and local circumstances. Map
+coordinates are exposed through an owned geometry handle plus path and
+footprint accessors.
 
 **v79**: `dhruv_panchang_events` now supports the sunrise-anchored elements.
 The signature gained `has_location: uint8_t`, `location: const

@@ -62,11 +62,28 @@ class TestEclipse:
 
     def test_next_solar_eclipse(self, engine_handles):
         """Find next solar eclipse after J2000."""
-        from ctara_dhruv.search import next_solar_eclipse
-        result = next_solar_eclipse(engine_handles._ptr, after_jd=J2000)
+        from ctara_dhruv.search import grahan_config_default, next_solar_eclipse
+        from ctara_dhruv.types import GeoLocation
+        config = grahan_config_default()
+        config.include_path = 1
+        config.path_step_minutes = 10
+        config.boundary_step_deg = 15
+        result = next_solar_eclipse(
+            engine_handles._ptr,
+            after_jd=J2000,
+            config=config,
+            location=GeoLocation(0.0, 0.0),
+        )
         assert result is not None
         assert result.greatest_grahan_jd > J2000
         assert result.grahan_type in (0, 1, 2, 3)
+        assert result.bessel_l1 > 0
+        assert result.greatest_location is not None
+        assert result.footprint_count > 0
+        assert len(result.path) == result.path_count
+        assert len(result.footprints) == result.footprint_count
+        assert result.footprints[0].boundary
+        assert result.local_visible is not None
 
 
 @skip_no_kernels

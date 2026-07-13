@@ -41,6 +41,14 @@ pub struct GrahanConfig {
     pub include_penumbral: bool,
     /// Include ecliptic latitude and angular separation at peak. Default: true.
     pub include_peak_details: bool,
+    /// Include sampled geographic path and shadow-footprint geometry for
+    /// Surya grahan. Default: false, keeping summary searches inexpensive.
+    pub include_path: bool,
+    /// Sampling cadence for geographic path products. Range: 1..=30 minutes.
+    pub path_step_minutes: u32,
+    /// Angular sampling of instantaneous shadow-cone boundary rings.
+    /// Range: 1..=15 degrees.
+    pub boundary_step_deg: u32,
 }
 
 impl Default for GrahanConfig {
@@ -48,8 +56,82 @@ impl Default for GrahanConfig {
         Self {
             include_penumbral: true,
             include_peak_details: true,
+            include_path: false,
+            path_step_minutes: 1,
+            boundary_step_deg: 2,
         }
     }
+}
+
+/// Geographic coordinate on the reference Earth ellipsoid.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EclipseGeoPoint {
+    pub latitude_deg: f64,
+    pub longitude_deg: f64,
+}
+
+/// Instantaneous Besselian elements derived from the loaded ephemeris.
+///
+/// `x`, `y`, `l1`, and `l2` use Earth equatorial radii. `l2` is negative
+/// for an umbral (total) cone and positive for an antumbral (annular) cone.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BesselianElements {
+    pub jd_tdb: f64,
+    pub utc: UtcTime,
+    pub x: f64,
+    pub y: f64,
+    pub d_deg: f64,
+    pub mu_deg: f64,
+    pub l1: f64,
+    pub l2: f64,
+    pub tan_f1: f64,
+    pub tan_f2: f64,
+}
+
+/// One timestamped sample along a total/annular/hybrid ground path.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaGrahanPathPoint {
+    pub jd_tdb: f64,
+    pub utc: UtcTime,
+    pub center: EclipseGeoPoint,
+    pub northern_limit: Option<EclipseGeoPoint>,
+    pub southern_limit: Option<EclipseGeoPoint>,
+    pub width_km: f64,
+    pub central_duration_seconds: f64,
+    pub sun_altitude_deg: f64,
+    pub sun_azimuth_deg: f64,
+    pub grahan_type: SuryaGrahanType,
+}
+
+/// Boundary of the instantaneous penumbral footprint on Earth.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaGrahanFootprint {
+    pub jd_tdb: f64,
+    pub utc: UtcTime,
+    pub boundary: Vec<EclipseGeoPoint>,
+}
+
+/// Location-specific solar-eclipse circumstances.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaGrahanLocalCircumstances {
+    pub location: GeoLocation,
+    pub visible: bool,
+    pub grahan_type: Option<SuryaGrahanType>,
+    pub maximum_jd: Option<f64>,
+    pub maximum_utc: Option<UtcTime>,
+    pub c1_jd: Option<f64>,
+    pub c1_utc: Option<UtcTime>,
+    pub c2_jd: Option<f64>,
+    pub c2_utc: Option<UtcTime>,
+    pub c3_jd: Option<f64>,
+    pub c3_utc: Option<UtcTime>,
+    pub c4_jd: Option<f64>,
+    pub c4_utc: Option<UtcTime>,
+    pub magnitude: f64,
+    pub obscuration: f64,
+    pub sun_altitude_deg: f64,
+    pub sun_azimuth_deg: f64,
+    pub central_duration_seconds: f64,
 }
 
 /// Chandra grahan (lunar eclipse) type classification.
@@ -125,13 +207,21 @@ pub enum SuryaGrahanType {
     Hybrid,
 }
 
-/// Geocentric surya grahan (solar eclipse) event.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Global solar-eclipse event with optional map and local circumstances.
+#[derive(Debug, Clone, PartialEq)]
 pub struct SuryaGrahan {
     /// Grahan classification.
     pub grahan_type: SuryaGrahanType,
-    /// Magnitude: ratio of apparent Moon diameter to Sun diameter at greatest grahan.
+    /// Standard eclipse magnitude: fraction of the Sun's diameter covered at
+    /// the geographic point of greatest eclipse.
     pub magnitude: f64,
+    /// Fraction of the solar disk area obscured at greatest eclipse, [0, 1].
+    pub obscuration: f64,
+    /// Apparent Moon/Sun diameter ratio at greatest eclipse.
+    pub apparent_diameter_ratio: f64,
+    /// Signed minimum shadow-axis distance from the geocenter, in Earth
+    /// equatorial radii (north positive).
+    pub gamma: f64,
     /// Time of greatest grahan (JD TDB).
     pub greatest_grahan_jd: f64,
     /// Time of greatest grahan as structured Gregorian UTC.
@@ -161,4 +251,16 @@ pub struct SuryaGrahan {
     pub sun_right_ascension_deg: f64,
     /// Sun's apparent geocentric declination at greatest grahan, in degrees.
     pub sun_declination_deg: f64,
+    /// Geographic point of greatest eclipse when the penumbra reaches Earth.
+    pub greatest_location: Option<EclipseGeoPoint>,
+    /// Besselian elements at greatest eclipse.
+    pub besselian: BesselianElements,
+    /// Timestamped central line and limits. Empty for partial eclipses or
+    /// when `GrahanConfig::include_path` is false.
+    pub path: Vec<SuryaGrahanPathPoint>,
+    /// Instantaneous penumbral boundary rings sampled through the event.
+    /// Empty when `GrahanConfig::include_path` is false.
+    pub footprints: Vec<SuryaGrahanFootprint>,
+    /// Optional circumstances for the request's geographic location.
+    pub local: Option<SuryaGrahanLocalCircumstances>,
 }

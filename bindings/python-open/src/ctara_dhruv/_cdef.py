@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       79
+#define DHRUV_API_VERSION       80
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -398,6 +398,7 @@ typedef struct DhruvTaraCatalogHandle DhruvTaraCatalogHandle;
 typedef void *DhruvDashaHierarchyHandle;
 /* DhruvDashaPeriodListHandle is void* */
 typedef void *DhruvDashaPeriodListHandle;
+typedef void *DhruvSuryaGrahanGeometryHandle;
 /* DhruvGocharEventsHandle is void* */
 typedef void *DhruvGocharEventsHandle;
 
@@ -675,6 +676,9 @@ typedef struct {
 typedef struct {
     uint8_t include_penumbral;
     uint8_t include_peak_details;
+    uint8_t include_path;
+    uint32_t path_step_minutes;
+    uint32_t boundary_step_deg;
 } DhruvGrahanConfig;
 
 typedef struct {
@@ -688,6 +692,8 @@ typedef struct {
     DhruvUtcTime start_utc;
     DhruvUtcTime end_utc;
     DhruvGrahanConfig config;
+    uint8_t location_valid;
+    DhruvGeoLocation location;
 } DhruvGrahanSearchRequest;
 
 typedef struct {
@@ -717,8 +723,37 @@ typedef struct {
 } DhruvChandraGrahanResult;
 
 typedef struct {
+    double latitude_deg;
+    double longitude_deg;
+} DhruvEclipseGeoPoint;
+
+typedef struct {
+    double jd_tdb;
+    DhruvUtcTime utc;
+    DhruvEclipseGeoPoint center;
+    uint8_t northern_limit_valid;
+    DhruvEclipseGeoPoint northern_limit;
+    uint8_t southern_limit_valid;
+    DhruvEclipseGeoPoint southern_limit;
+    double width_km;
+    double central_duration_seconds;
+    double sun_altitude_deg;
+    double sun_azimuth_deg;
+    int32_t grahan_type;
+} DhruvSuryaGrahanPathPoint;
+
+typedef struct {
+    double jd_tdb;
+    DhruvUtcTime utc;
+    uint32_t boundary_count;
+} DhruvSuryaGrahanFootprint;
+
+typedef struct {
     int32_t grahan_type;
     double  magnitude;
+    double  obscuration;
+    double  apparent_diameter_ratio;
+    double  gamma;
     double  greatest_grahan_jd;
     DhruvUtcTime greatest_grahan_utc;
     double  c1_jd;
@@ -735,6 +770,38 @@ typedef struct {
        (equinox of date, nutation applied). */
     double  sun_right_ascension_deg;
     double  sun_declination_deg;
+    uint8_t greatest_location_valid;
+    double  greatest_latitude_deg;
+    double  greatest_longitude_deg;
+    double  bessel_x;
+    double  bessel_y;
+    double  bessel_d_deg;
+    double  bessel_mu_deg;
+    double  bessel_l1;
+    double  bessel_l2;
+    double  bessel_tan_f1;
+    double  bessel_tan_f2;
+    uint32_t path_count;
+    uint32_t footprint_count;
+    DhruvSuryaGrahanGeometryHandle geometry_handle;
+    uint8_t local_valid;
+    uint8_t local_visible;
+    int32_t local_grahan_type;
+    double  local_maximum_jd;
+    DhruvUtcTime local_maximum_utc;
+    double  local_c1_jd;
+    DhruvUtcTime local_c1_utc;
+    double  local_c2_jd;
+    DhruvUtcTime local_c2_utc;
+    double  local_c3_jd;
+    DhruvUtcTime local_c3_utc;
+    double  local_c4_jd;
+    DhruvUtcTime local_c4_utc;
+    double  local_magnitude;
+    double  local_obscuration;
+    double  local_sun_altitude_deg;
+    double  local_sun_azimuth_deg;
+    double  local_central_duration_seconds;
 } DhruvSuryaGrahanResult;
 
 /* --- Stationary / max-speed --- */
@@ -2021,6 +2088,21 @@ DhruvStatus dhruv_grahan_search_ex(
     DhruvSuryaGrahanResult *out_surya_events,
     uint32_t out_capacity,
     uint32_t *out_count);
+DhruvStatus dhruv_surya_grahan_path_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t index,
+    DhruvSuryaGrahanPathPoint *out);
+DhruvStatus dhruv_surya_grahan_footprint_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t index,
+    DhruvSuryaGrahanFootprint *out);
+DhruvStatus dhruv_surya_grahan_footprint_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+void dhruv_surya_grahan_geometry_free(
+    DhruvSuryaGrahanGeometryHandle geometry);
 
 /* --- Stationary / max-speed --- */
 DhruvStationaryConfig dhruv_stationary_config_default(void);

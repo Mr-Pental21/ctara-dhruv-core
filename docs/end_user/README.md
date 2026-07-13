@@ -11,6 +11,7 @@ Each surface folder contains:
 
 Available guides:
 
+- [Solar eclipse visibility](./solar_eclipse_visibility.md)
 - [CLI](./cli/README.md)
 - [Rust Library](./rust_lib/README.md)
 - [Python](./python/README.md)

@@ -176,6 +176,9 @@ pub struct ConjunctionConfigPatch {
 pub struct GrahanConfigPatch {
     pub include_penumbral: Option<bool>,
     pub include_peak_details: Option<bool>,
+    pub include_path: Option<bool>,
+    pub path_step_minutes: Option<u32>,
+    pub boundary_step_deg: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -566,15 +569,52 @@ impl ConfigResolver {
             recommended(self.defaults_mode, true),
             "grahan.include_peak_details",
         )?;
+        let (include_path, path_source) = choose_copy(
+            explicit.include_path,
+            op.include_path,
+            None,
+            recommended(self.defaults_mode, false),
+            "grahan.include_path",
+        )?;
+        let (path_step_minutes, path_step_source) = choose_copy(
+            explicit.path_step_minutes,
+            op.path_step_minutes,
+            None,
+            recommended(self.defaults_mode, 1),
+            "grahan.path_step_minutes",
+        )?;
+        let (boundary_step_deg, boundary_step_source) = choose_copy(
+            explicit.boundary_step_deg,
+            op.boundary_step_deg,
+            None,
+            recommended(self.defaults_mode, 2),
+            "grahan.boundary_step_deg",
+        )?;
+        if !(1..=30).contains(&path_step_minutes) {
+            return Err(ConfigError::InvalidConfig(
+                "grahan.path_step_minutes must be between 1 and 30".to_string(),
+            ));
+        }
+        if !(1..=15).contains(&boundary_step_deg) {
+            return Err(ConfigError::InvalidConfig(
+                "grahan.boundary_step_deg must be between 1 and 15".to_string(),
+            ));
+        }
 
         let mut source = BTreeMap::new();
         source.insert("include_penumbral".to_string(), p_source);
         source.insert("include_peak_details".to_string(), d_source);
+        source.insert("include_path".to_string(), path_source);
+        source.insert("path_step_minutes".to_string(), path_step_source);
+        source.insert("boundary_step_deg".to_string(), boundary_step_source);
 
         Ok(EffectiveConfig {
             value: GrahanConfig {
                 include_penumbral,
                 include_peak_details,
+                include_path,
+                path_step_minutes,
+                boundary_step_deg,
             },
             source_by_field: source,
         })

@@ -78,6 +78,30 @@ defmodule CtaraDhruvTest do
 
           assert {:ok, _} = Panchang.tithi(engine, %{utc: utc})
           assert {:ok, _} = Search.sankranti(engine, %{mode: :next, at_utc: utc})
+
+          assert {:ok, %{events: eclipse}} =
+                   Search.grahan(engine, %{
+                     mode: :next,
+                     kind: :surya,
+                     at_utc: %{year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0.0},
+                     location: %{
+                       latitude_deg: 25.2854,
+                       longitude_deg: -104.3,
+                       altitude_m: 0.0
+                     },
+                     config: %{
+                       include_path: true,
+                       path_step_minutes: 10,
+                       boundary_step_deg: 15
+                     }
+                   })
+
+          assert eclipse.grahan_type == :total
+          assert eclipse.besselian.l1 > 0.0
+          assert length(eclipse.path) > 10
+          assert length(eclipse.footprints) > 20
+          assert eclipse.local.visible == true
+          assert eclipse.local.grahan_type == :total
           assert {:ok, _} = Jyotish.graha_positions(engine, %{utc: utc, location: location})
 
           assert {:ok, equatorial_positions} =

@@ -18,7 +18,9 @@ use dhruv_vedic_base::{
 
 use crate::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 use crate::error::SearchError;
-use crate::grahan_types::{ChandraGrahan, GrahanConfig, SuryaGrahan};
+use crate::grahan_types::{
+    ChandraGrahan, GeoLocation as GrahanGeoLocation, GrahanConfig, SuryaGrahan,
+};
 use crate::lunar_phase_types::LunarPhaseEvent;
 use crate::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use crate::stationary_types::{MaxSpeedEvent, StationaryConfig, StationaryEvent};
@@ -157,6 +159,9 @@ pub struct GrahanOperation {
     pub kind: GrahanKind,
     /// Search configuration.
     pub config: GrahanConfig,
+    /// Optional observer location for local solar-eclipse circumstances.
+    /// Ignored for lunar eclipses.
+    pub location: Option<GrahanGeoLocation>,
     /// Query selector and time bounds.
     pub query: GrahanQuery,
 }
@@ -165,23 +170,27 @@ pub struct GrahanOperation {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GrahanResult {
     /// Single chandra result (next/prev).
-    ChandraSingle(Option<ChandraGrahan>),
+    ChandraSingle(Option<Box<ChandraGrahan>>),
     /// Chandra range result.
     ChandraMany(Vec<ChandraGrahan>),
     /// Single surya result (next/prev).
-    SuryaSingle(Option<SuryaGrahan>),
+    SuryaSingle(Option<Box<SuryaGrahan>>),
     /// Surya range result.
     SuryaMany(Vec<SuryaGrahan>),
 }
 
 /// Execute a grahan operation request.
-pub fn grahan(engine: &Engine, op: &GrahanOperation) -> Result<GrahanResult, SearchError> {
+pub fn grahan(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    op: &GrahanOperation,
+) -> Result<GrahanResult, SearchError> {
     match (op.kind, op.query) {
         (GrahanKind::Chandra, GrahanQuery::Next { at_jd_tdb }) => Ok(GrahanResult::ChandraSingle(
-            next_chandra_grahan(engine, at_jd_tdb, &op.config)?,
+            next_chandra_grahan(engine, at_jd_tdb, &op.config)?.map(Box::new),
         )),
         (GrahanKind::Chandra, GrahanQuery::Prev { at_jd_tdb }) => Ok(GrahanResult::ChandraSingle(
-            prev_chandra_grahan(engine, at_jd_tdb, &op.config)?,
+            prev_chandra_grahan(engine, at_jd_tdb, &op.config)?.map(Box::new),
         )),
         (
             GrahanKind::Chandra,
@@ -203,10 +212,10 @@ pub fn grahan(engine: &Engine, op: &GrahanOperation) -> Result<GrahanResult, Sea
             )?))
         }
         (GrahanKind::Surya, GrahanQuery::Next { at_jd_tdb }) => Ok(GrahanResult::SuryaSingle(
-            next_surya_grahan(engine, at_jd_tdb, &op.config)?,
+            next_surya_grahan(engine, eop, at_jd_tdb, op.location, &op.config)?.map(Box::new),
         )),
         (GrahanKind::Surya, GrahanQuery::Prev { at_jd_tdb }) => Ok(GrahanResult::SuryaSingle(
-            prev_surya_grahan(engine, at_jd_tdb, &op.config)?,
+            prev_surya_grahan(engine, eop, at_jd_tdb, op.location, &op.config)?.map(Box::new),
         )),
         (
             GrahanKind::Surya,
@@ -222,8 +231,10 @@ pub fn grahan(engine: &Engine, op: &GrahanOperation) -> Result<GrahanResult, Sea
             }
             Ok(GrahanResult::SuryaMany(search_surya_grahan(
                 engine,
+                eop,
                 start_jd_tdb,
                 end_jd_tdb,
+                op.location,
                 &op.config,
             )?))
         }

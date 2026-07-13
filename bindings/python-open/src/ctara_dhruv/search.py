@@ -12,13 +12,17 @@ from ._check import check
 from .types import (
     ConjunctionEvent,
     ChandraGrahanResult,
+    EclipseGeoPoint,
     SuryaGrahanResult,
+    SuryaGrahanPathPoint,
+    SuryaGrahanFootprint,
     StationaryEvent,
     MaxSpeedEvent,
     LunarPhaseEvent,
     SankrantiEvent,
     MasaInfo,
     UtcTime,
+    GeoLocation,
     GocharNatalTarget,
     GocharReference,
     GocharEventWindow,
@@ -153,6 +157,53 @@ def _chandra_grahan(r) -> ChandraGrahanResult:
 
 
 def _surya_grahan(r) -> SuryaGrahanResult:
+    path = []
+    footprints = []
+    geometry = r.geometry_handle
+    try:
+        for index in range(int(r.path_count)):
+            raw = ffi.new("DhruvSuryaGrahanPathPoint *")
+            check(lib.dhruv_surya_grahan_path_point_at(geometry, index, raw))
+            point = raw[0]
+            path.append(SuryaGrahanPathPoint(
+                jd_tdb=float(point.jd_tdb),
+                utc=_utc_from_c(point.utc),
+                center=EclipseGeoPoint(point.center.latitude_deg, point.center.longitude_deg),
+                northern_limit=(EclipseGeoPoint(point.northern_limit.latitude_deg,
+                                                point.northern_limit.longitude_deg)
+                                if point.northern_limit_valid else None),
+                southern_limit=(EclipseGeoPoint(point.southern_limit.latitude_deg,
+                                                point.southern_limit.longitude_deg)
+                                if point.southern_limit_valid else None),
+                width_km=float(point.width_km),
+                central_duration_seconds=float(point.central_duration_seconds),
+                sun_altitude_deg=float(point.sun_altitude_deg),
+                sun_azimuth_deg=float(point.sun_azimuth_deg),
+                grahan_type=int(point.grahan_type),
+            ))
+        for footprint_index in range(int(r.footprint_count)):
+            raw = ffi.new("DhruvSuryaGrahanFootprint *")
+            check(lib.dhruv_surya_grahan_footprint_at(geometry, footprint_index, raw))
+            footprint = raw[0]
+            boundary = []
+            for point_index in range(int(footprint.boundary_count)):
+                raw_point = ffi.new("DhruvEclipseGeoPoint *")
+                check(lib.dhruv_surya_grahan_footprint_point_at(
+                    geometry, footprint_index, point_index, raw_point
+                ))
+                boundary.append(EclipseGeoPoint(
+                    raw_point.latitude_deg, raw_point.longitude_deg
+                ))
+            footprints.append(SuryaGrahanFootprint(
+                jd_tdb=float(footprint.jd_tdb),
+                utc=_utc_from_c(footprint.utc),
+                boundary=tuple(boundary),
+            ))
+    finally:
+        if geometry != ffi.NULL:
+            lib.dhruv_surya_grahan_geometry_free(geometry)
+
+    local_valid = bool(r.local_valid)
     return SuryaGrahanResult(
         grahan_type=r.grahan_type,
         magnitude=r.magnitude,
@@ -170,6 +221,41 @@ def _surya_grahan(r) -> SuryaGrahanResult:
         angular_separation_deg=r.angular_separation_deg,
         sun_right_ascension_deg=r.sun_right_ascension_deg,
         sun_declination_deg=r.sun_declination_deg,
+        obscuration=r.obscuration,
+        apparent_diameter_ratio=r.apparent_diameter_ratio,
+        gamma=r.gamma,
+        greatest_location=(GeoLocation(r.greatest_latitude_deg, r.greatest_longitude_deg)
+                           if r.greatest_location_valid else None),
+        bessel_x=r.bessel_x,
+        bessel_y=r.bessel_y,
+        bessel_d_deg=r.bessel_d_deg,
+        bessel_mu_deg=r.bessel_mu_deg,
+        bessel_l1=r.bessel_l1,
+        bessel_l2=r.bessel_l2,
+        bessel_tan_f1=r.bessel_tan_f1,
+        bessel_tan_f2=r.bessel_tan_f2,
+        path_count=int(r.path_count),
+        footprint_count=int(r.footprint_count),
+        path=tuple(path),
+        footprints=tuple(footprints),
+        local_visible=bool(r.local_visible) if local_valid else None,
+        local_grahan_type=(int(r.local_grahan_type)
+                           if local_valid and r.local_grahan_type >= 0 else None),
+        local_maximum_utc=(None if r.local_maximum_jd == _JD_ABSENT else _utc_from_c(r.local_maximum_utc)),
+        local_maximum_jd=r.local_maximum_jd,
+        local_c1_utc=None if r.local_c1_jd == _JD_ABSENT else _utc_from_c(r.local_c1_utc),
+        local_c1_jd=r.local_c1_jd,
+        local_c2_utc=None if r.local_c2_jd == _JD_ABSENT else _utc_from_c(r.local_c2_utc),
+        local_c2_jd=r.local_c2_jd,
+        local_c3_utc=None if r.local_c3_jd == _JD_ABSENT else _utc_from_c(r.local_c3_utc),
+        local_c3_jd=r.local_c3_jd,
+        local_c4_utc=None if r.local_c4_jd == _JD_ABSENT else _utc_from_c(r.local_c4_utc),
+        local_c4_jd=r.local_c4_jd,
+        local_magnitude=r.local_magnitude,
+        local_obscuration=r.local_obscuration,
+        local_sun_altitude_deg=r.local_sun_altitude_deg,
+        local_sun_azimuth_deg=r.local_sun_azimuth_deg,
+        local_central_duration_seconds=r.local_central_duration_seconds,
     )
 
 
@@ -361,13 +447,18 @@ def grahan_config_default():
     return lib.dhruv_grahan_config_default()
 
 
-def _grahan_single(engine, grahan_kind: int, query_mode: int, when, config):
+def _grahan_single(engine, grahan_kind: int, query_mode: int, when, config, location=None):
     """Internal: single grahan search (NEXT/PREV)."""
     req = ffi.new("DhruvGrahanSearchRequest *")
     req.grahan_kind = grahan_kind
     req.query_mode = query_mode
     _set_single_search_time(req, when, arg_name="jd")
     req.config = config if config is not None else lib.dhruv_grahan_config_default()
+    if location is not None:
+        req.location_valid = 1
+        req.location.latitude_deg = location.lat_deg
+        req.location.longitude_deg = location.lon_deg
+        req.location.altitude_m = location.alt_m
 
     out_chandra = ffi.new("DhruvChandraGrahanResult *")
     out_surya = ffi.new("DhruvSuryaGrahanResult *")
@@ -397,14 +488,14 @@ def prev_lunar_eclipse(engine, before_jd, config=None) -> Optional[ChandraGrahan
     return _grahan_single(engine, _GRAHAN_CHANDRA, _GRAHAN_PREV, before_jd, config)
 
 
-def next_solar_eclipse(engine, after_jd, config=None) -> Optional[SuryaGrahanResult]:
+def next_solar_eclipse(engine, after_jd, config=None, location=None) -> Optional[SuryaGrahanResult]:
     """Find the next solar eclipse after a ``UtcTime`` or JD(TDB) anchor."""
-    return _grahan_single(engine, _GRAHAN_SURYA, _GRAHAN_NEXT, after_jd, config)
+    return _grahan_single(engine, _GRAHAN_SURYA, _GRAHAN_NEXT, after_jd, config, location)
 
 
-def prev_solar_eclipse(engine, before_jd, config=None) -> Optional[SuryaGrahanResult]:
+def prev_solar_eclipse(engine, before_jd, config=None, location=None) -> Optional[SuryaGrahanResult]:
     """Find the previous solar eclipse before a ``UtcTime`` or JD(TDB) anchor."""
-    return _grahan_single(engine, _GRAHAN_SURYA, _GRAHAN_PREV, before_jd, config)
+    return _grahan_single(engine, _GRAHAN_SURYA, _GRAHAN_PREV, before_jd, config, location)
 
 
 def search_lunar_eclipses(
@@ -444,6 +535,7 @@ def search_solar_eclipses(
     end_jd,
     config=None,
     max_results: int = 50,
+    location=None,
 ) -> list[SuryaGrahanResult]:
     """Search for solar eclipses in a UTC or JD(TDB) range."""
     req = ffi.new("DhruvGrahanSearchRequest *")
@@ -451,6 +543,11 @@ def search_solar_eclipses(
     req.query_mode = _GRAHAN_RANGE
     _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_grahan_config_default()
+    if location is not None:
+        req.location_valid = 1
+        req.location.latitude_deg = location.lat_deg
+        req.location.longitude_deg = location.lon_deg
+        req.location.altitude_m = location.alt_m
 
     def fetch(capacity: int):
         out_surya = ffi.new("DhruvSuryaGrahanResult[]", capacity)

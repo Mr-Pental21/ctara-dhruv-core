@@ -401,6 +401,11 @@ grahan: `ChandraGrahanResult.MoonRightAscensionDeg`/`MoonDeclinationDeg`
 and `SuryaGrahanResult.SunRightAscensionDeg`/`SunDeclinationDeg`
 (degrees, equinox of date, nutation applied).
 
+Solar `GrahanSearchRequest` may carry `Location`; `GrahanConfig` controls path
+sampling. `SuryaGrahanResult` includes obscuration, gamma, Besselian elements,
+greatest location, `Path`, `Footprints`, and complete local circumstances. See
+`docs/end_user/solar_eclipse_visibility.md`.
+
 Strength, dasha, amsha, and tara:
 
 - `(*Engine).ShadbalaForDate`

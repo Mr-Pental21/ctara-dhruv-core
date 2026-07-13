@@ -10,7 +10,7 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
-  assert.equal(dhruv.EXPECTED_API_VERSION, 79);
+  assert.equal(dhruv.EXPECTED_API_VERSION, 80);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
 });
@@ -304,6 +304,33 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     2,
   );
   assert.equal(typeof grahan.found, 'boolean');
+
+  const solar = dhruv.grahanSearch(
+    engine,
+    {
+      grahanKind: 1,
+      queryMode: 0,
+      atUtc: { year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0 },
+      location: { latitudeDeg: 25.2854, longitudeDeg: -104.3, altitudeM: 0 },
+      config: {
+        includePath: true,
+        pathStepMinutes: 10,
+        boundaryStepDeg: 15,
+      },
+    },
+    2,
+  );
+  assert.equal(solar.found, true);
+  assert.ok(solar.surya.besselian.l1 > 0);
+  assert.ok(solar.surya.greatestLocation);
+  assert.ok(solar.surya.footprintCount > 0);
+  assert.equal(solar.surya.path.length, solar.surya.pathCount);
+  assert.equal(solar.surya.footprints.length, solar.surya.footprintCount);
+  assert.ok(solar.surya.path[0].center);
+  assert.ok(solar.surya.footprints[0].boundary.length > 0);
+  assert.equal(typeof solar.surya.local.visible, 'boolean');
+  assert.ok(solar.surya.local.c1Utc);
+  assert.ok(solar.surya.local.c4Utc);
 
   const motion = dhruv.motionSearch(
     engine,

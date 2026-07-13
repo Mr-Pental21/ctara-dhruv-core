@@ -50,7 +50,9 @@ pub use dhruv_search::gochar_events_types::{
     TransitAspectOwner, TransitToNatalAspectEvent,
 };
 pub use dhruv_search::grahan_types::{
-    ChandraGrahan, ChandraGrahanType, GrahanConfig, SuryaGrahan, SuryaGrahanType,
+    BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GrahanConfig,
+    SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint,
+    SuryaGrahanType,
 };
 pub use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 pub use dhruv_search::stationary_types::{

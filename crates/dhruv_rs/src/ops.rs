@@ -144,6 +144,8 @@ pub enum GrahanRequestQuery {
 pub struct GrahanRequest {
     pub kind: GrahanKind,
     pub config: Option<GrahanConfig>,
+    /// Optional observer for local solar-eclipse circumstances.
+    pub location: Option<GeoLocation>,
     pub query: GrahanRequestQuery,
 }
 
@@ -181,9 +183,16 @@ pub fn grahan(ctx: &DhruvContext, request: &GrahanRequest) -> Result<GrahanResul
     let op = GrahanOperation {
         kind: request.kind,
         config: resolve_grahan_config(ctx, request.config)?,
+        location: request.location.map(|location| {
+            dhruv_search::GeoLocation::new(
+                location.latitude_deg,
+                location.longitude_deg,
+                location.altitude_m,
+            )
+        }),
         query,
     };
-    Ok(dhruv_search::grahan(eng, &op)?)
+    Ok(dhruv_search::grahan(eng, ctx.eop(), &op)?)
 }
 
 /// Query selector for motion operations.

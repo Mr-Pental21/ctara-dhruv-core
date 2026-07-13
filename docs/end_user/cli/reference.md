@@ -310,6 +310,10 @@ Search:
 - `next-surya-grahan`
 - `prev-surya-grahan`
 - `search-surya-grahan`
+
+The unified `grahan --kind surya` command accepts `--include-path`,
+`--path-step-minutes`, `--boundary-step-deg`, `--lat`, `--lon`, `--alt`, and
+optional `--eop`. See `docs/end_user/solar_eclipse_visibility.md`.
 - `lunar-phase`
 - `next-purnima`
 - `prev-purnima`

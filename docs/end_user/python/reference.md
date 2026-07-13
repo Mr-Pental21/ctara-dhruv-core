@@ -451,6 +451,13 @@ default sign-lord-based node dignity policy.
 - `prev_solar_eclipse`
 - `search_lunar_eclipses`
 - `search_solar_eclipses`
+
+Solar eclipse calls accept an optional `GeoLocation`. The grahan config adds
+`include_path`, `path_step_minutes`, and `boundary_step_deg`; summary results
+include obscuration, gamma, Besselian elements, greatest location, generated
+sample counts, materialized `path` and `footprints` tuples, and complete local
+circumstances. See
+`docs/end_user/solar_eclipse_visibility.md`.
 - `stationary_config_default`
 - `next_stationary`
 - `prev_stationary`

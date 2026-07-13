@@ -300,6 +300,11 @@ grahan: `moon_right_ascension_deg`/`moon_declination_deg` on chandra
 grahan results and `sun_right_ascension_deg`/`sun_declination_deg` on
 surya grahan results (degrees, equinox of date, nutation applied).
 
+Solar grahan requests also accept `location` and `config.include_path`,
+`path_step_minutes`, and `boundary_step_deg`. Results include Besselian
+elements, greatest location, map path/footprint samples, and local visibility
+circumstances. See `docs/end_user/solar_eclipse_visibility.md`.
+
 `CtaraDhruv.Search`:
 
 - `conjunction/2`

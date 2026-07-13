@@ -364,6 +364,27 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 		t.Fatalf("expected auto-expanded lunar phase range results, got %d", len(events))
 	}
 
+	grahanConfig := GrahanConfigDefault()
+	grahanConfig.IncludePath = true
+	grahanConfig.PathStepMinutes = 15
+	grahanConfig.BoundaryStepDeg = 15
+	_, solar, foundSolar, _, _, err := eng.GrahanSearch(GrahanSearchRequest{
+		GrahanKind: 1,
+		QueryMode:  0,
+		AtUTC:      UtcTime{Year: 2024, Month: 3, Day: 1},
+		Config:     grahanConfig,
+		Location:   &GeoLocation{LatitudeDeg: 25.2854, LongitudeDeg: -104.3},
+	})
+	if err != nil || !foundSolar {
+		t.Fatalf("GrahanSearch solar path: found=%v err=%v", foundSolar, err)
+	}
+	if len(solar.Path) == 0 || len(solar.Footprints) == 0 || len(solar.Footprints[0].Boundary) == 0 {
+		t.Fatalf("expected consumable solar path and footprint coordinates")
+	}
+	if !solar.LocalValid || solar.LocalC1UTC == nil || solar.LocalC4UTC == nil {
+		t.Fatalf("expected complete local solar circumstances")
+	}
+
 	utc := UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12, Minute: 0, Second: 0}
 	if _, err := eng.TithiForDate(utc); err != nil {
 		t.Fatalf("TithiForDate: %v", err)
