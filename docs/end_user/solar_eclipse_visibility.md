@@ -13,8 +13,9 @@ may include:
   circumstances;
 - `config.include_path`: generate map products;
 - `config.path_step_minutes`: central-path cadence from 1 through 30 minutes;
-- `config.boundary_step_deg`: shadow-boundary sampling from 1 through 15
-  degrees.
+- `config.boundary_step_deg`: maximum base shadow-boundary sampling from 1
+  through 15 degrees. Dhruv adds adaptive samples near tangent regions when
+  needed to keep the ground ring continuous.
 
 Path generation defaults to off so catalog-only searches remain inexpensive.
 The default cadence is one minute and the default boundary step is two degrees.
@@ -58,10 +59,13 @@ Every solar result includes:
 
 When path generation is enabled, the result also contains:
 
-- `path`: timestamped central coordinates, northern and southern limits,
-  width, central duration, Sun altitude/azimuth, and the local central type;
-- `footprints`: timestamped penumbral boundary rings suitable for visibility
-  polygons;
+- `path`: timestamped central coordinates, local northern and southern
+  corridor limits, width, central duration, Sun altitude/azimuth, and the
+  local central type. Near grazing or polar contacts, the limits remain on the
+  local corridor around the central coordinate;
+- `footprints`: timestamped, ordered, explicitly closed penumbral boundary
+  rings suitable for visibility polygons. The final coordinate repeats the
+  first, and each timestamp-matched central-path point lies inside its ring;
 - `local`: visibility, local type, maximum, C1-C4, magnitude, obscuration,
   Sun altitude/azimuth, and central duration for the requested location.
 
@@ -81,7 +85,8 @@ checked-in century GeoJSON:
    total/annular corridor. Split segments when longitude jumps across the
    antimeridian.
 4. Render `footprints[].boundary` as the time-varying partial-visibility
-   footprint. Close each ring in the map adapter.
+   footprint. Each ring is already closed; map adapters only need to
+   split/unwrap antimeridian crossings for their projection.
 5. Use `local` for the user's visible/not-visible state, contact timeline,
    magnitude, obscuration, horizon state, and duration.
 

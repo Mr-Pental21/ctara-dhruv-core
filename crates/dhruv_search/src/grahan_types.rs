@@ -46,8 +46,8 @@ pub struct GrahanConfig {
     pub include_path: bool,
     /// Sampling cadence for geographic path products. Range: 1..=30 minutes.
     pub path_step_minutes: u32,
-    /// Angular sampling of instantaneous shadow-cone boundary rings.
-    /// Range: 1..=15 degrees.
+    /// Maximum base angular sampling of instantaneous shadow-cone boundary
+    /// rings. Tangent regions are subdivided adaptively. Range: 1..=15 degrees.
     pub boundary_step_deg: u32,
 }
 
@@ -88,7 +88,8 @@ pub struct BesselianElements {
     pub tan_f2: f64,
 }
 
-/// One timestamped sample along a total/annular/hybrid ground path.
+/// One timestamped sample along a total/annular/hybrid ground path. The
+/// northern and southern limits describe the local corridor around `center`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuryaGrahanPathPoint {
     pub jd_tdb: f64,
@@ -103,7 +104,8 @@ pub struct SuryaGrahanPathPoint {
     pub grahan_type: SuryaGrahanType,
 }
 
-/// Boundary of the instantaneous penumbral footprint on Earth.
+/// Boundary of the instantaneous penumbral footprint on Earth. The vertices
+/// form one ordered closed ring; the final coordinate repeats the first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuryaGrahanFootprint {
     pub jd_tdb: f64,

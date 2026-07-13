@@ -547,6 +547,14 @@ non-null handle exactly once with `dhruv_surya_grahan_geometry_free`. The
 canonical type definitions and field order are in
 `crates/dhruv_ffi_c/include/dhruv.h`.
 
+Each path sample's northern and southern limits describe the local central
+corridor around that sample's center, including at grazing and polar contacts.
+
+Each footprint's boundary coordinates form one ordered, explicitly closed
+ring: `boundary_count` includes the repeated final coordinate, which equals
+the first. Consumers may unwrap antimeridian crossings for display but must
+not synthesize a chord between otherwise open branches.
+
 ### DhruvStationaryConfig
 
 ```c

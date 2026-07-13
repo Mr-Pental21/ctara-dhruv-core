@@ -7,9 +7,9 @@ use std::path::Path;
 
 use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::{
-    ChandraGrahanType, GeoLocation, GrahanConfig, SuryaGrahanType, next_chandra_grahan,
-    next_surya_grahan, prev_chandra_grahan, prev_surya_grahan, search_chandra_grahan,
-    search_surya_grahan,
+    ChandraGrahanType, EclipseGeoPoint, GeoLocation, GrahanConfig, SuryaGrahanType,
+    next_chandra_grahan, next_surya_grahan, prev_chandra_grahan, prev_surya_grahan,
+    search_chandra_grahan, search_surya_grahan,
 };
 use dhruv_time::EopKernel;
 
@@ -28,6 +28,127 @@ fn load_engine() -> Option<Engine> {
 
 fn jd_from_date(year: i32, month: u32, day: f64) -> f64 {
     dhruv_time::calendar_to_jd(year, month, day)
+}
+
+fn surface_unit_vector(point: EclipseGeoPoint) -> [f64; 3] {
+    let lat = point.latitude_deg.to_radians();
+    let lon = point.longitude_deg.to_radians();
+    [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()]
+}
+
+fn vector_dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn vector_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn vector_norm(v: [f64; 3]) -> f64 {
+    vector_dot(v, v).sqrt()
+}
+
+fn spherical_ring_contains(ring: &[EclipseGeoPoint], point: EclipseGeoPoint) -> bool {
+    if ring.len() < 4 {
+        return false;
+    }
+    let point_vector = surface_unit_vector(point);
+    let mut tangent_vertices = Vec::with_capacity(ring.len() - 1);
+    for vertex in &ring[..ring.len() - 1] {
+        let vertex = surface_unit_vector(*vertex);
+        let projected = [
+            vertex[0] - point_vector[0] * vector_dot(vertex, point_vector),
+            vertex[1] - point_vector[1] * vector_dot(vertex, point_vector),
+            vertex[2] - point_vector[2] * vector_dot(vertex, point_vector),
+        ];
+        let length = vector_norm(projected);
+        if length < 1.0e-12 {
+            return vector_dot(vertex, point_vector) > 0.0;
+        }
+        tangent_vertices.push([
+            projected[0] / length,
+            projected[1] / length,
+            projected[2] / length,
+        ]);
+    }
+
+    let mut winding = 0.0;
+    for index in 0..tangent_vertices.len() {
+        let a = tangent_vertices[index];
+        let b = tangent_vertices[(index + 1) % tangent_vertices.len()];
+        winding += vector_dot(point_vector, vector_cross(a, b)).atan2(vector_dot(a, b));
+    }
+    winding.abs() > std::f64::consts::PI
+}
+
+fn great_circle_km(a: EclipseGeoPoint, b: EclipseGeoPoint) -> f64 {
+    let dot = vector_dot(surface_unit_vector(a), surface_unit_vector(b)).clamp(-1.0, 1.0);
+    6378.137 * dot.acos()
+}
+
+fn assert_closed_continuous_ring(boundary: &[EclipseGeoPoint]) {
+    assert!(
+        boundary.len() >= 4,
+        "footprint must contain at least three vertices plus closure, got {}",
+        boundary.len()
+    );
+    let first = boundary[0];
+    let last = boundary[boundary.len() - 1];
+    assert!(
+        (first.latitude_deg - last.latitude_deg).abs() < 1.0e-9
+            && (first.longitude_deg - last.longitude_deg).abs() < 1.0e-9,
+        "footprint boundary is open: first={first:?}, last={last:?}"
+    );
+    let longest_edge = boundary
+        .windows(2)
+        .map(|edge| great_circle_km(edge[0], edge[1]))
+        .fold(0.0, f64::max);
+    assert!(
+        longest_edge < 2_500.0,
+        "footprint contains a discontinuous {longest_edge:.1} km edge"
+    );
+}
+
+fn assert_central_path_inside_matching_footprints(
+    path: &[dhruv_search::SuryaGrahanPathPoint],
+    footprints: &[dhruv_search::SuryaGrahanFootprint],
+) {
+    for path_point in path {
+        let footprint = footprints
+            .iter()
+            .find(|footprint| (footprint.jd_tdb - path_point.jd_tdb).abs() < 1.0e-9)
+            .expect("timestamp-matched footprint");
+        assert!(
+            spherical_ring_contains(&footprint.boundary, path_point.center),
+            "central point {:?} at JD {} lies outside its penumbral footprint",
+            path_point.center,
+            path_point.jd_tdb
+        );
+    }
+}
+
+fn assert_path_limits_are_local(path: &[dhruv_search::SuryaGrahanPathPoint]) {
+    for point in path {
+        let maximum_local_distance_km = point.width_km * 1.5 + 1.0;
+        for (name, limit) in [
+            ("northern", point.northern_limit),
+            ("southern", point.southern_limit),
+        ] {
+            let limit = limit.expect("central path point must have both limits");
+            let distance_km = great_circle_km(point.center, limit);
+            assert!(
+                distance_km <= maximum_local_distance_km,
+                "{name} limit is a distant cone branch: center={:?}, limit={limit:?}, distance={distance_km:.1} km, width={:.1} km at JD {}",
+                point.center,
+                point.width_km,
+                point.jd_tdb
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +378,10 @@ fn surya_grahan_path_and_local_circumstances() {
     .expect("eclipse");
     assert!(grahan.path.len() > 30);
     assert!(grahan.footprints.len() > 50);
+    for footprint in &grahan.footprints {
+        assert_closed_continuous_ring(&footprint.boundary);
+    }
+    assert_central_path_inside_matching_footprints(&grahan.path, &grahan.footprints);
     let peak = &grahan.path[grahan.path.len() / 2];
     assert!(
         (50.0..400.0).contains(&peak.width_km),
@@ -305,18 +430,57 @@ fn surya_antimeridian_and_polar_footprint_geometry() {
         (-180.0..=180.0).contains(&point.center.longitude_deg)
             && (-90.0..=90.0).contains(&point.center.latitude_deg)
     }));
+    for footprint in &antimeridian.footprints {
+        assert_closed_continuous_ring(&footprint.boundary);
+    }
+    assert_central_path_inside_matching_footprints(&antimeridian.path, &antimeridian.footprints);
 
     let polar = next_surya_grahan(&engine, None, jd_from_date(2025, 3, 1.0), None, &config)
         .expect("search")
         .expect("partial eclipse");
     assert_eq!(polar.grahan_type, SuryaGrahanType::Partial);
     assert!(polar.path.is_empty());
+    for footprint in &polar.footprints {
+        assert_closed_continuous_ring(&footprint.boundary);
+    }
     assert!(polar.footprints.iter().any(|footprint| {
         footprint
             .boundary
             .iter()
             .any(|point| point.latitude_deg > 80.0)
     }));
+}
+
+#[test]
+fn surya_footprints_are_closed_continuous_rings_containing_the_central_path() {
+    let Some(engine) = load_engine() else { return };
+    let Ok(eop) = EopKernel::load(Path::new(EOP_PATH)) else {
+        return;
+    };
+    let config = GrahanConfig {
+        include_path: true,
+        path_step_minutes: 5,
+        boundary_step_deg: 5,
+        ..Default::default()
+    };
+    let grahan = next_surya_grahan(
+        &engine,
+        Some(&eop),
+        jd_from_date(2026, 2, 1.0),
+        None,
+        &config,
+    )
+    .expect("search")
+    .expect("2026 annular eclipse");
+
+    assert_eq!(grahan.grahan_type, SuryaGrahanType::Annular);
+    assert!(!grahan.path.is_empty());
+    assert!(!grahan.footprints.is_empty());
+    for footprint in &grahan.footprints {
+        assert_closed_continuous_ring(&footprint.boundary);
+    }
+    assert_central_path_inside_matching_footprints(&grahan.path, &grahan.footprints);
+    assert_path_limits_are_local(&grahan.path);
 }
 
 #[test]

@@ -72,6 +72,15 @@
   positive for antumbra (annular).
 - Earth intersection uses an oblate ellipsoid. UTC is retained alongside JD;
   UT1 controls terrestrial longitude.
+- A cone generator can meet the ellipsoid twice. When every generator reaches
+  Earth, the Sun-facing intersections form the footprint ring. For a grazing
+  cone, the entry and exit branches are joined at numerically refined tangent
+  rays. Boundary segments are adaptively subdivided near those tangencies so
+  coarse angular requests do not introduce long synthetic ground chords.
+- Central-path limits are selected from the local cone intersection around the
+  shadow-axis ground point. This prevents a second, distant ellipsoid branch
+  from becoming a false northern or southern corridor limit near polar or
+  grazing contacts.
 - Mean-limb results do not model mountains/valleys on the lunar limb, Baily's
   beads, atmospheric refraction, or local terrain unless explicitly stated.
 
@@ -87,6 +96,12 @@
   path, a polar footprint above 80 degrees in 2025, local totality, path
   width, central duration, geographic greatest point, contact ordering, and
   backward search.
+- Ring-contract tests cover centered and grazing synthetic cones plus central,
+  partial-only, polar, and antimeridian events. A high-gamma 2026 annular case
+  verifies explicit closure, bounded consecutive ground segments, and that
+  every timestamp-matched central-path point is inside its penumbral ring. The
+  same case verifies that both central-corridor limits stay local to each path
+  point rather than jumping to a distant cone branch.
 - Published path comparisons use tolerances appropriate to a mean-limb,
   geometric model; the tolerances are stated in the integration tests.
 

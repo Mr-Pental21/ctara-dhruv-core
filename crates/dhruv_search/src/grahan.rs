@@ -455,6 +455,260 @@ fn ray_ellipsoid_intersection(origin: [f64; 3], direction: [f64; 3]) -> Option<[
         .map(|(_, point)| point)
 }
 
+#[derive(Clone, Copy)]
+struct ConeEllipsoidIntersection {
+    apex: [f64; 3],
+    axis: [f64; 3],
+    east: [f64; 3],
+    north: [f64; 3],
+    cos_angle: f64,
+    sin_angle: f64,
+}
+
+impl ConeEllipsoidIntersection {
+    fn new(
+        apex: [f64; 3],
+        axis: [f64; 3],
+        east: [f64; 3],
+        north: [f64; 3],
+        tan_angle: f64,
+    ) -> Self {
+        let cos_angle = 1.0 / (1.0 + tan_angle * tan_angle).sqrt();
+        Self {
+            apex,
+            axis,
+            east,
+            north,
+            cos_angle,
+            sin_angle: tan_angle * cos_angle,
+        }
+    }
+
+    fn hits(&self, phi: f64) -> Vec<(f64, [f64; 3])> {
+        let radial = add(scale(self.east, phi.cos()), scale(self.north, phi.sin()));
+        let direction = add(
+            scale(self.axis, self.cos_angle),
+            scale(radial, self.sin_angle),
+        );
+        ray_ellipsoid_intersections(self.apex, direction)
+    }
+
+    fn tangent(&self, mut miss_phi: f64, mut hit_phi: f64) -> (f64, [f64; 3]) {
+        for _ in 0..64 {
+            let midpoint = (miss_phi + hit_phi) * 0.5;
+            if self.hits(midpoint).is_empty() {
+                miss_phi = midpoint;
+            } else {
+                hit_phi = midpoint;
+            }
+        }
+        let hits = self.hits(hit_phi);
+        match (hits.first(), hits.last()) {
+            (Some((_, near)), Some((_, far))) => (hit_phi, scale(add(*near, *far), 0.5)),
+            _ => unreachable!("hit-side tangent refinement must intersect the ellipsoid"),
+        }
+    }
+
+    fn branch_point(&self, phi: f64, branch: ConeHitBranch) -> Option<[f64; 3]> {
+        let hits = self.hits(phi);
+        match branch {
+            ConeHitBranch::Entry => hits.first().map(|(_, point)| *point),
+            ConeHitBranch::Exit => hits.last().map(|(_, point)| *point),
+        }
+    }
+}
+
+fn surface_separation_deg(a: [f64; 3], b: [f64; 3]) -> f64 {
+    dot(unit(a), unit(b)).clamp(-1.0, 1.0).acos().to_degrees()
+}
+
+#[derive(Clone, Copy)]
+enum ConeHitBranch {
+    Entry,
+    Exit,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn append_adaptive_cone_segment(
+    points: &mut Vec<[f64; 3]>,
+    cone: &ConeEllipsoidIntersection,
+    branch: ConeHitBranch,
+    start_phi: f64,
+    start: [f64; 3],
+    end_phi: f64,
+    end: [f64; 3],
+    max_surface_step_deg: f64,
+    depth: u8,
+) {
+    if depth < 16 && surface_separation_deg(start, end) > max_surface_step_deg {
+        let midpoint_phi = (start_phi + end_phi) * 0.5;
+        if let Some(midpoint) = cone.branch_point(midpoint_phi, branch) {
+            append_adaptive_cone_segment(
+                points,
+                cone,
+                branch,
+                start_phi,
+                start,
+                midpoint_phi,
+                midpoint,
+                max_surface_step_deg,
+                depth + 1,
+            );
+            append_adaptive_cone_segment(
+                points,
+                cone,
+                branch,
+                midpoint_phi,
+                midpoint,
+                end_phi,
+                end,
+                max_surface_step_deg,
+                depth + 1,
+            );
+            return;
+        }
+    }
+    points.push(end);
+}
+
+fn append_adaptive_cone_nodes(
+    points: &mut Vec<[f64; 3]>,
+    nodes: &[(f64, [f64; 3])],
+    cone: &ConeEllipsoidIntersection,
+    branch: ConeHitBranch,
+    max_surface_step_deg: f64,
+) {
+    for pair in nodes.windows(2) {
+        append_adaptive_cone_segment(
+            points,
+            cone,
+            branch,
+            pair[0].0,
+            pair[0].1,
+            pair[1].0,
+            pair[1].1,
+            max_surface_step_deg,
+            0,
+        );
+    }
+}
+
+/// Ordered intersection of one cone sheet with the oblate Earth.
+///
+/// For a full azimuth sweep, the entry intersections form the sun-facing
+/// boundary ring. For a grazing cone, only one cyclic interval of generators
+/// reaches Earth; its entry and exit branches meet at the two tangent rays and
+/// together form the closed footprint ring.
+fn cone_ellipsoid_boundary(
+    apex: [f64; 3],
+    axis: [f64; 3],
+    east: [f64; 3],
+    north: [f64; 3],
+    preferred_surface_direction: [f64; 3],
+    tan_angle: f64,
+    step_deg: u32,
+) -> Vec<[f64; 3]> {
+    let cone = ConeEllipsoidIntersection::new(apex, axis, east, north, tan_angle);
+    let sample_count = 360usize.div_ceil(step_deg.clamp(1, 15) as usize);
+    let phi_step = std::f64::consts::TAU / sample_count as f64;
+    let max_surface_step_deg = step_deg.clamp(1, 15) as f64;
+    let samples = (0..sample_count)
+        .map(|index| {
+            let phi = index as f64 * phi_step;
+            let hits = cone.hits(phi);
+            (phi, hits)
+        })
+        .collect::<Vec<_>>();
+
+    let Some(miss_index) = samples.iter().position(|(_, hits)| hits.is_empty()) else {
+        let branch = match (samples[0].1.first(), samples[0].1.last()) {
+            (Some((_, entry)), Some((_, exit)))
+                if dot(*exit, preferred_surface_direction)
+                    > dot(*entry, preferred_surface_direction) =>
+            {
+                ConeHitBranch::Exit
+            }
+            _ => ConeHitBranch::Entry,
+        };
+        let mut nodes = samples
+            .iter()
+            .filter_map(|(phi, hits)| {
+                let point = match branch {
+                    ConeHitBranch::Entry => hits.first(),
+                    ConeHitBranch::Exit => hits.last(),
+                };
+                point.map(|(_, point)| (*phi, *point))
+            })
+            .collect::<Vec<_>>();
+        if nodes.len() < 3 {
+            return Vec::new();
+        }
+        nodes.push((nodes[0].0 + std::f64::consts::TAU, nodes[0].1));
+        let mut ring = vec![nodes[0].1];
+        append_adaptive_cone_nodes(&mut ring, &nodes, &cone, branch, max_surface_step_deg);
+        return ring;
+    };
+
+    let mut runs = Vec::<Vec<(f64, Vec<(f64, [f64; 3])>)>>::new();
+    let mut current = Vec::new();
+    for offset in 1..=sample_count {
+        let index = (miss_index + offset) % sample_count;
+        let phi = samples[miss_index].0 + offset as f64 * phi_step;
+        let hits = samples[index].1.clone();
+        if hits.is_empty() {
+            if !current.is_empty() {
+                runs.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push((phi, hits));
+        }
+    }
+    if !current.is_empty() {
+        runs.push(current);
+    }
+
+    let Some(run) = runs.into_iter().max_by_key(Vec::len) else {
+        return Vec::new();
+    };
+    let left_hit_phi = run[0].0;
+    let right_hit_phi = run[run.len() - 1].0;
+    let left_tangent = cone.tangent(left_hit_phi - phi_step, left_hit_phi);
+    let right_tangent = cone.tangent(right_hit_phi + phi_step, right_hit_phi);
+
+    let mut entry_nodes = Vec::with_capacity(run.len() + 2);
+    entry_nodes.push(left_tangent);
+    entry_nodes.extend(
+        run.iter()
+            .filter_map(|(phi, hits)| hits.first().map(|(_, point)| (*phi, *point))),
+    );
+    entry_nodes.push(right_tangent);
+    let mut exit_nodes = Vec::with_capacity(run.len() + 2);
+    exit_nodes.push(right_tangent);
+    exit_nodes.extend(
+        run.iter()
+            .rev()
+            .filter_map(|(phi, hits)| hits.last().map(|(_, point)| (*phi, *point))),
+    );
+    exit_nodes.push(left_tangent);
+
+    let mut ring = vec![left_tangent.1];
+    append_adaptive_cone_nodes(
+        &mut ring,
+        &entry_nodes,
+        &cone,
+        ConeHitBranch::Entry,
+        max_surface_step_deg,
+    );
+    append_adaptive_cone_nodes(
+        &mut ring,
+        &exit_nodes,
+        &cone,
+        ConeHitBranch::Exit,
+        max_surface_step_deg,
+    );
+    ring
+}
+
 fn axis_ground_point(
     engine: &Engine,
     eop: Option<&EopKernel>,
@@ -502,24 +756,13 @@ fn shadow_boundary(
         -1.0
     };
     let axis = scale(g.q, axis_sign);
-    let cos_angle = 1.0 / (1.0 + tan_angle * tan_angle).sqrt();
-    let sin_angle = tan_angle * cos_angle;
     let gast = gast_rad_for(engine, eop, jd_tdb);
-    let step = step_deg.clamp(1, 15) as usize;
-    let mut points = Vec::with_capacity(360 / step + 1);
-    for deg in (0..360).step_by(step) {
-        let phi = (deg as f64).to_radians();
-        let radial = add(scale(g.east, phi.cos()), scale(g.north, phi.sin()));
-        let direction = add(scale(axis, cos_angle), scale(radial, sin_angle));
-        let hit = ray_ellipsoid_intersections(apex, direction)
+    Ok(
+        cone_ellipsoid_boundary(apex, axis, g.east, g.north, g.q, tan_angle, step_deg)
             .into_iter()
-            .map(|(_, point)| point)
-            .max_by(|a, b| dot(*a, g.q).total_cmp(&dot(*b, g.q)));
-        if let Some(hit) = hit {
-            points.push(ecef_to_geodetic(rotate_z(hit, -gast)));
-        }
-    }
-    Ok(points)
+            .map(|point| ecef_to_geodetic(rotate_z(point, -gast)))
+            .collect(),
+    )
 }
 
 fn bessel_penumbra_metric(
@@ -832,6 +1075,30 @@ fn haversine_km(a: EclipseGeoPoint, b: EclipseGeoPoint) -> f64 {
     2.0 * EARTH_RADIUS_KM * h.sqrt().asin()
 }
 
+fn local_central_path_limits(
+    center: EclipseGeoPoint,
+    boundary: &[EclipseGeoPoint],
+) -> Option<(EclipseGeoPoint, EclipseGeoPoint, f64)> {
+    let half_width_km = boundary
+        .iter()
+        .map(|point| haversine_km(center, *point))
+        .filter(|distance| *distance > 0.001)
+        .min_by(f64::total_cmp)?;
+    // A grazing cone can also intersect the distant side of the ellipsoid.
+    // Path limits describe the local corridor around the axis ground point,
+    // so exclude that remote branch before selecting geographic limits.
+    let local_cutoff_km = half_width_km * 3.0 + 1.0;
+    let local_points = boundary
+        .iter()
+        .copied()
+        .filter(|point| haversine_km(center, *point) <= local_cutoff_km);
+    let northern_limit = local_points
+        .clone()
+        .max_by(|a, b| a.latitude_deg.total_cmp(&b.latitude_deg))?;
+    let southern_limit = local_points.min_by(|a, b| a.latitude_deg.total_cmp(&b.latitude_deg))?;
+    Some((northern_limit, southern_limit, half_width_km * 2.0))
+}
+
 fn closest_axis_surface_point(
     engine: &Engine,
     eop: Option<&EopKernel>,
@@ -865,21 +1132,11 @@ fn path_point(
     if boundary.is_empty() {
         return Ok(None);
     }
-    let northern_limit = boundary
-        .iter()
-        .copied()
-        .max_by(|a, b| a.latitude_deg.total_cmp(&b.latitude_deg));
-    let southern_limit = boundary
-        .iter()
-        .copied()
-        .min_by(|a, b| a.latitude_deg.total_cmp(&b.latitude_deg));
-    let width_km = boundary
-        .iter()
-        .map(|point| haversine_km(center, *point))
-        .filter(|distance| *distance > 0.001)
-        .min_by(f64::total_cmp)
-        .unwrap_or(0.0)
-        * 2.0;
+    let Some((northern_limit, southern_limit, width_km)) =
+        local_central_path_limits(center, &boundary)
+    else {
+        return Ok(None);
+    };
     let location = GeoLocation::new(center.latitude_deg, center.longitude_deg, 0.0);
     let local = local_disk_geometry(engine, eop, jd_tdb, &location)?;
     let grahan_type = local_type(local).unwrap_or(SuryaGrahanType::Partial);
@@ -887,8 +1144,8 @@ fn path_point(
         jd_tdb,
         utc: UtcTime::from_jd_tdb(jd_tdb, engine.lsk()),
         center,
-        northern_limit,
-        southern_limit,
+        northern_limit: Some(northern_limit),
+        southern_limit: Some(southern_limit),
         width_km,
         central_duration_seconds: 0.0,
         sun_altitude_deg: local.sun_altitude_deg,
@@ -1432,6 +1689,90 @@ pub fn search_surya_grahan(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_boundary_points_are_closed_and_on_ellipsoid(points: &[[f64; 3]]) {
+        assert!(points.len() >= 4);
+        assert_eq!(points.first(), points.last());
+        for point in points {
+            let ellipsoid_value = (point[0].powi(2) + point[1].powi(2)) / EARTH_RADIUS_KM.powi(2)
+                + point[2].powi(2) / EARTH_POLAR_RADIUS_KM.powi(2);
+            assert!(
+                (ellipsoid_value - 1.0).abs() < 1.0e-8,
+                "point is off ellipsoid: {point:?}, value={ellipsoid_value}"
+            );
+        }
+    }
+
+    #[test]
+    fn centered_cone_boundary_uses_the_entry_ring() {
+        let points = cone_ellipsoid_boundary(
+            [0.0, 0.0, 10_000.0],
+            [0.0, 0.0, -1.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            0.2,
+            10,
+        );
+        assert_eq!(points.len(), 37);
+        assert_boundary_points_are_closed_and_on_ellipsoid(&points);
+        assert!(points.iter().all(|point| point[2] > 0.0));
+    }
+
+    #[test]
+    fn grazing_cone_boundary_joins_entry_and_exit_at_tangencies() {
+        let axis = unit([0.5, 0.0, -0.866_025_403_784_438_6]);
+        let east = [0.0, 1.0, 0.0];
+        let north = unit(cross(axis, east));
+        let points = cone_ellipsoid_boundary(
+            [0.0, 0.0, 10_000.0],
+            axis,
+            east,
+            north,
+            [0.0, 0.0, 1.0],
+            0.1,
+            10,
+        );
+        assert_boundary_points_are_closed_and_on_ellipsoid(&points);
+        assert!(points.len() < 73, "expected a grazing azimuth interval");
+    }
+
+    #[test]
+    fn central_path_limits_ignore_a_distant_cone_branch() {
+        let center = EclipseGeoPoint {
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+        };
+        let boundary = [
+            EclipseGeoPoint {
+                latitude_deg: 1.0,
+                longitude_deg: 0.0,
+            },
+            EclipseGeoPoint {
+                latitude_deg: 0.0,
+                longitude_deg: 1.0,
+            },
+            EclipseGeoPoint {
+                latitude_deg: -1.0,
+                longitude_deg: 0.0,
+            },
+            EclipseGeoPoint {
+                latitude_deg: 0.0,
+                longitude_deg: -1.0,
+            },
+            EclipseGeoPoint {
+                latitude_deg: 40.0,
+                longitude_deg: 0.0,
+            },
+        ];
+
+        let (north, south, width_km) =
+            local_central_path_limits(center, &boundary).expect("local path geometry");
+
+        assert_eq!(north.latitude_deg, 1.0);
+        assert_eq!(south.latitude_deg, -1.0);
+        assert!((220.0..225.0).contains(&width_km));
+    }
 
     #[test]
     fn shadow_radii_reasonable() {

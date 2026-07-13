@@ -3811,7 +3811,8 @@ impl From<EclipseGeoPoint> for DhruvEclipseGeoPoint {
     }
 }
 
-/// One timestamped point on a solar-eclipse central path.
+/// One timestamped point on a solar-eclipse central path. The northern and
+/// southern limits describe the local corridor around `center`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DhruvSuryaGrahanPathPoint {
@@ -3861,7 +3862,9 @@ impl From<&SuryaGrahanPathPoint> for DhruvSuryaGrahanPathPoint {
 }
 
 /// Metadata for one timestamped penumbral footprint. Boundary coordinates
-/// are read with `dhruv_surya_grahan_footprint_point_at`.
+/// are an ordered closed ring, read with
+/// `dhruv_surya_grahan_footprint_point_at`; the final coordinate repeats the
+/// first.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DhruvSuryaGrahanFootprint {
