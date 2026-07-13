@@ -67,7 +67,12 @@ all-or-nothing and list output preserves active query order.
 
 Solar grahan requests may include `location` and path sampling config. Solar
 results include obscuration, gamma, Besselian elements, greatest location,
-materialized `path` and `footprints` arrays, and complete local circumstances. See
+materialized `path` and `footprints` arrays, and complete local circumstances.
+The config additionally accepts `includeLocalGrid`/`localGridStepDeg`,
+`includeIsolines` with `durationIsolineFractions`/`magnitudeIsolineLevels`,
+and `includeCentralCorridor`; results then carry `centrality`, `localGrid`,
+`isolines` (`visibilityBoundary`/`durationIsolines`/`magnitudeIsolines` with
+`containsPole`-tagged rings), and `centralCorridor.segments`. See
 `docs/end_user/solar_eclipse_visibility.md`.
 - `motionSearch`
 - `lunarPhaseSearch`

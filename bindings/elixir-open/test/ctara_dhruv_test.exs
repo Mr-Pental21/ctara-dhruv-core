@@ -102,6 +102,45 @@ defmodule CtaraDhruvTest do
           assert length(eclipse.footprints) > 20
           assert eclipse.local.visible == true
           assert eclipse.local.grahan_type == :total
+          assert eclipse.centrality == :full
+
+          assert {:ok, %{events: field_eclipse, effective_config: effective_config}} =
+                   Search.grahan(engine, %{
+                     mode: :next,
+                     kind: :surya,
+                     at_utc: %{year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0.0},
+                     config: %{
+                       include_local_grid: true,
+                       local_grid_step_deg: 20.0,
+                       include_isolines: true,
+                       duration_isoline_fractions: [0.5, 0.25, 2.0],
+                       magnitude_isoline_levels: [0.5]
+                     }
+                   })
+
+          # Effective config echoes clamped/sanitized values for cache keys.
+          assert effective_config.local_grid_step_deg == 10.0
+          assert effective_config.duration_isoline_fractions == [0.25, 0.5]
+          assert effective_config.magnitude_isoline_levels == [0.5]
+          assert effective_config.include_local_grid == true
+
+          assert field_eclipse.centrality == :full
+          assert length(field_eclipse.local_grid) > 20
+          [grid_sample | _] = field_eclipse.local_grid
+          assert is_float(grid_sample.latitude_deg)
+          assert is_float(grid_sample.magnitude)
+          assert is_float(grid_sample.visible_duration_seconds)
+          assert is_map(grid_sample.maximum_utc)
+          assert is_map(grid_sample.first_contact_utc)
+
+          assert [visibility_ring | _] = field_eclipse.isolines.visibility_boundary
+          assert length(visibility_ring.boundary) > 10
+          assert List.first(visibility_ring.boundary) == List.last(visibility_ring.boundary)
+          assert visibility_ring.contains_pole in [nil, :north, :south]
+          assert [duration_level | _] = field_eclipse.isolines.duration_isolines
+          assert duration_level.fraction == 0.25
+          assert [magnitude_level | _] = field_eclipse.isolines.magnitude_isolines
+          assert magnitude_level.level == 0.5
           assert {:ok, _} = Jyotish.graha_positions(engine, %{utc: utc, location: location})
 
           assert {:ok, equatorial_positions} =

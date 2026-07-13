@@ -476,6 +476,12 @@ struct SearchConfigInput {
     include_path: Option<bool>,
     path_step_minutes: Option<u32>,
     boundary_step_deg: Option<u32>,
+    include_local_grid: Option<bool>,
+    local_grid_step_deg: Option<f64>,
+    include_isolines: Option<bool>,
+    duration_isoline_fractions: Option<Vec<f64>>,
+    magnitude_isoline_levels: Option<Vec<f64>>,
+    include_central_corridor: Option<bool>,
     numerical_step_days: Option<f64>,
 }
 
@@ -1992,6 +1998,24 @@ fn to_grahan_config(
         if let Some(boundary_step_deg) = input.boundary_step_deg {
             config.boundary_step_deg = boundary_step_deg;
         }
+        if let Some(include_local_grid) = input.include_local_grid {
+            config.include_local_grid = include_local_grid;
+        }
+        if let Some(local_grid_step_deg) = input.local_grid_step_deg {
+            config.local_grid_step_deg = local_grid_step_deg;
+        }
+        if let Some(include_isolines) = input.include_isolines {
+            config.include_isolines = include_isolines;
+        }
+        if let Some(fractions) = &input.duration_isoline_fractions {
+            config.duration_isoline_fractions = fractions.clone();
+        }
+        if let Some(levels) = &input.magnitude_isoline_levels {
+            config.magnitude_isoline_levels = levels.clone();
+        }
+        if let Some(include_central_corridor) = input.include_central_corridor {
+            config.include_central_corridor = include_central_corridor;
+        }
     }
     config
 }
@@ -2855,21 +2879,60 @@ fn conjunction_event_json(event: dhruv_search::ConjunctionEvent) -> Value {
     })
 }
 
-fn grahan_result_json(result: GrahanResult) -> Value {
+fn grahan_result_json(result: GrahanResult, config: &dhruv_search::GrahanConfig) -> Value {
+    let effective_config = grahan_effective_config_json(config);
     match result {
         GrahanResult::ChandraSingle(event) => {
-            json!({ "kind": "chandra", "events": event.map(|value| chandra_grahan_json(*value)) })
+            json!({ "kind": "chandra", "events": event.map(|value| chandra_grahan_json(*value)), "effective_config": effective_config })
         }
         GrahanResult::ChandraMany(events) => {
-            json!({ "kind": "chandra", "events": events.into_iter().map(chandra_grahan_json).collect::<Vec<_>>() })
+            json!({ "kind": "chandra", "events": events.into_iter().map(chandra_grahan_json).collect::<Vec<_>>(), "effective_config": effective_config })
         }
         GrahanResult::SuryaSingle(event) => {
-            json!({ "kind": "surya", "events": event.map(|value| surya_grahan_json(*value)) })
+            json!({ "kind": "surya", "events": event.map(|value| surya_grahan_json(*value)), "effective_config": effective_config })
         }
         GrahanResult::SuryaMany(events) => {
-            json!({ "kind": "surya", "events": events.into_iter().map(surya_grahan_json).collect::<Vec<_>>() })
+            json!({ "kind": "surya", "events": events.into_iter().map(surya_grahan_json).collect::<Vec<_>>(), "effective_config": effective_config })
         }
     }
+}
+
+/// The configuration actually applied after clamping/sanitizing; consumers
+/// should build cache keys against this echo rather than the raw request.
+fn grahan_effective_config_json(config: &dhruv_search::GrahanConfig) -> Value {
+    let effective = config.effective();
+    json!({
+        "include_penumbral": effective.include_penumbral,
+        "include_peak_details": effective.include_peak_details,
+        "include_path": effective.include_path,
+        "path_step_minutes": effective.path_step_minutes,
+        "boundary_step_deg": effective.boundary_step_deg,
+        "include_local_grid": effective.include_local_grid,
+        "local_grid_step_deg": effective.local_grid_step_deg,
+        "include_isolines": effective.include_isolines,
+        "duration_isoline_fractions": effective.duration_isoline_fractions,
+        "magnitude_isoline_levels": effective.magnitude_isoline_levels,
+        "include_central_corridor": effective.include_central_corridor
+    })
+}
+
+fn isoline_rings_json(rings: Vec<dhruv_search::SuryaIsolineRing>) -> Value {
+    Value::Array(
+        rings
+            .into_iter()
+            .map(|ring| {
+                json!({
+                    "contains_pole": ring.contains_pole.map(|side| match side {
+                        dhruv_search::PoleSide::North => "north",
+                        dhruv_search::PoleSide::South => "south",
+                    }),
+                    "boundary": ring.boundary.into_iter().map(|p| json!({
+                        "latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg
+                    })).collect::<Vec<_>>()
+                })
+            })
+            .collect(),
+    )
 }
 
 fn chandra_grahan_json(event: dhruv_search::ChandraGrahan) -> Value {
@@ -2954,6 +3017,34 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
             "magnitude": l.magnitude, "obscuration": l.obscuration,
             "sun_altitude_deg": l.sun_altitude_deg, "sun_azimuth_deg": l.sun_azimuth_deg,
             "central_duration_seconds": l.central_duration_seconds
+        })),
+        "centrality": match event.centrality {
+            dhruv_search::SuryaCentrality::Full => "full",
+            dhruv_search::SuryaCentrality::Partial => "partial",
+            dhruv_search::SuryaCentrality::None => "none",
+        },
+        "local_grid": event.local_grid.into_iter().map(|s| json!({
+            "latitude_deg": s.latitude_deg, "longitude_deg": s.longitude_deg,
+            "magnitude": s.magnitude, "obscuration": s.obscuration,
+            "maximum_utc": utc_json(s.maximum_utc), "maximum_jd": s.maximum_jd,
+            "first_contact_utc": utc_json(s.first_contact_utc), "first_contact_jd": s.first_contact_jd,
+            "last_contact_utc": utc_json(s.last_contact_utc), "last_contact_jd": s.last_contact_jd,
+            "visible_duration_seconds": s.visible_duration_seconds
+        })).collect::<Vec<_>>(),
+        "isolines": event.isolines.map(|iso| json!({
+            "visibility_boundary": isoline_rings_json(iso.visibility_boundary),
+            "duration_isolines": iso.duration_isolines.into_iter().map(|entry| json!({
+                "fraction": entry.fraction, "rings": isoline_rings_json(entry.rings)
+            })).collect::<Vec<_>>(),
+            "magnitude_isolines": iso.magnitude_isolines.into_iter().map(|entry| json!({
+                "level": entry.level, "rings": isoline_rings_json(entry.rings)
+            })).collect::<Vec<_>>()
+        })),
+        "central_corridor": event.central_corridor.map(|corridor| json!({
+            "segments": corridor.segments.into_iter().map(|segment| json!({
+                "grahan_type": debug_name(segment.grahan_type),
+                "rings": isoline_rings_json(segment.rings)
+            })).collect::<Vec<_>>()
         }))
     })
 }
@@ -4287,7 +4378,7 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                         query,
                     };
                 dhruv_search::grahan(engine, state.eop.as_ref(), &op)
-                    .map(grahan_result_json)
+                    .map(|result| grahan_result_json(result, &op.config))
                     .map_err(|err| map_error("search_error", err))
             }
             "lunar_phase" => {

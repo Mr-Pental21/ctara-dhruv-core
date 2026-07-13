@@ -35,7 +35,7 @@ impl GeoLocation {
 }
 
 /// Grahan search configuration.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GrahanConfig {
     /// Include penumbral-only chandra grahan in results. Default: true.
     pub include_penumbral: bool,
@@ -49,6 +49,26 @@ pub struct GrahanConfig {
     /// Maximum base angular sampling of instantaneous shadow-cone boundary
     /// rings. Tangent regions are subdivided adaptively. Range: 1..=15 degrees.
     pub boundary_step_deg: u32,
+    /// Include the per-event geographic grid of local circumstances for
+    /// Surya grahan. Default: false.
+    pub include_local_grid: bool,
+    /// Grid spacing in degrees for `local_grid` and the isoline field
+    /// sampling. Values outside [0.5, 10] are clamped. Default: 2.0.
+    pub local_grid_step_deg: f64,
+    /// Include visibility/duration/magnitude isoline rings for Surya grahan.
+    /// Default: false.
+    pub include_isolines: bool,
+    /// Visible-duration isoline levels as fractions of the global C1–C4
+    /// span. Values outside (0, 1) are dropped; the list is sorted,
+    /// deduplicated, and capped at 16 entries. Default: [0.25, 0.5, 0.75].
+    pub duration_isoline_fractions: Vec<f64>,
+    /// Local maximum-magnitude isoline levels. Values outside (0, 1.5] are
+    /// dropped; the list is sorted, deduplicated, and capped at 16 entries.
+    /// Default: [0.25, 0.5, 0.75, 1.0].
+    pub magnitude_isoline_levels: Vec<f64>,
+    /// Include the swept central (umbral/antumbral) corridor outline for
+    /// Surya grahan. Default: false.
+    pub include_central_corridor: bool,
 }
 
 impl Default for GrahanConfig {
@@ -59,8 +79,71 @@ impl Default for GrahanConfig {
             include_path: false,
             path_step_minutes: 1,
             boundary_step_deg: 2,
+            include_local_grid: false,
+            local_grid_step_deg: 2.0,
+            include_isolines: false,
+            duration_isoline_fractions: vec![0.25, 0.5, 0.75],
+            magnitude_isoline_levels: vec![0.25, 0.5, 0.75, 1.0],
+            include_central_corridor: false,
         }
     }
+}
+
+impl GrahanConfig {
+    /// Effective grid step after clamping to the supported [0.5, 10] range.
+    /// Non-finite values fall back to the default spacing.
+    pub fn effective_local_grid_step_deg(&self) -> f64 {
+        if self.local_grid_step_deg.is_finite() {
+            self.local_grid_step_deg.clamp(0.5, 10.0)
+        } else {
+            2.0
+        }
+    }
+
+    /// Sanitized duration isoline fractions: finite, in (0, 1), sorted,
+    /// deduplicated, at most 16.
+    pub fn effective_duration_isoline_fractions(&self) -> Vec<f64> {
+        sanitize_levels(&self.duration_isoline_fractions, 0.0, 1.0, false)
+    }
+
+    /// Sanitized magnitude isoline levels: finite, in (0, 1.5], sorted,
+    /// deduplicated, at most 16.
+    pub fn effective_magnitude_isoline_levels(&self) -> Vec<f64> {
+        sanitize_levels(&self.magnitude_isoline_levels, 0.0, 1.5, true)
+    }
+
+    /// The configuration actually applied after clamping and sanitizing.
+    /// Responses echo this so callers can build cache keys against the
+    /// effective values rather than the raw request.
+    pub fn effective(&self) -> GrahanConfig {
+        GrahanConfig {
+            include_penumbral: self.include_penumbral,
+            include_peak_details: self.include_peak_details,
+            include_path: self.include_path,
+            path_step_minutes: self.path_step_minutes.clamp(1, 30),
+            boundary_step_deg: self.boundary_step_deg.clamp(1, 15),
+            include_local_grid: self.include_local_grid,
+            local_grid_step_deg: self.effective_local_grid_step_deg(),
+            include_isolines: self.include_isolines,
+            duration_isoline_fractions: self.effective_duration_isoline_fractions(),
+            magnitude_isoline_levels: self.effective_magnitude_isoline_levels(),
+            include_central_corridor: self.include_central_corridor,
+        }
+    }
+}
+
+fn sanitize_levels(levels: &[f64], min: f64, max: f64, max_inclusive: bool) -> Vec<f64> {
+    let mut sanitized: Vec<f64> = levels
+        .iter()
+        .copied()
+        .filter(|value| {
+            value.is_finite() && *value > min && if max_inclusive { *value <= max } else { *value < max }
+        })
+        .collect();
+    sanitized.sort_by(f64::total_cmp);
+    sanitized.dedup();
+    sanitized.truncate(16);
+    sanitized
 }
 
 /// Geographic coordinate on the reference Earth ellipsoid.
@@ -111,6 +194,110 @@ pub struct SuryaGrahanFootprint {
     pub jd_tdb: f64,
     pub utc: UtcTime,
     pub boundary: Vec<EclipseGeoPoint>,
+}
+
+/// Which geographic pole a closed ring encloses, if any. Decided on the
+/// sphere from the ring's longitude winding, never re-derived planar-side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PoleSide {
+    North,
+    South,
+}
+
+/// One closed, ordered, non-self-intersecting boundary ring on the
+/// reference ellipsoid. The final vertex repeats the first. Vertices are
+/// ordered continuously so a renderer can unwrap longitudes across the
+/// antimeridian (a consecutive longitude jump greater than 180 degrees
+/// marks one seam crossing).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaIsolineRing {
+    pub boundary: Vec<EclipseGeoPoint>,
+    /// Set when the enclosed region contains a geographic pole; such rings
+    /// wind fully around in longitude.
+    pub contains_pole: Option<PoleSide>,
+}
+
+/// One visible sample of the per-event local-circumstance grid.
+///
+/// Samples lie at grid-cell centers: `lat = -90 + (i + 0.5) * step`,
+/// `lon = -180 + (j + 0.5) * step`. Only locations that see at least one
+/// Sun-up partial phase are emitted.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SuryaLocalGridSample {
+    pub latitude_deg: f64,
+    pub longitude_deg: f64,
+    /// Local maximum eclipse magnitude (fraction of the Sun's diameter).
+    pub magnitude: f64,
+    /// Fraction of the solar disk area obscured at local maximum.
+    pub obscuration: f64,
+    /// Time of local maximum (JD TDB), same convention as the per-location
+    /// `local` circumstances (not Sun-up clipped).
+    pub maximum_jd: f64,
+    pub maximum_utc: UtcTime,
+    /// First visible partial contact (Sun-up clipped), JD TDB.
+    pub first_contact_jd: f64,
+    pub first_contact_utc: UtcTime,
+    /// Last visible partial contact (Sun-up clipped), JD TDB.
+    pub last_contact_jd: f64,
+    pub last_contact_utc: UtcTime,
+    /// Measure of times in [C1, C4] with a partial phase in progress and
+    /// the Sun risen (summed across split intervals).
+    pub visible_duration_seconds: f64,
+}
+
+/// Closed rings of equal visible duration, tagged with the requested
+/// fraction of the global C1–C4 span.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaDurationIsoline {
+    pub fraction: f64,
+    pub rings: Vec<SuryaIsolineRing>,
+}
+
+/// Closed rings of equal local maximum magnitude.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaMagnitudeIsoline {
+    pub level: f64,
+    pub rings: Vec<SuryaIsolineRing>,
+}
+
+/// Isoline products for one Surya grahan event.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaIsolines {
+    /// Level-0 curve(s) enclosing every location that sees any Sun-up
+    /// partial phase. The night-side gap can split this into several rings.
+    pub visibility_boundary: Vec<SuryaIsolineRing>,
+    pub duration_isolines: Vec<SuryaDurationIsoline>,
+    pub magnitude_isolines: Vec<SuryaMagnitudeIsoline>,
+}
+
+/// One swept central-corridor segment: the closed outline of the ground
+/// area touched by the umbral (total) or antumbral (annular) shadow.
+/// Hybrid events return separate annular and total segments that meet at
+/// their transition points; plain central events return one segment.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaCorridorSegment {
+    /// `Total` or `Annular` for the shadow that sweeps this segment.
+    pub grahan_type: SuryaGrahanType,
+    pub rings: Vec<SuryaIsolineRing>,
+}
+
+/// Swept central corridor for one Surya grahan event.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaCentralCorridor {
+    /// Segments ordered along the path by first central contact.
+    pub segments: Vec<SuryaCorridorSegment>,
+}
+
+/// Whether and how the central (umbral/antumbral) shadow reaches Earth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SuryaCentrality {
+    /// The shadow axis intersects the Earth: a center line exists.
+    Full,
+    /// The shadow cone grazes the Earth but the center line misses it;
+    /// limits are one-sided and the swept corridor still closes.
+    Partial,
+    /// The central shadow never reaches Earth (partial-only event).
+    None,
 }
 
 /// Location-specific solar-eclipse circumstances.
@@ -265,4 +452,17 @@ pub struct SuryaGrahan {
     pub footprints: Vec<SuryaGrahanFootprint>,
     /// Optional circumstances for the request's geographic location.
     pub local: Option<SuryaGrahanLocalCircumstances>,
+    /// Whether the central shadow reaches Earth and, if so, whether the
+    /// center line does.
+    pub centrality: SuryaCentrality,
+    /// Geographic grid of local circumstances. Empty unless
+    /// `GrahanConfig::include_local_grid` is true.
+    pub local_grid: Vec<SuryaLocalGridSample>,
+    /// Visibility/duration/magnitude isolines. None unless
+    /// `GrahanConfig::include_isolines` is true.
+    pub isolines: Option<SuryaIsolines>,
+    /// Swept central corridor. None unless
+    /// `GrahanConfig::include_central_corridor` is true or the event has no
+    /// central shadow contact (centrality `None`).
+    pub central_corridor: Option<SuryaCentralCorridor>,
 }

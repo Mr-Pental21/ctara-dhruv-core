@@ -16,6 +16,10 @@ from .types import (
     SuryaGrahanResult,
     SuryaGrahanPathPoint,
     SuryaGrahanFootprint,
+    SuryaLocalGridSample,
+    SuryaIsolineRing,
+    SuryaRingSetLevel,
+    SuryaIsolines,
     StationaryEvent,
     MaxSpeedEvent,
     LunarPhaseEvent,
@@ -156,9 +160,49 @@ def _chandra_grahan(r) -> ChandraGrahanResult:
     )
 
 
+def _ring_set(geometry, set_kind) -> tuple:
+    """Read one ring set (isoline levels or corridor segments)."""
+    count = ffi.new("uint32_t *")
+    check(lib.dhruv_surya_grahan_ring_set_level_count(geometry, set_kind, count))
+    levels = []
+    for level_index in range(int(count[0])):
+        raw_level = ffi.new("DhruvSuryaRingSetLevel *")
+        check(lib.dhruv_surya_grahan_ring_set_level_at(
+            geometry, set_kind, level_index, raw_level
+        ))
+        rings = []
+        for ring_index in range(int(raw_level.ring_count)):
+            raw_ring = ffi.new("DhruvSuryaIsolineRing *")
+            check(lib.dhruv_surya_grahan_ring_at(
+                geometry, set_kind, level_index, ring_index, raw_ring
+            ))
+            boundary = []
+            for point_index in range(int(raw_ring.point_count)):
+                raw_point = ffi.new("DhruvEclipseGeoPoint *")
+                check(lib.dhruv_surya_grahan_ring_point_at(
+                    geometry, set_kind, level_index, ring_index, point_index, raw_point
+                ))
+                boundary.append(EclipseGeoPoint(
+                    raw_point.latitude_deg, raw_point.longitude_deg
+                ))
+            rings.append(SuryaIsolineRing(
+                contains_pole=int(raw_ring.contains_pole),
+                boundary=tuple(boundary),
+            ))
+        levels.append(SuryaRingSetLevel(
+            level_value=float(raw_level.level_value),
+            grahan_type=int(raw_level.grahan_type),
+            rings=tuple(rings),
+        ))
+    return tuple(levels)
+
+
 def _surya_grahan(r) -> SuryaGrahanResult:
     path = []
     footprints = []
+    local_grid = []
+    isolines = None
+    central_corridor = None
     geometry = r.geometry_handle
     try:
         for index in range(int(r.path_count)):
@@ -199,6 +243,35 @@ def _surya_grahan(r) -> SuryaGrahanResult:
                 utc=_utc_from_c(footprint.utc),
                 boundary=tuple(boundary),
             ))
+        for sample_index in range(int(r.local_grid_count)):
+            raw = ffi.new("DhruvSuryaLocalGridSample *")
+            check(lib.dhruv_surya_grahan_local_grid_sample_at(geometry, sample_index, raw))
+            sample = raw[0]
+            local_grid.append(SuryaLocalGridSample(
+                latitude_deg=float(sample.latitude_deg),
+                longitude_deg=float(sample.longitude_deg),
+                magnitude=float(sample.magnitude),
+                obscuration=float(sample.obscuration),
+                maximum_utc=_utc_from_c(sample.maximum_utc),
+                maximum_jd=float(sample.maximum_jd),
+                first_contact_utc=_utc_from_c(sample.first_contact_utc),
+                first_contact_jd=float(sample.first_contact_jd),
+                last_contact_utc=_utc_from_c(sample.last_contact_utc),
+                last_contact_jd=float(sample.last_contact_jd),
+                visible_duration_seconds=float(sample.visible_duration_seconds),
+            ))
+        if r.isolines_valid:
+            isolines = SuryaIsolines(
+                visibility_boundary=tuple(
+                    ring
+                    for level in _ring_set(geometry, RING_SET_VISIBILITY)
+                    for ring in level.rings
+                ),
+                duration_isolines=_ring_set(geometry, RING_SET_DURATION),
+                magnitude_isolines=_ring_set(geometry, RING_SET_MAGNITUDE),
+            )
+        if r.central_corridor_valid:
+            central_corridor = _ring_set(geometry, RING_SET_CORRIDOR)
     finally:
         if geometry != ffi.NULL:
             lib.dhruv_surya_grahan_geometry_free(geometry)
@@ -256,6 +329,10 @@ def _surya_grahan(r) -> SuryaGrahanResult:
         local_sun_altitude_deg=r.local_sun_altitude_deg,
         local_sun_azimuth_deg=r.local_sun_azimuth_deg,
         local_central_duration_seconds=r.local_central_duration_seconds,
+        centrality=int(r.centrality),
+        local_grid=tuple(local_grid),
+        isolines=isolines,
+        central_corridor=central_corridor,
     )
 
 
@@ -441,10 +518,32 @@ _GRAHAN_NEXT = 0
 _GRAHAN_PREV = 1
 _GRAHAN_RANGE = 2
 
+# Ring-set selectors for surya isoline/corridor geometry.
+RING_SET_VISIBILITY = 0
+RING_SET_DURATION = 1
+RING_SET_MAGNITUDE = 2
+RING_SET_CORRIDOR = 3
+
+# Surya centrality codes.
+CENTRALITY_NONE = 0
+CENTRALITY_PARTIAL = 1
+CENTRALITY_FULL = 2
+
 
 def grahan_config_default():
     """Return default DhruvGrahanConfig."""
     return lib.dhruv_grahan_config_default()
+
+
+def grahan_config_effective(config):
+    """Return the configuration actually applied after clamping/sanitizing.
+
+    Build cache keys against this echo rather than the raw request.
+    """
+    out = ffi.new("DhruvGrahanConfig *")
+    pointer = config if ffi.typeof(config).kind == "pointer" else ffi.addressof(config)
+    check(lib.dhruv_grahan_config_effective(pointer, out))
+    return out[0]
 
 
 def _grahan_single(engine, grahan_kind: int, query_mode: int, when, config, location=None):

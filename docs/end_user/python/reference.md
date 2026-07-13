@@ -456,7 +456,14 @@ Solar eclipse calls accept an optional `GeoLocation`. The grahan config adds
 `include_path`, `path_step_minutes`, and `boundary_step_deg`; summary results
 include obscuration, gamma, Besselian elements, greatest location, generated
 sample counts, materialized `path` and `footprints` tuples, and complete local
-circumstances. See
+circumstances. The config additionally exposes `include_local_grid` /
+`local_grid_step_deg`, `include_isolines` with
+`duration_isoline_fractions` / `magnitude_isoline_levels` (16-entry arrays
+plus counts), and `include_central_corridor`; results then carry
+`centrality`, `local_grid` (`SuryaLocalGridSample`), `isolines`
+(`SuryaIsolines` of `SuryaIsolineRing`), and `central_corridor`
+(`SuryaRingSetLevel` segments). `search.grahan_config_effective(config)`
+echoes the clamped/sanitized configuration for cache identity. See
 `docs/end_user/solar_eclipse_visibility.md`.
 - `stationary_config_default`
 - `next_stationary`

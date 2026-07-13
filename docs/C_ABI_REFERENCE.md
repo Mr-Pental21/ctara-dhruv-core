@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 80`
+**ABI version:** `DHRUV_API_VERSION = 81`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -480,13 +480,26 @@ typedef struct {
 
 ```c
 typedef struct {
-    uint8_t include_penumbral;    // 1 = include penumbral-only chandra grahan
-    uint8_t include_peak_details; // 1 = include lat/separation at peak
-    uint8_t include_path;         // 1 = generate geographic path products
-    uint32_t path_step_minutes;   // 1..30
-    uint32_t boundary_step_deg;   // 1..15
+    uint8_t include_penumbral;        // 1 = include penumbral-only chandra grahan
+    uint8_t include_peak_details;     // 1 = include lat/separation at peak
+    uint8_t include_path;             // 1 = generate geographic path products
+    uint8_t include_local_grid;       // 1 = per-event local-circumstance grid
+    uint8_t include_isolines;         // 1 = visibility/duration/magnitude rings
+    uint8_t include_central_corridor; // 1 = swept umbral/antumbral outline
+    uint32_t path_step_minutes;       // 1..30
+    uint32_t boundary_step_deg;       // 1..15
+    double local_grid_step_deg;       // clamped to [0.5, 10]
+    double duration_isoline_fractions[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    uint32_t duration_isoline_fraction_count;
+    double magnitude_isoline_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    uint32_t magnitude_isoline_level_count;
 } DhruvGrahanConfig;
 ```
+
+`dhruv_grahan_config_effective(config, out)` writes the configuration
+actually applied after clamping the grid step and filtering/sorting/
+deduplicating the isoline levels; build cache keys against this echo rather
+than the raw request.
 
 ### DhruvChandraGrahanResult
 
@@ -546,6 +559,20 @@ local-circumstance fields to this result. Use
 non-null handle exactly once with `dhruv_surya_grahan_geometry_free`. The
 canonical type definitions and field order are in
 `crates/dhruv_ffi_c/include/dhruv.h`.
+
+ABI v81 appends `centrality` (`DHRUV_SURYA_CENTRALITY_*`),
+`local_grid_count`, `isolines_valid`, and `central_corridor_valid`, and the
+geometry handle additionally owns the field products. Read grid samples with
+`dhruv_surya_grahan_local_grid_sample_at` (`DhruvSuryaLocalGridSample`).
+Read isoline and corridor rings through the uniform ring-set API keyed by
+`DHRUV_SURYA_RING_SET_*` (visibility, duration, magnitude, corridor):
+`dhruv_surya_grahan_ring_set_level_count`,
+`dhruv_surya_grahan_ring_set_level_at` (`DhruvSuryaRingSetLevel`:
+duration fraction or magnitude level, corridor segment type, ring count),
+`dhruv_surya_grahan_ring_at` (`DhruvSuryaIsolineRing`: pole containment
+`DHRUV_RING_POLE_*`, point count), and `dhruv_surya_grahan_ring_point_at`.
+Rings are closed (final point repeats the first), ordered, and
+antimeridian-safe.
 
 Each path sample's northern and southern limits describe the local central
 corridor around that sample's center, including at grazing and polar contacts.
@@ -1329,7 +1356,8 @@ Unified grahan entrypoint:
 - `query_mode=RANGE` uses array output pointer + `out_count`.
 - Each returned solar result with a non-null geometry handle transfers
   ownership to the caller. Read the variable-length samples through the
-  solar-geometry accessors, then free the handle exactly once.
+  solar-geometry accessors (path/footprint plus, since v81, the local-grid
+  sample and ring-set accessors), then free the handle exactly once.
 
 **Note:** Legacy split grahan wrappers were removed in v42. Use `dhruv_grahan_search_ex`.
 
@@ -2529,6 +2557,18 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v81**: Surya grahan field products. `DhruvGrahanConfig` gained
+`include_local_grid`/`local_grid_step_deg`, `include_isolines` with
+`duration_isoline_fractions`/`magnitude_isoline_levels` (fixed 16-entry
+arrays plus counts), and `include_central_corridor`.
+`DhruvSuryaGrahanResult` gained `centrality`, `local_grid_count`,
+`isolines_valid`, and `central_corridor_valid`; the geometry handle
+additionally owns grid samples, isoline rings, and swept corridor segments,
+read through `dhruv_surya_grahan_local_grid_sample_at` and the ring-set
+accessors (`_ring_set_level_count`, `_ring_set_level_at`, `_ring_at`,
+`_ring_point_at`). New `dhruv_grahan_config_effective` echoes the
+clamped/sanitized configuration for cache identity.
 
 **v80**: Replaced geocentric solar-eclipse classification with ephemeris-
 derived Besselian, Earth-ellipsoid, path, footprint, and local-visibility

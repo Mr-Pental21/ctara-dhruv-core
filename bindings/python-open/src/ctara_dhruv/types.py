@@ -421,6 +421,53 @@ class SuryaGrahanFootprint:
 
 
 @dataclass(frozen=True)
+class SuryaLocalGridSample:
+    """One visible sample of the per-event local-circumstance grid."""
+
+    latitude_deg: float
+    longitude_deg: float
+    magnitude: float
+    obscuration: float
+    maximum_utc: UtcTime
+    maximum_jd: float
+    first_contact_utc: UtcTime
+    first_contact_jd: float
+    last_contact_utc: UtcTime
+    last_contact_jd: float
+    visible_duration_seconds: float
+
+
+@dataclass(frozen=True)
+class SuryaIsolineRing:
+    """One closed boundary ring.
+
+    ``contains_pole``: 0=none, 1=north, 2=south.
+    """
+
+    contains_pole: int
+    boundary: tuple[EclipseGeoPoint, ...]
+
+
+@dataclass(frozen=True)
+class SuryaRingSetLevel:
+    """One isoline level or corridor segment with its rings.
+
+    ``grahan_type`` is a corridor segment type code, or -1 for isolines.
+    """
+
+    level_value: float
+    grahan_type: int
+    rings: tuple[SuryaIsolineRing, ...]
+
+
+@dataclass(frozen=True)
+class SuryaIsolines:
+    visibility_boundary: tuple[SuryaIsolineRing, ...]
+    duration_isolines: tuple[SuryaRingSetLevel, ...]
+    magnitude_isolines: tuple[SuryaRingSetLevel, ...]
+
+
+@dataclass(frozen=True)
 class SuryaGrahanResult:
     """Solar eclipse (Surya Grahan) result.
 
@@ -478,6 +525,12 @@ class SuryaGrahanResult:
     local_sun_altitude_deg: float = 0.0
     local_sun_azimuth_deg: float = 0.0
     local_central_duration_seconds: float = 0.0
+    # Whether/how the central shadow reaches Earth: 0=none, 1=partial, 2=full.
+    centrality: int = 0
+    local_grid: tuple[SuryaLocalGridSample, ...] = ()
+    isolines: Optional[SuryaIsolines] = None
+    # Swept central corridor segments (grahan_type set per segment).
+    central_corridor: Optional[tuple[SuryaRingSetLevel, ...]] = None
 
 
 @dataclass(frozen=True)

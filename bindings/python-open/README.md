@@ -215,6 +215,15 @@ grahan: `ChandraGrahanResult.moon_right_ascension_deg` /
 `moon_declination_deg` and `SuryaGrahanResult.sun_right_ascension_deg` /
 `sun_declination_deg` (degrees, equinox of date, nutation applied).
 
+The grahan config additionally exposes the surya field products
+(`include_local_grid`/`local_grid_step_deg`, `include_isolines` with
+`duration_isoline_fractions`/`magnitude_isoline_levels`, and
+`include_central_corridor`); `SuryaGrahanResult` then carries `centrality`,
+`local_grid` (`SuryaLocalGridSample`), `isolines` (`SuryaIsolines`), and
+`central_corridor` (`SuryaRingSetLevel` segments), and
+`search.grahan_config_effective(config)` echoes the clamped/sanitized
+configuration for cache identity.
+
 ## Example
 
 ```python

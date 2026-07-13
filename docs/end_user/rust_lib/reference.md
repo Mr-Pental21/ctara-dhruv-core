@@ -70,8 +70,14 @@ Request-driven functions:
 - `gochar_events`
 
 Solar `GrahanRequest` accepts an optional observer location; `GrahanConfig`
-controls optional path and footprint sampling. See
-`docs/end_user/solar_eclipse_visibility.md` for the result fields and map use.
+controls optional path and footprint sampling plus the field products
+(`include_local_grid`/`local_grid_step_deg`, `include_isolines` with
+`duration_isoline_fractions`/`magnitude_isoline_levels`, and
+`include_central_corridor`). `SuryaGrahan` then carries `centrality`,
+`local_grid`, `isolines`, and `central_corridor`;
+`GrahanConfig::effective()` echoes the clamped/sanitized configuration for
+cache identity. See `docs/end_user/solar_eclipse_visibility.md` for the
+result fields and map use.
 
 High-level time-bearing search results default to structured Gregorian UTC on
 their main result types while retaining numeric JD/TDB alongside UTC where the

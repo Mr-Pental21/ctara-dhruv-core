@@ -179,6 +179,12 @@ pub struct GrahanConfigPatch {
     pub include_path: Option<bool>,
     pub path_step_minutes: Option<u32>,
     pub boundary_step_deg: Option<u32>,
+    pub include_local_grid: Option<bool>,
+    pub local_grid_step_deg: Option<f64>,
+    pub include_isolines: Option<bool>,
+    pub duration_isoline_fractions: Option<Vec<f64>>,
+    pub magnitude_isoline_levels: Option<Vec<f64>>,
+    pub include_central_corridor: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -600,6 +606,53 @@ impl ConfigResolver {
                 "grahan.boundary_step_deg must be between 1 and 15".to_string(),
             ));
         }
+        let (include_local_grid, local_grid_source) = choose_copy(
+            explicit.include_local_grid,
+            op.include_local_grid,
+            None,
+            recommended(self.defaults_mode, false),
+            "grahan.include_local_grid",
+        )?;
+        let (local_grid_step_deg, local_grid_step_source) = choose_copy(
+            explicit.local_grid_step_deg,
+            op.local_grid_step_deg,
+            None,
+            recommended(self.defaults_mode, 2.0),
+            "grahan.local_grid_step_deg",
+        )?;
+        let (include_isolines, isolines_source) = choose_copy(
+            explicit.include_isolines,
+            op.include_isolines,
+            None,
+            recommended(self.defaults_mode, false),
+            "grahan.include_isolines",
+        )?;
+        let (duration_isoline_fractions, duration_fractions_source) = choose_clone(
+            explicit.duration_isoline_fractions.clone(),
+            op.duration_isoline_fractions.clone(),
+            None,
+            recommended(self.defaults_mode, vec![0.25, 0.5, 0.75]),
+            "grahan.duration_isoline_fractions",
+        )?;
+        let (magnitude_isoline_levels, magnitude_levels_source) = choose_clone(
+            explicit.magnitude_isoline_levels.clone(),
+            op.magnitude_isoline_levels.clone(),
+            None,
+            recommended(self.defaults_mode, vec![0.25, 0.5, 0.75, 1.0]),
+            "grahan.magnitude_isoline_levels",
+        )?;
+        let (include_central_corridor, corridor_source) = choose_copy(
+            explicit.include_central_corridor,
+            op.include_central_corridor,
+            None,
+            recommended(self.defaults_mode, false),
+            "grahan.include_central_corridor",
+        )?;
+        if !local_grid_step_deg.is_finite() {
+            return Err(ConfigError::InvalidConfig(
+                "grahan.local_grid_step_deg must be finite".to_string(),
+            ));
+        }
 
         let mut source = BTreeMap::new();
         source.insert("include_penumbral".to_string(), p_source);
@@ -607,6 +660,18 @@ impl ConfigResolver {
         source.insert("include_path".to_string(), path_source);
         source.insert("path_step_minutes".to_string(), path_step_source);
         source.insert("boundary_step_deg".to_string(), boundary_step_source);
+        source.insert("include_local_grid".to_string(), local_grid_source);
+        source.insert("local_grid_step_deg".to_string(), local_grid_step_source);
+        source.insert("include_isolines".to_string(), isolines_source);
+        source.insert(
+            "duration_isoline_fractions".to_string(),
+            duration_fractions_source,
+        );
+        source.insert(
+            "magnitude_isoline_levels".to_string(),
+            magnitude_levels_source,
+        );
+        source.insert("include_central_corridor".to_string(), corridor_source);
 
         Ok(EffectiveConfig {
             value: GrahanConfig {
@@ -615,6 +680,12 @@ impl ConfigResolver {
                 include_path,
                 path_step_minutes,
                 boundary_step_deg,
+                include_local_grid,
+                local_grid_step_deg,
+                include_isolines,
+                duration_isoline_fractions,
+                magnitude_isoline_levels,
+                include_central_corridor,
             },
             source_by_field: source,
         })
@@ -1898,6 +1969,28 @@ fn merge_patch<T>(explicit: Option<T>, operation: Option<T>) -> Option<T> {
 }
 
 fn choose_copy<T: Copy>(
+    explicit: Option<T>,
+    op: Option<T>,
+    common: Option<T>,
+    default: Option<T>,
+    field: &'static str,
+) -> Result<(T, ConfigSource), ConfigError> {
+    if let Some(v) = explicit {
+        return Ok((v, ConfigSource::Explicit));
+    }
+    if let Some(v) = op {
+        return Ok((v, ConfigSource::Operation));
+    }
+    if let Some(v) = common {
+        return Ok((v, ConfigSource::Common));
+    }
+    if let Some(v) = default {
+        return Ok((v, ConfigSource::RecommendedDefault));
+    }
+    Err(ConfigError::MissingRequired(field))
+}
+
+fn choose_clone<T: Clone>(
     explicit: Option<T>,
     op: Option<T>,
     common: Option<T>,

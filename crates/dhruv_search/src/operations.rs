@@ -153,7 +153,7 @@ impl GrahanQuery {
 }
 
 /// Canonical grahan operation request.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GrahanOperation {
     /// Which grahan family to query.
     pub kind: GrahanKind,

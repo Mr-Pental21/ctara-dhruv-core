@@ -4,6 +4,13 @@ import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
 func ConjunctionConfigDefault() ConjunctionConfig { return cabi.ConjunctionConfigDefault() }
 func GrahanConfigDefault() GrahanConfig           { return cabi.GrahanConfigDefault() }
+
+// GrahanConfigEffective returns the configuration actually applied after
+// clamping/sanitizing; build cache keys against this echo.
+func GrahanConfigEffective(cfg GrahanConfig) (GrahanConfig, error) {
+	effective, st := cabi.GrahanConfigEffective(cfg)
+	return effective, statusErr("grahan_config_effective", st)
+}
 func StationaryConfigDefault() StationaryConfig   { return cabi.StationaryConfigDefault() }
 func SankrantiConfigDefault() SankrantiConfig     { return cabi.SankrantiConfigDefault() }
 func GocharEventsConfigDefault() GocharEventsConfig { return cabi.GocharEventsConfigDefault() }

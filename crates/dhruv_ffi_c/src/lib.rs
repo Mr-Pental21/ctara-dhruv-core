@@ -16,9 +16,11 @@ use dhruv_search::{
     EventWindow, GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig,
     GocharEventsOperation, GocharEventsResult, GocharReference, GocharTransitBody,
     GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent,
-    MaxSpeedType, NatalTargetKind, NatalTargetLongitude, SankrantiConfig, SearchError, StationType,
-    StationaryConfig, StationaryEvent, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanPathPoint,
-    SuryaGrahanType, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind,
+    MaxSpeedType, NatalTargetKind, NatalTargetLongitude, PoleSide, SankrantiConfig, SearchError,
+    StationType, StationaryConfig, StationaryEvent, SuryaCentralCorridor, SuryaCentrality,
+    SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing,
+    SuryaIsolines, SuryaLocalGridSample, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
+    TransitAspectKind,
     TransitAspectOwner, TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date,
     ayana_for_date, balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat,
     charakaraka_for_date, dasha_child_period_with_inputs, dasha_children_with_inputs,
@@ -66,7 +68,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 80;
+pub const DHRUV_API_VERSION: u32 = 81;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -3593,6 +3595,9 @@ pub const DHRUV_SURYA_GRAHAN_TOTAL: i32 = 2;
 /// Surya grahan type: hybrid.
 pub const DHRUV_SURYA_GRAHAN_HYBRID: i32 = 3;
 
+/// Maximum number of isoline levels accepted per family.
+pub const DHRUV_GRAHAN_MAX_ISOLINE_LEVELS: usize = 16;
+
 /// C-compatible grahan search configuration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -3604,11 +3609,51 @@ pub struct DhruvGrahanConfig {
     /// Include geographic solar path products. Dynamic path coordinates are
     /// available through the structured Rust/Elixir surfaces.
     pub include_path: u8,
+    /// Include the geographic grid of local circumstances: 1 = yes, 0 = no.
+    pub include_local_grid: u8,
+    /// Include visibility/duration/magnitude isoline rings: 1 = yes, 0 = no.
+    pub include_isolines: u8,
+    /// Include the swept central-corridor outline: 1 = yes, 0 = no.
+    pub include_central_corridor: u8,
     /// Geographic path sampling cadence in minutes.
     pub path_step_minutes: u32,
     /// Shadow-boundary angular sampling in degrees.
     pub boundary_step_deg: u32,
+    /// Local-grid spacing in degrees; values outside [0.5, 10] are clamped.
+    pub local_grid_step_deg: f64,
+    /// Visible-duration isoline levels as fractions of the C1-C4 span.
+    pub duration_isoline_fractions: [f64; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS],
+    /// Number of valid entries in `duration_isoline_fractions`.
+    pub duration_isoline_fraction_count: u32,
+    /// Local maximum-magnitude isoline levels.
+    pub magnitude_isoline_levels: [f64; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS],
+    /// Number of valid entries in `magnitude_isoline_levels`.
+    pub magnitude_isoline_level_count: u32,
 }
+
+/// Surya centrality: the central shadow never reaches Earth.
+pub const DHRUV_SURYA_CENTRALITY_NONE: i32 = 0;
+/// Surya centrality: the shadow cone grazes Earth but the center line
+/// misses it (one-sided limits).
+pub const DHRUV_SURYA_CENTRALITY_PARTIAL: i32 = 1;
+/// Surya centrality: the shadow axis intersects Earth.
+pub const DHRUV_SURYA_CENTRALITY_FULL: i32 = 2;
+
+/// Ring-set selector: visibility boundary (level-0 curve).
+pub const DHRUV_SURYA_RING_SET_VISIBILITY: i32 = 0;
+/// Ring-set selector: visible-duration isolines.
+pub const DHRUV_SURYA_RING_SET_DURATION: i32 = 1;
+/// Ring-set selector: local maximum-magnitude isolines.
+pub const DHRUV_SURYA_RING_SET_MAGNITUDE: i32 = 2;
+/// Ring-set selector: swept central-corridor segments.
+pub const DHRUV_SURYA_RING_SET_CORRIDOR: i32 = 3;
+
+/// Ring pole containment: none.
+pub const DHRUV_RING_POLE_NONE: i32 = 0;
+/// Ring pole containment: encloses the north pole.
+pub const DHRUV_RING_POLE_NORTH: i32 = 1;
+/// Ring pole containment: encloses the south pole.
+pub const DHRUV_RING_POLE_SOUTH: i32 = 2;
 
 /// Grahan kind selector: lunar eclipse.
 pub const DHRUV_GRAHAN_KIND_CHANDRA: i32 = 0;
@@ -3655,22 +3700,83 @@ pub struct DhruvGrahanSearchRequest {
 /// Returns default grahan configuration.
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_grahan_config_default() -> DhruvGrahanConfig {
-    DhruvGrahanConfig {
-        include_penumbral: 1,
-        include_peak_details: 1,
-        include_path: 0,
-        path_step_minutes: 1,
-        boundary_step_deg: 2,
+    grahan_config_to_ffi(&GrahanConfig::default())
+}
+
+/// Writes the effective grahan configuration: the values actually applied
+/// after clamping and sanitizing (grid step clamped to [0.5, 10], isoline
+/// levels filtered/sorted/deduplicated). Callers should build cache keys
+/// against this echo rather than the raw request.
+///
+/// # Safety
+/// `config` and `out` must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_grahan_config_effective(
+    config: *const DhruvGrahanConfig,
+    out: *mut DhruvGrahanConfig,
+) -> DhruvStatus {
+    if config.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
     }
+    let effective = grahan_config_from_ffi(unsafe { &*config }).effective();
+    unsafe { *out = grahan_config_to_ffi(&effective) };
+    DhruvStatus::Ok
 }
 
 fn grahan_config_from_ffi(cfg: &DhruvGrahanConfig) -> GrahanConfig {
+    let levels = |values: &[f64; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS], count: u32| -> Vec<f64> {
+        values[..(count as usize).min(DHRUV_GRAHAN_MAX_ISOLINE_LEVELS)].to_vec()
+    };
     GrahanConfig {
         include_penumbral: cfg.include_penumbral != 0,
         include_peak_details: cfg.include_peak_details != 0,
         include_path: cfg.include_path != 0,
         path_step_minutes: cfg.path_step_minutes,
         boundary_step_deg: cfg.boundary_step_deg,
+        include_local_grid: cfg.include_local_grid != 0,
+        local_grid_step_deg: cfg.local_grid_step_deg,
+        include_isolines: cfg.include_isolines != 0,
+        duration_isoline_fractions: levels(
+            &cfg.duration_isoline_fractions,
+            cfg.duration_isoline_fraction_count,
+        ),
+        magnitude_isoline_levels: levels(
+            &cfg.magnitude_isoline_levels,
+            cfg.magnitude_isoline_level_count,
+        ),
+        include_central_corridor: cfg.include_central_corridor != 0,
+    }
+}
+
+fn grahan_config_to_ffi(cfg: &GrahanConfig) -> DhruvGrahanConfig {
+    let mut duration_isoline_fractions = [0.0; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    let duration_count = cfg
+        .duration_isoline_fractions
+        .len()
+        .min(DHRUV_GRAHAN_MAX_ISOLINE_LEVELS);
+    duration_isoline_fractions[..duration_count]
+        .copy_from_slice(&cfg.duration_isoline_fractions[..duration_count]);
+    let mut magnitude_isoline_levels = [0.0; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    let magnitude_count = cfg
+        .magnitude_isoline_levels
+        .len()
+        .min(DHRUV_GRAHAN_MAX_ISOLINE_LEVELS);
+    magnitude_isoline_levels[..magnitude_count]
+        .copy_from_slice(&cfg.magnitude_isoline_levels[..magnitude_count]);
+    DhruvGrahanConfig {
+        include_penumbral: u8::from(cfg.include_penumbral),
+        include_peak_details: u8::from(cfg.include_peak_details),
+        include_path: u8::from(cfg.include_path),
+        include_local_grid: u8::from(cfg.include_local_grid),
+        include_isolines: u8::from(cfg.include_isolines),
+        include_central_corridor: u8::from(cfg.include_central_corridor),
+        path_step_minutes: cfg.path_step_minutes,
+        boundary_step_deg: cfg.boundary_step_deg,
+        local_grid_step_deg: cfg.local_grid_step_deg,
+        duration_isoline_fractions,
+        duration_isoline_fraction_count: duration_count as u32,
+        magnitude_isoline_levels,
+        magnitude_isoline_level_count: magnitude_count as u32,
     }
 }
 
@@ -3792,6 +3898,65 @@ pub type DhruvSuryaGrahanGeometryHandle = *mut std::ffi::c_void;
 struct OwnedSuryaGrahanGeometry {
     path: Vec<SuryaGrahanPathPoint>,
     footprints: Vec<SuryaGrahanFootprint>,
+    local_grid: Vec<SuryaLocalGridSample>,
+    isolines: Option<SuryaIsolines>,
+    central_corridor: Option<SuryaCentralCorridor>,
+}
+
+impl OwnedSuryaGrahanGeometry {
+    fn ring_set_level_count(&self, set_kind: i32) -> Option<usize> {
+        match set_kind {
+            DHRUV_SURYA_RING_SET_VISIBILITY => self.isolines.as_ref().map(|_| 1),
+            DHRUV_SURYA_RING_SET_DURATION => {
+                self.isolines.as_ref().map(|iso| iso.duration_isolines.len())
+            }
+            DHRUV_SURYA_RING_SET_MAGNITUDE => self
+                .isolines
+                .as_ref()
+                .map(|iso| iso.magnitude_isolines.len()),
+            DHRUV_SURYA_RING_SET_CORRIDOR => self
+                .central_corridor
+                .as_ref()
+                .map(|corridor| corridor.segments.len()),
+            _ => None,
+        }
+    }
+
+    /// (level value, corridor grahan-type code or -1, rings) for one level
+    /// of a ring set.
+    fn ring_set_level(
+        &self,
+        set_kind: i32,
+        level_index: usize,
+    ) -> Option<(f64, i32, &[SuryaIsolineRing])> {
+        match set_kind {
+            DHRUV_SURYA_RING_SET_VISIBILITY => {
+                let isolines = self.isolines.as_ref()?;
+                (level_index == 0).then_some((0.0, -1, isolines.visibility_boundary.as_slice()))
+            }
+            DHRUV_SURYA_RING_SET_DURATION => {
+                let entry = self.isolines.as_ref()?.duration_isolines.get(level_index)?;
+                Some((entry.fraction, -1, entry.rings.as_slice()))
+            }
+            DHRUV_SURYA_RING_SET_MAGNITUDE => {
+                let entry = self
+                    .isolines
+                    .as_ref()?
+                    .magnitude_isolines
+                    .get(level_index)?;
+                Some((entry.level, -1, entry.rings.as_slice()))
+            }
+            DHRUV_SURYA_RING_SET_CORRIDOR => {
+                let segment = self.central_corridor.as_ref()?.segments.get(level_index)?;
+                Some((
+                    0.0,
+                    surya_grahan_type_to_code(segment.grahan_type),
+                    segment.rings.as_slice(),
+                ))
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Geographic point used by solar-eclipse map geometry.
@@ -3883,6 +4048,64 @@ impl From<&SuryaGrahanFootprint> for DhruvSuryaGrahanFootprint {
     }
 }
 
+/// One sample of the per-event local-circumstance grid.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaLocalGridSample {
+    pub latitude_deg: f64,
+    pub longitude_deg: f64,
+    pub magnitude: f64,
+    pub obscuration: f64,
+    pub maximum_jd: f64,
+    pub maximum_utc: DhruvUtcTime,
+    pub first_contact_jd: f64,
+    pub first_contact_utc: DhruvUtcTime,
+    pub last_contact_jd: f64,
+    pub last_contact_utc: DhruvUtcTime,
+    pub visible_duration_seconds: f64,
+}
+
+impl From<&SuryaLocalGridSample> for DhruvSuryaLocalGridSample {
+    fn from(value: &SuryaLocalGridSample) -> Self {
+        Self {
+            latitude_deg: value.latitude_deg,
+            longitude_deg: value.longitude_deg,
+            magnitude: value.magnitude,
+            obscuration: value.obscuration,
+            maximum_jd: value.maximum_jd,
+            maximum_utc: utc_time_to_ffi(&value.maximum_utc),
+            first_contact_jd: value.first_contact_jd,
+            first_contact_utc: utc_time_to_ffi(&value.first_contact_utc),
+            last_contact_jd: value.last_contact_jd,
+            last_contact_utc: utc_time_to_ffi(&value.last_contact_utc),
+            visible_duration_seconds: value.visible_duration_seconds,
+        }
+    }
+}
+
+/// Metadata for one level of a ring set (isoline level or corridor segment).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaRingSetLevel {
+    /// Duration fraction or magnitude level; 0 for visibility/corridor sets.
+    pub level_value: f64,
+    /// Corridor segment type code (`DHRUV_SURYA_GRAHAN_*`), or -1 for
+    /// isoline sets.
+    pub grahan_type: i32,
+    /// Number of rings at this level.
+    pub ring_count: u32,
+}
+
+/// Metadata for one closed ring of a ring set.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaIsolineRing {
+    /// Pole containment code (`DHRUV_RING_POLE_*`).
+    pub contains_pole: i32,
+    /// Number of boundary points; the final point repeats the first.
+    pub point_count: u32,
+}
+
 /// C-compatible surya grahan result.
 #[repr(C)]
 #[derive(Debug)]
@@ -3942,8 +4165,18 @@ pub struct DhruvSuryaGrahanResult {
     /// Number of generated path and footprint samples.
     pub path_count: u32,
     pub footprint_count: u32,
-    /// Opaque owner for path and footprint coordinates. Null when no map
-    /// geometry was generated. The caller owns and must free this handle.
+    /// Whether and how the central shadow reaches Earth
+    /// (`DHRUV_SURYA_CENTRALITY_*`).
+    pub centrality: i32,
+    /// Number of local-circumstance grid samples.
+    pub local_grid_count: u32,
+    /// Whether isoline products are present (read via the ring-set API).
+    pub isolines_valid: u8,
+    /// Whether the swept central corridor is present.
+    pub central_corridor_valid: u8,
+    /// Opaque owner for path, footprint, grid, isoline, and corridor
+    /// coordinates. Null when no map geometry was generated. The caller owns
+    /// and must free this handle.
     pub geometry_handle: DhruvSuryaGrahanGeometryHandle,
     /// Whether local circumstances are present.
     pub local_valid: u8,
@@ -3969,12 +4202,20 @@ pub struct DhruvSuryaGrahanResult {
 
 impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
     fn from(e: &SuryaGrahan) -> Self {
-        let geometry_handle = if e.path.is_empty() && e.footprints.is_empty() {
+        let has_geometry = !e.path.is_empty()
+            || !e.footprints.is_empty()
+            || !e.local_grid.is_empty()
+            || e.isolines.is_some()
+            || e.central_corridor.is_some();
+        let geometry_handle = if !has_geometry {
             ptr::null_mut()
         } else {
             Box::into_raw(Box::new(OwnedSuryaGrahanGeometry {
                 path: e.path.clone(),
                 footprints: e.footprints.clone(),
+                local_grid: e.local_grid.clone(),
+                isolines: e.isolines.clone(),
+                central_corridor: e.central_corridor.clone(),
             })) as DhruvSuryaGrahanGeometryHandle
         };
         Self {
@@ -4022,6 +4263,14 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
             bessel_tan_f2: e.besselian.tan_f2,
             path_count: e.path.len().min(u32::MAX as usize) as u32,
             footprint_count: e.footprints.len().min(u32::MAX as usize) as u32,
+            centrality: match e.centrality {
+                SuryaCentrality::None => DHRUV_SURYA_CENTRALITY_NONE,
+                SuryaCentrality::Partial => DHRUV_SURYA_CENTRALITY_PARTIAL,
+                SuryaCentrality::Full => DHRUV_SURYA_CENTRALITY_FULL,
+            },
+            local_grid_count: e.local_grid.len().min(u32::MAX as usize) as u32,
+            isolines_valid: u8::from(e.isolines.is_some()),
+            central_corridor_valid: u8::from(e.central_corridor.is_some()),
             geometry_handle,
             local_valid: u8::from(e.local.is_some()),
             local_visible: u8::from(e.local.as_ref().is_some_and(|local| local.visible)),
@@ -4155,6 +4404,150 @@ pub unsafe extern "C" fn dhruv_surya_grahan_footprint_point_at(
         .footprints
         .get(footprint_index as usize)
         .and_then(|footprint| footprint.boundary.get(point_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = (*point).into() };
+    DhruvStatus::Ok
+}
+
+/// Read one local-circumstance grid sample from a geometry handle.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_local_grid_sample_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    index: u32,
+    out: *mut DhruvSuryaLocalGridSample,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(sample) = geometry.local_grid.get(index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = sample.into() };
+    DhruvStatus::Ok
+}
+
+/// Number of levels in one ring set (`DHRUV_SURYA_RING_SET_*`): 1 for the
+/// visibility boundary, one per requested fraction/level for isolines, one
+/// per swept segment for the corridor.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_ring_set_level_count(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    set_kind: i32,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(count) = geometry.ring_set_level_count(set_kind) else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = count.min(u32::MAX as usize) as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read metadata for one level of a ring set.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_ring_set_level_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    set_kind: i32,
+    level_index: u32,
+    out: *mut DhruvSuryaRingSetLevel,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some((level_value, grahan_type, rings)) =
+        geometry.ring_set_level(set_kind, level_index as usize)
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe {
+        *out = DhruvSuryaRingSetLevel {
+            level_value,
+            grahan_type,
+            ring_count: rings.len().min(u32::MAX as usize) as u32,
+        }
+    };
+    DhruvStatus::Ok
+}
+
+/// Read metadata for one closed ring of a ring set.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_ring_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    set_kind: i32,
+    level_index: u32,
+    ring_index: u32,
+    out: *mut DhruvSuryaIsolineRing,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some((_, _, rings)) = geometry.ring_set_level(set_kind, level_index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    let Some(ring) = rings.get(ring_index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe {
+        *out = DhruvSuryaIsolineRing {
+            contains_pole: match ring.contains_pole {
+                None => DHRUV_RING_POLE_NONE,
+                Some(PoleSide::North) => DHRUV_RING_POLE_NORTH,
+                Some(PoleSide::South) => DHRUV_RING_POLE_SOUTH,
+            },
+            point_count: ring.boundary.len().min(u32::MAX as usize) as u32,
+        }
+    };
+    DhruvStatus::Ok
+}
+
+/// Read one boundary coordinate of one ring of a ring set.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_ring_point_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    set_kind: i32,
+    level_index: u32,
+    ring_index: u32,
+    point_index: u32,
+    out: *mut DhruvEclipseGeoPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some((_, _, rings)) = geometry.ring_set_level(set_kind, level_index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    let Some(point) = rings
+        .get(ring_index as usize)
+        .and_then(|ring| ring.boundary.get(point_index as usize))
     else {
         return DhruvStatus::InvalidInput;
     };

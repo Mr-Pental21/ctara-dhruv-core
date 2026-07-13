@@ -30,10 +30,11 @@ use dhruv_time::{EopKernel, UtcTime, calendar_to_jd, gmst_rad};
 use crate::conjunction::{next_conjunction, prev_conjunction, search_conjunctions};
 use crate::conjunction_types::ConjunctionConfig;
 use crate::error::SearchError;
+use crate::grahan_fields::{CorridorTrack, central_corridor, grid_and_isolines};
 use crate::grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GeoLocation,
-    GrahanConfig, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances,
-    SuryaGrahanPathPoint, SuryaGrahanType,
+    GrahanConfig, SuryaCentrality, SuryaGrahan, SuryaGrahanFootprint,
+    SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
 };
 
 // ---------------------------------------------------------------------------
@@ -41,18 +42,18 @@ use crate::grahan_types::{
 // ---------------------------------------------------------------------------
 
 /// Earth equatorial radius in km (IAU 2015 Resolution B3).
-const EARTH_RADIUS_KM: f64 = 6378.137;
+pub(crate) const EARTH_RADIUS_KM: f64 = 6378.137;
 
 /// Conventional inverse flattening used for geodetic eclipse coordinates.
 const EARTH_INV_FLATTENING: f64 = 298.257_223_563;
 
-const EARTH_POLAR_RADIUS_KM: f64 = EARTH_RADIUS_KM * (1.0 - 1.0 / EARTH_INV_FLATTENING);
+pub(crate) const EARTH_POLAR_RADIUS_KM: f64 = EARTH_RADIUS_KM * (1.0 - 1.0 / EARTH_INV_FLATTENING);
 
 /// Sun nominal radius in km (IAU 2015 Resolution B3).
-const SUN_RADIUS_KM: f64 = 696_000.0;
+pub(crate) const SUN_RADIUS_KM: f64 = 696_000.0;
 
 /// Moon mean radius in km (IAU 2015).
-const MOON_RADIUS_KM: f64 = 1737.4;
+pub(crate) const MOON_RADIUS_KM: f64 = 1737.4;
 
 /// Danjon atmospheric enlargement factor for Earth's shadow.
 /// The Earth's atmosphere causes the geometrical shadow to appear ~2% larger.
@@ -218,7 +219,7 @@ fn moon_shadow_offset_deg(engine: &Engine, jd_tdb: f64) -> Result<f64, SearchErr
 // ---------------------------------------------------------------------------
 
 #[inline]
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+pub(crate) fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
@@ -237,17 +238,17 @@ fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 }
 
 #[inline]
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+pub(crate) fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
 #[inline]
-fn scale(a: [f64; 3], s: f64) -> [f64; 3] {
+pub(crate) fn scale(a: [f64; 3], s: f64) -> [f64; 3] {
     [a[0] * s, a[1] * s, a[2] * s]
 }
 
 #[inline]
-fn norm(a: [f64; 3]) -> f64 {
+pub(crate) fn norm(a: [f64; 3]) -> f64 {
     dot(a, a).sqrt()
 }
 
@@ -272,7 +273,7 @@ fn utc_jd(utc: UtcTime) -> f64 {
     )
 }
 
-fn gast_rad_for(engine: &Engine, eop: Option<&EopKernel>, jd_tdb: f64) -> f64 {
+pub(crate) fn gast_rad_for(engine: &Engine, eop: Option<&EopKernel>, jd_tdb: f64) -> f64 {
     let utc = UtcTime::from_jd_tdb(jd_tdb, engine.lsk());
     let jd_utc = utc_jd(utc);
     let jd_ut1 = eop
@@ -305,7 +306,7 @@ fn icrf_to_true_equatorial_of_date(v: [f64; 3], jd_tdb: f64) -> [f64; 3] {
     ]
 }
 
-fn sun_moon_true_vectors(
+pub(crate) fn sun_moon_true_vectors(
     engine: &Engine,
     jd_tdb: f64,
 ) -> Result<([f64; 3], [f64; 3]), SearchError> {
@@ -386,7 +387,7 @@ pub fn besselian_elements_at(
     })
 }
 
-fn rotate_z(v: [f64; 3], angle: f64) -> [f64; 3] {
+pub(crate) fn rotate_z(v: [f64; 3], angle: f64) -> [f64; 3] {
     let (s, c) = angle.sin_cos();
     [c * v[0] - s * v[1], s * v[0] + c * v[1], v[2]]
 }
@@ -409,7 +410,7 @@ fn ecef_to_geodetic(v: [f64; 3]) -> EclipseGeoPoint {
     }
 }
 
-fn geodetic_to_ecef(location: &GeoLocation) -> [f64; 3] {
+pub(crate) fn geodetic_to_ecef(location: &GeoLocation) -> [f64; 3] {
     let a = EARTH_RADIUS_KM;
     let b = EARTH_POLAR_RADIUS_KM;
     let e2 = 1.0 - b * b / (a * a);
@@ -709,7 +710,7 @@ fn cone_ellipsoid_boundary(
     ring
 }
 
-fn axis_ground_point(
+pub(crate) fn axis_ground_point(
     engine: &Engine,
     eop: Option<&EopKernel>,
     jd_tdb: f64,
@@ -720,12 +721,12 @@ fn axis_ground_point(
 }
 
 #[derive(Debug, Clone, Copy)]
-enum ShadowCone {
+pub(crate) enum ShadowCone {
     Penumbra,
     Central,
 }
 
-fn shadow_boundary(
+pub(crate) fn shadow_boundary(
     engine: &Engine,
     eop: Option<&EopKernel>,
     jd_tdb: f64,
@@ -912,14 +913,18 @@ fn local_disk_geometry(
     })
 }
 
-fn disk_magnitude(g: LocalDiskGeometry) -> f64 {
-    ((g.sun_radius_rad + g.moon_radius_rad - g.separation_rad) / (2.0 * g.sun_radius_rad)).max(0.0)
+pub(crate) fn disk_magnitude(separation_rad: f64, sun_radius_rad: f64, moon_radius_rad: f64) -> f64 {
+    ((sun_radius_rad + moon_radius_rad - separation_rad) / (2.0 * sun_radius_rad)).max(0.0)
 }
 
-fn disk_obscuration(g: LocalDiskGeometry) -> f64 {
-    let sun_radius = g.sun_radius_rad;
-    let moon_radius = g.moon_radius_rad;
-    let d = g.separation_rad;
+pub(crate) fn disk_obscuration(
+    separation_rad: f64,
+    sun_radius_rad: f64,
+    moon_radius_rad: f64,
+) -> f64 {
+    let sun_radius = sun_radius_rad;
+    let moon_radius = moon_radius_rad;
+    let d = separation_rad;
     if d >= sun_radius + moon_radius {
         return 0.0;
     }
@@ -1012,12 +1017,20 @@ fn local_circumstances(
         c4_jd: c4,
         c4_utc: c4.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
         magnitude: if typ.is_some() {
-            disk_magnitude(maximum)
+            disk_magnitude(
+                maximum.separation_rad,
+                maximum.sun_radius_rad,
+                maximum.moon_radius_rad,
+            )
         } else {
             0.0
         },
         obscuration: if typ.is_some() {
-            disk_obscuration(maximum)
+            disk_obscuration(
+                maximum.separation_rad,
+                maximum.sun_radius_rad,
+                maximum.moon_radius_rad,
+            )
         } else {
             0.0
         },
@@ -1568,10 +1581,85 @@ fn compute_surya_grahan(
         None => None,
     };
 
+    let centrality = if central_location.is_some() {
+        SuryaCentrality::Full
+    } else if central_reaches_earth {
+        SuryaCentrality::Partial
+    } else {
+        SuryaCentrality::None
+    };
+
+    let (local_grid, isolines) = if config.include_local_grid || config.include_isolines {
+        let span_days = match (c1_jd, c4_jd) {
+            (Some(first), Some(last)) => last - first,
+            _ => end - start,
+        };
+        let products = grid_and_isolines(engine, eop, start, end, span_days, config)?;
+        (products.local_grid, products.isolines)
+    } else {
+        (Vec::new(), None)
+    };
+
+    let central_corridor = if config.include_central_corridor
+        && centrality != SuryaCentrality::None
+    {
+        let corridor_start = c2_jd.unwrap_or(greatest_jd - 0.05) - 2.0 / 1440.0;
+        let corridor_end = c3_jd.unwrap_or(greatest_jd + 0.05) + 2.0 / 1440.0;
+        let boundary_step = config.boundary_step_deg.clamp(1, 15);
+        let mut track_points: Vec<(f64, EclipseGeoPoint)> = Vec::new();
+        let mut extra: Vec<EclipseGeoPoint> = Vec::new();
+        if path.is_empty() {
+            for index in 0..=16 {
+                let jd = corridor_start
+                    + (corridor_end - corridor_start) * index as f64 / 16.0;
+                track_points.push((jd, closest_axis_surface_point(engine, eop, jd)?));
+            }
+        } else {
+            for point in &path {
+                track_points.push((point.jd_tdb, point.center));
+                if let Some(limit) = point.northern_limit {
+                    extra.push(limit);
+                }
+                if let Some(limit) = point.southern_limit {
+                    extra.push(limit);
+                }
+            }
+        }
+        // Instantaneous central outlines through the window cover the
+        // rounded corridor end caps in the bounding box; the shadow's
+        // ground speed peaks near the contacts, so sample densely there.
+        for fraction in [0.0, 0.01, 0.03, 0.08, 0.25, 0.5, 0.75, 0.92, 0.97, 0.99, 1.0] {
+            let jd = corridor_start + (corridor_end - corridor_start) * fraction;
+            extra.extend(shadow_boundary(
+                engine,
+                eop,
+                jd,
+                ShadowCone::Central,
+                boundary_step,
+            )?);
+        }
+        Some(central_corridor(
+            engine,
+            eop,
+            corridor_start,
+            corridor_end,
+            &CorridorTrack {
+                points: track_points,
+                extra,
+            },
+        )?)
+    } else {
+        None
+    };
+
     Ok(Some(SuryaGrahan {
         grahan_type,
-        magnitude: disk_magnitude(peak),
-        obscuration: disk_obscuration(peak),
+        magnitude: disk_magnitude(peak.separation_rad, peak.sun_radius_rad, peak.moon_radius_rad),
+        obscuration: disk_obscuration(
+            peak.separation_rad,
+            peak.sun_radius_rad,
+            peak.moon_radius_rad,
+        ),
         apparent_diameter_ratio: peak.moon_radius_rad / peak.sun_radius_rad,
         gamma: rho.copysign(moon_lat),
         greatest_grahan_jd: greatest_jd,
@@ -1593,6 +1681,10 @@ fn compute_surya_grahan(
         path,
         footprints,
         local,
+        centrality,
+        local_grid,
+        isolines,
+        central_corridor,
     }))
 }
 

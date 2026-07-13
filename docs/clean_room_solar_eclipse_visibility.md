@@ -84,6 +84,50 @@
 - Mean-limb results do not model mountains/valleys on the lunar limb, Baily's
   beads, atmospheric refraction, or local terrain unless explicitly stated.
 
+### Field products (grid, isolines, corridor) — added 2026-07-14
+
+- The per-event local-circumstance grid, visibility/duration/magnitude
+  isolines, and swept central corridor reuse the same topocentric finite-disk
+  conventions, restructured so the ephemeris is sampled once per time step
+  (Sun/Moon true-equatorial vectors plus apparent sidereal time) and every
+  per-location evaluation is pure vector math with linear interpolation
+  between samples.
+- Continuous scalar fields drive all boundary products: the visibility field
+  is the maximum over time of `min(partial-phase margin, Sun-altitude
+  margin)`; the duration field is the measure of Sun-up partial-phase
+  intervals (edges refined by bisection); the magnitude field clips the
+  instantaneous magnitude continuously across the terminator; the corridor
+  fields are the Sun-up-clipped maxima of the umbral/antumbral margins
+  (the clip removes the phantom region where the shadow cone exits through
+  the night-side of the ellipsoid).
+- Isolines are extracted with the classical marching-squares algorithm
+  (public literature; sixteen-case cell table with saddle disambiguation by
+  center evaluation) over node grids, with every ring vertex refined by
+  bisection against the exact continuous field. The global grid treats the
+  poles as degenerate rows and wraps longitude so rings around the poles and
+  across the antimeridian close without planar approximations; pole
+  containment is decided from the ring's longitude winding on the sphere.
+- The corridor grid is track-aligned (along-track x cross-track on the
+  sphere) because the central band is kilometers thin near hybrid
+  transitions and contacts; rounded end caps and one-sided grazing limits
+  fall out of the exact swept level set. A boundary-positive retry widens
+  the grid when the sampled outlines undershoot the true swept extent.
+
+## Validation (field products)
+
+- Unit tests validate the contour engine against synthetic fields: circles,
+  polar caps (winding + pole flag), antimeridian-straddling regions,
+  disjoint regions, thin diagonal bands, deterministic ring starts, and
+  track-frame perpendicular offsets.
+- Integration tests (kernel-gated) cover the 2026-08-12 Arctic total event
+  (polar grid cells present with per-location magnitudes, grid samples
+  inside the visibility boundary, greatest-location magnitude agreement,
+  duration-fraction consistency against the isolines, corridor containment
+  of the central path, corridor inside the visibility boundary), the
+  2023-04-20 hybrid event (separate annular and total corridor segments),
+  and the 2026-02-17 Antarctic annular event (corridor ring closure near
+  the pole).
+
 ## Validation
 
 - NASA/GSFC catalog/path/local-circumstance values are black-box I/O oracles
@@ -111,3 +155,6 @@
   source-available, or proprietary code.
 - Name: OpenAI Codex (AI-authored contribution under project policy)
 - Date: 2026-07-13
+- Field products extension (grid, isolines, corridor): Claude (AI-authored
+  contribution under project policy), 2026-07-14; same clean-room sources,
+  plus the public marching-squares contouring literature.

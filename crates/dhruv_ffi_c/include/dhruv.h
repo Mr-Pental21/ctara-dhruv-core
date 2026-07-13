@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       80
+#define DHRUV_API_VERSION       81
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -221,6 +221,25 @@ typedef int32_t DhruvStatus;
 #define DHRUV_SURYA_GRAHAN_ANNULAR  1
 #define DHRUV_SURYA_GRAHAN_TOTAL    2
 #define DHRUV_SURYA_GRAHAN_HYBRID   3
+
+/* Whether and how the central shadow reaches Earth */
+#define DHRUV_SURYA_CENTRALITY_NONE    0
+#define DHRUV_SURYA_CENTRALITY_PARTIAL 1
+#define DHRUV_SURYA_CENTRALITY_FULL    2
+
+/* Ring-set selectors for isoline/corridor geometry */
+#define DHRUV_SURYA_RING_SET_VISIBILITY 0
+#define DHRUV_SURYA_RING_SET_DURATION   1
+#define DHRUV_SURYA_RING_SET_MAGNITUDE  2
+#define DHRUV_SURYA_RING_SET_CORRIDOR   3
+
+/* Ring pole containment */
+#define DHRUV_RING_POLE_NONE  0
+#define DHRUV_RING_POLE_NORTH 1
+#define DHRUV_RING_POLE_SOUTH 2
+
+/* Maximum isoline levels per family in DhruvGrahanConfig */
+#define DHRUV_GRAHAN_MAX_ISOLINE_LEVELS 16
 
 /* Eclipse query */
 #define DHRUV_GRAHAN_KIND_CHANDRA 0
@@ -660,8 +679,19 @@ typedef struct {
     uint8_t include_penumbral;
     uint8_t include_peak_details;
     uint8_t include_path;
+    uint8_t include_local_grid;
+    uint8_t include_isolines;
+    uint8_t include_central_corridor;
     uint32_t path_step_minutes;
     uint32_t boundary_step_deg;
+    /* Local-grid spacing in degrees; values outside [0.5, 10] are clamped. */
+    double local_grid_step_deg;
+    /* Visible-duration isoline levels as fractions of the C1-C4 span. */
+    double duration_isoline_fractions[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    uint32_t duration_isoline_fraction_count;
+    /* Local maximum-magnitude isoline levels. */
+    double magnitude_isoline_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    uint32_t magnitude_isoline_level_count;
 } DhruvGrahanConfig;
 
 typedef struct {
@@ -731,6 +761,38 @@ typedef struct {
     uint32_t boundary_count;
 } DhruvSuryaGrahanFootprint;
 
+/* One sample of the per-event local-circumstance grid. */
+typedef struct {
+    double latitude_deg;
+    double longitude_deg;
+    double magnitude;
+    double obscuration;
+    double maximum_jd;
+    DhruvUtcTime maximum_utc;
+    double first_contact_jd;
+    DhruvUtcTime first_contact_utc;
+    double last_contact_jd;
+    DhruvUtcTime last_contact_utc;
+    double visible_duration_seconds;
+} DhruvSuryaLocalGridSample;
+
+/* Metadata for one level of a ring set (isoline level or corridor segment). */
+typedef struct {
+    /* Duration fraction or magnitude level; 0 for visibility/corridor sets. */
+    double level_value;
+    /* Corridor segment type (DHRUV_SURYA_GRAHAN_*), or -1 for isoline sets. */
+    int32_t grahan_type;
+    uint32_t ring_count;
+} DhruvSuryaRingSetLevel;
+
+/* Metadata for one closed ring of a ring set. */
+typedef struct {
+    /* Pole containment (DHRUV_RING_POLE_*). */
+    int32_t contains_pole;
+    /* Number of boundary points; the final point repeats the first. */
+    uint32_t point_count;
+} DhruvSuryaIsolineRing;
+
 typedef struct {
     int32_t grahan_type;
     double  magnitude;
@@ -766,6 +828,12 @@ typedef struct {
     double  bessel_tan_f2;
     uint32_t path_count;
     uint32_t footprint_count;
+    /* Whether and how the central shadow reaches Earth
+       (DHRUV_SURYA_CENTRALITY_*). */
+    int32_t centrality;
+    uint32_t local_grid_count;
+    uint8_t isolines_valid;
+    uint8_t central_corridor_valid;
     DhruvSuryaGrahanGeometryHandle geometry_handle;
     uint8_t local_valid;
     uint8_t local_visible;
@@ -2061,6 +2129,11 @@ DhruvStatus dhruv_conjunction_search_ex(
 
 /* --- Grahan (eclipse) --- */
 DhruvGrahanConfig dhruv_grahan_config_default(void);
+/* Writes the configuration actually applied after clamping/sanitizing;
+   build cache keys against this echo rather than the raw request. */
+DhruvStatus dhruv_grahan_config_effective(
+    const DhruvGrahanConfig *config,
+    DhruvGrahanConfig *out);
 DhruvStatus dhruv_grahan_search_ex(
     const DhruvEngineHandle *engine,
     const DhruvGrahanSearchRequest *request,
@@ -2082,6 +2155,32 @@ DhruvStatus dhruv_surya_grahan_footprint_at(
 DhruvStatus dhruv_surya_grahan_footprint_point_at(
     DhruvSuryaGrahanGeometryHandle geometry,
     uint32_t footprint_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+DhruvStatus dhruv_surya_grahan_local_grid_sample_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t index,
+    DhruvSuryaLocalGridSample *out);
+DhruvStatus dhruv_surya_grahan_ring_set_level_count(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    int32_t set_kind,
+    uint32_t *out);
+DhruvStatus dhruv_surya_grahan_ring_set_level_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    int32_t set_kind,
+    uint32_t level_index,
+    DhruvSuryaRingSetLevel *out);
+DhruvStatus dhruv_surya_grahan_ring_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    int32_t set_kind,
+    uint32_t level_index,
+    uint32_t ring_index,
+    DhruvSuryaIsolineRing *out);
+DhruvStatus dhruv_surya_grahan_ring_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    int32_t set_kind,
+    uint32_t level_index,
+    uint32_t ring_index,
     uint32_t point_index,
     DhruvEclipseGeoPoint *out);
 void dhruv_surya_grahan_geometry_free(

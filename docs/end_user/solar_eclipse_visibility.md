@@ -15,10 +15,24 @@ may include:
 - `config.path_step_minutes`: central-path cadence from 1 through 30 minutes;
 - `config.boundary_step_deg`: maximum base shadow-boundary sampling from 1
   through 15 degrees. Dhruv adds adaptive samples near tangent regions when
-  needed to keep the ground ring continuous.
+  needed to keep the ground ring continuous;
+- `config.include_local_grid` and `config.local_grid_step_deg`: a geographic
+  grid of local circumstances covering the full penumbral sweep (polar caps
+  and antimeridian included). The step is clamped to [0.5, 10] degrees and
+  samples lie at cell centers (`lat = -90 + (i + 0.5)·step`,
+  `lon = -180 + (j + 0.5)·step`); only locations that see a Sun-up partial
+  phase are returned;
+- `config.include_isolines`, `config.duration_isoline_fractions` (fractions
+  of the global C1–C4 span), and `config.magnitude_isoline_levels`: smooth
+  closed contour rings of the visibility field;
+- `config.include_central_corridor`: the swept umbral/antumbral corridor
+  outline with rounded end caps.
 
 Path generation defaults to off so catalog-only searches remain inexpensive.
-The default cadence is one minute and the default boundary step is two degrees.
+The default cadence is one minute and the default boundary step is two
+degrees. All field products default to off; the effective (clamped and
+sanitized) configuration is echoed back so cache keys can be built against
+what was actually applied.
 
 The CLI exposes the same inputs:
 
@@ -41,8 +55,21 @@ Elixir NIF users can include the same fields in a
   mode: "next",
   at_utc: %{year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0.0},
   location: %{latitude_deg: 25.2854, longitude_deg: -104.3, altitude_m: 0.0},
-  config: %{include_path: true, path_step_minutes: 5, boundary_step_deg: 5}
+  config: %{
+    include_path: true, path_step_minutes: 5, boundary_step_deg: 5,
+    include_local_grid: true, local_grid_step_deg: 2.0,
+    include_isolines: true,
+    duration_isoline_fractions: [0.25, 0.5, 0.75],
+    magnitude_isoline_levels: [0.25, 0.5, 0.75, 1.0],
+    include_central_corridor: true
+  }
 }
+```
+
+The NIF response envelope echoes the effective configuration under
+`effective_config` alongside `kind` and `events`.
+
+```elixir
 ```
 
 ## Result
@@ -69,6 +96,34 @@ When path generation is enabled, the result also contains:
 - `local`: visibility, local type, maximum, C1-C4, magnitude, obscuration,
   Sun altitude/azimuth, and central duration for the requested location.
 
+Every solar result reports `centrality` (`full`, `partial`, or `none`):
+`partial` marks grazing events whose shadow cone touches Earth while the
+center line misses it, so path limits are one-sided but the swept corridor
+still closes.
+
+When the field products are enabled, the result additionally contains:
+
+- `local_grid`: one sample per visible grid cell with the local maximum
+  magnitude and obscuration, the (unclipped) local maximum time, the
+  Sun-up-clipped first/last partial contacts, and the summed visible
+  duration in seconds — everything a hover/tap tooltip needs at any point;
+- `isolines`: closed, ordered, non-self-intersecting rings, each tagged
+  with `contains_pole` (`north`, `south`, or absent) and safe to unwrap
+  across the antimeridian (a consecutive longitude jump greater than 180
+  degrees marks one seam crossing). `visibility_boundary` is the level-0
+  curve enclosing every location that sees any Sun-up partial phase;
+  `duration_isolines` and `magnitude_isolines` carry one entry per
+  requested level with its rings (a level may return several disjoint
+  rings — the night side can split the region);
+- `central_corridor`: swept umbral/antumbral outlines as
+  `segments = [{grahan_type, rings}]`, ordered along the path. Hybrid
+  events return separate `annular` and `total` segments that meet at their
+  transition points; plain central events return one segment. Ring
+  contract identical to the isolines. The corridor is computed on a
+  track-aligned grid, so the thin band stays resolved near the contacts
+  and hybrid tapers, and the rounded end caps are exact level sets rather
+  than chopped path samples.
+
 UTC is the default high-level time representation. JD TDB remains beside it
 for numerical consumers.
 
@@ -81,14 +136,16 @@ checked-in century GeoJSON:
 1. Query the desired range with `include_path: false` for the catalog list.
 2. Query a selected eclipse with `include_path: true` for interactive map
    geometry.
-3. Render `path[].center` as the central line and the limit fields as the
-   total/annular corridor. Split segments when longitude jumps across the
-   antimeridian.
-4. Render `footprints[].boundary` as the time-varying partial-visibility
-   footprint. Each ring is already closed; map adapters only need to
+3. Render `isolines.visibility_boundary` (with nested duration fills) as the
+   smooth partial-visibility layer, and `central_corridor.segments` as the
+   filled total/annular band with rounded end caps and per-type styling.
+4. Render `path[].center` as the central line and greatest-eclipse marker;
+   `footprints[].boundary` remains available for time-animated instantaneous
+   footprints. Each ring is already closed; map adapters only need to
    split/unwrap antimeridian crossings for their projection.
-5. Use `local` for the user's visible/not-visible state, contact timeline,
-   magnitude, obscuration, horizon state, and duration.
+5. Interpolate `local_grid` at the cursor for hover/tap tooltips (visible
+   minutes, share of the C1–C4 span, UTC window, magnitude, obscuration);
+   use `local` for a chosen observer's full circumstances.
 
 Application caching is still useful, but cached rows become a performance
 detail rather than an authoritative external dataset. Store the Dhruv kernel

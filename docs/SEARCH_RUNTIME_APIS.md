@@ -36,6 +36,24 @@ Total runtime functions documented here: **68**.
 | `prev_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Previous geographic solar eclipse. |
 | `search_surya_grahan` | `engine`, `eop`, `jd_start`, `jd_end`, `location`, `config` | `Result<Vec<SuryaGrahan>, SearchError>` | Solar eclipses in a range, optionally including paths and footprints. |
 
+Surya field products (all opt-in via `GrahanConfig`): `include_local_grid`
+(+ `local_grid_step_deg`, clamped to [0.5, 10]) fills `SuryaGrahan.local_grid`
+with per-cell local circumstances (local max magnitude/obscuration/time,
+Sun-up-clipped first/last contacts, summed visible duration) at cell centers
+`lat = -90 + (i + 0.5)·step`, `lon = -180 + (j + 0.5)·step`;
+`include_isolines` (+ `duration_isoline_fractions` of the C1–C4 span and
+`magnitude_isoline_levels`) fills `SuryaGrahan.isolines` with closed, ordered,
+antimeridian-safe rings (`SuryaIsolineRing { boundary, contains_pole }`):
+the level-0 `visibility_boundary` plus duration/magnitude level sets;
+`include_central_corridor` fills `SuryaGrahan.central_corridor` with the
+swept umbral/antumbral outline as `{ grahan_type, rings }` segments (hybrid
+events return separate annular and total segments; rounded end caps come
+from the exact swept level set on a track-aligned grid). Every event also
+reports `centrality` (`Full | Partial | None`; `Partial` marks grazing
+events whose center line misses Earth — one-sided limits, closed corridor).
+`GrahanConfig::effective()` returns the clamped/sanitized configuration
+actually applied; cache keys should be built against that echo.
+
 ## Sankranti (5)
 
 | Function | Inputs | Output | What it does |

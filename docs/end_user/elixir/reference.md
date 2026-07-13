@@ -303,7 +303,15 @@ surya grahan results (degrees, equinox of date, nutation applied).
 Solar grahan requests also accept `location` and `config.include_path`,
 `path_step_minutes`, and `boundary_step_deg`. Results include Besselian
 elements, greatest location, map path/footprint samples, and local visibility
-circumstances. See `docs/end_user/solar_eclipse_visibility.md`.
+circumstances. The config additionally accepts `include_local_grid` /
+`local_grid_step_deg`, `include_isolines` with
+`duration_isoline_fractions` / `magnitude_isoline_levels`, and
+`include_central_corridor`; surya results then carry `centrality`,
+`local_grid`, `isolines` (`visibility_boundary`, `duration_isolines`,
+`magnitude_isolines` with `%{boundary: [...], contains_pole: ...}` rings),
+and `central_corridor.segments`. The grahan response envelope echoes the
+effective (clamped/sanitized) configuration under `effective_config` for
+cache identity. See `docs/end_user/solar_eclipse_visibility.md`.
 
 `CtaraDhruv.Search`:
 

@@ -2619,6 +2619,88 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
         napi_set_element(env, footprints, i, item);
     }
     SetNamed(env, obj, "footprints", footprints);
+    SetNamed(env, obj, "centrality", MakeInt32(env, g.centrality));
+    napi_value localGrid;
+    napi_create_array_with_length(env, g.local_grid_count, &localGrid);
+    for (uint32_t i = 0; i < g.local_grid_count; ++i) {
+        DhruvSuryaLocalGridSample sample{};
+        if (dhruv_surya_grahan_local_grid_sample_at(g.geometry_handle, i, &sample) != STATUS_OK) break;
+        napi_value item;
+        napi_create_object(env, &item);
+        SetNamed(env, item, "latitudeDeg", MakeDouble(env, sample.latitude_deg));
+        SetNamed(env, item, "longitudeDeg", MakeDouble(env, sample.longitude_deg));
+        SetNamed(env, item, "magnitude", MakeDouble(env, sample.magnitude));
+        SetNamed(env, item, "obscuration", MakeDouble(env, sample.obscuration));
+        SetNamed(env, item, "maximumJd", MakeDouble(env, sample.maximum_jd));
+        SetNamed(env, item, "maximumUtc", WriteUtcTime(env, sample.maximum_utc));
+        SetNamed(env, item, "firstContactJd", MakeDouble(env, sample.first_contact_jd));
+        SetNamed(env, item, "firstContactUtc", WriteUtcTime(env, sample.first_contact_utc));
+        SetNamed(env, item, "lastContactJd", MakeDouble(env, sample.last_contact_jd));
+        SetNamed(env, item, "lastContactUtc", WriteUtcTime(env, sample.last_contact_utc));
+        SetNamed(env, item, "visibleDurationSeconds", MakeDouble(env, sample.visible_duration_seconds));
+        napi_set_element(env, localGrid, i, item);
+    }
+    SetNamed(env, obj, "localGrid", localGrid);
+    auto write_ring_set = [&](int32_t set_kind) {
+        uint32_t level_count = 0;
+        napi_value levels;
+        if (dhruv_surya_grahan_ring_set_level_count(g.geometry_handle, set_kind, &level_count) != STATUS_OK) {
+            napi_create_array_with_length(env, 0, &levels);
+            return levels;
+        }
+        napi_create_array_with_length(env, level_count, &levels);
+        for (uint32_t level_index = 0; level_index < level_count; ++level_index) {
+            DhruvSuryaRingSetLevel level{};
+            if (dhruv_surya_grahan_ring_set_level_at(g.geometry_handle, set_kind, level_index, &level) != STATUS_OK) break;
+            napi_value level_obj;
+            napi_create_object(env, &level_obj);
+            SetNamed(env, level_obj, "levelValue", MakeDouble(env, level.level_value));
+            SetNamed(env, level_obj, "grahanType", level.grahan_type < 0 ? nullv : MakeInt32(env, level.grahan_type));
+            napi_value rings;
+            napi_create_array_with_length(env, level.ring_count, &rings);
+            for (uint32_t ring_index = 0; ring_index < level.ring_count; ++ring_index) {
+                DhruvSuryaIsolineRing ring{};
+                if (dhruv_surya_grahan_ring_at(g.geometry_handle, set_kind, level_index, ring_index, &ring) != STATUS_OK) break;
+                napi_value ring_obj;
+                napi_create_object(env, &ring_obj);
+                SetNamed(env, ring_obj, "containsPole", MakeInt32(env, ring.contains_pole));
+                napi_value boundary;
+                napi_create_array_with_length(env, ring.point_count, &boundary);
+                for (uint32_t point_index = 0; point_index < ring.point_count; ++point_index) {
+                    DhruvEclipseGeoPoint point{};
+                    if (dhruv_surya_grahan_ring_point_at(g.geometry_handle, set_kind, level_index, ring_index, point_index, &point) != STATUS_OK) break;
+                    napi_value coordinate;
+                    napi_create_object(env, &coordinate);
+                    SetNamed(env, coordinate, "latitudeDeg", MakeDouble(env, point.latitude_deg));
+                    SetNamed(env, coordinate, "longitudeDeg", MakeDouble(env, point.longitude_deg));
+                    napi_set_element(env, boundary, point_index, coordinate);
+                }
+                SetNamed(env, ring_obj, "boundary", boundary);
+                napi_set_element(env, rings, ring_index, ring_obj);
+            }
+            SetNamed(env, level_obj, "rings", rings);
+            napi_set_element(env, levels, level_index, level_obj);
+        }
+        return levels;
+    };
+    if (g.isolines_valid != 0) {
+        napi_value isolines;
+        napi_create_object(env, &isolines);
+        SetNamed(env, isolines, "visibilityBoundary", write_ring_set(DHRUV_SURYA_RING_SET_VISIBILITY));
+        SetNamed(env, isolines, "durationIsolines", write_ring_set(DHRUV_SURYA_RING_SET_DURATION));
+        SetNamed(env, isolines, "magnitudeIsolines", write_ring_set(DHRUV_SURYA_RING_SET_MAGNITUDE));
+        SetNamed(env, obj, "isolines", isolines);
+    } else {
+        SetNamed(env, obj, "isolines", nullv);
+    }
+    if (g.central_corridor_valid != 0) {
+        napi_value corridor;
+        napi_create_object(env, &corridor);
+        SetNamed(env, corridor, "segments", write_ring_set(DHRUV_SURYA_RING_SET_CORRIDOR));
+        SetNamed(env, obj, "centralCorridor", corridor);
+    } else {
+        SetNamed(env, obj, "centralCorridor", nullv);
+    }
     if (g.local_valid != 0) {
         napi_value local;
         napi_create_object(env, &local);
@@ -4676,9 +4758,7 @@ napi_value ConjunctionConfigDefault(napi_env env, napi_callback_info info) {
     return out;
 }
 
-napi_value GrahanConfigDefault(napi_env env, napi_callback_info info) {
-    (void)info;
-    DhruvGrahanConfig cfg = dhruv_grahan_config_default();
+napi_value WriteGrahanConfig(napi_env env, const DhruvGrahanConfig& cfg) {
     napi_value out;
     napi_create_object(env, &out);
     SetNamed(env, out, "includePenumbral", MakeBool(env, cfg.include_penumbral != 0));
@@ -4686,7 +4766,31 @@ napi_value GrahanConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, out, "includePath", MakeBool(env, cfg.include_path != 0));
     SetNamed(env, out, "pathStepMinutes", MakeUint32(env, cfg.path_step_minutes));
     SetNamed(env, out, "boundaryStepDeg", MakeUint32(env, cfg.boundary_step_deg));
+    SetNamed(env, out, "includeLocalGrid", MakeBool(env, cfg.include_local_grid != 0));
+    SetNamed(env, out, "localGridStepDeg", MakeDouble(env, cfg.local_grid_step_deg));
+    SetNamed(env, out, "includeIsolines", MakeBool(env, cfg.include_isolines != 0));
+    napi_value fractions;
+    napi_create_array_with_length(env, cfg.duration_isoline_fraction_count, &fractions);
+    for (uint32_t i = 0; i < cfg.duration_isoline_fraction_count && i < DHRUV_GRAHAN_MAX_ISOLINE_LEVELS; ++i) {
+        napi_value value = MakeDouble(env, cfg.duration_isoline_fractions[i]);
+        napi_set_element(env, fractions, i, value);
+    }
+    SetNamed(env, out, "durationIsolineFractions", fractions);
+    napi_value levels;
+    napi_create_array_with_length(env, cfg.magnitude_isoline_level_count, &levels);
+    for (uint32_t i = 0; i < cfg.magnitude_isoline_level_count && i < DHRUV_GRAHAN_MAX_ISOLINE_LEVELS; ++i) {
+        napi_value value = MakeDouble(env, cfg.magnitude_isoline_levels[i]);
+        napi_set_element(env, levels, i, value);
+    }
+    SetNamed(env, out, "magnitudeIsolineLevels", levels);
+    SetNamed(env, out, "includeCentralCorridor", MakeBool(env, cfg.include_central_corridor != 0));
     return out;
+}
+
+napi_value GrahanConfigDefault(napi_env env, napi_callback_info info) {
+    (void)info;
+    DhruvGrahanConfig cfg = dhruv_grahan_config_default();
+    return WriteGrahanConfig(env, cfg);
 }
 
 napi_value StationaryConfigDefault(napi_env env, napi_callback_info info) {
@@ -4836,6 +4940,44 @@ napi_value GrahanSearch(napi_env env, napi_callback_info info) {
         if (present && !GetUint32(env, v, &cfg.path_step_minutes)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!GetOptionalNamedProperty(env, cfg_obj, "boundaryStepDeg", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present && !GetUint32(env, v, &cfg.boundary_step_deg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "includeLocalGrid", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present) {
+            bool b = false;
+            if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            cfg.include_local_grid = b ? 1 : 0;
+        }
+        if (!GetOptionalNamedProperty(env, cfg_obj, "localGridStepDeg", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetDouble(env, v, &cfg.local_grid_step_deg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "includeIsolines", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present) {
+            bool b = false;
+            if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            cfg.include_isolines = b ? 1 : 0;
+        }
+        auto read_levels = [&](const char* name, double* values, uint32_t* count) {
+            napi_value array;
+            bool has_array = false;
+            if (!GetOptionalNamedProperty(env, cfg_obj, name, &array, &has_array)) return false;
+            if (!has_array) return true;
+            uint32_t length = 0;
+            if (napi_get_array_length(env, array, &length) != napi_ok) return false;
+            if (length > DHRUV_GRAHAN_MAX_ISOLINE_LEVELS) length = DHRUV_GRAHAN_MAX_ISOLINE_LEVELS;
+            for (uint32_t i = 0; i < length; ++i) {
+                napi_value element;
+                if (napi_get_element(env, array, i, &element) != napi_ok) return false;
+                if (!GetDouble(env, element, &values[i])) return false;
+            }
+            *count = length;
+            return true;
+        };
+        if (!read_levels("durationIsolineFractions", cfg.duration_isoline_fractions, &cfg.duration_isoline_fraction_count)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!read_levels("magnitudeIsolineLevels", cfg.magnitude_isoline_levels, &cfg.magnitude_isoline_level_count)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "includeCentralCorridor", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present) {
+            bool b = false;
+            if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            cfg.include_central_corridor = b ? 1 : 0;
+        }
     }
     req.config = cfg;
     bool has_location = false;

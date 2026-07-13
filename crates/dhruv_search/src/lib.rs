@@ -16,6 +16,7 @@ pub mod error;
 pub mod gochar_events;
 pub mod gochar_events_types;
 pub mod grahan;
+pub(crate) mod grahan_fields;
 pub mod grahan_types;
 pub mod jyotish;
 pub mod jyotish_types;
@@ -65,8 +66,10 @@ pub use grahan::{
 };
 pub use grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GeoLocation,
-    GrahanConfig, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances,
-    SuryaGrahanPathPoint, SuryaGrahanType,
+    GrahanConfig, PoleSide, SuryaCentralCorridor, SuryaCentrality, SuryaCorridorSegment,
+    SuryaDurationIsoline, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances,
+    SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample,
+    SuryaMagnitudeIsoline,
 };
 pub use jyotish::{
     all_upagrahas_for_date, all_upagrahas_for_date_with_config, amsha_charts_for_date,

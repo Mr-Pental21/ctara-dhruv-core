@@ -1661,6 +1661,24 @@ struct GrahanOpArgs {
     /// Shadow-boundary angular sampling in degrees (1-15).
     #[arg(long, default_value_t = 2)]
     boundary_step_deg: u32,
+    /// Include the geographic grid of local circumstances (surya).
+    #[arg(long, default_value_t = false)]
+    include_local_grid: bool,
+    /// Local-grid spacing in degrees (0.5-10, clamped).
+    #[arg(long, default_value_t = 2.0)]
+    local_grid_step_deg: f64,
+    /// Include visibility/duration/magnitude isoline rings (surya).
+    #[arg(long, default_value_t = false)]
+    include_isolines: bool,
+    /// Comma-separated visible-duration isoline fractions of the C1-C4 span.
+    #[arg(long, value_delimiter = ',', default_values_t = vec![0.25, 0.5, 0.75])]
+    duration_isoline_fractions: Vec<f64>,
+    /// Comma-separated local maximum-magnitude isoline levels.
+    #[arg(long, value_delimiter = ',', default_values_t = vec![0.25, 0.5, 0.75, 1.0])]
+    magnitude_isoline_levels: Vec<f64>,
+    /// Include the swept central-corridor outline (surya).
+    #[arg(long, default_value_t = false)]
+    include_central_corridor: bool,
     /// Observer latitude for local solar-eclipse circumstances.
     #[arg(long, requires = "lon")]
     lat: Option<f64>,
@@ -6641,6 +6659,12 @@ fn main() {
                 include_path: args.include_path,
                 path_step_minutes: args.path_step_minutes,
                 boundary_step_deg: args.boundary_step_deg,
+                include_local_grid: args.include_local_grid,
+                local_grid_step_deg: args.local_grid_step_deg,
+                include_isolines: args.include_isolines,
+                duration_isoline_fractions: args.duration_isoline_fractions.clone(),
+                magnitude_isoline_levels: args.magnitude_isoline_levels.clone(),
+                include_central_corridor: args.include_central_corridor,
             };
             let eop = args.eop.as_deref().map(load_eop);
             let location = args.lat.zip(args.lon).map(|(lat, lon)| {
@@ -10781,6 +10805,33 @@ fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan)
             ev.path.len(),
             ev.footprints.len()
         );
+    }
+    println!("  Centrality: {:?}", ev.centrality);
+    if !ev.local_grid.is_empty() {
+        println!("  Local grid: {} visible samples", ev.local_grid.len());
+    }
+    if let Some(isolines) = &ev.isolines {
+        println!(
+            "  Isolines: {} visibility ring(s), {} duration level(s), {} magnitude level(s)",
+            isolines.visibility_boundary.len(),
+            isolines.duration_isolines.len(),
+            isolines.magnitude_isolines.len()
+        );
+    }
+    if let Some(corridor) = &ev.central_corridor {
+        for segment in &corridor.segments {
+            let points: usize = segment
+                .rings
+                .iter()
+                .map(|ring| ring.boundary.len())
+                .sum();
+            println!(
+                "  Corridor segment: {:?}, {} ring(s), {} points",
+                segment.grahan_type,
+                segment.rings.len(),
+                points
+            );
+        }
     }
     if let Some(local) = &ev.local {
         println!(

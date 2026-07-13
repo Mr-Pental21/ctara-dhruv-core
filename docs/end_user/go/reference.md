@@ -403,8 +403,13 @@ and `SuryaGrahanResult.SunRightAscensionDeg`/`SunDeclinationDeg`
 
 Solar `GrahanSearchRequest` may carry `Location`; `GrahanConfig` controls path
 sampling. `SuryaGrahanResult` includes obscuration, gamma, Besselian elements,
-greatest location, `Path`, `Footprints`, and complete local circumstances. See
-`docs/end_user/solar_eclipse_visibility.md`.
+greatest location, `Path`, `Footprints`, and complete local circumstances.
+`GrahanConfig` additionally exposes `IncludeLocalGrid`/`LocalGridStepDeg`,
+`IncludeIsolines` with `DurationIsolineFractions`/`MagnitudeIsolineLevels`,
+and `IncludeCentralCorridor`; results then carry `Centrality`, `LocalGrid`,
+`Isolines`, and `CentralCorridor` (ring-set segments).
+`GrahanConfigEffective` echoes the clamped/sanitized configuration for cache
+identity. See `docs/end_user/solar_eclipse_visibility.md`.
 
 Strength, dasha, amsha, and tara:
 

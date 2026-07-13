@@ -961,15 +961,69 @@ func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capaci
 	return goEvent, found != 0, events, st
 }
 
-func GrahanConfigDefault() GrahanConfig {
-	cfg := C.dhruv_grahan_config_default()
-	return GrahanConfig{
-		IncludePenumbral:   cfg.include_penumbral != 0,
-		IncludePeakDetails: cfg.include_peak_details != 0,
-		IncludePath:        cfg.include_path != 0,
-		PathStepMinutes:    uint32(cfg.path_step_minutes),
-		BoundaryStepDeg:    uint32(cfg.boundary_step_deg),
+func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
+	fractions := make([]float64, int(cfg.duration_isoline_fraction_count))
+	for i := range fractions {
+		fractions[i] = float64(cfg.duration_isoline_fractions[i])
 	}
+	levels := make([]float64, int(cfg.magnitude_isoline_level_count))
+	for i := range levels {
+		levels[i] = float64(cfg.magnitude_isoline_levels[i])
+	}
+	return GrahanConfig{
+		IncludePenumbral:         cfg.include_penumbral != 0,
+		IncludePeakDetails:       cfg.include_peak_details != 0,
+		IncludePath:              cfg.include_path != 0,
+		PathStepMinutes:          uint32(cfg.path_step_minutes),
+		BoundaryStepDeg:          uint32(cfg.boundary_step_deg),
+		IncludeLocalGrid:         cfg.include_local_grid != 0,
+		LocalGridStepDeg:         float64(cfg.local_grid_step_deg),
+		IncludeIsolines:          cfg.include_isolines != 0,
+		DurationIsolineFractions: fractions,
+		MagnitudeIsolineLevels:   levels,
+		IncludeCentralCorridor:   cfg.include_central_corridor != 0,
+	}
+}
+
+func cGrahanConfig(cfg GrahanConfig) C.DhruvGrahanConfig {
+	out := C.DhruvGrahanConfig{
+		include_penumbral:        boolU8(cfg.IncludePenumbral),
+		include_peak_details:     boolU8(cfg.IncludePeakDetails),
+		include_path:             boolU8(cfg.IncludePath),
+		include_local_grid:       boolU8(cfg.IncludeLocalGrid),
+		include_isolines:         boolU8(cfg.IncludeIsolines),
+		include_central_corridor: boolU8(cfg.IncludeCentralCorridor),
+		path_step_minutes:        C.uint32_t(cfg.PathStepMinutes),
+		boundary_step_deg:        C.uint32_t(cfg.BoundaryStepDeg),
+		local_grid_step_deg:      C.double(cfg.LocalGridStepDeg),
+	}
+	fractionCount := min(len(cfg.DurationIsolineFractions), 16)
+	for i := 0; i < fractionCount; i++ {
+		out.duration_isoline_fractions[i] = C.double(cfg.DurationIsolineFractions[i])
+	}
+	out.duration_isoline_fraction_count = C.uint32_t(fractionCount)
+	levelCount := min(len(cfg.MagnitudeIsolineLevels), 16)
+	for i := 0; i < levelCount; i++ {
+		out.magnitude_isoline_levels[i] = C.double(cfg.MagnitudeIsolineLevels[i])
+	}
+	out.magnitude_isoline_level_count = C.uint32_t(levelCount)
+	return out
+}
+
+func GrahanConfigDefault() GrahanConfig {
+	return goGrahanConfig(C.dhruv_grahan_config_default())
+}
+
+// GrahanConfigEffective returns the configuration actually applied after
+// clamping/sanitizing; build cache keys against this echo.
+func GrahanConfigEffective(cfg GrahanConfig) (GrahanConfig, Status) {
+	creq := cGrahanConfig(cfg)
+	var out C.DhruvGrahanConfig
+	st := Status(C.dhruv_grahan_config_effective(&creq, &out))
+	if st != StatusOK {
+		return GrahanConfig{}, st
+	}
+	return goGrahanConfig(out), st
 }
 
 func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32) (ChandraGrahanResult, SuryaGrahanResult, bool, []ChandraGrahanResult, []SuryaGrahanResult, Status) {
@@ -984,13 +1038,7 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 		at_utc:       cUTC(req.AtUTC),
 		start_utc:    cUTC(req.StartUTC),
 		end_utc:      cUTC(req.EndUTC),
-		config: C.DhruvGrahanConfig{
-			include_penumbral:    boolU8(req.Config.IncludePenumbral),
-			include_peak_details: boolU8(req.Config.IncludePeakDetails),
-			include_path:         boolU8(req.Config.IncludePath),
-			path_step_minutes:    C.uint32_t(req.Config.PathStepMinutes),
-			boundary_step_deg:    C.uint32_t(req.Config.BoundaryStepDeg),
-		},
+		config: cGrahanConfig(req.Config),
 	}
 	if req.Location != nil {
 		creq.location_valid = 1
@@ -1084,6 +1132,80 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			}
 			footprints[i] = SuryaGrahanFootprint{JdTdb: float64(footprint.jd_tdb), UTC: goUTC(footprint.utc), Boundary: boundary}
 		}
+		localGrid := make([]SuryaLocalGridSample, int(v.local_grid_count))
+		for i := range localGrid {
+			var sample C.DhruvSuryaLocalGridSample
+			if Status(C.dhruv_surya_grahan_local_grid_sample_at(geometry, C.uint32_t(i), &sample)) != StatusOK {
+				localGrid = localGrid[:i]
+				break
+			}
+			localGrid[i] = SuryaLocalGridSample{
+				LatitudeDeg:            float64(sample.latitude_deg),
+				LongitudeDeg:           float64(sample.longitude_deg),
+				Magnitude:              float64(sample.magnitude),
+				Obscuration:            float64(sample.obscuration),
+				MaximumJd:              float64(sample.maximum_jd),
+				MaximumUTC:             goUTC(sample.maximum_utc),
+				FirstContactJd:         float64(sample.first_contact_jd),
+				FirstContactUTC:        goUTC(sample.first_contact_utc),
+				LastContactJd:          float64(sample.last_contact_jd),
+				LastContactUTC:         goUTC(sample.last_contact_utc),
+				VisibleDurationSeconds: float64(sample.visible_duration_seconds),
+			}
+		}
+		ringSet := func(setKind int32) []SuryaRingSetLevel {
+			var count C.uint32_t
+			if Status(C.dhruv_surya_grahan_ring_set_level_count(geometry, C.int32_t(setKind), &count)) != StatusOK {
+				return nil
+			}
+			levels := make([]SuryaRingSetLevel, int(count))
+			for levelIndex := range levels {
+				var level C.DhruvSuryaRingSetLevel
+				if Status(C.dhruv_surya_grahan_ring_set_level_at(geometry, C.int32_t(setKind), C.uint32_t(levelIndex), &level)) != StatusOK {
+					return levels[:levelIndex]
+				}
+				rings := make([]SuryaIsolineRing, int(level.ring_count))
+				for ringIndex := range rings {
+					var ring C.DhruvSuryaIsolineRing
+					if Status(C.dhruv_surya_grahan_ring_at(geometry, C.int32_t(setKind), C.uint32_t(levelIndex), C.uint32_t(ringIndex), &ring)) != StatusOK {
+						rings = rings[:ringIndex]
+						break
+					}
+					boundary := make([]EclipseGeoPoint, int(ring.point_count))
+					for pointIndex := range boundary {
+						var point C.DhruvEclipseGeoPoint
+						if Status(C.dhruv_surya_grahan_ring_point_at(geometry, C.int32_t(setKind), C.uint32_t(levelIndex), C.uint32_t(ringIndex), C.uint32_t(pointIndex), &point)) != StatusOK {
+							boundary = boundary[:pointIndex]
+							break
+						}
+						boundary[pointIndex] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
+					}
+					rings[ringIndex] = SuryaIsolineRing{ContainsPole: int32(ring.contains_pole), Boundary: boundary}
+				}
+				levels[levelIndex] = SuryaRingSetLevel{
+					LevelValue: float64(level.level_value),
+					GrahanType: int32(level.grahan_type),
+					Rings:      rings,
+				}
+			}
+			return levels
+		}
+		var isolines *SuryaIsolines
+		if v.isolines_valid != 0 {
+			var visibility []SuryaIsolineRing
+			for _, level := range ringSet(0) {
+				visibility = append(visibility, level.Rings...)
+			}
+			isolines = &SuryaIsolines{
+				VisibilityBoundary: visibility,
+				DurationIsolines:   ringSet(1),
+				MagnitudeIsolines:  ringSet(2),
+			}
+		}
+		var centralCorridor []SuryaRingSetLevel
+		if v.central_corridor_valid != 0 {
+			centralCorridor = ringSet(3)
+		}
 		return SuryaGrahanResult{
 			GrahanType:            int32(v.grahan_type),
 			Magnitude:             float64(v.magnitude),
@@ -1127,6 +1249,10 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			LocalMagnitude: float64(v.local_magnitude), LocalObscuration: float64(v.local_obscuration),
 			LocalSunAltitudeDeg: float64(v.local_sun_altitude_deg), LocalSunAzimuthDeg: float64(v.local_sun_azimuth_deg),
 			LocalCentralDurationSeconds: float64(v.local_central_duration_seconds),
+			Centrality:                  int32(v.centrality),
+			LocalGrid:                   localGrid,
+			Isolines:                    isolines,
+			CentralCorridor:             centralCorridor,
 		}
 	}
 	count := int(outCount)

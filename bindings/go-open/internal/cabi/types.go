@@ -446,6 +446,13 @@ type GrahanConfig struct {
 	IncludePath        bool
 	PathStepMinutes    uint32
 	BoundaryStepDeg    uint32
+	// Surya field products (grid/isolines/corridor).
+	IncludeLocalGrid         bool
+	LocalGridStepDeg         float64
+	IncludeIsolines          bool
+	DurationIsolineFractions []float64
+	MagnitudeIsolineLevels   []float64
+	IncludeCentralCorridor   bool
 }
 
 type GrahanSearchRequest struct {
@@ -512,6 +519,44 @@ type SuryaGrahanFootprint struct {
 	Boundary []EclipseGeoPoint
 }
 
+// SuryaLocalGridSample is one visible sample of the per-event
+// local-circumstance grid.
+type SuryaLocalGridSample struct {
+	LatitudeDeg            float64
+	LongitudeDeg           float64
+	Magnitude              float64
+	Obscuration            float64
+	MaximumJd              float64
+	MaximumUTC             UtcTime
+	FirstContactJd         float64
+	FirstContactUTC        UtcTime
+	LastContactJd          float64
+	LastContactUTC         UtcTime
+	VisibleDurationSeconds float64
+}
+
+// SuryaIsolineRing is one closed boundary ring. ContainsPole: 0=none,
+// 1=north, 2=south.
+type SuryaIsolineRing struct {
+	ContainsPole int32
+	Boundary     []EclipseGeoPoint
+}
+
+// SuryaRingSetLevel is one isoline level or corridor segment with its
+// rings. GrahanType is a corridor segment type code, or -1 for isolines.
+type SuryaRingSetLevel struct {
+	LevelValue float64
+	GrahanType int32
+	Rings      []SuryaIsolineRing
+}
+
+// SuryaIsolines carries the isoline products of one event.
+type SuryaIsolines struct {
+	VisibilityBoundary []SuryaIsolineRing
+	DurationIsolines   []SuryaRingSetLevel
+	MagnitudeIsolines  []SuryaRingSetLevel
+}
+
 type SuryaGrahanResult struct {
 	GrahanType            int32
 	Magnitude             float64
@@ -565,6 +610,12 @@ type SuryaGrahanResult struct {
 	LocalSunAltitudeDeg         float64
 	LocalSunAzimuthDeg          float64
 	LocalCentralDurationSeconds float64
+	// Whether/how the central shadow reaches Earth: 0=none, 1=partial, 2=full.
+	Centrality int32
+	LocalGrid  []SuryaLocalGridSample
+	Isolines   *SuryaIsolines
+	// Swept central corridor segments (GrahanType set per segment).
+	CentralCorridor []SuryaRingSetLevel
 }
 
 type StationaryConfig struct {

@@ -255,6 +255,14 @@ grahan: `ChandraGrahanResult.MoonRightAscensionDeg`/`MoonDeclinationDeg`
 and `SuryaGrahanResult.SunRightAscensionDeg`/`SunDeclinationDeg`
 (degrees, equinox of date, nutation applied).
 
+`GrahanConfig` additionally exposes the surya field products
+(`IncludeLocalGrid`/`LocalGridStepDeg`, `IncludeIsolines` with
+`DurationIsolineFractions`/`MagnitudeIsolineLevels`, and
+`IncludeCentralCorridor`); `SuryaGrahanResult` then carries `Centrality`,
+`LocalGrid`, `Isolines`, and `CentralCorridor`, and
+`GrahanConfigEffective` echoes the clamped/sanitized configuration for
+cache identity.
+
 For embedded amsha charts in `FullKundaliForDate`, the relevant root sections
 must also be enabled in the full-kundali config, or the wrapper caller must use
 a higher-level helper that promotes those dependencies. Returned

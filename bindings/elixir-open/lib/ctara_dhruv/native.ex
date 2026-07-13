@@ -5,6 +5,8 @@ defmodule CtaraDhruv.Native do
     :ayanamsha,
     :backend,
     :body,
+    :centrality,
+    :contains_pole,
     :event,
     :graha,
     :grahan_type,

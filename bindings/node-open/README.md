@@ -262,6 +262,13 @@ grahan: `moonRightAscensionDeg`/`moonDeclinationDeg` on chandra grahan
 results and `sunRightAscensionDeg`/`sunDeclinationDeg` on surya grahan
 results (degrees, equinox of date, nutation applied).
 
+The grahan config additionally accepts the surya field products
+(`includeLocalGrid`/`localGridStepDeg`, `includeIsolines` with
+`durationIsolineFractions`/`magnitudeIsolineLevels`, and
+`includeCentralCorridor`); surya results then carry `centrality`,
+`localGrid`, `isolines` (rings tagged with `containsPole`), and
+`centralCorridor.segments`.
+
 Embedded `fullKundaliForDate(...).amshas` now returns the full resolved amsha
 union used by the call, not only the explicitly requested subset. Numeric
 `variationCode` values are interpreted per amsha; use `amshaVariations*` to

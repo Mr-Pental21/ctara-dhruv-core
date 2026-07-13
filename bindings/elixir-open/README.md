@@ -179,6 +179,19 @@ grahan: `moon_right_ascension_deg`/`moon_declination_deg` on chandra
 grahan results and `sun_right_ascension_deg`/`sun_declination_deg` on
 surya grahan results (degrees, equinox of date, nutation applied).
 
+Surya grahan requests accept the field-product flags
+`include_local_grid`/`local_grid_step_deg` (clamped to [0.5, 10]),
+`include_isolines` with `duration_isoline_fractions` (of the C1–C4 span)
+and `magnitude_isoline_levels`, and `include_central_corridor`. Surya
+results then carry `centrality` (`:full | :partial | :none`), `local_grid`
+samples, `isolines` (`visibility_boundary`, `duration_isolines`,
+`magnitude_isolines`; each ring is
+`%{boundary: [...], contains_pole: nil | :north | :south}`, closed and
+antimeridian-safe), and `central_corridor.segments` (per-type swept
+umbral/antumbral rings). The grahan response envelope includes
+`effective_config`, the clamped/sanitized configuration actually applied —
+build cache keys against it.
+
 ## Amsha Notes
 
 The Elixir wrapper exposes amsha-related behavior through

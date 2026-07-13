@@ -140,7 +140,7 @@ pub enum GrahanRequestQuery {
 }
 
 /// Unified grahan request.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GrahanRequest {
     pub kind: GrahanKind,
     pub config: Option<GrahanConfig>,
@@ -151,10 +151,10 @@ pub struct GrahanRequest {
 
 fn resolve_grahan_config(
     ctx: &DhruvContext,
-    explicit: Option<GrahanConfig>,
+    explicit: Option<&GrahanConfig>,
 ) -> Result<GrahanConfig, DhruvError> {
     if let Some(cfg) = explicit {
-        return Ok(cfg);
+        return Ok(cfg.clone());
     }
     if let Some(resolver) = ctx.resolver() {
         return resolver
@@ -182,7 +182,7 @@ pub fn grahan(ctx: &DhruvContext, request: &GrahanRequest) -> Result<GrahanResul
     };
     let op = GrahanOperation {
         kind: request.kind,
-        config: resolve_grahan_config(ctx, request.config)?,
+        config: resolve_grahan_config(ctx, request.config.as_ref())?,
         location: request.location.map(|location| {
             dhruv_search::GeoLocation::new(
                 location.latitude_deg,
