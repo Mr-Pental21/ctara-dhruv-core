@@ -30,7 +30,7 @@ dhruv_cli grahan --kind surya --mode next \
   --eop kernels/data/finals2000A.all
 ```
 
-For the Elixir NIF used by Clairtara, include these fields in the normal
+Elixir NIF users can include the same fields in a
 `CtaraDhruv.Search.grahan/2` request map:
 
 ```elixir
@@ -68,10 +68,11 @@ When path generation is enabled, the result also contains:
 UTC is the default high-level time representation. JD TDB remains beside it
 for numerical consumers.
 
-## Clairtara map migration
+## Map application integration
 
-Clairtara can replace its NASA scraper, `surya_grahan_paths` import/table, and
-checked-in century GeoJSON with Dhruv results:
+Applications can generate eclipse catalogs and interactive map geometry
+directly from Dhruv instead of depending on scraped path datasets or
+checked-in century GeoJSON:
 
 1. Query the desired range with `include_path: false` for the catalog list.
 2. Query a selected eclipse with `include_path: true` for interactive map
