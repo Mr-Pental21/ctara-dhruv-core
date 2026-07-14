@@ -188,7 +188,13 @@ samples, `isolines` (`visibility_boundary`, `duration_isolines`,
 `magnitude_isolines`; each ring is
 `%{boundary: [...], contains_pole: nil | :north | :south}`, closed and
 antimeridian-safe), and `central_corridor.segments` (per-type swept
-umbral/antumbral rings). The grahan response envelope includes
+umbral/antumbral rings). With `include_contact_footprints` /
+`include_umbra_footprints`, surya results also carry `contact_footprints`
+(instantaneous Sun-up-clipped visibility rings at `:c1 | :c2 | :greatest |
+:c3 | :c4`; empty boundary at exact C1/C4 tangency) and `umbra_footprints`
+(true instantaneous umbral/antumbral outlines per path timestamp and
+central contact); every sampled `footprints` entry carries
+`contains_pole`. The grahan response envelope includes
 `effective_config`, the clamped/sanitized configuration actually applied —
 build cache keys against it.
 

@@ -697,7 +697,7 @@ fn finalize_ring(raw: &[EclipseGeoPoint]) -> SuryaIsolineRing {
     }
 }
 
-fn wrap_delta(delta_deg: f64) -> f64 {
+pub(crate) fn wrap_delta(delta_deg: f64) -> f64 {
     let mut d = delta_deg % 360.0;
     if d > 180.0 {
         d -= 360.0;
@@ -932,6 +932,84 @@ impl PointSummaryAt {
             visible_duration_seconds: s.duration_days * 86_400.0,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 6a: instantaneous visibility ring at one moment
+// ---------------------------------------------------------------------------
+
+/// The instantaneous penumbral visibility region at one moment: the closed
+/// ring enclosing every location with a partial phase in progress and the
+/// Sun up (same clip convention as the Change 5 visibility boundary, so the
+/// ring always lies inside it). Returns None when the region is empty or
+/// smaller than the sampling grid — at exact C1/C4 tangency the region
+/// degenerates toward a point.
+///
+/// This deliberately differs from the sampled `footprints` rings, which
+/// keep the raw cone-ellipsoid intersection: near the contacts a grazing
+/// cone's ring includes a night-side sliver past the terminator that never
+/// sees the eclipse.
+pub(crate) fn instantaneous_visibility_ring(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    jd_tdb: f64,
+) -> Result<Option<SuryaIsolineRing>, SearchError> {
+    let (sun, moon) = sun_moon_true_vectors(engine, jd_tdb)?;
+    let gast = gast_rad_for(engine, eop, jd_tdb);
+    let field = move |lat: f64, lon: f64| -> f64 {
+        eval_with(sun, moon, gast, &ObserverPoint::new(lat, lon)).visibility_margin()
+    };
+
+    const STEP_DEG: f64 = 1.0;
+    let n_lat = (180.0 / STEP_DEG) as usize;
+    let n_lon = (360.0 / STEP_DEG) as usize;
+    let mut lats: Vec<f64> = Vec::with_capacity(n_lat + 2);
+    lats.push(-90.0);
+    for i in 0..n_lat {
+        lats.push(-90.0 + (i as f64 + 0.5) * STEP_DEG);
+    }
+    lats.push(90.0);
+    let lon0 = -180.0 + 0.5 * STEP_DEG;
+
+    let mut values = Vec::with_capacity(lats.len() * n_lon);
+    for lat in &lats {
+        if *lat <= -90.0 + 1.0e-9 || *lat >= 90.0 - 1.0e-9 {
+            let pole = field(*lat, 0.0);
+            values.extend(std::iter::repeat_n(pole, n_lon));
+        } else {
+            for col in 0..n_lon {
+                values.push(field(*lat, normalize_lon(lon0 + col as f64 * STEP_DEG)));
+            }
+        }
+    }
+
+    let lats_ref = &lats;
+    let point = move |row_f: f64, col_f: f64| -> EclipseGeoPoint {
+        let row = (row_f.floor() as usize).min(lats_ref.len() - 2);
+        let t = row_f - row as f64;
+        EclipseGeoPoint {
+            latitude_deg: lats_ref[row] + (lats_ref[row + 1] - lats_ref[row]) * t,
+            longitude_deg: normalize_lon(lon0 + col_f * STEP_DEG),
+        }
+    };
+    let field_at = |row_f: f64, col_f: f64| -> f64 {
+        let geo = point(row_f, col_f);
+        field(geo.latitude_deg, geo.longitude_deg)
+    };
+    let rings = extract_rings(
+        &ContourGrid {
+            n_rows: lats.len(),
+            n_cols: n_lon,
+            wraps: true,
+            values: &values,
+            point: &point,
+            field: &field_at,
+        },
+        0.0,
+    );
+    Ok(rings
+        .into_iter()
+        .max_by_key(|ring| ring.boundary.len()))
 }
 
 // ---------------------------------------------------------------------------

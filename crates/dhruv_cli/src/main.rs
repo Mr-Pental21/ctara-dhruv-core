@@ -1679,6 +1679,12 @@ struct GrahanOpArgs {
     /// Include the swept central-corridor outline (surya).
     #[arg(long, default_value_t = false)]
     include_central_corridor: bool,
+    /// Include penumbral footprints at the event's contact moments (surya).
+    #[arg(long, default_value_t = false)]
+    include_contact_footprints: bool,
+    /// Include instantaneous umbral/antumbral outlines (surya).
+    #[arg(long, default_value_t = false)]
+    include_umbra_footprints: bool,
     /// Observer latitude for local solar-eclipse circumstances.
     #[arg(long, requires = "lon")]
     lat: Option<f64>,
@@ -6665,6 +6671,8 @@ fn main() {
                 duration_isoline_fractions: args.duration_isoline_fractions.clone(),
                 magnitude_isoline_levels: args.magnitude_isoline_levels.clone(),
                 include_central_corridor: args.include_central_corridor,
+                include_contact_footprints: args.include_contact_footprints,
+                include_umbra_footprints: args.include_umbra_footprints,
             };
             let eop = args.eop.as_deref().map(load_eop);
             let location = args.lat.zip(args.lon).map(|(lat, lon)| {
@@ -10832,6 +10840,18 @@ fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan)
                 points
             );
         }
+    }
+    for footprint in &ev.contact_footprints {
+        println!(
+            "  Contact footprint: {:?} at {} — {} points, pole={:?}",
+            footprint.contact,
+            footprint.utc,
+            footprint.boundary.len(),
+            footprint.contains_pole
+        );
+    }
+    if !ev.umbra_footprints.is_empty() {
+        println!("  Umbra footprints: {} outlines", ev.umbra_footprints.len());
     }
     if let Some(local) = &ev.local {
         println!(

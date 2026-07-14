@@ -2616,9 +2616,62 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
             napi_set_element(env, boundary, j, coordinate);
         }
         SetNamed(env, item, "boundary", boundary);
+        SetNamed(env, item, "containsPole", MakeInt32(env, footprint.contains_pole));
         napi_set_element(env, footprints, i, item);
     }
     SetNamed(env, obj, "footprints", footprints);
+    napi_value contactFootprints;
+    napi_create_array_with_length(env, g.contact_footprint_count, &contactFootprints);
+    for (uint32_t i = 0; i < g.contact_footprint_count; ++i) {
+        DhruvSuryaContactFootprint footprint{};
+        if (dhruv_surya_grahan_contact_footprint_at(g.geometry_handle, i, &footprint) != STATUS_OK) break;
+        napi_value item;
+        napi_create_object(env, &item);
+        SetNamed(env, item, "contact", MakeInt32(env, footprint.contact));
+        SetNamed(env, item, "jdTdb", MakeDouble(env, footprint.jd_tdb));
+        SetNamed(env, item, "utc", WriteUtcTime(env, footprint.utc));
+        napi_value boundary;
+        napi_create_array_with_length(env, footprint.boundary_count, &boundary);
+        for (uint32_t j = 0; j < footprint.boundary_count; ++j) {
+            DhruvEclipseGeoPoint point{};
+            if (dhruv_surya_grahan_contact_footprint_point_at(g.geometry_handle, i, j, &point) != STATUS_OK) break;
+            napi_value coordinate;
+            napi_create_object(env, &coordinate);
+            SetNamed(env, coordinate, "latitudeDeg", MakeDouble(env, point.latitude_deg));
+            SetNamed(env, coordinate, "longitudeDeg", MakeDouble(env, point.longitude_deg));
+            napi_set_element(env, boundary, j, coordinate);
+        }
+        SetNamed(env, item, "boundary", boundary);
+        SetNamed(env, item, "containsPole", MakeInt32(env, footprint.contains_pole));
+        napi_set_element(env, contactFootprints, i, item);
+    }
+    SetNamed(env, obj, "contactFootprints", contactFootprints);
+    napi_value umbraFootprints;
+    napi_create_array_with_length(env, g.umbra_footprint_count, &umbraFootprints);
+    for (uint32_t i = 0; i < g.umbra_footprint_count; ++i) {
+        DhruvSuryaUmbraFootprint footprint{};
+        if (dhruv_surya_grahan_umbra_footprint_at(g.geometry_handle, i, &footprint) != STATUS_OK) break;
+        napi_value item;
+        napi_create_object(env, &item);
+        SetNamed(env, item, "jdTdb", MakeDouble(env, footprint.jd_tdb));
+        SetNamed(env, item, "utc", WriteUtcTime(env, footprint.utc));
+        SetNamed(env, item, "grahanType", MakeInt32(env, footprint.grahan_type));
+        napi_value boundary;
+        napi_create_array_with_length(env, footprint.boundary_count, &boundary);
+        for (uint32_t j = 0; j < footprint.boundary_count; ++j) {
+            DhruvEclipseGeoPoint point{};
+            if (dhruv_surya_grahan_umbra_footprint_point_at(g.geometry_handle, i, j, &point) != STATUS_OK) break;
+            napi_value coordinate;
+            napi_create_object(env, &coordinate);
+            SetNamed(env, coordinate, "latitudeDeg", MakeDouble(env, point.latitude_deg));
+            SetNamed(env, coordinate, "longitudeDeg", MakeDouble(env, point.longitude_deg));
+            napi_set_element(env, boundary, j, coordinate);
+        }
+        SetNamed(env, item, "boundary", boundary);
+        SetNamed(env, item, "containsPole", MakeInt32(env, footprint.contains_pole));
+        napi_set_element(env, umbraFootprints, i, item);
+    }
+    SetNamed(env, obj, "umbraFootprints", umbraFootprints);
     SetNamed(env, obj, "centrality", MakeInt32(env, g.centrality));
     napi_value localGrid;
     napi_create_array_with_length(env, g.local_grid_count, &localGrid);
@@ -4784,6 +4837,8 @@ napi_value WriteGrahanConfig(napi_env env, const DhruvGrahanConfig& cfg) {
     }
     SetNamed(env, out, "magnitudeIsolineLevels", levels);
     SetNamed(env, out, "includeCentralCorridor", MakeBool(env, cfg.include_central_corridor != 0));
+    SetNamed(env, out, "includeContactFootprints", MakeBool(env, cfg.include_contact_footprints != 0));
+    SetNamed(env, out, "includeUmbraFootprints", MakeBool(env, cfg.include_umbra_footprints != 0));
     return out;
 }
 
@@ -4977,6 +5032,18 @@ napi_value GrahanSearch(napi_env env, napi_callback_info info) {
             bool b = false;
             if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
             cfg.include_central_corridor = b ? 1 : 0;
+        }
+        if (!GetOptionalNamedProperty(env, cfg_obj, "includeContactFootprints", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present) {
+            bool b = false;
+            if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            cfg.include_contact_footprints = b ? 1 : 0;
+        }
+        if (!GetOptionalNamedProperty(env, cfg_obj, "includeUmbraFootprints", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present) {
+            bool b = false;
+            if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            cfg.include_umbra_footprints = b ? 1 : 0;
         }
     }
     req.config = cfg;

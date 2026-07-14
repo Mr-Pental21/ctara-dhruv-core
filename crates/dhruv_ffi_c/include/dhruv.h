@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       81
+#define DHRUV_API_VERSION       82
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -237,6 +237,13 @@ typedef int32_t DhruvStatus;
 #define DHRUV_RING_POLE_NONE  0
 #define DHRUV_RING_POLE_NORTH 1
 #define DHRUV_RING_POLE_SOUTH 2
+
+/* Contact selectors for contact-moment footprints */
+#define DHRUV_SURYA_CONTACT_C1       0
+#define DHRUV_SURYA_CONTACT_C2       1
+#define DHRUV_SURYA_CONTACT_GREATEST 2
+#define DHRUV_SURYA_CONTACT_C3       3
+#define DHRUV_SURYA_CONTACT_C4       4
 
 /* Maximum isoline levels per family in DhruvGrahanConfig */
 #define DHRUV_GRAHAN_MAX_ISOLINE_LEVELS 16
@@ -682,6 +689,8 @@ typedef struct {
     uint8_t include_local_grid;
     uint8_t include_isolines;
     uint8_t include_central_corridor;
+    uint8_t include_contact_footprints;
+    uint8_t include_umbra_footprints;
     uint32_t path_step_minutes;
     uint32_t boundary_step_deg;
     /* Local-grid spacing in degrees; values outside [0.5, 10] are clamped. */
@@ -759,7 +768,28 @@ typedef struct {
     double jd_tdb;
     DhruvUtcTime utc;
     uint32_t boundary_count;
+    /* Pole containment of the shadow region (DHRUV_RING_POLE_*). */
+    int32_t contains_pole;
 } DhruvSuryaGrahanFootprint;
+
+/* One contact-moment penumbral footprint. boundary_count may be zero at
+   exact C1/C4 tangency; fall back to the nearest sampled footprint. */
+typedef struct {
+    int32_t contact;   /* DHRUV_SURYA_CONTACT_* */
+    double jd_tdb;
+    DhruvUtcTime utc;
+    uint32_t boundary_count;
+    int32_t contains_pole;   /* DHRUV_RING_POLE_* */
+} DhruvSuryaContactFootprint;
+
+/* One instantaneous umbral/antumbral shadow outline. */
+typedef struct {
+    double jd_tdb;
+    DhruvUtcTime utc;
+    int32_t grahan_type;     /* DHRUV_SURYA_GRAHAN_TOTAL or _ANNULAR */
+    uint32_t boundary_count;
+    int32_t contains_pole;   /* DHRUV_RING_POLE_* */
+} DhruvSuryaUmbraFootprint;
 
 /* One sample of the per-event local-circumstance grid. */
 typedef struct {
@@ -834,6 +864,8 @@ typedef struct {
     uint32_t local_grid_count;
     uint8_t isolines_valid;
     uint8_t central_corridor_valid;
+    uint32_t contact_footprint_count;
+    uint32_t umbra_footprint_count;
     DhruvSuryaGrahanGeometryHandle geometry_handle;
     uint8_t local_valid;
     uint8_t local_visible;
@@ -2153,6 +2185,24 @@ DhruvStatus dhruv_surya_grahan_footprint_at(
     uint32_t index,
     DhruvSuryaGrahanFootprint *out);
 DhruvStatus dhruv_surya_grahan_footprint_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+DhruvStatus dhruv_surya_grahan_contact_footprint_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t index,
+    DhruvSuryaContactFootprint *out);
+DhruvStatus dhruv_surya_grahan_contact_footprint_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+DhruvStatus dhruv_surya_grahan_umbra_footprint_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t index,
+    DhruvSuryaUmbraFootprint *out);
+DhruvStatus dhruv_surya_grahan_umbra_footprint_point_at(
     DhruvSuryaGrahanGeometryHandle geometry,
     uint32_t footprint_index,
     uint32_t point_index,

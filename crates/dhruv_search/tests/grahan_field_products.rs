@@ -8,8 +8,8 @@ use std::path::Path;
 
 use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::{
-    EclipseGeoPoint, GeoLocation, GrahanConfig, SuryaCentrality, SuryaGrahan, SuryaGrahanType,
-    SuryaIsolineRing, next_surya_grahan,
+    EclipseGeoPoint, GeoLocation, GrahanConfig, PoleSide, SuryaCentrality, SuryaContactKind,
+    SuryaGrahan, SuryaGrahanType, SuryaIsolineRing, next_surya_grahan,
 };
 use dhruv_time::EopKernel;
 
@@ -39,6 +39,8 @@ fn field_config() -> GrahanConfig {
         local_grid_step_deg: 10.0,
         include_isolines: true,
         include_central_corridor: true,
+        include_contact_footprints: true,
+        include_umbra_footprints: true,
         ..GrahanConfig::default()
     }
 }
@@ -338,6 +340,167 @@ fn arctic_total_2026_field_products() {
     }
 }
 
+/// Change 6 on the 2026-08-12 Arctic total event: contact and umbral
+/// footprints with producer-decided pole containment.
+#[test]
+fn arctic_total_2026_contact_and_umbra_footprints() {
+    let Some(engine) = load_engine() else { return };
+    let eop = load_eop();
+    let event = event_with_fields(&engine, eop.as_ref(), jd(2026, 8, 1.0));
+    let isolines = event.isolines.as_ref().expect("isolines");
+    let corridor = event.central_corridor.as_ref().expect("corridor");
+
+    // 6b: sampled penumbral footprints carry contains_pole; the one nearest
+    // greatest eclipse encloses the north pole for this Arctic event.
+    let greatest_jd = event.greatest_grahan_jd;
+    let nearest_sample = event
+        .footprints
+        .iter()
+        .min_by(|a, b| {
+            (a.jd_tdb - greatest_jd)
+                .abs()
+                .total_cmp(&(b.jd_tdb - greatest_jd).abs())
+        })
+        .expect("sampled footprints");
+    assert_eq!(nearest_sample.contains_pole, Some(PoleSide::North));
+
+    // 6a: all five contacts present for a central event, in order.
+    let contacts: Vec<SuryaContactKind> = event
+        .contact_footprints
+        .iter()
+        .map(|footprint| footprint.contact)
+        .collect();
+    assert_eq!(
+        contacts,
+        vec![
+            SuryaContactKind::C1,
+            SuryaContactKind::C2,
+            SuryaContactKind::Greatest,
+            SuryaContactKind::C3,
+            SuryaContactKind::C4,
+        ]
+    );
+    let greatest_footprint = event
+        .contact_footprints
+        .iter()
+        .find(|footprint| footprint.contact == SuryaContactKind::Greatest)
+        .expect("greatest contact footprint");
+    // Acceptance 1: producer-decided pole containment.
+    assert_eq!(greatest_footprint.contains_pole, Some(PoleSide::North));
+    // Acceptance 2: contains the greatest location and stays inside the
+    // visibility boundary.
+    let greatest_location = event.greatest_location.expect("greatest location");
+    assert!(spherical_ring_contains(
+        &greatest_footprint.boundary,
+        greatest_location
+    ));
+    for footprint in &event.contact_footprints {
+        if footprint.boundary.is_empty() {
+            continue; // exact-tangency convention at C1/C4
+        }
+        let ring = SuryaIsolineRing {
+            boundary: footprint.boundary.clone(),
+            contains_pole: footprint.contains_pole,
+        };
+        assert_closed_ring(&ring, "contact footprint");
+        // The instantaneous visibility region is a subset of the
+        // max-over-time visibility region by construction; the tolerance
+        // only covers the polyline chords of the coarse test isolines.
+        for vertex in footprint.boundary.iter().step_by(8) {
+            assert!(
+                inside_any_ring(&isolines.visibility_boundary, *vertex)
+                    || distance_to_rings_km(&isolines.visibility_boundary, *vertex) < 150.0,
+                "contact footprint vertex {vertex:?} outside visibility boundary"
+            );
+        }
+    }
+    // Acceptance 3: the greatest contact footprint agrees with the nearest
+    // 5-minute sample within sampling error. The contact ring is the
+    // Sun-up-clipped region, a subset of the sample's geometric
+    // cone-ellipsoid region; the margin covers the shadow's travel over
+    // half a sampling step plus the sample ring's own vertex spacing (the
+    // distance check measures to vertices and a 5-degree boundary step
+    // spaces them up to ~550 km apart on the ground).
+    let sampling_error_km = 2.5 * 60.0 * 1.0 + 550.0;
+    for vertex in greatest_footprint.boundary.iter().step_by(8) {
+        assert!(
+            spherical_ring_contains(&nearest_sample.boundary, *vertex)
+                || nearest_sample
+                    .boundary
+                    .iter()
+                    .map(|point| great_circle_km(*point, *vertex))
+                    .fold(f64::INFINITY, f64::min)
+                    < sampling_error_km,
+            "greatest contact footprint vertex {vertex:?} departs from nearest sample"
+        );
+    }
+
+    // 6c: umbral outlines at every path timestamp plus the central contacts.
+    assert!(
+        event.umbra_footprints.len() >= event.path.len(),
+        "expected umbra footprints at every path timestamp"
+    );
+    let corridor_rings: Vec<SuryaIsolineRing> = corridor
+        .segments
+        .iter()
+        .flat_map(|segment| segment.rings.iter().cloned())
+        .collect();
+    for footprint in &event.umbra_footprints {
+        assert_eq!(footprint.grahan_type, SuryaGrahanType::Total);
+        let ring = SuryaIsolineRing {
+            boundary: footprint.boundary.clone(),
+            contains_pole: footprint.contains_pole,
+        };
+        assert_closed_ring(&ring, "umbra footprint");
+    }
+    // Umbral outlines sweep the corridor: sampled vertices stay inside (or
+    // within refinement distance of) the swept corridor rings.
+    for footprint in event.umbra_footprints.iter().step_by(5) {
+        for vertex in footprint.boundary.iter().step_by(6) {
+            assert!(
+                inside_any_ring(&corridor_rings, *vertex)
+                    || distance_to_rings_km(&corridor_rings, *vertex) < 30.0,
+                "umbra footprint vertex {vertex:?} outside corridor"
+            );
+        }
+    }
+}
+
+/// Change 6 on a partial-only event (2025-03-29): exactly C1/greatest/C4
+/// contact footprints and no umbral outlines.
+#[test]
+fn partial_2025_contact_footprints_only() {
+    let Some(engine) = load_engine() else { return };
+    let eop = load_eop();
+    let config = GrahanConfig {
+        include_path: true,
+        path_step_minutes: 5,
+        boundary_step_deg: 5,
+        include_contact_footprints: true,
+        include_umbra_footprints: true,
+        ..GrahanConfig::default()
+    };
+    let event = next_surya_grahan(&engine, eop.as_ref(), jd(2025, 3, 1.0), None, &config)
+        .expect("surya search")
+        .expect("surya event");
+    assert_eq!(event.grahan_type, SuryaGrahanType::Partial);
+    assert_eq!(event.centrality, SuryaCentrality::None);
+    let contacts: Vec<SuryaContactKind> = event
+        .contact_footprints
+        .iter()
+        .map(|footprint| footprint.contact)
+        .collect();
+    assert_eq!(
+        contacts,
+        vec![
+            SuryaContactKind::C1,
+            SuryaContactKind::Greatest,
+            SuryaContactKind::C4,
+        ]
+    );
+    assert!(event.umbra_footprints.is_empty());
+}
+
 /// 2023-04-20 hybrid: both annular and total corridor segments (check 6).
 #[test]
 fn hybrid_2023_corridor_has_both_segment_types() {
@@ -406,6 +569,8 @@ fn antarctic_annular_2026_corridor_closes() {
         path_step_minutes: 5,
         boundary_step_deg: 5,
         include_central_corridor: true,
+        include_contact_footprints: true,
+        include_umbra_footprints: true,
         ..GrahanConfig::default()
     };
     let event = next_surya_grahan(&engine, eop.as_ref(), jd(2026, 2, 1.0), None, &config)
@@ -413,6 +578,18 @@ fn antarctic_annular_2026_corridor_closes() {
         .expect("surya event");
     assert_eq!(event.grahan_type, SuryaGrahanType::Annular);
     assert_eq!(event.centrality, SuryaCentrality::Full);
+    // Acceptance 1 (southern counterpart): the greatest contact footprint
+    // encloses the south pole, and antumbral outlines are annular.
+    let greatest_footprint = event
+        .contact_footprints
+        .iter()
+        .find(|footprint| footprint.contact == SuryaContactKind::Greatest)
+        .expect("greatest contact footprint");
+    assert_eq!(greatest_footprint.contains_pole, Some(PoleSide::South));
+    assert!(!event.umbra_footprints.is_empty());
+    for footprint in &event.umbra_footprints {
+        assert_eq!(footprint.grahan_type, SuryaGrahanType::Annular);
+    }
     let corridor = event.central_corridor.as_ref().expect("corridor");
     assert!(!corridor.segments.is_empty());
     let rings: Vec<SuryaIsolineRing> = corridor

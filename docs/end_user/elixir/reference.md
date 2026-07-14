@@ -309,7 +309,13 @@ circumstances. The config additionally accepts `include_local_grid` /
 `include_central_corridor`; surya results then carry `centrality`,
 `local_grid`, `isolines` (`visibility_boundary`, `duration_isolines`,
 `magnitude_isolines` with `%{boundary: [...], contains_pole: ...}` rings),
-and `central_corridor.segments`. The grahan response envelope echoes the
+and `central_corridor.segments`. With `include_contact_footprints` /
+`include_umbra_footprints`, surya results also carry `contact_footprints`
+(`%{contact: :c1 | :c2 | :greatest | :c3 | :c4, boundary: [...],
+contains_pole: ...}`; empty boundary at exact C1/C4 tangency) and
+`umbra_footprints` (instantaneous umbral/antumbral outlines with
+`grahan_type` and `contains_pole`); every sampled `footprints` entry now
+carries `contains_pole` too. The grahan response envelope echoes the
 effective (clamped/sanitized) configuration under `effective_config` for
 cache identity. See `docs/end_user/solar_eclipse_visibility.md`.
 

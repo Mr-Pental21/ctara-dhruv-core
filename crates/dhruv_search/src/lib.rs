@@ -66,10 +66,11 @@ pub use grahan::{
 };
 pub use grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GeoLocation,
-    GrahanConfig, PoleSide, SuryaCentralCorridor, SuryaCentrality, SuryaCorridorSegment,
-    SuryaDurationIsoline, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances,
-    SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample,
-    SuryaMagnitudeIsoline,
+    GrahanConfig, PoleSide, SuryaCentralCorridor, SuryaCentrality, SuryaContactFootprint,
+    SuryaContactKind, SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahan,
+    SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
+    SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline,
+    SuryaUmbraFootprint,
 };
 pub use jyotish::{
     all_upagrahas_for_date, all_upagrahas_for_date_with_config, amsha_charts_for_date,

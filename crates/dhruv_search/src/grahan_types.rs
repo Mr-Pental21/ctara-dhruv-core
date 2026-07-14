@@ -69,6 +69,14 @@ pub struct GrahanConfig {
     /// Include the swept central (umbral/antumbral) corridor outline for
     /// Surya grahan. Default: false.
     pub include_central_corridor: bool,
+    /// Include instantaneous penumbral footprints at the event's own
+    /// contact moments (C1/C2/greatest/C3/C4) for Surya grahan.
+    /// Default: false.
+    pub include_contact_footprints: bool,
+    /// Include instantaneous umbral/antumbral shadow outlines at every
+    /// path timestamp and at the C2/greatest/C3 moments for Surya grahan.
+    /// Default: false.
+    pub include_umbra_footprints: bool,
 }
 
 impl Default for GrahanConfig {
@@ -85,6 +93,8 @@ impl Default for GrahanConfig {
             duration_isoline_fractions: vec![0.25, 0.5, 0.75],
             magnitude_isoline_levels: vec![0.25, 0.5, 0.75, 1.0],
             include_central_corridor: false,
+            include_contact_footprints: false,
+            include_umbra_footprints: false,
         }
     }
 }
@@ -128,6 +138,8 @@ impl GrahanConfig {
             duration_isoline_fractions: self.effective_duration_isoline_fractions(),
             magnitude_isoline_levels: self.effective_magnitude_isoline_levels(),
             include_central_corridor: self.include_central_corridor,
+            include_contact_footprints: self.include_contact_footprints,
+            include_umbra_footprints: self.include_umbra_footprints,
         }
     }
 }
@@ -194,6 +206,50 @@ pub struct SuryaGrahanFootprint {
     pub jd_tdb: f64,
     pub utc: UtcTime,
     pub boundary: Vec<EclipseGeoPoint>,
+    /// Set when the shadow region bounded by this ring contains a
+    /// geographic pole; decided on the sphere by the geometry producer.
+    pub contains_pole: Option<PoleSide>,
+}
+
+/// The event contact a contact-moment footprint belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SuryaContactKind {
+    C1,
+    C2,
+    Greatest,
+    C3,
+    C4,
+}
+
+/// Instantaneous penumbral footprint at one of the event's own contact
+/// moments. Only contacts the event actually has are returned (no C2/C3
+/// for partial events). At exact C1/C4 tangency the penumbra-ellipsoid
+/// intersection degenerates toward a point: the entry is still returned,
+/// but its `boundary` may be empty; consumers should fall back to the
+/// nearest sampled footprint in that case.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaContactFootprint {
+    pub contact: SuryaContactKind,
+    pub jd_tdb: f64,
+    pub utc: UtcTime,
+    /// Closed, ordered, antimeridian-safe ring (Change 4 contract); may be
+    /// empty at exact tangency.
+    pub boundary: Vec<EclipseGeoPoint>,
+    pub contains_pole: Option<PoleSide>,
+}
+
+/// Instantaneous umbral/antumbral shadow outline at one moment: the true
+/// shape of the central shadow on the ground, strongly elongated near the
+/// corridor ends where the shadow strikes at grazing incidence.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaUmbraFootprint {
+    pub jd_tdb: f64,
+    pub utc: UtcTime,
+    /// `Total` (umbra) or `Annular` (antumbra) at this moment.
+    pub grahan_type: SuryaGrahanType,
+    /// Closed, ordered, antimeridian-safe ring (Change 4 contract).
+    pub boundary: Vec<EclipseGeoPoint>,
+    pub contains_pole: Option<PoleSide>,
 }
 
 /// Which geographic pole a closed ring encloses, if any. Decided on the
@@ -465,4 +521,12 @@ pub struct SuryaGrahan {
     /// `GrahanConfig::include_central_corridor` is true or the event has no
     /// central shadow contact (centrality `None`).
     pub central_corridor: Option<SuryaCentralCorridor>,
+    /// Penumbral footprints at the event's own contact moments. Empty
+    /// unless `GrahanConfig::include_contact_footprints` is true.
+    pub contact_footprints: Vec<SuryaContactFootprint>,
+    /// Instantaneous umbral/antumbral outlines at every path timestamp and
+    /// the C2/greatest/C3 moments. Empty unless
+    /// `GrahanConfig::include_umbra_footprints` is true or the central
+    /// shadow never reaches Earth.
+    pub umbra_footprints: Vec<SuryaUmbraFootprint>,
 }

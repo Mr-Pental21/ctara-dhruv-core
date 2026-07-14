@@ -113,6 +113,26 @@
   fall out of the exact swept level set. A boundary-positive retry widens
   the grid when the sampled outlines undershoot the true swept extent.
 
+### Contact-moment and umbral footprints — added 2026-07-14
+
+- Sampled penumbral footprints, contact-moment footprints, and umbral
+  outlines carry producer-decided pole containment: a ring that winds
+  fully around the polar axis separates the poles, and the shadow side is
+  identified by testing each pole for an in-progress phase with the Sun up
+  (same -0.833 degree convention as local visibility).
+- Contact-moment footprints are the instantaneous Sun-up-clipped
+  visibility region (single-time level set of the same continuous field as
+  the Change 5 visibility boundary), so they always lie inside it. This
+  deliberately differs from the sampled footprints' raw cone-ellipsoid
+  rings, which near the contacts include a night-side sliver past the
+  terminator from the grazing cone's exit branch. At exact C1/C4 tangency
+  the region degenerates toward a point and the entry is returned with an
+  empty boundary.
+- Umbral/antumbral instantaneous outlines reuse the existing central
+  cone-ellipsoid intersection at each path timestamp and central contact;
+  the umbra-vs-antumbra classification follows the sign of the derived
+  Besselian `l2` at that moment.
+
 ## Validation (field products)
 
 - Unit tests validate the contour engine against synthetic fields: circles,

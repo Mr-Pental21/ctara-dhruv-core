@@ -51,9 +51,10 @@ pub use dhruv_search::gochar_events_types::{
 };
 pub use dhruv_search::grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GrahanConfig, PoleSide,
-    SuryaCentralCorridor, SuryaCentrality, SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahan,
-    SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
-    SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline,
+    SuryaCentralCorridor, SuryaCentrality, SuryaContactFootprint, SuryaContactKind,
+    SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahan, SuryaGrahanFootprint,
+    SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing,
+    SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline, SuryaUmbraFootprint,
 };
 pub use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 pub use dhruv_search::stationary_types::{

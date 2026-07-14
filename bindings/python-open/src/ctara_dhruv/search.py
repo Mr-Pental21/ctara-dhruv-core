@@ -20,6 +20,8 @@ from .types import (
     SuryaIsolineRing,
     SuryaRingSetLevel,
     SuryaIsolines,
+    SuryaContactFootprint,
+    SuryaUmbraFootprint,
     StationaryEvent,
     MaxSpeedEvent,
     LunarPhaseEvent,
@@ -203,6 +205,8 @@ def _surya_grahan(r) -> SuryaGrahanResult:
     local_grid = []
     isolines = None
     central_corridor = None
+    contact_footprints = []
+    umbra_footprints = []
     geometry = r.geometry_handle
     try:
         for index in range(int(r.path_count)):
@@ -242,6 +246,47 @@ def _surya_grahan(r) -> SuryaGrahanResult:
                 jd_tdb=float(footprint.jd_tdb),
                 utc=_utc_from_c(footprint.utc),
                 boundary=tuple(boundary),
+                contains_pole=int(footprint.contains_pole),
+            ))
+        for contact_index in range(int(r.contact_footprint_count)):
+            raw = ffi.new("DhruvSuryaContactFootprint *")
+            check(lib.dhruv_surya_grahan_contact_footprint_at(geometry, contact_index, raw))
+            footprint = raw[0]
+            boundary = []
+            for point_index in range(int(footprint.boundary_count)):
+                raw_point = ffi.new("DhruvEclipseGeoPoint *")
+                check(lib.dhruv_surya_grahan_contact_footprint_point_at(
+                    geometry, contact_index, point_index, raw_point
+                ))
+                boundary.append(EclipseGeoPoint(
+                    raw_point.latitude_deg, raw_point.longitude_deg
+                ))
+            contact_footprints.append(SuryaContactFootprint(
+                contact=int(footprint.contact),
+                jd_tdb=float(footprint.jd_tdb),
+                utc=_utc_from_c(footprint.utc),
+                boundary=tuple(boundary),
+                contains_pole=int(footprint.contains_pole),
+            ))
+        for umbra_index in range(int(r.umbra_footprint_count)):
+            raw = ffi.new("DhruvSuryaUmbraFootprint *")
+            check(lib.dhruv_surya_grahan_umbra_footprint_at(geometry, umbra_index, raw))
+            footprint = raw[0]
+            boundary = []
+            for point_index in range(int(footprint.boundary_count)):
+                raw_point = ffi.new("DhruvEclipseGeoPoint *")
+                check(lib.dhruv_surya_grahan_umbra_footprint_point_at(
+                    geometry, umbra_index, point_index, raw_point
+                ))
+                boundary.append(EclipseGeoPoint(
+                    raw_point.latitude_deg, raw_point.longitude_deg
+                ))
+            umbra_footprints.append(SuryaUmbraFootprint(
+                jd_tdb=float(footprint.jd_tdb),
+                utc=_utc_from_c(footprint.utc),
+                grahan_type=int(footprint.grahan_type),
+                boundary=tuple(boundary),
+                contains_pole=int(footprint.contains_pole),
             ))
         for sample_index in range(int(r.local_grid_count)):
             raw = ffi.new("DhruvSuryaLocalGridSample *")
@@ -333,6 +378,8 @@ def _surya_grahan(r) -> SuryaGrahanResult:
         local_grid=tuple(local_grid),
         isolines=isolines,
         central_corridor=central_corridor,
+        contact_footprints=tuple(contact_footprints),
+        umbra_footprints=tuple(umbra_footprints),
     )
 
 

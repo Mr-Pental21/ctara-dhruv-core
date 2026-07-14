@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       81
+#define DHRUV_API_VERSION       82
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -680,6 +680,8 @@ typedef struct {
     uint8_t include_local_grid;
     uint8_t include_isolines;
     uint8_t include_central_corridor;
+    uint8_t include_contact_footprints;
+    uint8_t include_umbra_footprints;
     uint32_t path_step_minutes;
     uint32_t boundary_step_deg;
     double local_grid_step_deg;
@@ -754,7 +756,24 @@ typedef struct {
     double jd_tdb;
     DhruvUtcTime utc;
     uint32_t boundary_count;
+    int32_t contains_pole;
 } DhruvSuryaGrahanFootprint;
+
+typedef struct {
+    int32_t contact;
+    double jd_tdb;
+    DhruvUtcTime utc;
+    uint32_t boundary_count;
+    int32_t contains_pole;
+} DhruvSuryaContactFootprint;
+
+typedef struct {
+    double jd_tdb;
+    DhruvUtcTime utc;
+    int32_t grahan_type;
+    uint32_t boundary_count;
+    int32_t contains_pole;
+} DhruvSuryaUmbraFootprint;
 
 typedef struct {
     double latitude_deg;
@@ -820,6 +839,8 @@ typedef struct {
     uint32_t local_grid_count;
     uint8_t isolines_valid;
     uint8_t central_corridor_valid;
+    uint32_t contact_footprint_count;
+    uint32_t umbra_footprint_count;
     DhruvSuryaGrahanGeometryHandle geometry_handle;
     uint8_t local_valid;
     uint8_t local_visible;
@@ -2137,6 +2158,24 @@ DhruvStatus dhruv_surya_grahan_footprint_at(
     uint32_t index,
     DhruvSuryaGrahanFootprint *out);
 DhruvStatus dhruv_surya_grahan_footprint_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+DhruvStatus dhruv_surya_grahan_contact_footprint_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t index,
+    DhruvSuryaContactFootprint *out);
+DhruvStatus dhruv_surya_grahan_contact_footprint_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+DhruvStatus dhruv_surya_grahan_umbra_footprint_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t index,
+    DhruvSuryaUmbraFootprint *out);
+DhruvStatus dhruv_surya_grahan_umbra_footprint_point_at(
     DhruvSuryaGrahanGeometryHandle geometry,
     uint32_t footprint_index,
     uint32_t point_index,

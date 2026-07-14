@@ -222,7 +222,9 @@ The grahan config additionally exposes the surya field products
 `local_grid` (`SuryaLocalGridSample`), `isolines` (`SuryaIsolines`), and
 `central_corridor` (`SuryaRingSetLevel` segments), and
 `search.grahan_config_effective(config)` echoes the clamped/sanitized
-configuration for cache identity.
+configuration for cache identity. `include_contact_footprints` /
+`include_umbra_footprints` add `contact_footprints` and `umbra_footprints`;
+sampled footprints carry `contains_pole`.
 
 ## Example
 

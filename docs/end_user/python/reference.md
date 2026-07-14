@@ -462,7 +462,12 @@ circumstances. The config additionally exposes `include_local_grid` /
 plus counts), and `include_central_corridor`; results then carry
 `centrality`, `local_grid` (`SuryaLocalGridSample`), `isolines`
 (`SuryaIsolines` of `SuryaIsolineRing`), and `central_corridor`
-(`SuryaRingSetLevel` segments). `search.grahan_config_effective(config)`
+(`SuryaRingSetLevel` segments). With
+`include_contact_footprints`/`include_umbra_footprints`, results also carry
+`contact_footprints` (`SuryaContactFootprint`; contact 0=C1..4=C4, empty
+boundary at exact C1/C4 tangency) and `umbra_footprints`
+(`SuryaUmbraFootprint`); every `SuryaGrahanFootprint` now carries
+`contains_pole`. `search.grahan_config_effective(config)`
 echoes the clamped/sanitized configuration for cache identity. See
 `docs/end_user/solar_eclipse_visibility.md`.
 - `stationary_config_default`

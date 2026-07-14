@@ -982,6 +982,8 @@ func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
 		DurationIsolineFractions: fractions,
 		MagnitudeIsolineLevels:   levels,
 		IncludeCentralCorridor:   cfg.include_central_corridor != 0,
+		IncludeContactFootprints: cfg.include_contact_footprints != 0,
+		IncludeUmbraFootprints:   cfg.include_umbra_footprints != 0,
 	}
 }
 
@@ -990,9 +992,11 @@ func cGrahanConfig(cfg GrahanConfig) C.DhruvGrahanConfig {
 		include_penumbral:        boolU8(cfg.IncludePenumbral),
 		include_peak_details:     boolU8(cfg.IncludePeakDetails),
 		include_path:             boolU8(cfg.IncludePath),
-		include_local_grid:       boolU8(cfg.IncludeLocalGrid),
-		include_isolines:         boolU8(cfg.IncludeIsolines),
-		include_central_corridor: boolU8(cfg.IncludeCentralCorridor),
+		include_local_grid:         boolU8(cfg.IncludeLocalGrid),
+		include_isolines:           boolU8(cfg.IncludeIsolines),
+		include_central_corridor:   boolU8(cfg.IncludeCentralCorridor),
+		include_contact_footprints: boolU8(cfg.IncludeContactFootprints),
+		include_umbra_footprints:   boolU8(cfg.IncludeUmbraFootprints),
 		path_step_minutes:        C.uint32_t(cfg.PathStepMinutes),
 		boundary_step_deg:        C.uint32_t(cfg.BoundaryStepDeg),
 		local_grid_step_deg:      C.double(cfg.LocalGridStepDeg),
@@ -1130,7 +1134,55 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 				}
 				boundary[j] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
 			}
-			footprints[i] = SuryaGrahanFootprint{JdTdb: float64(footprint.jd_tdb), UTC: goUTC(footprint.utc), Boundary: boundary}
+			footprints[i] = SuryaGrahanFootprint{JdTdb: float64(footprint.jd_tdb), UTC: goUTC(footprint.utc), Boundary: boundary, ContainsPole: int32(footprint.contains_pole)}
+		}
+		contactFootprints := make([]SuryaContactFootprint, int(v.contact_footprint_count))
+		for i := range contactFootprints {
+			var footprint C.DhruvSuryaContactFootprint
+			if Status(C.dhruv_surya_grahan_contact_footprint_at(geometry, C.uint32_t(i), &footprint)) != StatusOK {
+				contactFootprints = contactFootprints[:i]
+				break
+			}
+			boundary := make([]EclipseGeoPoint, int(footprint.boundary_count))
+			for j := range boundary {
+				var point C.DhruvEclipseGeoPoint
+				if Status(C.dhruv_surya_grahan_contact_footprint_point_at(geometry, C.uint32_t(i), C.uint32_t(j), &point)) != StatusOK {
+					boundary = boundary[:j]
+					break
+				}
+				boundary[j] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
+			}
+			contactFootprints[i] = SuryaContactFootprint{
+				Contact:      int32(footprint.contact),
+				JdTdb:        float64(footprint.jd_tdb),
+				UTC:          goUTC(footprint.utc),
+				Boundary:     boundary,
+				ContainsPole: int32(footprint.contains_pole),
+			}
+		}
+		umbraFootprints := make([]SuryaUmbraFootprint, int(v.umbra_footprint_count))
+		for i := range umbraFootprints {
+			var footprint C.DhruvSuryaUmbraFootprint
+			if Status(C.dhruv_surya_grahan_umbra_footprint_at(geometry, C.uint32_t(i), &footprint)) != StatusOK {
+				umbraFootprints = umbraFootprints[:i]
+				break
+			}
+			boundary := make([]EclipseGeoPoint, int(footprint.boundary_count))
+			for j := range boundary {
+				var point C.DhruvEclipseGeoPoint
+				if Status(C.dhruv_surya_grahan_umbra_footprint_point_at(geometry, C.uint32_t(i), C.uint32_t(j), &point)) != StatusOK {
+					boundary = boundary[:j]
+					break
+				}
+				boundary[j] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
+			}
+			umbraFootprints[i] = SuryaUmbraFootprint{
+				JdTdb:        float64(footprint.jd_tdb),
+				UTC:          goUTC(footprint.utc),
+				GrahanType:   int32(footprint.grahan_type),
+				Boundary:     boundary,
+				ContainsPole: int32(footprint.contains_pole),
+			}
 		}
 		localGrid := make([]SuryaLocalGridSample, int(v.local_grid_count))
 		for i := range localGrid {
@@ -1253,6 +1305,8 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			LocalGrid:                   localGrid,
 			Isolines:                    isolines,
 			CentralCorridor:             centralCorridor,
+			ContactFootprints:           contactFootprints,
+			UmbraFootprints:             umbraFootprints,
 		}
 	}
 	count := int(outCount)

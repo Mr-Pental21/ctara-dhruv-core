@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 81`
+**ABI version:** `DHRUV_API_VERSION = 82`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -486,6 +486,8 @@ typedef struct {
     uint8_t include_local_grid;       // 1 = per-event local-circumstance grid
     uint8_t include_isolines;         // 1 = visibility/duration/magnitude rings
     uint8_t include_central_corridor; // 1 = swept umbral/antumbral outline
+    uint8_t include_contact_footprints; // 1 = footprints at C1/C2/greatest/C3/C4
+    uint8_t include_umbra_footprints;   // 1 = instantaneous umbral outlines
     uint32_t path_step_minutes;       // 1..30
     uint32_t boundary_step_deg;       // 1..15
     double local_grid_step_deg;       // clamped to [0.5, 10]
@@ -2557,6 +2559,20 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v82**: Surya contact-moment and umbral footprints. `DhruvGrahanConfig`
+gained `include_contact_footprints` and `include_umbra_footprints`.
+`DhruvSuryaGrahanFootprint` gained `contains_pole`
+(`DHRUV_RING_POLE_*`, decided on the sphere by the geometry producer).
+`DhruvSuryaGrahanResult` gained `contact_footprint_count` and
+`umbra_footprint_count`; the geometry handle additionally owns
+`DhruvSuryaContactFootprint` entries (`contact` = `DHRUV_SURYA_CONTACT_*`;
+the boundary is the instantaneous Sun-up-clipped visibility ring and may be
+empty at exact C1/C4 tangency) and `DhruvSuryaUmbraFootprint` entries
+(instantaneous umbral/antumbral outlines at every path timestamp plus the
+C2/greatest/C3 moments), read through
+`dhruv_surya_grahan_contact_footprint_at`/`_point_at` and
+`dhruv_surya_grahan_umbra_footprint_at`/`_point_at`.
 
 **v81**: Surya grahan field products. `DhruvGrahanConfig` gained
 `include_local_grid`/`local_grid_step_deg`, `include_isolines` with

@@ -26,7 +26,14 @@ may include:
   of the global C1–C4 span), and `config.magnitude_isoline_levels`: smooth
   closed contour rings of the visibility field;
 - `config.include_central_corridor`: the swept umbral/antumbral corridor
-  outline with rounded end caps.
+  outline with rounded end caps;
+- `config.include_contact_footprints`: the instantaneous visibility region
+  at the event's own contact moments (C1/C2/greatest/C3/C4);
+- `config.include_umbra_footprints`: the true instantaneous umbral or
+  antumbral shadow outline at every path timestamp and the central
+  contacts — the shape is strongly elongated near the corridor ends where
+  the shadow strikes at grazing incidence, which a chord between the path
+  limits cannot represent.
 
 Path generation defaults to off so catalog-only searches remain inexpensive.
 The default cadence is one minute and the default boundary step is two
@@ -92,7 +99,9 @@ When path generation is enabled, the result also contains:
   local corridor around the central coordinate;
 - `footprints`: timestamped, ordered, explicitly closed penumbral boundary
   rings suitable for visibility polygons. The final coordinate repeats the
-  first, and each timestamp-matched central-path point lies inside its ring;
+  first, and each timestamp-matched central-path point lies inside its ring.
+  Every entry carries `contains_pole` (`north`, `south`, or absent), decided
+  on the sphere — consumers no longer need winding heuristics;
 - `local`: visibility, local type, maximum, C1-C4, magnitude, obscuration,
   Sun altitude/azimuth, and central duration for the requested location.
 
@@ -122,7 +131,20 @@ When the field products are enabled, the result additionally contains:
   contract identical to the isolines. The corridor is computed on a
   track-aligned grid, so the thin band stays resolved near the contacts
   and hybrid tapers, and the rounded end caps are exact level sets rather
-  than chopped path samples.
+  than chopped path samples;
+- `contact_footprints`: entries `{contact, utc, jd_tdb, boundary,
+  contains_pole}` with `contact` one of `c1 | c2 | greatest | c3 | c4`,
+  only for contacts the event actually has (partials return c1, greatest,
+  and c4). The boundary is the instantaneous Sun-up-clipped visibility
+  ring, so it always lies inside the visibility boundary. Convention at
+  exact C1/C4 tangency: the entry is returned with an empty boundary
+  (the region degenerates toward a point) — fall back to the nearest
+  sampled footprint;
+- `umbra_footprints`: entries `{utc, jd_tdb, grahan_type, boundary,
+  contains_pole}` — the true instantaneous umbral (`total`) or antumbral
+  (`annular`) outline at every path timestamp plus the C2/greatest/C3
+  moments. Replaces chord-between-limits approximations and supports
+  smooth timeline animation; partial events return none.
 
 UTC is the default high-level time representation. JD TDB remains beside it
 for numerical consumers.

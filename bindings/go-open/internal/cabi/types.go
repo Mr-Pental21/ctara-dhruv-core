@@ -453,6 +453,9 @@ type GrahanConfig struct {
 	DurationIsolineFractions []float64
 	MagnitudeIsolineLevels   []float64
 	IncludeCentralCorridor   bool
+	// Surya contact-moment and umbral/antumbral footprints.
+	IncludeContactFootprints bool
+	IncludeUmbraFootprints   bool
 }
 
 type GrahanSearchRequest struct {
@@ -517,6 +520,29 @@ type SuryaGrahanFootprint struct {
 	JdTdb    float64
 	UTC      UtcTime
 	Boundary []EclipseGeoPoint
+	// Pole containment of the shadow region: 0=none, 1=north, 2=south.
+	ContainsPole int32
+}
+
+// SuryaContactFootprint is a penumbral footprint at one of the event's own
+// contact moments. Contact: 0=C1, 1=C2, 2=greatest, 3=C3, 4=C4. Boundary
+// may be empty at exact C1/C4 tangency.
+type SuryaContactFootprint struct {
+	Contact      int32
+	JdTdb        float64
+	UTC          UtcTime
+	Boundary     []EclipseGeoPoint
+	ContainsPole int32
+}
+
+// SuryaUmbraFootprint is an instantaneous umbral/antumbral shadow outline.
+// GrahanType: 2=total (umbra) or 1=annular (antumbra).
+type SuryaUmbraFootprint struct {
+	JdTdb        float64
+	UTC          UtcTime
+	GrahanType   int32
+	Boundary     []EclipseGeoPoint
+	ContainsPole int32
 }
 
 // SuryaLocalGridSample is one visible sample of the per-event
@@ -615,7 +641,9 @@ type SuryaGrahanResult struct {
 	LocalGrid  []SuryaLocalGridSample
 	Isolines   *SuryaIsolines
 	// Swept central corridor segments (GrahanType set per segment).
-	CentralCorridor []SuryaRingSetLevel
+	CentralCorridor   []SuryaRingSetLevel
+	ContactFootprints []SuryaContactFootprint
+	UmbraFootprints   []SuryaUmbraFootprint
 }
 
 type StationaryConfig struct {

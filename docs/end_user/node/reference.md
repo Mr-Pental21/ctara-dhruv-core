@@ -72,7 +72,10 @@ The config additionally accepts `includeLocalGrid`/`localGridStepDeg`,
 `includeIsolines` with `durationIsolineFractions`/`magnitudeIsolineLevels`,
 and `includeCentralCorridor`; results then carry `centrality`, `localGrid`,
 `isolines` (`visibilityBoundary`/`durationIsolines`/`magnitudeIsolines` with
-`containsPole`-tagged rings), and `centralCorridor.segments`. See
+`containsPole`-tagged rings), and `centralCorridor.segments`. With
+`includeContactFootprints`/`includeUmbraFootprints`, results also carry
+`contactFootprints` and `umbraFootprints`; every `footprints` entry carries
+`containsPole`. See
 `docs/end_user/solar_eclipse_visibility.md`.
 - `motionSearch`
 - `lunarPhaseSearch`

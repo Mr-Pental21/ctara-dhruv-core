@@ -482,6 +482,8 @@ struct SearchConfigInput {
     duration_isoline_fractions: Option<Vec<f64>>,
     magnitude_isoline_levels: Option<Vec<f64>>,
     include_central_corridor: Option<bool>,
+    include_contact_footprints: Option<bool>,
+    include_umbra_footprints: Option<bool>,
     numerical_step_days: Option<f64>,
 }
 
@@ -2016,6 +2018,12 @@ fn to_grahan_config(
         if let Some(include_central_corridor) = input.include_central_corridor {
             config.include_central_corridor = include_central_corridor;
         }
+        if let Some(include_contact_footprints) = input.include_contact_footprints {
+            config.include_contact_footprints = include_contact_footprints;
+        }
+        if let Some(include_umbra_footprints) = input.include_umbra_footprints {
+            config.include_umbra_footprints = include_umbra_footprints;
+        }
     }
     config
 }
@@ -2912,8 +2920,18 @@ fn grahan_effective_config_json(config: &dhruv_search::GrahanConfig) -> Value {
         "include_isolines": effective.include_isolines,
         "duration_isoline_fractions": effective.duration_isoline_fractions,
         "magnitude_isoline_levels": effective.magnitude_isoline_levels,
-        "include_central_corridor": effective.include_central_corridor
+        "include_central_corridor": effective.include_central_corridor,
+        "include_contact_footprints": effective.include_contact_footprints,
+        "include_umbra_footprints": effective.include_umbra_footprints
     })
+}
+
+fn pole_side_json(side: Option<dhruv_search::PoleSide>) -> Value {
+    match side {
+        None => Value::Null,
+        Some(dhruv_search::PoleSide::North) => Value::String("north".to_string()),
+        Some(dhruv_search::PoleSide::South) => Value::String("south".to_string()),
+    }
 }
 
 fn isoline_rings_json(rings: Vec<dhruv_search::SuryaIsolineRing>) -> Value {
@@ -2922,10 +2940,7 @@ fn isoline_rings_json(rings: Vec<dhruv_search::SuryaIsolineRing>) -> Value {
             .into_iter()
             .map(|ring| {
                 json!({
-                    "contains_pole": ring.contains_pole.map(|side| match side {
-                        dhruv_search::PoleSide::North => "north",
-                        dhruv_search::PoleSide::South => "south",
-                    }),
+                    "contains_pole": pole_side_json(ring.contains_pole),
                     "boundary": ring.boundary.into_iter().map(|p| json!({
                         "latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg
                     })).collect::<Vec<_>>()
@@ -3004,7 +3019,26 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
         })).collect::<Vec<_>>(),
         "footprints": event.footprints.into_iter().map(|f| json!({
             "utc": utc_json(f.utc), "jd_tdb": f.jd_tdb,
-            "boundary": f.boundary.into_iter().map(|p| json!({"latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg})).collect::<Vec<_>>()
+            "boundary": f.boundary.into_iter().map(|p| json!({"latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg})).collect::<Vec<_>>(),
+            "contains_pole": pole_side_json(f.contains_pole)
+        })).collect::<Vec<_>>(),
+        "contact_footprints": event.contact_footprints.into_iter().map(|f| json!({
+            "contact": match f.contact {
+                dhruv_search::SuryaContactKind::C1 => "c1",
+                dhruv_search::SuryaContactKind::C2 => "c2",
+                dhruv_search::SuryaContactKind::Greatest => "greatest",
+                dhruv_search::SuryaContactKind::C3 => "c3",
+                dhruv_search::SuryaContactKind::C4 => "c4",
+            },
+            "utc": utc_json(f.utc), "jd_tdb": f.jd_tdb,
+            "boundary": f.boundary.into_iter().map(|p| json!({"latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg})).collect::<Vec<_>>(),
+            "contains_pole": pole_side_json(f.contains_pole)
+        })).collect::<Vec<_>>(),
+        "umbra_footprints": event.umbra_footprints.into_iter().map(|f| json!({
+            "utc": utc_json(f.utc), "jd_tdb": f.jd_tdb,
+            "grahan_type": debug_name(f.grahan_type),
+            "boundary": f.boundary.into_iter().map(|p| json!({"latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg})).collect::<Vec<_>>(),
+            "contains_pole": pole_side_json(f.contains_pole)
         })).collect::<Vec<_>>(),
         "local": event.local.map(|l| json!({
             "location": {"latitude_deg": l.location.latitude_deg, "longitude_deg": l.location.longitude_deg, "altitude_m": l.location.altitude_m},

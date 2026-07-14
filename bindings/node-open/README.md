@@ -267,7 +267,9 @@ The grahan config additionally accepts the surya field products
 `durationIsolineFractions`/`magnitudeIsolineLevels`, and
 `includeCentralCorridor`); surya results then carry `centrality`,
 `localGrid`, `isolines` (rings tagged with `containsPole`), and
-`centralCorridor.segments`.
+`centralCorridor.segments`. `includeContactFootprints`/
+`includeUmbraFootprints` add `contactFootprints` and `umbraFootprints`;
+sampled `footprints` entries carry `containsPole`.
 
 Embedded `fullKundaliForDate(...).amshas` now returns the full resolved amsha
 union used by the call, not only the explicitly requested subset. Numeric

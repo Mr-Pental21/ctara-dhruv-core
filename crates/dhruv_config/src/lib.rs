@@ -185,6 +185,8 @@ pub struct GrahanConfigPatch {
     pub duration_isoline_fractions: Option<Vec<f64>>,
     pub magnitude_isoline_levels: Option<Vec<f64>>,
     pub include_central_corridor: Option<bool>,
+    pub include_contact_footprints: Option<bool>,
+    pub include_umbra_footprints: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -648,6 +650,20 @@ impl ConfigResolver {
             recommended(self.defaults_mode, false),
             "grahan.include_central_corridor",
         )?;
+        let (include_contact_footprints, contact_footprints_source) = choose_copy(
+            explicit.include_contact_footprints,
+            op.include_contact_footprints,
+            None,
+            recommended(self.defaults_mode, false),
+            "grahan.include_contact_footprints",
+        )?;
+        let (include_umbra_footprints, umbra_footprints_source) = choose_copy(
+            explicit.include_umbra_footprints,
+            op.include_umbra_footprints,
+            None,
+            recommended(self.defaults_mode, false),
+            "grahan.include_umbra_footprints",
+        )?;
         if !local_grid_step_deg.is_finite() {
             return Err(ConfigError::InvalidConfig(
                 "grahan.local_grid_step_deg must be finite".to_string(),
@@ -672,6 +688,14 @@ impl ConfigResolver {
             magnitude_levels_source,
         );
         source.insert("include_central_corridor".to_string(), corridor_source);
+        source.insert(
+            "include_contact_footprints".to_string(),
+            contact_footprints_source,
+        );
+        source.insert(
+            "include_umbra_footprints".to_string(),
+            umbra_footprints_source,
+        );
 
         Ok(EffectiveConfig {
             value: GrahanConfig {
@@ -686,6 +710,8 @@ impl ConfigResolver {
                 duration_isoline_fractions,
                 magnitude_isoline_levels,
                 include_central_corridor,
+                include_contact_footprints,
+                include_umbra_footprints,
             },
             source_by_field: source,
         })

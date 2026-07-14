@@ -6,6 +6,7 @@ defmodule CtaraDhruv.Native do
     :backend,
     :body,
     :centrality,
+    :contact,
     :contains_pole,
     :event,
     :graha,

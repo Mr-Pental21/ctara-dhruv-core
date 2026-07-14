@@ -30,11 +30,12 @@ use dhruv_time::{EopKernel, UtcTime, calendar_to_jd, gmst_rad};
 use crate::conjunction::{next_conjunction, prev_conjunction, search_conjunctions};
 use crate::conjunction_types::ConjunctionConfig;
 use crate::error::SearchError;
-use crate::grahan_fields::{CorridorTrack, central_corridor, grid_and_isolines};
+use crate::grahan_fields::{CorridorTrack, central_corridor, grid_and_isolines, wrap_delta};
 use crate::grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GeoLocation,
-    GrahanConfig, SuryaCentrality, SuryaGrahan, SuryaGrahanFootprint,
-    SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
+    GrahanConfig, PoleSide, SuryaCentrality, SuryaContactFootprint, SuryaContactKind, SuryaGrahan,
+    SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
+    SuryaUmbraFootprint,
 };
 
 // ---------------------------------------------------------------------------
@@ -1167,6 +1168,61 @@ fn path_point(
     }))
 }
 
+/// Whether a closed ring separates the poles (winds fully around the polar
+/// axis). The final vertex repeats the first, so consecutive windows cover
+/// the whole loop.
+fn ring_separates_poles(boundary: &[EclipseGeoPoint]) -> bool {
+    if boundary.len() < 4 {
+        return false;
+    }
+    let winding: f64 = boundary
+        .windows(2)
+        .map(|pair| wrap_delta(pair[1].longitude_deg - pair[0].longitude_deg))
+        .sum();
+    winding.abs() > 180.0
+}
+
+/// Pole containment for an instantaneous shadow footprint, decided on the
+/// sphere: when the ring separates the poles, the shadow region contains
+/// exactly one of them; test each pole for being inside the shadow on the
+/// day side (same -0.833 degree Sun-up convention as `local` visibility).
+fn footprint_contains_pole(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    jd_tdb: f64,
+    cone: ShadowCone,
+    boundary: &[EclipseGeoPoint],
+) -> Result<Option<PoleSide>, SearchError> {
+    if !ring_separates_poles(boundary) {
+        return Ok(None);
+    }
+    let pole_in_shadow = |latitude_deg: f64| -> Result<bool, SearchError> {
+        let geometry = local_disk_geometry(
+            engine,
+            eop,
+            jd_tdb,
+            &GeoLocation::new(latitude_deg, 0.0, 0.0),
+        )?;
+        let margin = match cone {
+            ShadowCone::Penumbra => {
+                geometry.sun_radius_rad + geometry.moon_radius_rad - geometry.separation_rad
+            }
+            ShadowCone::Central => {
+                (geometry.moon_radius_rad - geometry.sun_radius_rad).abs()
+                    - geometry.separation_rad
+            }
+        };
+        Ok(margin > 0.0 && geometry.sun_altitude_deg > -0.833)
+    };
+    if pole_in_shadow(90.0)? {
+        Ok(Some(PoleSide::North))
+    } else if pole_in_shadow(-90.0)? {
+        Ok(Some(PoleSide::South))
+    } else {
+        Ok(None)
+    }
+}
+
 fn sample_path_and_footprints(
     engine: &Engine,
     eop: Option<&EopKernel>,
@@ -1185,10 +1241,13 @@ fn sample_path_and_footprints(
     while jd <= end_jd + step * 0.5 {
         let boundary = shadow_boundary(engine, eop, jd, ShadowCone::Penumbra, boundary_step)?;
         if !boundary.is_empty() {
+            let contains_pole =
+                footprint_contains_pole(engine, eop, jd, ShadowCone::Penumbra, &boundary)?;
             footprints.push(SuryaGrahanFootprint {
                 jd_tdb: jd,
                 utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
                 boundary,
+                contains_pole,
             });
         }
         if let Some(point) = path_point(engine, eop, jd, boundary_step)? {
@@ -1600,6 +1659,76 @@ fn compute_surya_grahan(
         (Vec::new(), None)
     };
 
+    let contact_footprints = if config.include_contact_footprints {
+        let contacts = [
+            (SuryaContactKind::C1, c1_jd),
+            (SuryaContactKind::C2, c2_jd),
+            (SuryaContactKind::Greatest, Some(greatest_jd)),
+            (SuryaContactKind::C3, c3_jd),
+            (SuryaContactKind::C4, c4_jd),
+        ];
+        let mut entries = Vec::new();
+        for (contact, jd) in contacts {
+            let Some(jd) = jd else { continue };
+            // The instantaneous Sun-up-clipped visibility region, so contact
+            // footprints always lie inside the Change 5 visibility boundary.
+            // At exact C1/C4 tangency the region degenerates toward a point;
+            // the entry is still returned with an empty ring and consumers
+            // fall back to the nearest sampled footprint.
+            let (boundary, contains_pole) =
+                match crate::grahan_fields::instantaneous_visibility_ring(engine, eop, jd)? {
+                    Some(ring) => (ring.boundary, ring.contains_pole),
+                    None => (Vec::new(), None),
+                };
+            entries.push(SuryaContactFootprint {
+                contact,
+                jd_tdb: jd,
+                utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
+                boundary,
+                contains_pole,
+            });
+        }
+        entries
+    } else {
+        Vec::new()
+    };
+
+    let umbra_footprints = if config.include_umbra_footprints
+        && centrality != SuryaCentrality::None
+    {
+        let boundary_step = config.boundary_step_deg.clamp(1, 15);
+        let mut jds: Vec<f64> = path.iter().map(|point| point.jd_tdb).collect();
+        for jd in [c2_jd, Some(greatest_jd), c3_jd].into_iter().flatten() {
+            jds.push(jd);
+        }
+        jds.sort_by(f64::total_cmp);
+        jds.dedup_by(|a, b| (*a - *b).abs() < 1.0e-9);
+        let mut entries = Vec::new();
+        for jd in jds {
+            let boundary = shadow_boundary(engine, eop, jd, ShadowCone::Central, boundary_step)?;
+            if boundary.is_empty() {
+                continue;
+            }
+            let elements = besselian_elements_at(engine, eop, jd)?;
+            let contains_pole =
+                footprint_contains_pole(engine, eop, jd, ShadowCone::Central, &boundary)?;
+            entries.push(SuryaUmbraFootprint {
+                jd_tdb: jd,
+                utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
+                grahan_type: if elements.l2 < 0.0 {
+                    SuryaGrahanType::Total
+                } else {
+                    SuryaGrahanType::Annular
+                },
+                boundary,
+                contains_pole,
+            });
+        }
+        entries
+    } else {
+        Vec::new()
+    };
+
     let central_corridor = if config.include_central_corridor
         && centrality != SuryaCentrality::None
     {
@@ -1685,6 +1814,8 @@ fn compute_surya_grahan(
         local_grid,
         isolines,
         central_corridor,
+        contact_footprints,
+        umbra_footprints,
     }))
 }
 

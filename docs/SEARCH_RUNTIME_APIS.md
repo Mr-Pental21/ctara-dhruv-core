@@ -54,6 +54,17 @@ events whose center line misses Earth — one-sided limits, closed corridor).
 `GrahanConfig::effective()` returns the clamped/sanitized configuration
 actually applied; cache keys should be built against that echo.
 
+Change 6 additions: every sampled `footprints[]` entry carries
+`contains_pole` (decided on the sphere by the geometry producer).
+`include_contact_footprints` fills `SuryaGrahan.contact_footprints` with
+the instantaneous Sun-up-clipped visibility ring at each contact the event
+actually has (`C1 | C2 | Greatest | C3 | C4`; the ring may be empty at
+exact C1/C4 tangency — fall back to the nearest sampled footprint).
+`include_umbra_footprints` fills `SuryaGrahan.umbra_footprints` with the
+true instantaneous umbral/antumbral outlines (`grahan_type` per moment) at
+every path timestamp plus the C2/greatest/C3 moments; partial events
+return none.
+
 ## Sankranti (5)
 
 | Function | Inputs | Output | What it does |

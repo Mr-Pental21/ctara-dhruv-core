@@ -261,7 +261,9 @@ and `SuryaGrahanResult.SunRightAscensionDeg`/`SunDeclinationDeg`
 `IncludeCentralCorridor`); `SuryaGrahanResult` then carries `Centrality`,
 `LocalGrid`, `Isolines`, and `CentralCorridor`, and
 `GrahanConfigEffective` echoes the clamped/sanitized configuration for
-cache identity.
+cache identity. `IncludeContactFootprints`/`IncludeUmbraFootprints` add
+`ContactFootprints` and `UmbraFootprints`; sampled footprints carry
+`ContainsPole`.
 
 For embedded amsha charts in `FullKundaliForDate`, the relevant root sections
 must also be enabled in the full-kundali config, or the wrapper caller must use

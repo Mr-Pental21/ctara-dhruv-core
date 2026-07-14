@@ -92,7 +92,9 @@ defmodule CtaraDhruvTest do
                      config: %{
                        include_path: true,
                        path_step_minutes: 10,
-                       boundary_step_deg: 15
+                       boundary_step_deg: 15,
+                       include_contact_footprints: true,
+                       include_umbra_footprints: true
                      }
                    })
 
@@ -103,6 +105,23 @@ defmodule CtaraDhruvTest do
           assert eclipse.local.visible == true
           assert eclipse.local.grahan_type == :total
           assert eclipse.centrality == :full
+
+          # Change 6: sampled footprints carry contains_pole; contact and
+          # umbral footprints are present for a central event.
+          [sampled_footprint | _] = eclipse.footprints
+          assert sampled_footprint.contains_pole in [nil, :north, :south]
+          contact_kinds = Enum.map(eclipse.contact_footprints, & &1.contact)
+          assert contact_kinds == [:c1, :c2, :greatest, :c3, :c4]
+          greatest_contact =
+            Enum.find(eclipse.contact_footprints, &(&1.contact == :greatest))
+
+          assert length(greatest_contact.boundary) > 10
+          assert List.first(greatest_contact.boundary) == List.last(greatest_contact.boundary)
+          assert greatest_contact.contains_pole in [nil, :north, :south]
+          assert length(eclipse.umbra_footprints) > 10
+          [umbra | _] = eclipse.umbra_footprints
+          assert umbra.grahan_type == :total
+          assert List.first(umbra.boundary) == List.last(umbra.boundary)
 
           assert {:ok, %{events: field_eclipse, effective_config: effective_config}} =
                    Search.grahan(engine, %{

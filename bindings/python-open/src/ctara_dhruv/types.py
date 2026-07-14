@@ -418,6 +418,38 @@ class SuryaGrahanFootprint:
     jd_tdb: float
     utc: UtcTime
     boundary: tuple[EclipseGeoPoint, ...]
+    # Pole containment of the shadow region: 0=none, 1=north, 2=south.
+    contains_pole: int = 0
+
+
+@dataclass(frozen=True)
+class SuryaContactFootprint:
+    """Penumbral footprint at one of the event's own contact moments.
+
+    ``contact``: 0=C1, 1=C2, 2=greatest, 3=C3, 4=C4. ``boundary`` may be
+    empty at exact C1/C4 tangency; fall back to the nearest sampled
+    footprint in that case.
+    """
+
+    contact: int
+    jd_tdb: float
+    utc: UtcTime
+    boundary: tuple[EclipseGeoPoint, ...]
+    contains_pole: int = 0
+
+
+@dataclass(frozen=True)
+class SuryaUmbraFootprint:
+    """Instantaneous umbral/antumbral shadow outline at one moment.
+
+    ``grahan_type``: 2=total (umbra) or 1=annular (antumbra).
+    """
+
+    jd_tdb: float
+    utc: UtcTime
+    grahan_type: int
+    boundary: tuple[EclipseGeoPoint, ...]
+    contains_pole: int = 0
 
 
 @dataclass(frozen=True)
@@ -531,6 +563,8 @@ class SuryaGrahanResult:
     isolines: Optional[SuryaIsolines] = None
     # Swept central corridor segments (grahan_type set per segment).
     central_corridor: Optional[tuple[SuryaRingSetLevel, ...]] = None
+    contact_footprints: tuple[SuryaContactFootprint, ...] = ()
+    umbra_footprints: tuple[SuryaUmbraFootprint, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -316,8 +316,10 @@ The unified `grahan --kind surya` command accepts `--include-path`,
 optional `--eop`, plus the field products: `--include-local-grid`,
 `--local-grid-step-deg`, `--include-isolines`,
 `--duration-isoline-fractions`, `--magnitude-isoline-levels` (comma
-separated), and `--include-central-corridor`. Output summarizes centrality,
-grid sample counts, isoline ring counts, and corridor segments. See
+separated), `--include-central-corridor`, `--include-contact-footprints`,
+and `--include-umbra-footprints`. Output summarizes centrality, grid sample
+counts, isoline ring counts, corridor segments, contact footprints, and
+umbral outline counts. See
 `docs/end_user/solar_eclipse_visibility.md`.
 - `lunar-phase`
 - `next-purnima`

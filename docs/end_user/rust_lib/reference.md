@@ -73,8 +73,10 @@ Solar `GrahanRequest` accepts an optional observer location; `GrahanConfig`
 controls optional path and footprint sampling plus the field products
 (`include_local_grid`/`local_grid_step_deg`, `include_isolines` with
 `duration_isoline_fractions`/`magnitude_isoline_levels`, and
-`include_central_corridor`). `SuryaGrahan` then carries `centrality`,
-`local_grid`, `isolines`, and `central_corridor`;
+`include_central_corridor`, `include_contact_footprints`,
+`include_umbra_footprints`). `SuryaGrahan` then carries `centrality`,
+`local_grid`, `isolines`, `central_corridor`, `contact_footprints`, and
+`umbra_footprints`; sampled footprints carry `contains_pole`;
 `GrahanConfig::effective()` echoes the clamped/sanitized configuration for
 cache identity. See `docs/end_user/solar_eclipse_visibility.md` for the
 result fields and map use.

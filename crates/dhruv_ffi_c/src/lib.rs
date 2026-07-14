@@ -18,8 +18,9 @@ use dhruv_search::{
     GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent,
     MaxSpeedType, NatalTargetKind, NatalTargetLongitude, PoleSide, SankrantiConfig, SearchError,
     StationType, StationaryConfig, StationaryEvent, SuryaCentralCorridor, SuryaCentrality,
-    SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing,
-    SuryaIsolines, SuryaLocalGridSample, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
+    SuryaContactFootprint, SuryaContactKind, SuryaGrahan, SuryaGrahanFootprint,
+    SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample,
+    SuryaUmbraFootprint, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
     TransitAspectKind,
     TransitAspectOwner, TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date,
     ayana_for_date, balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat,
@@ -68,7 +69,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 81;
+pub const DHRUV_API_VERSION: u32 = 82;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -3615,6 +3616,12 @@ pub struct DhruvGrahanConfig {
     pub include_isolines: u8,
     /// Include the swept central-corridor outline: 1 = yes, 0 = no.
     pub include_central_corridor: u8,
+    /// Include penumbral footprints at the event's own contact moments:
+    /// 1 = yes, 0 = no.
+    pub include_contact_footprints: u8,
+    /// Include instantaneous umbral/antumbral outlines at path timestamps
+    /// and central contacts: 1 = yes, 0 = no.
+    pub include_umbra_footprints: u8,
     /// Geographic path sampling cadence in minutes.
     pub path_step_minutes: u32,
     /// Shadow-boundary angular sampling in degrees.
@@ -3654,6 +3661,17 @@ pub const DHRUV_RING_POLE_NONE: i32 = 0;
 pub const DHRUV_RING_POLE_NORTH: i32 = 1;
 /// Ring pole containment: encloses the south pole.
 pub const DHRUV_RING_POLE_SOUTH: i32 = 2;
+
+/// Contact selector for contact-moment footprints: first external contact.
+pub const DHRUV_SURYA_CONTACT_C1: i32 = 0;
+/// Contact selector: first internal contact.
+pub const DHRUV_SURYA_CONTACT_C2: i32 = 1;
+/// Contact selector: greatest eclipse.
+pub const DHRUV_SURYA_CONTACT_GREATEST: i32 = 2;
+/// Contact selector: last internal contact.
+pub const DHRUV_SURYA_CONTACT_C3: i32 = 3;
+/// Contact selector: last external contact.
+pub const DHRUV_SURYA_CONTACT_C4: i32 = 4;
 
 /// Grahan kind selector: lunar eclipse.
 pub const DHRUV_GRAHAN_KIND_CHANDRA: i32 = 0;
@@ -3745,6 +3763,8 @@ fn grahan_config_from_ffi(cfg: &DhruvGrahanConfig) -> GrahanConfig {
             cfg.magnitude_isoline_level_count,
         ),
         include_central_corridor: cfg.include_central_corridor != 0,
+        include_contact_footprints: cfg.include_contact_footprints != 0,
+        include_umbra_footprints: cfg.include_umbra_footprints != 0,
     }
 }
 
@@ -3770,6 +3790,8 @@ fn grahan_config_to_ffi(cfg: &GrahanConfig) -> DhruvGrahanConfig {
         include_local_grid: u8::from(cfg.include_local_grid),
         include_isolines: u8::from(cfg.include_isolines),
         include_central_corridor: u8::from(cfg.include_central_corridor),
+        include_contact_footprints: u8::from(cfg.include_contact_footprints),
+        include_umbra_footprints: u8::from(cfg.include_umbra_footprints),
         path_step_minutes: cfg.path_step_minutes,
         boundary_step_deg: cfg.boundary_step_deg,
         local_grid_step_deg: cfg.local_grid_step_deg,
@@ -3901,6 +3923,26 @@ struct OwnedSuryaGrahanGeometry {
     local_grid: Vec<SuryaLocalGridSample>,
     isolines: Option<SuryaIsolines>,
     central_corridor: Option<SuryaCentralCorridor>,
+    contact_footprints: Vec<SuryaContactFootprint>,
+    umbra_footprints: Vec<SuryaUmbraFootprint>,
+}
+
+fn pole_side_to_code(side: Option<PoleSide>) -> i32 {
+    match side {
+        None => DHRUV_RING_POLE_NONE,
+        Some(PoleSide::North) => DHRUV_RING_POLE_NORTH,
+        Some(PoleSide::South) => DHRUV_RING_POLE_SOUTH,
+    }
+}
+
+fn contact_kind_to_code(kind: SuryaContactKind) -> i32 {
+    match kind {
+        SuryaContactKind::C1 => DHRUV_SURYA_CONTACT_C1,
+        SuryaContactKind::C2 => DHRUV_SURYA_CONTACT_C2,
+        SuryaContactKind::Greatest => DHRUV_SURYA_CONTACT_GREATEST,
+        SuryaContactKind::C3 => DHRUV_SURYA_CONTACT_C3,
+        SuryaContactKind::C4 => DHRUV_SURYA_CONTACT_C4,
+    }
 }
 
 impl OwnedSuryaGrahanGeometry {
@@ -4036,6 +4078,8 @@ pub struct DhruvSuryaGrahanFootprint {
     pub jd_tdb: f64,
     pub utc: DhruvUtcTime,
     pub boundary_count: u32,
+    /// Pole containment of the shadow region (`DHRUV_RING_POLE_*`).
+    pub contains_pole: i32,
 }
 
 impl From<&SuryaGrahanFootprint> for DhruvSuryaGrahanFootprint {
@@ -4044,6 +4088,61 @@ impl From<&SuryaGrahanFootprint> for DhruvSuryaGrahanFootprint {
             jd_tdb: value.jd_tdb,
             utc: utc_time_to_ffi(&value.utc),
             boundary_count: value.boundary.len().min(u32::MAX as usize) as u32,
+            contains_pole: pole_side_to_code(value.contains_pole),
+        }
+    }
+}
+
+/// Metadata for one contact-moment penumbral footprint. `boundary_count`
+/// may be zero at exact C1/C4 tangency, where the intersection degenerates
+/// toward a point; consumers should fall back to the nearest sampled
+/// footprint in that case.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaContactFootprint {
+    /// Contact selector (`DHRUV_SURYA_CONTACT_*`).
+    pub contact: i32,
+    pub jd_tdb: f64,
+    pub utc: DhruvUtcTime,
+    pub boundary_count: u32,
+    /// Pole containment of the shadow region (`DHRUV_RING_POLE_*`).
+    pub contains_pole: i32,
+}
+
+impl From<&SuryaContactFootprint> for DhruvSuryaContactFootprint {
+    fn from(value: &SuryaContactFootprint) -> Self {
+        Self {
+            contact: contact_kind_to_code(value.contact),
+            jd_tdb: value.jd_tdb,
+            utc: utc_time_to_ffi(&value.utc),
+            boundary_count: value.boundary.len().min(u32::MAX as usize) as u32,
+            contains_pole: pole_side_to_code(value.contains_pole),
+        }
+    }
+}
+
+/// Metadata for one instantaneous umbral/antumbral shadow outline.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaUmbraFootprint {
+    pub jd_tdb: f64,
+    pub utc: DhruvUtcTime,
+    /// `DHRUV_SURYA_GRAHAN_TOTAL` (umbra) or `DHRUV_SURYA_GRAHAN_ANNULAR`
+    /// (antumbra) at this moment.
+    pub grahan_type: i32,
+    pub boundary_count: u32,
+    /// Pole containment of the shadow region (`DHRUV_RING_POLE_*`).
+    pub contains_pole: i32,
+}
+
+impl From<&SuryaUmbraFootprint> for DhruvSuryaUmbraFootprint {
+    fn from(value: &SuryaUmbraFootprint) -> Self {
+        Self {
+            jd_tdb: value.jd_tdb,
+            utc: utc_time_to_ffi(&value.utc),
+            grahan_type: surya_grahan_type_to_code(value.grahan_type),
+            boundary_count: value.boundary.len().min(u32::MAX as usize) as u32,
+            contains_pole: pole_side_to_code(value.contains_pole),
         }
     }
 }
@@ -4174,6 +4273,10 @@ pub struct DhruvSuryaGrahanResult {
     pub isolines_valid: u8,
     /// Whether the swept central corridor is present.
     pub central_corridor_valid: u8,
+    /// Number of contact-moment penumbral footprints.
+    pub contact_footprint_count: u32,
+    /// Number of instantaneous umbral/antumbral outlines.
+    pub umbra_footprint_count: u32,
     /// Opaque owner for path, footprint, grid, isoline, and corridor
     /// coordinates. Null when no map geometry was generated. The caller owns
     /// and must free this handle.
@@ -4206,7 +4309,9 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
             || !e.footprints.is_empty()
             || !e.local_grid.is_empty()
             || e.isolines.is_some()
-            || e.central_corridor.is_some();
+            || e.central_corridor.is_some()
+            || !e.contact_footprints.is_empty()
+            || !e.umbra_footprints.is_empty();
         let geometry_handle = if !has_geometry {
             ptr::null_mut()
         } else {
@@ -4216,6 +4321,8 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
                 local_grid: e.local_grid.clone(),
                 isolines: e.isolines.clone(),
                 central_corridor: e.central_corridor.clone(),
+                contact_footprints: e.contact_footprints.clone(),
+                umbra_footprints: e.umbra_footprints.clone(),
             })) as DhruvSuryaGrahanGeometryHandle
         };
         Self {
@@ -4271,6 +4378,8 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
             local_grid_count: e.local_grid.len().min(u32::MAX as usize) as u32,
             isolines_valid: u8::from(e.isolines.is_some()),
             central_corridor_valid: u8::from(e.central_corridor.is_some()),
+            contact_footprint_count: e.contact_footprints.len().min(u32::MAX as usize) as u32,
+            umbra_footprint_count: e.umbra_footprints.len().min(u32::MAX as usize) as u32,
             geometry_handle,
             local_valid: u8::from(e.local.is_some()),
             local_visible: u8::from(e.local.as_ref().is_some_and(|local| local.visible)),
@@ -4411,6 +4520,104 @@ pub unsafe extern "C" fn dhruv_surya_grahan_footprint_point_at(
     DhruvStatus::Ok
 }
 
+/// Read one contact-moment footprint from a geometry handle.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_contact_footprint_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    index: u32,
+    out: *mut DhruvSuryaContactFootprint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(footprint) = geometry.contact_footprints.get(index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = footprint.into() };
+    DhruvStatus::Ok
+}
+
+/// Read one boundary coordinate from one contact-moment footprint.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_contact_footprint_point_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    footprint_index: u32,
+    point_index: u32,
+    out: *mut DhruvEclipseGeoPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(point) = geometry
+        .contact_footprints
+        .get(footprint_index as usize)
+        .and_then(|footprint| footprint.boundary.get(point_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = (*point).into() };
+    DhruvStatus::Ok
+}
+
+/// Read one instantaneous umbral/antumbral outline from a geometry handle.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_umbra_footprint_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    index: u32,
+    out: *mut DhruvSuryaUmbraFootprint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(footprint) = geometry.umbra_footprints.get(index as usize) else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = footprint.into() };
+    DhruvStatus::Ok
+}
+
+/// Read one boundary coordinate from one umbral/antumbral outline.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_umbra_footprint_point_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    footprint_index: u32,
+    point_index: u32,
+    out: *mut DhruvEclipseGeoPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(point) = geometry
+        .umbra_footprints
+        .get(footprint_index as usize)
+        .and_then(|footprint| footprint.boundary.get(point_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = (*point).into() };
+    DhruvStatus::Ok
+}
+
 /// Read one local-circumstance grid sample from a geometry handle.
 ///
 /// # Safety
@@ -4513,11 +4720,7 @@ pub unsafe extern "C" fn dhruv_surya_grahan_ring_at(
     };
     unsafe {
         *out = DhruvSuryaIsolineRing {
-            contains_pole: match ring.contains_pole {
-                None => DHRUV_RING_POLE_NONE,
-                Some(PoleSide::North) => DHRUV_RING_POLE_NORTH,
-                Some(PoleSide::South) => DHRUV_RING_POLE_SOUTH,
-            },
+            contains_pole: pole_side_to_code(ring.contains_pole),
             point_count: ring.boundary.len().min(u32::MAX as usize) as u32,
         }
     };
