@@ -101,10 +101,14 @@ When path generation is enabled, the result also contains:
   local central type. Near grazing or polar contacts, the limits remain on the
   local corridor around the central coordinate;
 - `footprints`: timestamped, ordered, explicitly closed penumbral boundary
-  rings suitable for visibility polygons. The final coordinate repeats the
-  first, and each timestamp-matched central-path point lies inside its ring.
-  Every entry carries `contains_pole` (`north`, `south`, or absent), decided
-  on the sphere — consumers no longer need winding heuristics;
+  rings suitable for visibility polygons. Each ring is the instantaneous
+  visibility region — clipped by the day/night terminator (a shadow is only
+  observable where the Sun is up) and closed along the terminator arc where
+  truncated, so no vertex lies beyond ~90 degrees from the subsolar point.
+  The final coordinate repeats the first, and each timestamp-matched
+  central-path point lies inside its ring. Every entry carries
+  `contains_pole` (`north`, `south`, or absent), decided on the sphere —
+  consumers no longer need winding heuristics;
 - `local`: visibility, local type, maximum, C1-C4, magnitude, obscuration,
   Sun altitude/azimuth, and central duration for the requested location.
 

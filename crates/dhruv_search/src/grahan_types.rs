@@ -223,8 +223,11 @@ pub struct SuryaMagnitudeRing {
     pub contains_pole: Option<PoleSide>,
 }
 
-/// Boundary of the instantaneous penumbral footprint on Earth. The vertices
-/// form one ordered closed ring; the final coordinate repeats the first.
+/// Boundary of the instantaneous penumbral footprint on Earth: the region
+/// with a partial phase in progress and the Sun up, clipped by the
+/// day/night terminator (a shadow is only observable on the day side) and
+/// closed along the terminator arc where truncated. The vertices form one
+/// ordered closed ring; the final coordinate repeats the first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuryaGrahanFootprint {
     pub jd_tdb: f64,

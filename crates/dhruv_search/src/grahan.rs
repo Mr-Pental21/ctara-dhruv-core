@@ -723,6 +723,11 @@ pub(crate) fn axis_ground_point(
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ShadowCone {
+    /// Retained for the raw penumbral cone-ellipsoid intersection.
+    /// Penumbral footprints are now derived from the terminator-clipped
+    /// instantaneous visibility field instead (Change 8), so nothing
+    /// constructs this variant today.
+    #[allow(dead_code)]
     Penumbra,
     Central,
 }
@@ -1240,28 +1245,20 @@ fn sample_path_and_footprints(
     let mut footprints = Vec::new();
     let mut jd = start_jd;
     while jd <= end_jd + step * 0.5 {
-        let boundary = shadow_boundary(engine, eop, jd, ShadowCone::Penumbra, boundary_step)?;
-        if !boundary.is_empty() {
-            let contains_pole =
-                footprint_contains_pole(engine, eop, jd, ShadowCone::Penumbra, &boundary)?;
-            let magnitude_rings = if magnitude_levels.is_empty() {
-                Vec::new()
-            } else {
-                crate::grahan_fields::instantaneous_rings(
-                    engine,
-                    eop,
-                    jd,
-                    &magnitude_levels,
-                    false,
-                )?
-                .magnitude
-            };
+        // Terminator-clipped instantaneous visibility ring (same field and
+        // clip convention as the magnitude rings and contact footprints):
+        // a shadow is only observable where the Sun is up, so the raw
+        // penumbral cone-ellipsoid ring's night-side overhang is excluded
+        // and the boundary closes along the terminator arc.
+        let rings =
+            crate::grahan_fields::instantaneous_rings(engine, eop, jd, &magnitude_levels, true)?;
+        if let Some(ring) = rings.visibility {
             footprints.push(SuryaGrahanFootprint {
                 jd_tdb: jd,
                 utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
-                boundary,
-                contains_pole,
-                magnitude_rings,
+                boundary: ring.boundary,
+                contains_pole: ring.contains_pole,
+                magnitude_rings: rings.magnitude,
             });
         }
         if let Some(point) = path_point(engine, eop, jd, boundary_step)? {

@@ -584,8 +584,11 @@ corridor around that sample's center, including at grazing and polar contacts.
 
 Each footprint's boundary coordinates form one ordered, explicitly closed
 ring: `boundary_count` includes the repeated final coordinate, which equals
-the first. Consumers may unwrap antimeridian crossings for display but must
-not synthesize a chord between otherwise open branches.
+the first. Since v83 the ring is the terminator-clipped instantaneous
+visibility region (closed along the terminator arc where truncated), not
+the raw cone-ellipsoid intersection. Consumers may unwrap antimeridian
+crossings for display but must not synthesize a chord between otherwise
+open branches.
 
 ### DhruvStationaryConfig
 
@@ -2573,6 +2576,9 @@ count) is the instantaneous iso-magnitude contour at that timestamp,
 terminator-clipped like the visibility products, with unreached levels
 omitted. Read via `dhruv_surya_grahan_footprint_magnitude_ring_at`/
 `_point_at` and `dhruv_surya_grahan_contact_magnitude_ring_at`/`_point_at`.
+Behavior change in the same version: sampled `footprints[]` boundaries are
+now terminator-clipped instantaneous visibility rings (no night-side
+overhang), matching the magnitude-ring and contact-footprint convention.
 
 **v82**: Surya contact-moment and umbral footprints. `DhruvGrahanConfig`
 gained `include_contact_footprints` and `include_umbra_footprints`.

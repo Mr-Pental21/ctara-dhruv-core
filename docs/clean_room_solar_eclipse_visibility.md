@@ -137,6 +137,12 @@
   terminator, as in the Change 5 magnitude isolines) at caller-requested
   levels; by construction the rings nest per timestamp between the umbral
   outline and the penumbral boundary, and unreached levels are omitted.
+- Sampled penumbral footprints are the same single-time visibility level
+  set (terminator-clipped, closed along the terminator arc) rather than
+  the raw penumbral cone-ellipsoid ring: the raw ring's far side reaches
+  the night hemisphere where no eclipse is observable. The umbral
+  outlines keep the raw central-cone intersection, which lies deep on the
+  day side by construction.
 
 ## Validation (field products)
 

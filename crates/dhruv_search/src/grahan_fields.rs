@@ -984,27 +984,59 @@ pub(crate) fn instantaneous_rings(
     let lon0 = -180.0 + 0.5 * STEP_DEG;
 
     let need_magnitude = !magnitude_levels.is_empty();
-    let mut vis_values = Vec::with_capacity(lats.len() * n_lon);
-    let mut mag_values = Vec::with_capacity(if need_magnitude {
-        lats.len() * n_lon
-    } else {
-        0
-    });
-    for lat in &lats {
-        if *lat <= -90.0 + 1.0e-9 || *lat >= 90.0 - 1.0e-9 {
-            let pole = eval(*lat, 0.0);
-            vis_values.extend(std::iter::repeat_n(pole.visibility_margin(), n_lon));
-            if need_magnitude {
-                mag_values.extend(std::iter::repeat_n(pole.visible_magnitude(), n_lon));
-            }
-        } else {
-            for col in 0..n_lon {
-                let sample = eval(*lat, normalize_lon(lon0 + col as f64 * STEP_DEG));
-                vis_values.push(sample.visibility_margin());
-                if need_magnitude {
-                    mag_values.push(sample.visible_magnitude());
+    // Node evaluation is pure math against the captured vectors; run the
+    // rows in parallel (this executes once per sampled footprint).
+    let n_rows = lats.len();
+    let worker_count = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .min(n_rows);
+    let rows_per_worker = n_rows.div_ceil(worker_count);
+    let row_results: Vec<Vec<(Vec<f64>, Vec<f64>)>> = std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for worker in 0..worker_count {
+            let row_start = worker * rows_per_worker;
+            let row_end = ((worker + 1) * rows_per_worker).min(n_rows);
+            let lats_ref = &lats;
+            handles.push(scope.spawn(move || {
+                let mut rows = Vec::new();
+                for row in row_start..row_end {
+                    let lat = lats_ref[row];
+                    let mut vis_row = Vec::with_capacity(n_lon);
+                    let mut mag_row = Vec::with_capacity(if need_magnitude { n_lon } else { 0 });
+                    if lat <= -90.0 + 1.0e-9 || lat >= 90.0 - 1.0e-9 {
+                        let pole = eval(lat, 0.0);
+                        vis_row.extend(std::iter::repeat_n(pole.visibility_margin(), n_lon));
+                        if need_magnitude {
+                            mag_row
+                                .extend(std::iter::repeat_n(pole.visible_magnitude(), n_lon));
+                        }
+                    } else {
+                        for col in 0..n_lon {
+                            let sample =
+                                eval(lat, normalize_lon(lon0 + col as f64 * STEP_DEG));
+                            vis_row.push(sample.visibility_margin());
+                            if need_magnitude {
+                                mag_row.push(sample.visible_magnitude());
+                            }
+                        }
+                    }
+                    rows.push((vis_row, mag_row));
                 }
-            }
+                rows
+            }));
+        }
+        handles
+            .into_iter()
+            .map(|handle| handle.join().expect("instantaneous ring worker panicked"))
+            .collect()
+    });
+    let mut vis_values = Vec::with_capacity(n_rows * n_lon);
+    let mut mag_values = Vec::with_capacity(if need_magnitude { n_rows * n_lon } else { 0 });
+    for worker_rows in row_results {
+        for (vis_row, mag_row) in worker_rows {
+            vis_values.extend(vis_row);
+            mag_values.extend(mag_row);
         }
     }
 

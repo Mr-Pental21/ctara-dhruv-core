@@ -54,6 +54,13 @@ events whose center line misses Earth — one-sided limits, closed corridor).
 `GrahanConfig::effective()` returns the clamped/sanitized configuration
 actually applied; cache keys should be built against that echo.
 
+Change 8: every sampled `footprints[]` entry is terminator-clipped — the
+boundary is the instantaneous Sun-up visibility region (same clip
+convention as the magnitude rings and contact footprints), closed along
+the terminator arc where truncated, instead of the raw penumbral
+cone-ellipsoid ring whose night-side overhang painted where no grahan is
+observable.
+
 Change 6 additions: every sampled `footprints[]` entry carries
 `contains_pole` (decided on the sphere by the geometry producer).
 `include_contact_footprints` fills `SuryaGrahan.contact_footprints` with

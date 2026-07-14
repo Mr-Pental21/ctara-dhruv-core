@@ -9,7 +9,7 @@ use std::path::Path;
 use dhruv_core::{Engine, EngineConfig};
 use dhruv_search::{
     EclipseGeoPoint, GeoLocation, GrahanConfig, PoleSide, SuryaCentrality, SuryaContactKind,
-    SuryaGrahan, SuryaGrahanType, SuryaIsolineRing, next_surya_grahan,
+    SuryaGrahan, SuryaGrahanType, SuryaIsolineRing, besselian_elements_at, next_surya_grahan,
 };
 use dhruv_time::EopKernel;
 
@@ -338,6 +338,60 @@ fn arctic_total_2026_field_products() {
                 "corridor vertex {vertex:?} outside visibility boundary"
             );
         }
+    }
+}
+
+/// Change 8 on the 2026-08-12 Arctic total event: sampled penumbral
+/// footprints are terminator-clipped — no vertex beyond the day side, some
+/// vertices on the terminator where the region is truncated, and the
+/// central path stays inside its timestamp-matched footprint.
+#[test]
+fn arctic_total_2026_footprints_are_terminator_clipped() {
+    let Some(engine) = load_engine() else { return };
+    let eop = load_eop();
+    let event = event_with_fields(&engine, eop.as_ref(), jd(2026, 8, 1.0));
+    assert!(!event.footprints.is_empty());
+    let mut any_on_terminator = false;
+    for footprint in &event.footprints {
+        // Subsolar point from the derived shadow-axis elements (the axis
+        // points at the Sun to within the lunar parallax, ~1 degree).
+        let elements = besselian_elements_at(&engine, eop.as_ref(), footprint.jd_tdb)
+            .expect("besselian elements");
+        let subsolar = EclipseGeoPoint {
+            latitude_deg: elements.d_deg,
+            longitude_deg: {
+                let lon = (-elements.mu_deg).rem_euclid(360.0);
+                if lon > 180.0 { lon - 360.0 } else { lon }
+            },
+        };
+        for vertex in &footprint.boundary {
+            let distance_deg = great_circle_km(*vertex, subsolar) / 111.19;
+            assert!(
+                distance_deg <= 92.5,
+                "footprint vertex {vertex:?} lies {distance_deg:.1} deg from the subsolar point"
+            );
+            if distance_deg >= 88.0 {
+                any_on_terminator = true;
+            }
+        }
+    }
+    assert!(
+        any_on_terminator,
+        "no footprint vertex near the terminator; clipping looks inactive"
+    );
+    // Change 4 invariant: every timestamp-matched central path point stays
+    // inside its clipped footprint.
+    for point in &event.path {
+        let footprint = event
+            .footprints
+            .iter()
+            .find(|footprint| (footprint.jd_tdb - point.jd_tdb).abs() < 1.0e-9)
+            .expect("timestamp-matched footprint");
+        assert!(
+            spherical_ring_contains(&footprint.boundary, point.center),
+            "path center {:?} outside its clipped footprint",
+            point.center
+        );
     }
 }
 
