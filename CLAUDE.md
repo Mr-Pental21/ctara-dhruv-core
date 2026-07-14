@@ -83,6 +83,10 @@ This repository is clean-room and permissive-license only.
 - Commit after changes are made and tested.
 - Short commit messages, imperative mood.
 - No boilerplate, signatures, or Co-Authored-By lines
+- After commit and push, refresh the optimized local binaries with
+  `scripts/ci/build_local_native_binaries.sh` (release CLI, C ABI cdylib,
+  bundled Python lib, Elixir NIF into `priv/native/`, and `dist/local/`
+  zips) so downstream consumers can sync current artifacts.
 
 
 ## General Rules 

@@ -85,3 +85,7 @@ Scope: this file governs AI agent behavior in `ctara-dhruv-core`.
 - Short commit messages, imperative mood
 - No boilerplate, signatures, or Co-Authored-By lines
 - Commit the changes after doing a logical set of changes
+- After commit and push, refresh the optimized local binaries with
+  `scripts/ci/build_local_native_binaries.sh` (release CLI, C ABI cdylib,
+  bundled Python lib, Elixir NIF into `priv/native/`, and `dist/local/`
+  zips) so downstream consumers can sync current artifacts
