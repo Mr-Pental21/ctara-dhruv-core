@@ -150,8 +150,11 @@ When the field products are enabled, the result additionally contains:
 - `umbra_footprints`: entries `{utc, jd_tdb, grahan_type, boundary,
   contains_pole}` — the true instantaneous umbral (`total`) or antumbral
   (`annular`) outline at every path timestamp plus the C2/greatest/C3
-  moments. Replaces chord-between-limits approximations and supports
-  smooth timeline animation; partial events return none;
+  moments, clipped by the terminator like the penumbral footprints (near
+  the central contacts totality happens at sunrise/sunset, so the grazing
+  ellipse ends exactly on the terminator). Replaces chord-between-limits
+  approximations and supports smooth timeline animation; partial events
+  return none;
 - `magnitude_rings` on every `footprints[]` and `contact_footprints[]`
   entry (when `instantaneous_magnitude_levels` is set): entries
   `{level, boundary, contains_pole}` — the instantaneous iso-magnitude

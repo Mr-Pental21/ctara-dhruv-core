@@ -140,9 +140,16 @@
 - Sampled penumbral footprints are the same single-time visibility level
   set (terminator-clipped, closed along the terminator arc) rather than
   the raw penumbral cone-ellipsoid ring: the raw ring's far side reaches
-  the night hemisphere where no eclipse is observable. The umbral
-  outlines keep the raw central-cone intersection, which lies deep on the
-  day side by construction.
+  the night hemisphere where no eclipse is observable.
+- Umbral/antumbral outlines get the identical Sun-up clip, contoured on a
+  grid localized around the raw central-cone ring (the central shadow is
+  degrees-scale, far below the global penumbral grid; the raw ring bounds
+  the clipped region because clipping only shrinks it, and a
+  pole-winding raw ring switches the grid to a wrapped polar band).
+  Mid-eclipse the clip is inert — the umbra sits deep on the day side —
+  but within minutes of the central contacts the grazing ellipse crosses
+  the terminator and is truncated to end exactly on it, flush with the
+  swept corridor's end caps.
 
 ## Validation (field products)
 

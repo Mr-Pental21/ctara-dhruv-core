@@ -349,7 +349,19 @@ fn arctic_total_2026_field_products() {
 fn arctic_total_2026_footprints_are_terminator_clipped() {
     let Some(engine) = load_engine() else { return };
     let eop = load_eop();
-    let event = event_with_fields(&engine, eop.as_ref(), jd(2026, 8, 1.0));
+    // The 1-minute cadence the consumer's server runs: the near-contact
+    // samples (17:01-17:02 and 18:31-18:32 UTC) are the grazing ellipses
+    // whose raw form crossed the terminator.
+    let config = GrahanConfig {
+        include_path: true,
+        path_step_minutes: 1,
+        boundary_step_deg: 5,
+        include_umbra_footprints: true,
+        ..GrahanConfig::default()
+    };
+    let event = next_surya_grahan(&engine, eop.as_ref(), jd(2026, 8, 1.0), None, &config)
+        .expect("surya search")
+        .expect("surya event");
     assert!(!event.footprints.is_empty());
     let mut any_on_terminator = false;
     for footprint in &event.footprints {
@@ -393,6 +405,55 @@ fn arctic_total_2026_footprints_are_terminator_clipped() {
             point.center
         );
     }
+
+    // Change 8b: umbral outlines are terminator-clipped too. The C2/C3
+    // entries are grazing ellipses that previously reached ~99-100 degrees
+    // from the subsolar point; clipped, they end on the terminator.
+    let mut umbra_on_terminator = false;
+    for footprint in &event.umbra_footprints {
+        let elements = besselian_elements_at(&engine, eop.as_ref(), footprint.jd_tdb)
+            .expect("besselian elements");
+        let subsolar = EclipseGeoPoint {
+            latitude_deg: elements.d_deg,
+            longitude_deg: {
+                let lon = (-elements.mu_deg).rem_euclid(360.0);
+                if lon > 180.0 { lon - 360.0 } else { lon }
+            },
+        };
+        for vertex in &footprint.boundary {
+            let distance_deg = great_circle_km(*vertex, subsolar) / 111.19;
+            assert!(
+                distance_deg <= 92.5,
+                "umbra vertex {vertex:?} lies {distance_deg:.1} deg from the subsolar point"
+            );
+            if distance_deg >= 88.0 {
+                umbra_on_terminator = true;
+            }
+        }
+        // Nested inside the timestamp-matched clipped penumbral footprint.
+        if let Some(penumbral) = event
+            .footprints
+            .iter()
+            .find(|candidate| (candidate.jd_tdb - footprint.jd_tdb).abs() < 1.0e-9)
+        {
+            for vertex in footprint.boundary.iter().step_by(4) {
+                assert!(
+                    spherical_ring_contains(&penumbral.boundary, *vertex)
+                        || penumbral
+                            .boundary
+                            .iter()
+                            .map(|point| great_circle_km(*point, *vertex))
+                            .fold(f64::INFINITY, f64::min)
+                            < 130.0,
+                    "umbra vertex {vertex:?} outside its clipped penumbral footprint"
+                );
+            }
+        }
+    }
+    assert!(
+        umbra_on_terminator,
+        "no umbra vertex near the terminator; the C2/C3 grazing ellipses should touch it"
+    );
 }
 
 /// Change 6 on the 2026-08-12 Arctic total event: contact and umbral

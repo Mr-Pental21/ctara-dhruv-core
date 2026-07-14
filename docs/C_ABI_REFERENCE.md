@@ -2576,9 +2576,11 @@ count) is the instantaneous iso-magnitude contour at that timestamp,
 terminator-clipped like the visibility products, with unreached levels
 omitted. Read via `dhruv_surya_grahan_footprint_magnitude_ring_at`/
 `_point_at` and `dhruv_surya_grahan_contact_magnitude_ring_at`/`_point_at`.
-Behavior change in the same version: sampled `footprints[]` boundaries are
-now terminator-clipped instantaneous visibility rings (no night-side
-overhang), matching the magnitude-ring and contact-footprint convention.
+Behavior change in the same version: sampled `footprints[]` and
+`umbra_footprints[]` boundaries are now terminator-clipped instantaneous
+rings (no night-side overhang), matching the magnitude-ring and
+contact-footprint convention; near the central contacts the grazing
+umbral ellipse ends exactly on the terminator.
 
 **v82**: Surya contact-moment and umbral footprints. `DhruvGrahanConfig`
 gained `include_contact_footprints` and `include_umbra_footprints`.

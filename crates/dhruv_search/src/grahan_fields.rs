@@ -1104,6 +1104,144 @@ pub(crate) fn instantaneous_rings(
     })
 }
 
+/// Terminator-clipped instantaneous umbral/antumbral outline at one moment:
+/// the level set of `min(central shadow margin, Sun-up margin)`. Mid-eclipse
+/// this equals the raw central cone-ellipsoid ring (the umbra sits deep on
+/// the day side), but within minutes of the central contacts the grazing
+/// ellipse juts past the terminator and must be truncated by — and end
+/// exactly on — it, flush with the corridor's rounded end caps.
+///
+/// The central shadow is degrees-scale, far below the global grid used for
+/// penumbral products, so the contour grid is localized around the raw
+/// ring's bounding box (clipping only shrinks the region, so the raw ring
+/// bounds it); a raw ring that winds around a pole switches to a wrapped
+/// polar band. Returns None when the clipped region is empty or smaller
+/// than the sampling grid.
+pub(crate) fn instantaneous_central_ring(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    jd_tdb: f64,
+    raw_ring: &[EclipseGeoPoint],
+) -> Result<Option<SuryaIsolineRing>, SearchError> {
+    if raw_ring.len() < 4 {
+        return Ok(None);
+    }
+    let (sun, moon) = sun_moon_true_vectors(engine, jd_tdb)?;
+    let gast = gast_rad_for(engine, eop, jd_tdb);
+    let field = move |lat: f64, lon: f64| -> f64 {
+        let sample = eval_with(sun, moon, gast, &ObserverPoint::new(lat, lon));
+        ((sample.moon_radius_rad - sample.sun_radius_rad).abs() - sample.separation_rad)
+            .min(sample.altitude_margin())
+    };
+
+    // Raw-ring extent in unwrapped longitudes; the accumulated winding
+    // detects a pole-enclosing ring.
+    let mut lat_min = f64::INFINITY;
+    let mut lat_max = f64::NEG_INFINITY;
+    let mut lon_u = raw_ring[0].longitude_deg;
+    let mut lon_min = lon_u;
+    let mut lon_max = lon_u;
+    for pair in raw_ring.windows(2) {
+        lat_min = lat_min.min(pair[0].latitude_deg);
+        lat_max = lat_max.max(pair[0].latitude_deg);
+        lon_u += wrap_delta(pair[1].longitude_deg - pair[0].longitude_deg);
+        lon_min = lon_min.min(lon_u);
+        lon_max = lon_max.max(lon_u);
+    }
+    let winding = lon_u - raw_ring[0].longitude_deg;
+    let encloses_pole = winding.abs() > 180.0;
+
+    let mut lats: Vec<f64> = Vec::new();
+    let (lon0, lon_step, n_lon, wraps);
+    if encloses_pole {
+        // Polar band up to the enclosed pole, wrapped in longitude.
+        let north = 90.0 - lat_max < lat_min + 90.0;
+        let step = (((lat_max - lat_min).max(0.5)) / 120.0).clamp(0.01, 0.5);
+        n_lon = ((360.0 / step) as usize).clamp(180, 2400);
+        lon_step = 360.0 / n_lon as f64;
+        lon0 = -180.0 + 0.5 * lon_step;
+        wraps = true;
+        if north {
+            let start = (lat_min - 0.5).max(-90.0 + step);
+            let mut lat = start;
+            while lat < 90.0 - step * 0.25 {
+                lats.push(lat);
+                lat += step;
+            }
+            lats.push(90.0);
+        } else {
+            lats.push(-90.0);
+            let end = (lat_max + 0.5).min(90.0 - step);
+            let mut lat = -90.0 + step * 0.75;
+            while lat < end {
+                lats.push(lat);
+                lat += step;
+            }
+            lats.push(end);
+        }
+    } else {
+        let extent = (lat_max - lat_min).max(lon_max - lon_min).max(0.2);
+        let pad = (0.2 * extent).max(0.3);
+        // Grazing near-contact slivers are far thinner than they are long;
+        // resolve against the max extent with a fine floor.
+        let step = (extent / 240.0).clamp(0.005, 0.25);
+        let lat_lo = (lat_min - pad).max(-90.0);
+        let lat_hi = (lat_max + pad).min(90.0);
+        let mut lat = lat_lo;
+        while lat < lat_hi {
+            lats.push(lat);
+            lat += step;
+        }
+        lats.push(lat_hi);
+        lon0 = lon_min - pad;
+        lon_step = step;
+        n_lon = (((lon_max + pad) - lon0) / step).ceil() as usize + 1;
+        wraps = false;
+    }
+    let n_rows = lats.len();
+    if n_rows < 2 || n_lon < 2 || n_rows * n_lon > 2_000_000 {
+        return Ok(None);
+    }
+
+    let mut values = Vec::with_capacity(n_rows * n_lon);
+    for lat in &lats {
+        if *lat <= -90.0 + 1.0e-9 || *lat >= 90.0 - 1.0e-9 {
+            let pole = field(*lat, 0.0);
+            values.extend(std::iter::repeat_n(pole, n_lon));
+        } else {
+            for col in 0..n_lon {
+                values.push(field(*lat, normalize_lon(lon0 + col as f64 * lon_step)));
+            }
+        }
+    }
+
+    let lats_ref = &lats;
+    let point = move |row_f: f64, col_f: f64| -> EclipseGeoPoint {
+        let row = (row_f.floor() as usize).min(lats_ref.len() - 2);
+        let t = row_f - row as f64;
+        EclipseGeoPoint {
+            latitude_deg: lats_ref[row] + (lats_ref[row + 1] - lats_ref[row]) * t,
+            longitude_deg: normalize_lon(lon0 + col_f * lon_step),
+        }
+    };
+    let field_at = |row_f: f64, col_f: f64| -> f64 {
+        let geo = point(row_f, col_f);
+        field(geo.latitude_deg, geo.longitude_deg)
+    };
+    let rings = extract_rings(
+        &ContourGrid {
+            n_rows,
+            n_cols: n_lon,
+            wraps,
+            values: &values,
+            point: &point,
+            field: &field_at,
+        },
+        0.0,
+    );
+    Ok(rings.into_iter().max_by_key(|ring| ring.boundary.len()))
+}
+
 // ---------------------------------------------------------------------------
 // 5c: swept central corridor over a track-aligned grid
 // ---------------------------------------------------------------------------

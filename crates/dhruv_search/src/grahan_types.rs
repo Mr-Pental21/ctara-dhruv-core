@@ -276,7 +276,10 @@ pub struct SuryaContactFootprint {
 
 /// Instantaneous umbral/antumbral shadow outline at one moment: the true
 /// shape of the central shadow on the ground, strongly elongated near the
-/// corridor ends where the shadow strikes at grazing incidence.
+/// corridor ends where the shadow strikes at grazing incidence. Clipped by
+/// the day/night terminator (near the central contacts totality happens at
+/// sunrise/sunset, so the oval ends exactly on the terminator, flush with
+/// the corridor's rounded end caps).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuryaUmbraFootprint {
     pub jd_tdb: f64,
