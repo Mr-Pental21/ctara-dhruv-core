@@ -31,7 +31,7 @@ use crate::grahan::{
 use crate::grahan_types::{
     EclipseGeoPoint, GeoLocation, GrahanConfig, PoleSide, SuryaCentralCorridor,
     SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahanType, SuryaIsolineRing, SuryaIsolines,
-    SuryaLocalGridSample, SuryaMagnitudeIsoline,
+    SuryaLocalGridSample, SuryaMagnitudeIsoline, SuryaMagnitudeRing,
 };
 
 /// Sun-up altitude threshold in degrees (standard refraction + semidiameter),
@@ -938,26 +938,38 @@ impl PointSummaryAt {
 // 6a: instantaneous visibility ring at one moment
 // ---------------------------------------------------------------------------
 
-/// The instantaneous penumbral visibility region at one moment: the closed
-/// ring enclosing every location with a partial phase in progress and the
-/// Sun up (same clip convention as the Change 5 visibility boundary, so the
-/// ring always lies inside it). Returns None when the region is empty or
-/// smaller than the sampling grid — at exact C1/C4 tangency the region
-/// degenerates toward a point.
+/// Instantaneous single-moment rings: the Sun-up-clipped visibility region
+/// and, per requested level, the terminator-clipped iso-magnitude contours.
+pub(crate) struct InstantRings {
+    /// The closed ring enclosing every location with a partial phase in
+    /// progress and the Sun up; None when the region is empty or smaller
+    /// than the sampling grid (exact C1/C4 tangency degenerates toward a
+    /// point).
+    pub visibility: Option<SuryaIsolineRing>,
+    /// Iso-magnitude rings ordered by level; levels the moment's maximum
+    /// magnitude does not reach are omitted.
+    pub magnitude: Vec<SuryaMagnitudeRing>,
+}
+
+/// Contour the instantaneous visibility and visible-magnitude fields at one
+/// moment (same clip conventions as the Change 5 fields, so every ring lies
+/// inside the corresponding max-over-time product, and rings nest by level).
 ///
-/// This deliberately differs from the sampled `footprints` rings, which
-/// keep the raw cone-ellipsoid intersection: near the contacts a grazing
-/// cone's ring includes a night-side sliver past the terminator that never
-/// sees the eclipse.
-pub(crate) fn instantaneous_visibility_ring(
+/// The visibility ring deliberately differs from the sampled `footprints`
+/// rings, which keep the raw cone-ellipsoid intersection: near the contacts
+/// a grazing cone's ring includes a night-side sliver past the terminator
+/// that never sees the eclipse.
+pub(crate) fn instantaneous_rings(
     engine: &Engine,
     eop: Option<&EopKernel>,
     jd_tdb: f64,
-) -> Result<Option<SuryaIsolineRing>, SearchError> {
+    magnitude_levels: &[f64],
+    include_visibility: bool,
+) -> Result<InstantRings, SearchError> {
     let (sun, moon) = sun_moon_true_vectors(engine, jd_tdb)?;
     let gast = gast_rad_for(engine, eop, jd_tdb);
-    let field = move |lat: f64, lon: f64| -> f64 {
-        eval_with(sun, moon, gast, &ObserverPoint::new(lat, lon)).visibility_margin()
+    let eval = move |lat: f64, lon: f64| -> PointEval {
+        eval_with(sun, moon, gast, &ObserverPoint::new(lat, lon))
     };
 
     const STEP_DEG: f64 = 1.0;
@@ -971,14 +983,27 @@ pub(crate) fn instantaneous_visibility_ring(
     lats.push(90.0);
     let lon0 = -180.0 + 0.5 * STEP_DEG;
 
-    let mut values = Vec::with_capacity(lats.len() * n_lon);
+    let need_magnitude = !magnitude_levels.is_empty();
+    let mut vis_values = Vec::with_capacity(lats.len() * n_lon);
+    let mut mag_values = Vec::with_capacity(if need_magnitude {
+        lats.len() * n_lon
+    } else {
+        0
+    });
     for lat in &lats {
         if *lat <= -90.0 + 1.0e-9 || *lat >= 90.0 - 1.0e-9 {
-            let pole = field(*lat, 0.0);
-            values.extend(std::iter::repeat_n(pole, n_lon));
+            let pole = eval(*lat, 0.0);
+            vis_values.extend(std::iter::repeat_n(pole.visibility_margin(), n_lon));
+            if need_magnitude {
+                mag_values.extend(std::iter::repeat_n(pole.visible_magnitude(), n_lon));
+            }
         } else {
             for col in 0..n_lon {
-                values.push(field(*lat, normalize_lon(lon0 + col as f64 * STEP_DEG)));
+                let sample = eval(*lat, normalize_lon(lon0 + col as f64 * STEP_DEG));
+                vis_values.push(sample.visibility_margin());
+                if need_magnitude {
+                    mag_values.push(sample.visible_magnitude());
+                }
             }
         }
     }
@@ -992,24 +1017,59 @@ pub(crate) fn instantaneous_visibility_ring(
             longitude_deg: normalize_lon(lon0 + col_f * STEP_DEG),
         }
     };
-    let field_at = |row_f: f64, col_f: f64| -> f64 {
+    let vis_field = |row_f: f64, col_f: f64| -> f64 {
         let geo = point(row_f, col_f);
-        field(geo.latitude_deg, geo.longitude_deg)
+        eval(geo.latitude_deg, geo.longitude_deg).visibility_margin()
     };
-    let rings = extract_rings(
-        &ContourGrid {
-            n_rows: lats.len(),
-            n_cols: n_lon,
-            wraps: true,
-            values: &values,
-            point: &point,
-            field: &field_at,
-        },
-        0.0,
-    );
-    Ok(rings
+    let mag_field = |row_f: f64, col_f: f64| -> f64 {
+        let geo = point(row_f, col_f);
+        eval(geo.latitude_deg, geo.longitude_deg).visible_magnitude()
+    };
+
+    let visibility = if include_visibility {
+        extract_rings(
+            &ContourGrid {
+                n_rows: lats.len(),
+                n_cols: n_lon,
+                wraps: true,
+                values: &vis_values,
+                point: &point,
+                field: &vis_field,
+            },
+            0.0,
+        )
         .into_iter()
-        .max_by_key(|ring| ring.boundary.len()))
+        .max_by_key(|ring| ring.boundary.len())
+    } else {
+        None
+    };
+
+    let mut magnitude = Vec::new();
+    for level in magnitude_levels {
+        let rings = extract_rings(
+            &ContourGrid {
+                n_rows: lats.len(),
+                n_cols: n_lon,
+                wraps: true,
+                values: &mag_values,
+                point: &point,
+                field: &mag_field,
+            },
+            *level,
+        );
+        for ring in rings {
+            magnitude.push(SuryaMagnitudeRing {
+                level: *level,
+                boundary: ring.boundary,
+                contains_pole: ring.contains_pole,
+            });
+        }
+    }
+
+    Ok(InstantRings {
+        visibility,
+        magnitude,
+    })
 }
 
 // ---------------------------------------------------------------------------

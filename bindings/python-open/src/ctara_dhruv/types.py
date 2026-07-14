@@ -414,12 +414,23 @@ class SuryaGrahanPathPoint:
 
 
 @dataclass(frozen=True)
+class SuryaMagnitudeRing:
+    """One instantaneous iso-magnitude contour ring."""
+
+    level: float
+    boundary: tuple[EclipseGeoPoint, ...]
+    # Pole containment: 0=none, 1=north, 2=south.
+    contains_pole: int = 0
+
+
+@dataclass(frozen=True)
 class SuryaGrahanFootprint:
     jd_tdb: float
     utc: UtcTime
     boundary: tuple[EclipseGeoPoint, ...]
     # Pole containment of the shadow region: 0=none, 1=north, 2=south.
     contains_pole: int = 0
+    magnitude_rings: tuple[SuryaMagnitudeRing, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -436,6 +447,7 @@ class SuryaContactFootprint:
     utc: UtcTime
     boundary: tuple[EclipseGeoPoint, ...]
     contains_pole: int = 0
+    magnitude_rings: tuple[SuryaMagnitudeRing, ...] = ()
 
 
 @dataclass(frozen=True)

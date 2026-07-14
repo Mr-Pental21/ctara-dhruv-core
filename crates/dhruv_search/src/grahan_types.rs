@@ -77,6 +77,11 @@ pub struct GrahanConfig {
     /// path timestamp and at the C2/greatest/C3 moments for Surya grahan.
     /// Default: false.
     pub include_umbra_footprints: bool,
+    /// Instantaneous iso-magnitude contour levels. When non-empty, every
+    /// sampled footprint and contact footprint carries `magnitude_rings` at
+    /// these levels. Values outside (0, 1.5] are dropped; the list is
+    /// sorted, deduplicated, and capped at 16 entries. Default: empty.
+    pub instantaneous_magnitude_levels: Vec<f64>,
 }
 
 impl Default for GrahanConfig {
@@ -95,6 +100,7 @@ impl Default for GrahanConfig {
             include_central_corridor: false,
             include_contact_footprints: false,
             include_umbra_footprints: false,
+            instantaneous_magnitude_levels: Vec::new(),
         }
     }
 }
@@ -122,6 +128,12 @@ impl GrahanConfig {
         sanitize_levels(&self.magnitude_isoline_levels, 0.0, 1.5, true)
     }
 
+    /// Sanitized instantaneous magnitude levels: finite, in (0, 1.5],
+    /// sorted, deduplicated, at most 16.
+    pub fn effective_instantaneous_magnitude_levels(&self) -> Vec<f64> {
+        sanitize_levels(&self.instantaneous_magnitude_levels, 0.0, 1.5, true)
+    }
+
     /// The configuration actually applied after clamping and sanitizing.
     /// Responses echo this so callers can build cache keys against the
     /// effective values rather than the raw request.
@@ -140,6 +152,7 @@ impl GrahanConfig {
             include_central_corridor: self.include_central_corridor,
             include_contact_footprints: self.include_contact_footprints,
             include_umbra_footprints: self.include_umbra_footprints,
+            instantaneous_magnitude_levels: self.effective_instantaneous_magnitude_levels(),
         }
     }
 }
@@ -199,6 +212,17 @@ pub struct SuryaGrahanPathPoint {
     pub grahan_type: SuryaGrahanType,
 }
 
+/// One instantaneous iso-magnitude contour ring: the closed curve where the
+/// eclipse magnitude at this moment equals `level`, clipped by the
+/// terminator like the visibility products. Same ring contract as
+/// `SuryaIsolineRing`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuryaMagnitudeRing {
+    pub level: f64,
+    pub boundary: Vec<EclipseGeoPoint>,
+    pub contains_pole: Option<PoleSide>,
+}
+
 /// Boundary of the instantaneous penumbral footprint on Earth. The vertices
 /// form one ordered closed ring; the final coordinate repeats the first.
 #[derive(Debug, Clone, PartialEq)]
@@ -209,6 +233,11 @@ pub struct SuryaGrahanFootprint {
     /// Set when the shadow region bounded by this ring contains a
     /// geographic pole; decided on the sphere by the geometry producer.
     pub contains_pole: Option<PoleSide>,
+    /// Instantaneous iso-magnitude contours at this timestamp, ordered by
+    /// level. Empty unless `GrahanConfig::instantaneous_magnitude_levels`
+    /// is non-empty; levels the moment's maximum magnitude does not reach
+    /// are omitted.
+    pub magnitude_rings: Vec<SuryaMagnitudeRing>,
 }
 
 /// The event contact a contact-moment footprint belongs to.
@@ -236,6 +265,10 @@ pub struct SuryaContactFootprint {
     /// empty at exact tangency.
     pub boundary: Vec<EclipseGeoPoint>,
     pub contains_pole: Option<PoleSide>,
+    /// Instantaneous iso-magnitude contours at this contact, ordered by
+    /// level. Empty unless `GrahanConfig::instantaneous_magnitude_levels`
+    /// is non-empty; unreached levels are omitted.
+    pub magnitude_rings: Vec<SuryaMagnitudeRing>,
 }
 
 /// Instantaneous umbral/antumbral shadow outline at one moment: the true

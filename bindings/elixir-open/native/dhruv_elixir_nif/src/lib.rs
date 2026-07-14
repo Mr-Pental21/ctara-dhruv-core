@@ -484,6 +484,7 @@ struct SearchConfigInput {
     include_central_corridor: Option<bool>,
     include_contact_footprints: Option<bool>,
     include_umbra_footprints: Option<bool>,
+    instantaneous_magnitude_levels: Option<Vec<f64>>,
     numerical_step_days: Option<f64>,
 }
 
@@ -2024,6 +2025,9 @@ fn to_grahan_config(
         if let Some(include_umbra_footprints) = input.include_umbra_footprints {
             config.include_umbra_footprints = include_umbra_footprints;
         }
+        if let Some(levels) = &input.instantaneous_magnitude_levels {
+            config.instantaneous_magnitude_levels = levels.clone();
+        }
     }
     config
 }
@@ -2922,8 +2926,26 @@ fn grahan_effective_config_json(config: &dhruv_search::GrahanConfig) -> Value {
         "magnitude_isoline_levels": effective.magnitude_isoline_levels,
         "include_central_corridor": effective.include_central_corridor,
         "include_contact_footprints": effective.include_contact_footprints,
-        "include_umbra_footprints": effective.include_umbra_footprints
+        "include_umbra_footprints": effective.include_umbra_footprints,
+        "instantaneous_magnitude_levels": effective.instantaneous_magnitude_levels
     })
+}
+
+fn magnitude_rings_json(rings: Vec<dhruv_search::SuryaMagnitudeRing>) -> Value {
+    Value::Array(
+        rings
+            .into_iter()
+            .map(|ring| {
+                json!({
+                    "level": ring.level,
+                    "contains_pole": pole_side_json(ring.contains_pole),
+                    "boundary": ring.boundary.into_iter().map(|p| json!({
+                        "latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg
+                    })).collect::<Vec<_>>()
+                })
+            })
+            .collect(),
+    )
 }
 
 fn pole_side_json(side: Option<dhruv_search::PoleSide>) -> Value {
@@ -3020,7 +3042,8 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
         "footprints": event.footprints.into_iter().map(|f| json!({
             "utc": utc_json(f.utc), "jd_tdb": f.jd_tdb,
             "boundary": f.boundary.into_iter().map(|p| json!({"latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg})).collect::<Vec<_>>(),
-            "contains_pole": pole_side_json(f.contains_pole)
+            "contains_pole": pole_side_json(f.contains_pole),
+            "magnitude_rings": magnitude_rings_json(f.magnitude_rings)
         })).collect::<Vec<_>>(),
         "contact_footprints": event.contact_footprints.into_iter().map(|f| json!({
             "contact": match f.contact {
@@ -3032,7 +3055,8 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
             },
             "utc": utc_json(f.utc), "jd_tdb": f.jd_tdb,
             "boundary": f.boundary.into_iter().map(|p| json!({"latitude_deg": p.latitude_deg, "longitude_deg": p.longitude_deg})).collect::<Vec<_>>(),
-            "contains_pole": pole_side_json(f.contains_pole)
+            "contains_pole": pole_side_json(f.contains_pole),
+            "magnitude_rings": magnitude_rings_json(f.magnitude_rings)
         })).collect::<Vec<_>>(),
         "umbra_footprints": event.umbra_footprints.into_iter().map(|f| json!({
             "utc": utc_json(f.utc), "jd_tdb": f.jd_tdb,

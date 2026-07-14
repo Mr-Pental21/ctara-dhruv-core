@@ -54,7 +54,8 @@ pub use dhruv_search::grahan_types::{
     SuryaCentralCorridor, SuryaCentrality, SuryaContactFootprint, SuryaContactKind,
     SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahan, SuryaGrahanFootprint,
     SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing,
-    SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline, SuryaUmbraFootprint,
+    SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline, SuryaMagnitudeRing,
+    SuryaUmbraFootprint,
 };
 pub use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 pub use dhruv_search::stationary_types::{

@@ -315,7 +315,10 @@ and `central_corridor.segments`. With `include_contact_footprints` /
 contains_pole: ...}`; empty boundary at exact C1/C4 tangency) and
 `umbra_footprints` (instantaneous umbral/antumbral outlines with
 `grahan_type` and `contains_pole`); every sampled `footprints` entry now
-carries `contains_pole` too. The grahan response envelope echoes the
+carries `contains_pole` too. With `instantaneous_magnitude_levels`, every
+footprint and contact footprint also carries `magnitude_rings`
+(`%{level, boundary, contains_pole}` — per-timestamp nested iso-magnitude
+contours). The grahan response envelope echoes the
 effective (clamped/sanitized) configuration under `effective_config` for
 cache identity. See `docs/end_user/solar_eclipse_visibility.md`.
 

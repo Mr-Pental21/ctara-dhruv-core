@@ -187,6 +187,7 @@ pub struct GrahanConfigPatch {
     pub include_central_corridor: Option<bool>,
     pub include_contact_footprints: Option<bool>,
     pub include_umbra_footprints: Option<bool>,
+    pub instantaneous_magnitude_levels: Option<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -664,6 +665,13 @@ impl ConfigResolver {
             recommended(self.defaults_mode, false),
             "grahan.include_umbra_footprints",
         )?;
+        let (instantaneous_magnitude_levels, instantaneous_levels_source) = choose_clone(
+            explicit.instantaneous_magnitude_levels.clone(),
+            op.instantaneous_magnitude_levels.clone(),
+            None,
+            recommended(self.defaults_mode, Vec::new()),
+            "grahan.instantaneous_magnitude_levels",
+        )?;
         if !local_grid_step_deg.is_finite() {
             return Err(ConfigError::InvalidConfig(
                 "grahan.local_grid_step_deg must be finite".to_string(),
@@ -696,6 +704,10 @@ impl ConfigResolver {
             "include_umbra_footprints".to_string(),
             umbra_footprints_source,
         );
+        source.insert(
+            "instantaneous_magnitude_levels".to_string(),
+            instantaneous_levels_source,
+        );
 
         Ok(EffectiveConfig {
             value: GrahanConfig {
@@ -712,6 +724,7 @@ impl ConfigResolver {
                 include_central_corridor,
                 include_contact_footprints,
                 include_umbra_footprints,
+                instantaneous_magnitude_levels,
             },
             source_by_field: source,
         })

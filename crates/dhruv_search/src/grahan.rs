@@ -1235,6 +1235,7 @@ fn sample_path_and_footprints(
     }
     let step = config.path_step_minutes.clamp(1, 30) as f64 / 1440.0;
     let boundary_step = config.boundary_step_deg.clamp(1, 15);
+    let magnitude_levels = config.effective_instantaneous_magnitude_levels();
     let mut path = Vec::new();
     let mut footprints = Vec::new();
     let mut jd = start_jd;
@@ -1243,11 +1244,24 @@ fn sample_path_and_footprints(
         if !boundary.is_empty() {
             let contains_pole =
                 footprint_contains_pole(engine, eop, jd, ShadowCone::Penumbra, &boundary)?;
+            let magnitude_rings = if magnitude_levels.is_empty() {
+                Vec::new()
+            } else {
+                crate::grahan_fields::instantaneous_rings(
+                    engine,
+                    eop,
+                    jd,
+                    &magnitude_levels,
+                    false,
+                )?
+                .magnitude
+            };
             footprints.push(SuryaGrahanFootprint {
                 jd_tdb: jd,
                 utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
                 boundary,
                 contains_pole,
+                magnitude_rings,
             });
         }
         if let Some(point) = path_point(engine, eop, jd, boundary_step)? {
@@ -1660,6 +1674,7 @@ fn compute_surya_grahan(
     };
 
     let contact_footprints = if config.include_contact_footprints {
+        let magnitude_levels = config.effective_instantaneous_magnitude_levels();
         let contacts = [
             (SuryaContactKind::C1, c1_jd),
             (SuryaContactKind::C2, c2_jd),
@@ -1675,17 +1690,19 @@ fn compute_surya_grahan(
             // At exact C1/C4 tangency the region degenerates toward a point;
             // the entry is still returned with an empty ring and consumers
             // fall back to the nearest sampled footprint.
-            let (boundary, contains_pole) =
-                match crate::grahan_fields::instantaneous_visibility_ring(engine, eop, jd)? {
-                    Some(ring) => (ring.boundary, ring.contains_pole),
-                    None => (Vec::new(), None),
-                };
+            let rings =
+                crate::grahan_fields::instantaneous_rings(engine, eop, jd, &magnitude_levels, true)?;
+            let (boundary, contains_pole) = match rings.visibility {
+                Some(ring) => (ring.boundary, ring.contains_pole),
+                None => (Vec::new(), None),
+            };
             entries.push(SuryaContactFootprint {
                 contact,
                 jd_tdb: jd,
                 utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
                 boundary,
                 contains_pole,
+                magnitude_rings: rings.magnitude,
             });
         }
         entries

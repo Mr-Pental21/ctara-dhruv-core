@@ -1685,6 +1685,9 @@ struct GrahanOpArgs {
     /// Include instantaneous umbral/antumbral outlines (surya).
     #[arg(long, default_value_t = false)]
     include_umbra_footprints: bool,
+    /// Comma-separated instantaneous iso-magnitude levels for footprints.
+    #[arg(long, value_delimiter = ',')]
+    instantaneous_magnitude_levels: Vec<f64>,
     /// Observer latitude for local solar-eclipse circumstances.
     #[arg(long, requires = "lon")]
     lat: Option<f64>,
@@ -6673,6 +6676,7 @@ fn main() {
                 include_central_corridor: args.include_central_corridor,
                 include_contact_footprints: args.include_contact_footprints,
                 include_umbra_footprints: args.include_umbra_footprints,
+                instantaneous_magnitude_levels: args.instantaneous_magnitude_levels.clone(),
             };
             let eop = args.eop.as_deref().map(load_eop);
             let location = args.lat.zip(args.lon).map(|(lat, lon)| {
@@ -10843,11 +10847,24 @@ fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan)
     }
     for footprint in &ev.contact_footprints {
         println!(
-            "  Contact footprint: {:?} at {} — {} points, pole={:?}",
+            "  Contact footprint: {:?} at {} — {} points, pole={:?}, {} magnitude ring(s)",
             footprint.contact,
             footprint.utc,
             footprint.boundary.len(),
-            footprint.contains_pole
+            footprint.contains_pole,
+            footprint.magnitude_rings.len()
+        );
+    }
+    let magnitude_ring_total: usize = ev
+        .footprints
+        .iter()
+        .map(|footprint| footprint.magnitude_rings.len())
+        .sum();
+    if magnitude_ring_total > 0 {
+        println!(
+            "  Instantaneous magnitude rings: {} across {} footprints",
+            magnitude_ring_total,
+            ev.footprints.len()
         );
     }
     if !ev.umbra_footprints.is_empty() {

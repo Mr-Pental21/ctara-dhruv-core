@@ -317,7 +317,8 @@ optional `--eop`, plus the field products: `--include-local-grid`,
 `--local-grid-step-deg`, `--include-isolines`,
 `--duration-isoline-fractions`, `--magnitude-isoline-levels` (comma
 separated), `--include-central-corridor`, `--include-contact-footprints`,
-and `--include-umbra-footprints`. Output summarizes centrality, grid sample
+`--include-umbra-footprints`, and `--instantaneous-magnitude-levels`
+(comma separated). Output summarizes centrality, grid sample
 counts, isoline ring counts, corridor segments, contact footprints, and
 umbral outline counts. See
 `docs/end_user/solar_eclipse_visibility.md`.

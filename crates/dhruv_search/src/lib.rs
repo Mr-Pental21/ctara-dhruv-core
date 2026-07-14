@@ -70,7 +70,7 @@ pub use grahan_types::{
     SuryaContactKind, SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahan,
     SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
     SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline,
-    SuryaUmbraFootprint,
+    SuryaMagnitudeRing, SuryaUmbraFootprint,
 };
 pub use jyotish::{
     all_upagrahas_for_date, all_upagrahas_for_date_with_config, amsha_charts_for_date,

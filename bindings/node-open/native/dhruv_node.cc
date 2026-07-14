@@ -2617,6 +2617,30 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
         }
         SetNamed(env, item, "boundary", boundary);
         SetNamed(env, item, "containsPole", MakeInt32(env, footprint.contains_pole));
+        napi_value magnitudeRings;
+        napi_create_array_with_length(env, footprint.magnitude_ring_count, &magnitudeRings);
+        for (uint32_t k = 0; k < footprint.magnitude_ring_count; ++k) {
+            DhruvSuryaMagnitudeRing ring{};
+            if (dhruv_surya_grahan_footprint_magnitude_ring_at(g.geometry_handle, i, k, &ring) != STATUS_OK) break;
+            napi_value ring_obj;
+            napi_create_object(env, &ring_obj);
+            SetNamed(env, ring_obj, "level", MakeDouble(env, ring.level));
+            SetNamed(env, ring_obj, "containsPole", MakeInt32(env, ring.contains_pole));
+            napi_value ring_boundary;
+            napi_create_array_with_length(env, ring.point_count, &ring_boundary);
+            for (uint32_t p = 0; p < ring.point_count; ++p) {
+                DhruvEclipseGeoPoint point{};
+                if (dhruv_surya_grahan_footprint_magnitude_ring_point_at(g.geometry_handle, i, k, p, &point) != STATUS_OK) break;
+                napi_value coordinate;
+                napi_create_object(env, &coordinate);
+                SetNamed(env, coordinate, "latitudeDeg", MakeDouble(env, point.latitude_deg));
+                SetNamed(env, coordinate, "longitudeDeg", MakeDouble(env, point.longitude_deg));
+                napi_set_element(env, ring_boundary, p, coordinate);
+            }
+            SetNamed(env, ring_obj, "boundary", ring_boundary);
+            napi_set_element(env, magnitudeRings, k, ring_obj);
+        }
+        SetNamed(env, item, "magnitudeRings", magnitudeRings);
         napi_set_element(env, footprints, i, item);
     }
     SetNamed(env, obj, "footprints", footprints);
@@ -2643,6 +2667,30 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
         }
         SetNamed(env, item, "boundary", boundary);
         SetNamed(env, item, "containsPole", MakeInt32(env, footprint.contains_pole));
+        napi_value magnitudeRings;
+        napi_create_array_with_length(env, footprint.magnitude_ring_count, &magnitudeRings);
+        for (uint32_t k = 0; k < footprint.magnitude_ring_count; ++k) {
+            DhruvSuryaMagnitudeRing ring{};
+            if (dhruv_surya_grahan_contact_magnitude_ring_at(g.geometry_handle, i, k, &ring) != STATUS_OK) break;
+            napi_value ring_obj;
+            napi_create_object(env, &ring_obj);
+            SetNamed(env, ring_obj, "level", MakeDouble(env, ring.level));
+            SetNamed(env, ring_obj, "containsPole", MakeInt32(env, ring.contains_pole));
+            napi_value ring_boundary;
+            napi_create_array_with_length(env, ring.point_count, &ring_boundary);
+            for (uint32_t p = 0; p < ring.point_count; ++p) {
+                DhruvEclipseGeoPoint point{};
+                if (dhruv_surya_grahan_contact_magnitude_ring_point_at(g.geometry_handle, i, k, p, &point) != STATUS_OK) break;
+                napi_value coordinate;
+                napi_create_object(env, &coordinate);
+                SetNamed(env, coordinate, "latitudeDeg", MakeDouble(env, point.latitude_deg));
+                SetNamed(env, coordinate, "longitudeDeg", MakeDouble(env, point.longitude_deg));
+                napi_set_element(env, ring_boundary, p, coordinate);
+            }
+            SetNamed(env, ring_obj, "boundary", ring_boundary);
+            napi_set_element(env, magnitudeRings, k, ring_obj);
+        }
+        SetNamed(env, item, "magnitudeRings", magnitudeRings);
         napi_set_element(env, contactFootprints, i, item);
     }
     SetNamed(env, obj, "contactFootprints", contactFootprints);
@@ -4839,6 +4887,13 @@ napi_value WriteGrahanConfig(napi_env env, const DhruvGrahanConfig& cfg) {
     SetNamed(env, out, "includeCentralCorridor", MakeBool(env, cfg.include_central_corridor != 0));
     SetNamed(env, out, "includeContactFootprints", MakeBool(env, cfg.include_contact_footprints != 0));
     SetNamed(env, out, "includeUmbraFootprints", MakeBool(env, cfg.include_umbra_footprints != 0));
+    napi_value instantaneousLevels;
+    napi_create_array_with_length(env, cfg.instantaneous_magnitude_level_count, &instantaneousLevels);
+    for (uint32_t i = 0; i < cfg.instantaneous_magnitude_level_count && i < DHRUV_GRAHAN_MAX_ISOLINE_LEVELS; ++i) {
+        napi_value value = MakeDouble(env, cfg.instantaneous_magnitude_levels[i]);
+        napi_set_element(env, instantaneousLevels, i, value);
+    }
+    SetNamed(env, out, "instantaneousMagnitudeLevels", instantaneousLevels);
     return out;
 }
 
@@ -5027,6 +5082,7 @@ napi_value GrahanSearch(napi_env env, napi_callback_info info) {
         };
         if (!read_levels("durationIsolineFractions", cfg.duration_isoline_fractions, &cfg.duration_isoline_fraction_count)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!read_levels("magnitudeIsolineLevels", cfg.magnitude_isoline_levels, &cfg.magnitude_isoline_level_count)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!read_levels("instantaneousMagnitudeLevels", cfg.instantaneous_magnitude_levels, &cfg.instantaneous_magnitude_level_count)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!GetOptionalNamedProperty(env, cfg_obj, "includeCentralCorridor", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present) {
             bool b = false;

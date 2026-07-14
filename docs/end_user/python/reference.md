@@ -467,7 +467,8 @@ plus counts), and `include_central_corridor`; results then carry
 `contact_footprints` (`SuryaContactFootprint`; contact 0=C1..4=C4, empty
 boundary at exact C1/C4 tangency) and `umbra_footprints`
 (`SuryaUmbraFootprint`); every `SuryaGrahanFootprint` now carries
-`contains_pole`. `search.grahan_config_effective(config)`
+`contains_pole`, and with `instantaneous_magnitude_levels` both footprint
+kinds carry `magnitude_rings` (`SuryaMagnitudeRing`). `search.grahan_config_effective(config)`
 echoes the clamped/sanitized configuration for cache identity. See
 `docs/end_user/solar_eclipse_visibility.md`.
 - `stationary_config_default`

@@ -76,7 +76,8 @@ controls optional path and footprint sampling plus the field products
 `include_central_corridor`, `include_contact_footprints`,
 `include_umbra_footprints`). `SuryaGrahan` then carries `centrality`,
 `local_grid`, `isolines`, `central_corridor`, `contact_footprints`, and
-`umbra_footprints`; sampled footprints carry `contains_pole`;
+`umbra_footprints`; sampled footprints carry `contains_pole` and, with
+`instantaneous_magnitude_levels`, per-timestamp `magnitude_rings`;
 `GrahanConfig::effective()` echoes the clamped/sanitized configuration for
 cache identity. See `docs/end_user/solar_eclipse_visibility.md` for the
 result fields and map use.

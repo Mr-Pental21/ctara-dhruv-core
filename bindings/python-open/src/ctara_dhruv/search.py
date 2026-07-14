@@ -22,6 +22,7 @@ from .types import (
     SuryaIsolines,
     SuryaContactFootprint,
     SuryaUmbraFootprint,
+    SuryaMagnitudeRing,
     StationaryEvent,
     MaxSpeedEvent,
     LunarPhaseEvent,
@@ -162,6 +163,29 @@ def _chandra_grahan(r) -> ChandraGrahanResult:
     )
 
 
+def _magnitude_rings(geometry, footprint_index, ring_count, ring_at, ring_point_at) -> tuple:
+    """Read the instantaneous iso-magnitude rings of one footprint."""
+    rings = []
+    for ring_index in range(int(ring_count)):
+        raw_ring = ffi.new("DhruvSuryaMagnitudeRing *")
+        check(ring_at(geometry, footprint_index, ring_index, raw_ring))
+        boundary = []
+        for point_index in range(int(raw_ring.point_count)):
+            raw_point = ffi.new("DhruvEclipseGeoPoint *")
+            check(ring_point_at(
+                geometry, footprint_index, ring_index, point_index, raw_point
+            ))
+            boundary.append(EclipseGeoPoint(
+                raw_point.latitude_deg, raw_point.longitude_deg
+            ))
+        rings.append(SuryaMagnitudeRing(
+            level=float(raw_ring.level),
+            boundary=tuple(boundary),
+            contains_pole=int(raw_ring.contains_pole),
+        ))
+    return tuple(rings)
+
+
 def _ring_set(geometry, set_kind) -> tuple:
     """Read one ring set (isoline levels or corridor segments)."""
     count = ffi.new("uint32_t *")
@@ -247,6 +271,11 @@ def _surya_grahan(r) -> SuryaGrahanResult:
                 utc=_utc_from_c(footprint.utc),
                 boundary=tuple(boundary),
                 contains_pole=int(footprint.contains_pole),
+                magnitude_rings=_magnitude_rings(
+                    geometry, footprint_index, footprint.magnitude_ring_count,
+                    lib.dhruv_surya_grahan_footprint_magnitude_ring_at,
+                    lib.dhruv_surya_grahan_footprint_magnitude_ring_point_at,
+                ),
             ))
         for contact_index in range(int(r.contact_footprint_count)):
             raw = ffi.new("DhruvSuryaContactFootprint *")
@@ -267,6 +296,11 @@ def _surya_grahan(r) -> SuryaGrahanResult:
                 utc=_utc_from_c(footprint.utc),
                 boundary=tuple(boundary),
                 contains_pole=int(footprint.contains_pole),
+                magnitude_rings=_magnitude_rings(
+                    geometry, contact_index, footprint.magnitude_ring_count,
+                    lib.dhruv_surya_grahan_contact_magnitude_ring_at,
+                    lib.dhruv_surya_grahan_contact_magnitude_ring_point_at,
+                ),
             ))
         for umbra_index in range(int(r.umbra_footprint_count)):
             raw = ffi.new("DhruvSuryaUmbraFootprint *")

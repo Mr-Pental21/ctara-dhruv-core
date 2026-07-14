@@ -75,7 +75,8 @@ and `includeCentralCorridor`; results then carry `centrality`, `localGrid`,
 `containsPole`-tagged rings), and `centralCorridor.segments`. With
 `includeContactFootprints`/`includeUmbraFootprints`, results also carry
 `contactFootprints` and `umbraFootprints`; every `footprints` entry carries
-`containsPole`. See
+`containsPole`, and with `instantaneousMagnitudeLevels` both footprint
+kinds carry `magnitudeRings`. See
 `docs/end_user/solar_eclipse_visibility.md`.
 - `motionSearch`
 - `lunarPhaseSearch`

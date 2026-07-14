@@ -410,7 +410,8 @@ and `IncludeCentralCorridor`; results then carry `Centrality`, `LocalGrid`,
 `Isolines`, and `CentralCorridor` (ring-set segments). With
 `IncludeContactFootprints`/`IncludeUmbraFootprints`, results also carry
 `ContactFootprints` and `UmbraFootprints`; every `SuryaGrahanFootprint`
-carries `ContainsPole`. `GrahanConfigEffective` echoes the
+carries `ContainsPole`, and with `InstantaneousMagnitudeLevels` both
+footprint kinds carry `MagnitudeRings` (`SuryaMagnitudeRing`). `GrahanConfigEffective` echoes the
 clamped/sanitized configuration for cache identity. See
 `docs/end_user/solar_eclipse_visibility.md`.
 

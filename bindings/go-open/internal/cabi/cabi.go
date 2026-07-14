@@ -970,6 +970,10 @@ func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
 	for i := range levels {
 		levels[i] = float64(cfg.magnitude_isoline_levels[i])
 	}
+	instantaneous := make([]float64, int(cfg.instantaneous_magnitude_level_count))
+	for i := range instantaneous {
+		instantaneous[i] = float64(cfg.instantaneous_magnitude_levels[i])
+	}
 	return GrahanConfig{
 		IncludePenumbral:         cfg.include_penumbral != 0,
 		IncludePeakDetails:       cfg.include_peak_details != 0,
@@ -981,9 +985,10 @@ func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
 		IncludeIsolines:          cfg.include_isolines != 0,
 		DurationIsolineFractions: fractions,
 		MagnitudeIsolineLevels:   levels,
-		IncludeCentralCorridor:   cfg.include_central_corridor != 0,
-		IncludeContactFootprints: cfg.include_contact_footprints != 0,
-		IncludeUmbraFootprints:   cfg.include_umbra_footprints != 0,
+		IncludeCentralCorridor:       cfg.include_central_corridor != 0,
+		IncludeContactFootprints:     cfg.include_contact_footprints != 0,
+		IncludeUmbraFootprints:       cfg.include_umbra_footprints != 0,
+		InstantaneousMagnitudeLevels: instantaneous,
 	}
 }
 
@@ -1011,6 +1016,11 @@ func cGrahanConfig(cfg GrahanConfig) C.DhruvGrahanConfig {
 		out.magnitude_isoline_levels[i] = C.double(cfg.MagnitudeIsolineLevels[i])
 	}
 	out.magnitude_isoline_level_count = C.uint32_t(levelCount)
+	instantaneousCount := min(len(cfg.InstantaneousMagnitudeLevels), 16)
+	for i := 0; i < instantaneousCount; i++ {
+		out.instantaneous_magnitude_levels[i] = C.double(cfg.InstantaneousMagnitudeLevels[i])
+	}
+	out.instantaneous_magnitude_level_count = C.uint32_t(instantaneousCount)
 	return out
 }
 
@@ -1134,7 +1144,25 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 				}
 				boundary[j] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
 			}
-			footprints[i] = SuryaGrahanFootprint{JdTdb: float64(footprint.jd_tdb), UTC: goUTC(footprint.utc), Boundary: boundary, ContainsPole: int32(footprint.contains_pole)}
+			magnitudeRings := make([]SuryaMagnitudeRing, int(footprint.magnitude_ring_count))
+			for k := range magnitudeRings {
+				var ring C.DhruvSuryaMagnitudeRing
+				if Status(C.dhruv_surya_grahan_footprint_magnitude_ring_at(geometry, C.uint32_t(i), C.uint32_t(k), &ring)) != StatusOK {
+					magnitudeRings = magnitudeRings[:k]
+					break
+				}
+				ringBoundary := make([]EclipseGeoPoint, int(ring.point_count))
+				for p := range ringBoundary {
+					var point C.DhruvEclipseGeoPoint
+					if Status(C.dhruv_surya_grahan_footprint_magnitude_ring_point_at(geometry, C.uint32_t(i), C.uint32_t(k), C.uint32_t(p), &point)) != StatusOK {
+						ringBoundary = ringBoundary[:p]
+						break
+					}
+					ringBoundary[p] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
+				}
+				magnitudeRings[k] = SuryaMagnitudeRing{Level: float64(ring.level), Boundary: ringBoundary, ContainsPole: int32(ring.contains_pole)}
+			}
+			footprints[i] = SuryaGrahanFootprint{JdTdb: float64(footprint.jd_tdb), UTC: goUTC(footprint.utc), Boundary: boundary, ContainsPole: int32(footprint.contains_pole), MagnitudeRings: magnitudeRings}
 		}
 		contactFootprints := make([]SuryaContactFootprint, int(v.contact_footprint_count))
 		for i := range contactFootprints {
@@ -1152,12 +1180,31 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 				}
 				boundary[j] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
 			}
+			magnitudeRings := make([]SuryaMagnitudeRing, int(footprint.magnitude_ring_count))
+			for k := range magnitudeRings {
+				var ring C.DhruvSuryaMagnitudeRing
+				if Status(C.dhruv_surya_grahan_contact_magnitude_ring_at(geometry, C.uint32_t(i), C.uint32_t(k), &ring)) != StatusOK {
+					magnitudeRings = magnitudeRings[:k]
+					break
+				}
+				ringBoundary := make([]EclipseGeoPoint, int(ring.point_count))
+				for p := range ringBoundary {
+					var point C.DhruvEclipseGeoPoint
+					if Status(C.dhruv_surya_grahan_contact_magnitude_ring_point_at(geometry, C.uint32_t(i), C.uint32_t(k), C.uint32_t(p), &point)) != StatusOK {
+						ringBoundary = ringBoundary[:p]
+						break
+					}
+					ringBoundary[p] = EclipseGeoPoint{LatitudeDeg: float64(point.latitude_deg), LongitudeDeg: float64(point.longitude_deg)}
+				}
+				magnitudeRings[k] = SuryaMagnitudeRing{Level: float64(ring.level), Boundary: ringBoundary, ContainsPole: int32(ring.contains_pole)}
+			}
 			contactFootprints[i] = SuryaContactFootprint{
-				Contact:      int32(footprint.contact),
-				JdTdb:        float64(footprint.jd_tdb),
-				UTC:          goUTC(footprint.utc),
-				Boundary:     boundary,
-				ContainsPole: int32(footprint.contains_pole),
+				Contact:        int32(footprint.contact),
+				JdTdb:          float64(footprint.jd_tdb),
+				UTC:            goUTC(footprint.utc),
+				Boundary:       boundary,
+				ContainsPole:   int32(footprint.contains_pole),
+				MagnitudeRings: magnitudeRings,
 			}
 		}
 		umbraFootprints := make([]SuryaUmbraFootprint, int(v.umbra_footprint_count))

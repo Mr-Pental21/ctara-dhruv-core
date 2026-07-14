@@ -41,6 +41,7 @@ fn field_config() -> GrahanConfig {
         include_central_corridor: true,
         include_contact_footprints: true,
         include_umbra_footprints: true,
+        instantaneous_magnitude_levels: vec![0.25, 0.5, 0.75],
         ..GrahanConfig::default()
     }
 }
@@ -435,6 +436,107 @@ fn arctic_total_2026_contact_and_umbra_footprints() {
         );
     }
 
+    // Instantaneous magnitude rings: per-timestamp nesting
+    // umbra ⊆ 0.75 ⊆ 0.5 ⊆ 0.25 ⊆ penumbral boundary.
+    let level_rings = |footprint: &dhruv_search::SuryaGrahanFootprint,
+                       level: f64|
+     -> Vec<SuryaIsolineRing> {
+        footprint
+            .magnitude_rings
+            .iter()
+            .filter(|ring| (ring.level - level).abs() < 1.0e-9)
+            .map(|ring| SuryaIsolineRing {
+                boundary: ring.boundary.clone(),
+                contains_pole: ring.contains_pole,
+            })
+            .collect()
+    };
+    let mut nested_checks = 0usize;
+    for footprint in event.footprints.iter().step_by(10) {
+        if footprint.magnitude_rings.is_empty() {
+            continue;
+        }
+        for ring in &footprint.magnitude_rings {
+            let as_ring = SuryaIsolineRing {
+                boundary: ring.boundary.clone(),
+                contains_pole: ring.contains_pole,
+            };
+            assert_closed_ring(&as_ring, "instantaneous magnitude ring");
+            // Terminator-clipped magnitude region is a subset of the
+            // geometric penumbral ring region; tolerance covers the
+            // geometric ring's ~550 km vertex spacing at 5-degree steps.
+            for vertex in ring.boundary.iter().step_by(6) {
+                assert!(
+                    spherical_ring_contains(&footprint.boundary, *vertex)
+                        || footprint
+                            .boundary
+                            .iter()
+                            .map(|point| great_circle_km(*point, *vertex))
+                            .fold(f64::INFINITY, f64::min)
+                            < 600.0,
+                    "magnitude ring vertex {vertex:?} outside penumbral footprint"
+                );
+            }
+        }
+        for pair in [(0.5, 0.25), (0.75, 0.5)] {
+            let inner = level_rings(footprint, pair.0);
+            let outer = level_rings(footprint, pair.1);
+            if inner.is_empty() || outer.is_empty() {
+                continue;
+            }
+            for ring in &inner {
+                for vertex in ring.boundary.iter().step_by(6) {
+                    assert!(
+                        inside_any_ring(&outer, *vertex)
+                            || distance_to_rings_km(&outer, *vertex) < 60.0,
+                        "level {} ring vertex {vertex:?} outside level {} region",
+                        pair.0,
+                        pair.1
+                    );
+                }
+            }
+        }
+        // Umbra outline at the same timestamp sits inside the 0.75 region.
+        let rings_075 = level_rings(footprint, 0.75);
+        if let Some(umbra) = event
+            .umbra_footprints
+            .iter()
+            .find(|umbra| (umbra.jd_tdb - footprint.jd_tdb).abs() < 1.0e-9)
+            && !rings_075.is_empty()
+        {
+            for vertex in umbra.boundary.iter().step_by(6) {
+                assert!(
+                    inside_any_ring(&rings_075, *vertex)
+                        || distance_to_rings_km(&rings_075, *vertex) < 60.0,
+                    "umbra vertex {vertex:?} outside the 0.75 magnitude region"
+                );
+            }
+            nested_checks += 1;
+        }
+    }
+    assert!(nested_checks > 0, "no umbra-in-0.75 nesting checks ran");
+    // Contact footprints carry magnitude rings too (greatest reaches all
+    // requested levels for this total eclipse).
+    assert!(
+        greatest_footprint
+            .magnitude_rings
+            .iter()
+            .any(|ring| (ring.level - 0.75).abs() < 1.0e-9),
+        "greatest contact footprint missing the 0.75 magnitude ring"
+    );
+    // The central path passes close to the north pole mid-event, so some
+    // timestamp's 0.5-level instantaneous region encloses it and the
+    // producer-decided flag must say so.
+    assert!(
+        event.footprints.iter().any(|footprint| {
+            footprint.magnitude_rings.iter().any(|ring| {
+                (ring.level - 0.5).abs() < 1.0e-9
+                    && ring.contains_pole == Some(PoleSide::North)
+            })
+        }),
+        "no 0.5 magnitude ring encloses the north pole for the Arctic event"
+    );
+
     // 6c: umbral outlines at every path timestamp plus the central contacts.
     assert!(
         event.umbra_footprints.len() >= event.path.len(),
@@ -571,6 +673,7 @@ fn antarctic_annular_2026_corridor_closes() {
         include_central_corridor: true,
         include_contact_footprints: true,
         include_umbra_footprints: true,
+        instantaneous_magnitude_levels: vec![0.5],
         ..GrahanConfig::default()
     };
     let event = next_surya_grahan(&engine, eop.as_ref(), jd(2026, 2, 1.0), None, &config)
@@ -590,6 +693,20 @@ fn antarctic_annular_2026_corridor_closes() {
     for footprint in &event.umbra_footprints {
         assert_eq!(footprint.grahan_type, SuryaGrahanType::Annular);
     }
+    // Instantaneous magnitude rings close near the pole. The 0.5 region at
+    // greatest is far smaller than the visibility region and need not reach
+    // the pole itself, so the flag is only constrained to south-or-absent.
+    let greatest_ring = greatest_footprint
+        .magnitude_rings
+        .iter()
+        .find(|ring| (ring.level - 0.5).abs() < 1.0e-9)
+        .expect("0.5 magnitude ring at greatest");
+    let as_ring = SuryaIsolineRing {
+        boundary: greatest_ring.boundary.clone(),
+        contains_pole: greatest_ring.contains_pole,
+    };
+    assert_closed_ring(&as_ring, "antarctic magnitude ring");
+    assert_ne!(greatest_ring.contains_pole, Some(PoleSide::North));
     let corridor = event.central_corridor.as_ref().expect("corridor");
     assert!(!corridor.segments.is_empty());
     let rings: Vec<SuryaIsolineRing> = corridor
@@ -619,10 +736,12 @@ fn effective_config_sanitizes() {
         local_grid_step_deg: 0.01,
         duration_isoline_fractions: vec![0.75, 0.25, 0.25, -1.0, 2.0, f64::NAN],
         magnitude_isoline_levels: vec![1.6, 1.0, 0.5, 0.5],
+        instantaneous_magnitude_levels: vec![0.75, 0.25, 0.25, 2.0, f64::NAN],
         ..GrahanConfig::default()
     };
     let effective = config.effective();
     assert_eq!(effective.local_grid_step_deg, 0.5);
     assert_eq!(effective.duration_isoline_fractions, vec![0.25, 0.75]);
     assert_eq!(effective.magnitude_isoline_levels, vec![0.5, 1.0]);
+    assert_eq!(effective.instantaneous_magnitude_levels, vec![0.25, 0.75]);
 }

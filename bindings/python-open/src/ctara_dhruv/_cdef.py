@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       82
+#define DHRUV_API_VERSION       83
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -689,6 +689,8 @@ typedef struct {
     uint32_t duration_isoline_fraction_count;
     double magnitude_isoline_levels[16];
     uint32_t magnitude_isoline_level_count;
+    double instantaneous_magnitude_levels[16];
+    uint32_t instantaneous_magnitude_level_count;
 } DhruvGrahanConfig;
 
 typedef struct {
@@ -757,7 +759,14 @@ typedef struct {
     DhruvUtcTime utc;
     uint32_t boundary_count;
     int32_t contains_pole;
+    uint32_t magnitude_ring_count;
 } DhruvSuryaGrahanFootprint;
+
+typedef struct {
+    double level;
+    int32_t contains_pole;
+    uint32_t point_count;
+} DhruvSuryaMagnitudeRing;
 
 typedef struct {
     int32_t contact;
@@ -765,6 +774,7 @@ typedef struct {
     DhruvUtcTime utc;
     uint32_t boundary_count;
     int32_t contains_pole;
+    uint32_t magnitude_ring_count;
 } DhruvSuryaContactFootprint;
 
 typedef struct {
@@ -2160,6 +2170,28 @@ DhruvStatus dhruv_surya_grahan_footprint_at(
 DhruvStatus dhruv_surya_grahan_footprint_point_at(
     DhruvSuryaGrahanGeometryHandle geometry,
     uint32_t footprint_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+DhruvStatus dhruv_surya_grahan_footprint_magnitude_ring_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t ring_index,
+    DhruvSuryaMagnitudeRing *out);
+DhruvStatus dhruv_surya_grahan_footprint_magnitude_ring_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t ring_index,
+    uint32_t point_index,
+    DhruvEclipseGeoPoint *out);
+DhruvStatus dhruv_surya_grahan_contact_magnitude_ring_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t ring_index,
+    DhruvSuryaMagnitudeRing *out);
+DhruvStatus dhruv_surya_grahan_contact_magnitude_ring_point_at(
+    DhruvSuryaGrahanGeometryHandle geometry,
+    uint32_t footprint_index,
+    uint32_t ring_index,
     uint32_t point_index,
     DhruvEclipseGeoPoint *out);
 DhruvStatus dhruv_surya_grahan_contact_footprint_at(

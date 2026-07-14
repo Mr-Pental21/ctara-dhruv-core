@@ -20,8 +20,8 @@ use dhruv_search::{
     StationType, StationaryConfig, StationaryEvent, SuryaCentralCorridor, SuryaCentrality,
     SuryaContactFootprint, SuryaContactKind, SuryaGrahan, SuryaGrahanFootprint,
     SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample,
-    SuryaUmbraFootprint, TajakaReturnBasis, TajakaReturnEvent, TithiPraveshaEvent,
-    TransitAspectKind,
+    SuryaMagnitudeRing, SuryaUmbraFootprint, TajakaReturnBasis, TajakaReturnEvent,
+    TithiPraveshaEvent, TransitAspectKind,
     TransitAspectOwner, TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date,
     ayana_for_date, balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat,
     charakaraka_for_date, dasha_child_period_with_inputs, dasha_children_with_inputs,
@@ -69,7 +69,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 82;
+pub const DHRUV_API_VERSION: u32 = 83;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -3636,6 +3636,10 @@ pub struct DhruvGrahanConfig {
     pub magnitude_isoline_levels: [f64; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS],
     /// Number of valid entries in `magnitude_isoline_levels`.
     pub magnitude_isoline_level_count: u32,
+    /// Instantaneous iso-magnitude contour levels for footprints.
+    pub instantaneous_magnitude_levels: [f64; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS],
+    /// Number of valid entries in `instantaneous_magnitude_levels`.
+    pub instantaneous_magnitude_level_count: u32,
 }
 
 /// Surya centrality: the central shadow never reaches Earth.
@@ -3765,6 +3769,10 @@ fn grahan_config_from_ffi(cfg: &DhruvGrahanConfig) -> GrahanConfig {
         include_central_corridor: cfg.include_central_corridor != 0,
         include_contact_footprints: cfg.include_contact_footprints != 0,
         include_umbra_footprints: cfg.include_umbra_footprints != 0,
+        instantaneous_magnitude_levels: levels(
+            &cfg.instantaneous_magnitude_levels,
+            cfg.instantaneous_magnitude_level_count,
+        ),
     }
 }
 
@@ -3783,6 +3791,13 @@ fn grahan_config_to_ffi(cfg: &GrahanConfig) -> DhruvGrahanConfig {
         .min(DHRUV_GRAHAN_MAX_ISOLINE_LEVELS);
     magnitude_isoline_levels[..magnitude_count]
         .copy_from_slice(&cfg.magnitude_isoline_levels[..magnitude_count]);
+    let mut instantaneous_magnitude_levels = [0.0; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    let instantaneous_count = cfg
+        .instantaneous_magnitude_levels
+        .len()
+        .min(DHRUV_GRAHAN_MAX_ISOLINE_LEVELS);
+    instantaneous_magnitude_levels[..instantaneous_count]
+        .copy_from_slice(&cfg.instantaneous_magnitude_levels[..instantaneous_count]);
     DhruvGrahanConfig {
         include_penumbral: u8::from(cfg.include_penumbral),
         include_peak_details: u8::from(cfg.include_peak_details),
@@ -3799,6 +3814,8 @@ fn grahan_config_to_ffi(cfg: &GrahanConfig) -> DhruvGrahanConfig {
         duration_isoline_fraction_count: duration_count as u32,
         magnitude_isoline_levels,
         magnitude_isoline_level_count: magnitude_count as u32,
+        instantaneous_magnitude_levels,
+        instantaneous_magnitude_level_count: instantaneous_count as u32,
     }
 }
 
@@ -4080,6 +4097,8 @@ pub struct DhruvSuryaGrahanFootprint {
     pub boundary_count: u32,
     /// Pole containment of the shadow region (`DHRUV_RING_POLE_*`).
     pub contains_pole: i32,
+    /// Number of instantaneous iso-magnitude rings at this timestamp.
+    pub magnitude_ring_count: u32,
 }
 
 impl From<&SuryaGrahanFootprint> for DhruvSuryaGrahanFootprint {
@@ -4089,6 +4108,28 @@ impl From<&SuryaGrahanFootprint> for DhruvSuryaGrahanFootprint {
             utc: utc_time_to_ffi(&value.utc),
             boundary_count: value.boundary.len().min(u32::MAX as usize) as u32,
             contains_pole: pole_side_to_code(value.contains_pole),
+            magnitude_ring_count: value.magnitude_rings.len().min(u32::MAX as usize) as u32,
+        }
+    }
+}
+
+/// Metadata for one instantaneous iso-magnitude ring.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSuryaMagnitudeRing {
+    pub level: f64,
+    /// Pole containment (`DHRUV_RING_POLE_*`).
+    pub contains_pole: i32,
+    /// Number of boundary points; the final point repeats the first.
+    pub point_count: u32,
+}
+
+impl From<&SuryaMagnitudeRing> for DhruvSuryaMagnitudeRing {
+    fn from(value: &SuryaMagnitudeRing) -> Self {
+        Self {
+            level: value.level,
+            contains_pole: pole_side_to_code(value.contains_pole),
+            point_count: value.boundary.len().min(u32::MAX as usize) as u32,
         }
     }
 }
@@ -4107,6 +4148,8 @@ pub struct DhruvSuryaContactFootprint {
     pub boundary_count: u32,
     /// Pole containment of the shadow region (`DHRUV_RING_POLE_*`).
     pub contains_pole: i32,
+    /// Number of instantaneous iso-magnitude rings at this contact.
+    pub magnitude_ring_count: u32,
 }
 
 impl From<&SuryaContactFootprint> for DhruvSuryaContactFootprint {
@@ -4117,6 +4160,7 @@ impl From<&SuryaContactFootprint> for DhruvSuryaContactFootprint {
             utc: utc_time_to_ffi(&value.utc),
             boundary_count: value.boundary.len().min(u32::MAX as usize) as u32,
             contains_pole: pole_side_to_code(value.contains_pole),
+            magnitude_ring_count: value.magnitude_rings.len().min(u32::MAX as usize) as u32,
         }
     }
 }
@@ -4513,6 +4557,118 @@ pub unsafe extern "C" fn dhruv_surya_grahan_footprint_point_at(
         .footprints
         .get(footprint_index as usize)
         .and_then(|footprint| footprint.boundary.get(point_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = (*point).into() };
+    DhruvStatus::Ok
+}
+
+/// Read one instantaneous iso-magnitude ring of one sampled footprint.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_footprint_magnitude_ring_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    footprint_index: u32,
+    ring_index: u32,
+    out: *mut DhruvSuryaMagnitudeRing,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(ring) = geometry
+        .footprints
+        .get(footprint_index as usize)
+        .and_then(|footprint| footprint.magnitude_rings.get(ring_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = ring.into() };
+    DhruvStatus::Ok
+}
+
+/// Read one boundary coordinate of one sampled footprint's magnitude ring.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_footprint_magnitude_ring_point_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    footprint_index: u32,
+    ring_index: u32,
+    point_index: u32,
+    out: *mut DhruvEclipseGeoPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(point) = geometry
+        .footprints
+        .get(footprint_index as usize)
+        .and_then(|footprint| footprint.magnitude_rings.get(ring_index as usize))
+        .and_then(|ring| ring.boundary.get(point_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = (*point).into() };
+    DhruvStatus::Ok
+}
+
+/// Read one instantaneous iso-magnitude ring of one contact footprint.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_contact_magnitude_ring_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    footprint_index: u32,
+    ring_index: u32,
+    out: *mut DhruvSuryaMagnitudeRing,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(ring) = geometry
+        .contact_footprints
+        .get(footprint_index as usize)
+        .and_then(|footprint| footprint.magnitude_rings.get(ring_index as usize))
+    else {
+        return DhruvStatus::InvalidInput;
+    };
+    unsafe { *out = ring.into() };
+    DhruvStatus::Ok
+}
+
+/// Read one boundary coordinate of one contact footprint's magnitude ring.
+///
+/// # Safety
+/// `handle` must be a live handle returned in `DhruvSuryaGrahanResult` and
+/// `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_surya_grahan_contact_magnitude_ring_point_at(
+    handle: DhruvSuryaGrahanGeometryHandle,
+    footprint_index: u32,
+    ring_index: u32,
+    point_index: u32,
+    out: *mut DhruvEclipseGeoPoint,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let geometry = unsafe { &*(handle as *const OwnedSuryaGrahanGeometry) };
+    let Some(point) = geometry
+        .contact_footprints
+        .get(footprint_index as usize)
+        .and_then(|footprint| footprint.magnitude_rings.get(ring_index as usize))
+        .and_then(|ring| ring.boundary.get(point_index as usize))
     else {
         return DhruvStatus::InvalidInput;
     };

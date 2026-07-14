@@ -456,6 +456,8 @@ type GrahanConfig struct {
 	// Surya contact-moment and umbral/antumbral footprints.
 	IncludeContactFootprints bool
 	IncludeUmbraFootprints   bool
+	// Instantaneous iso-magnitude contour levels for footprints.
+	InstantaneousMagnitudeLevels []float64
 }
 
 type GrahanSearchRequest struct {
@@ -516,23 +518,33 @@ type SuryaGrahanPathPoint struct {
 	GrahanType             int32
 }
 
+// SuryaMagnitudeRing is one instantaneous iso-magnitude contour ring.
+// ContainsPole: 0=none, 1=north, 2=south.
+type SuryaMagnitudeRing struct {
+	Level        float64
+	Boundary     []EclipseGeoPoint
+	ContainsPole int32
+}
+
 type SuryaGrahanFootprint struct {
 	JdTdb    float64
 	UTC      UtcTime
 	Boundary []EclipseGeoPoint
 	// Pole containment of the shadow region: 0=none, 1=north, 2=south.
-	ContainsPole int32
+	ContainsPole   int32
+	MagnitudeRings []SuryaMagnitudeRing
 }
 
 // SuryaContactFootprint is a penumbral footprint at one of the event's own
 // contact moments. Contact: 0=C1, 1=C2, 2=greatest, 3=C3, 4=C4. Boundary
 // may be empty at exact C1/C4 tangency.
 type SuryaContactFootprint struct {
-	Contact      int32
-	JdTdb        float64
-	UTC          UtcTime
-	Boundary     []EclipseGeoPoint
-	ContainsPole int32
+	Contact        int32
+	JdTdb          float64
+	UTC            UtcTime
+	Boundary       []EclipseGeoPoint
+	ContainsPole   int32
+	MagnitudeRings []SuryaMagnitudeRing
 }
 
 // SuryaUmbraFootprint is an instantaneous umbral/antumbral shadow outline.

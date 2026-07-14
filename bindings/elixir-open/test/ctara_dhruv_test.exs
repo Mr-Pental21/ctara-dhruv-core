@@ -94,7 +94,8 @@ defmodule CtaraDhruvTest do
                        path_step_minutes: 10,
                        boundary_step_deg: 15,
                        include_contact_footprints: true,
-                       include_umbra_footprints: true
+                       include_umbra_footprints: true,
+                       instantaneous_magnitude_levels: [0.5]
                      }
                    })
 
@@ -122,6 +123,14 @@ defmodule CtaraDhruvTest do
           [umbra | _] = eclipse.umbra_footprints
           assert umbra.grahan_type == :total
           assert List.first(umbra.boundary) == List.last(umbra.boundary)
+
+          # Instantaneous iso-magnitude rings at the greatest contact.
+          assert [magnitude_ring | _] = greatest_contact.magnitude_rings
+          assert magnitude_ring.level == 0.5
+          assert length(magnitude_ring.boundary) > 10
+          assert List.first(magnitude_ring.boundary) == List.last(magnitude_ring.boundary)
+          assert magnitude_ring.contains_pole in [nil, :north, :south]
+          assert Enum.any?(eclipse.footprints, &(&1.magnitude_rings != []))
 
           assert {:ok, %{events: field_eclipse, effective_config: effective_config}} =
                    Search.grahan(engine, %{

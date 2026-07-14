@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 82
+const ExpectedAPIVersion = 83
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -275,6 +275,7 @@ type (
 	SuryaIsolines         = cabi.SuryaIsolines
 	SuryaContactFootprint = cabi.SuryaContactFootprint
 	SuryaUmbraFootprint   = cabi.SuryaUmbraFootprint
+	SuryaMagnitudeRing    = cabi.SuryaMagnitudeRing
 
 	StationaryConfig    = cabi.StationaryConfig
 	MotionSearchRequest = cabi.MotionSearchRequest

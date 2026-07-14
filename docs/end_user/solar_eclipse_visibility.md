@@ -33,7 +33,10 @@ may include:
   antumbral shadow outline at every path timestamp and the central
   contacts — the shape is strongly elongated near the corridor ends where
   the shadow strikes at grazing incidence, which a chord between the path
-  limits cannot represent.
+  limits cannot represent;
+- `config.instantaneous_magnitude_levels` (for example `[0.25, 0.5,
+  0.75]`): instantaneous iso-magnitude contours attached to every sampled
+  footprint and contact footprint.
 
 Path generation defaults to off so catalog-only searches remain inexpensive.
 The default cadence is one minute and the default boundary step is two
@@ -144,7 +147,15 @@ When the field products are enabled, the result additionally contains:
   contains_pole}` — the true instantaneous umbral (`total`) or antumbral
   (`annular`) outline at every path timestamp plus the C2/greatest/C3
   moments. Replaces chord-between-limits approximations and supports
-  smooth timeline animation; partial events return none.
+  smooth timeline animation; partial events return none;
+- `magnitude_rings` on every `footprints[]` and `contact_footprints[]`
+  entry (when `instantaneous_magnitude_levels` is set): entries
+  `{level, boundary, contains_pole}` — the instantaneous iso-magnitude
+  contour at that timestamp, clipped by the terminator like the
+  visibility products. Per timestamp the rings nest: the umbral outline
+  sits inside the 0.75 ring, which sits inside 0.5, inside 0.25, inside
+  the penumbral boundary. Levels the moment's maximum magnitude does not
+  reach are omitted.
 
 UTC is the default high-level time representation. JD TDB remains beside it
 for numerical consumers.

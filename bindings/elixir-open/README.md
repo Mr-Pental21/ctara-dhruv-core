@@ -194,7 +194,8 @@ umbral/antumbral rings). With `include_contact_footprints` /
 :c3 | :c4`; empty boundary at exact C1/C4 tangency) and `umbra_footprints`
 (true instantaneous umbral/antumbral outlines per path timestamp and
 central contact); every sampled `footprints` entry carries
-`contains_pole`. The grahan response envelope includes
+`contains_pole`. With `instantaneous_magnitude_levels`, footprints and
+contact footprints also carry nested per-timestamp `magnitude_rings`. The grahan response envelope includes
 `effective_config`, the clamped/sanitized configuration actually applied —
 build cache keys against it.
 

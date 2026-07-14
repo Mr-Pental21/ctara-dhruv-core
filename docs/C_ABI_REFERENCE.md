@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 82`
+**ABI version:** `DHRUV_API_VERSION = 83`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -495,6 +495,9 @@ typedef struct {
     uint32_t duration_isoline_fraction_count;
     double magnitude_isoline_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
     uint32_t magnitude_isoline_level_count;
+    /* Instantaneous iso-magnitude contour levels for footprints (v83). */
+    double instantaneous_magnitude_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
+    uint32_t instantaneous_magnitude_level_count;
 } DhruvGrahanConfig;
 ```
 
@@ -2559,6 +2562,17 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v83**: Instantaneous iso-magnitude rings. `DhruvGrahanConfig` gained
+`instantaneous_magnitude_levels` (fixed 16-entry array plus count; values
+outside (0, 1.5] are dropped, echoed via
+`dhruv_grahan_config_effective`). `DhruvSuryaGrahanFootprint` and
+`DhruvSuryaContactFootprint` gained `magnitude_ring_count`; each ring
+(`DhruvSuryaMagnitudeRing`: level, `DHRUV_RING_POLE_*` containment, point
+count) is the instantaneous iso-magnitude contour at that timestamp,
+terminator-clipped like the visibility products, with unreached levels
+omitted. Read via `dhruv_surya_grahan_footprint_magnitude_ring_at`/
+`_point_at` and `dhruv_surya_grahan_contact_magnitude_ring_at`/`_point_at`.
 
 **v82**: Surya contact-moment and umbral footprints. `DhruvGrahanConfig`
 gained `include_contact_footprints` and `include_umbra_footprints`.

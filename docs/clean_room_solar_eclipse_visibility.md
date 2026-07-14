@@ -132,6 +132,11 @@
   cone-ellipsoid intersection at each path timestamp and central contact;
   the umbra-vs-antumbra classification follows the sign of the derived
   Besselian `l2` at that moment.
+- Instantaneous iso-magnitude rings contour the single-time visible
+  magnitude field (instantaneous magnitude clipped continuously across the
+  terminator, as in the Change 5 magnitude isolines) at caller-requested
+  levels; by construction the rings nest per timestamp between the umbral
+  outline and the penumbral boundary, and unreached levels are omitted.
 
 ## Validation (field products)
 

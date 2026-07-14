@@ -65,6 +65,15 @@ true instantaneous umbral/antumbral outlines (`grahan_type` per moment) at
 every path timestamp plus the C2/greatest/C3 moments; partial events
 return none.
 
+`instantaneous_magnitude_levels` (non-empty list; values outside (0, 1.5]
+dropped, sorted, deduplicated, capped at 16) adds
+`magnitude_rings: Vec<SuryaMagnitudeRing>` (`{level, boundary,
+contains_pole}`) to every sampled footprint and contact footprint: the
+instantaneous iso-magnitude contour at that timestamp, terminator-clipped
+like the visibility products, so the rings nest per timestamp (umbra ⊆
+higher levels ⊆ lower levels ⊆ penumbral boundary). Levels the moment's
+maximum magnitude does not reach are omitted.
+
 ## Sankranti (5)
 
 | Function | Inputs | Output | What it does |
