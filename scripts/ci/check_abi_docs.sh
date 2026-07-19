@@ -23,4 +23,20 @@ if [[ "$code_version" != "$doc_version" ]]; then
   exit 1
 fi
 
+# C-ABI-based wrapper READMEs state their ABI target; keep them synced too.
+# (elixir-open is excluded: its NIF calls the Rust crates directly, not the C ABI.)
+for readme in bindings/go-open/README.md bindings/node-open/README.md bindings/python-open/README.md; do
+  readme_version="$(
+    sed -n 's/.*DHRUV_API_VERSION=\([0-9][0-9]*\).*/\1/p' "$readme" | head -n1
+  )"
+  if [[ -z "$readme_version" ]]; then
+    echo "No ABI target found in $readme" >&2
+    exit 1
+  fi
+  if [[ "$readme_version" != "$code_version" ]]; then
+    echo "ABI doc mismatch: code=$code_version $readme=$readme_version" >&2
+    exit 1
+  fi
+done
+
 echo "ABI docs match code (DHRUV_API_VERSION=$code_version)."
