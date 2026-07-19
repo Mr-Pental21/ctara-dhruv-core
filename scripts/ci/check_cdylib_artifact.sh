@@ -48,26 +48,41 @@ elif [[ "$artifact" == *.dylib ]] && command -v nm >/dev/null 2>&1; then
   fi
   echo "Verified exported symbol '$symbol' in $artifact"
 elif [[ "$artifact" == *.dll ]]; then
+  # No single export-listing tool is reliably on PATH (or prints the COFF
+  # export table) across Windows runners, so accept a match from ANY
+  # available tool; the stdlib-only PE parser is the guaranteed fallback.
+  symbol_word="(^|[^A-Za-z0-9_])${symbol}([^A-Za-z0-9_]|\$)"
+  found=""
+  tried=()
   if command -v dumpbin >/dev/null 2>&1; then
-    if ! dumpbin /exports "$artifact" | grep -E -q "\\<${symbol}\\>"; then
-      echo "Expected exported symbol '$symbol' not found in $artifact" >&2
-      exit 1
+    tried+=(dumpbin)
+    dumpbin /exports "$artifact" 2>/dev/null | grep -E -q "$symbol_word" && found=dumpbin || true
+  fi
+  if [[ -z "$found" ]] && command -v llvm-readobj >/dev/null 2>&1; then
+    tried+=(llvm-readobj)
+    llvm-readobj --coff-exports "$artifact" 2>/dev/null | grep -E -q "$symbol_word" && found=llvm-readobj || true
+  fi
+  if [[ -z "$found" ]] && command -v llvm-objdump >/dev/null 2>&1; then
+    tried+=(llvm-objdump)
+    llvm-objdump -p "$artifact" 2>/dev/null | grep -E -q "$symbol_word" && found=llvm-objdump || true
+  fi
+  if [[ -z "$found" ]] && command -v objdump >/dev/null 2>&1; then
+    tried+=(objdump)
+    objdump -p "$artifact" 2>/dev/null | grep -E -q "$symbol_word" && found=objdump || true
+  fi
+  for py in python3 python; do
+    if [[ -z "$found" ]] && command -v "$py" >/dev/null 2>&1; then
+      tried+=("$py")
+      "$py" scripts/ci/pe_exports.py "$artifact" 2>/dev/null | grep -q "^${symbol}\$" && found="$py" || true
     fi
-    echo "Verified exported symbol '$symbol' in $artifact"
-  elif command -v llvm-objdump >/dev/null 2>&1; then
-    if ! llvm-objdump -p "$artifact" | grep -E -q "\\<${symbol}\\>"; then
-      echo "Expected exported symbol '$symbol' not found in $artifact" >&2
-      exit 1
-    fi
-    echo "Verified exported symbol '$symbol' in $artifact"
-  elif command -v objdump >/dev/null 2>&1; then
-    if ! objdump -p "$artifact" | grep -E -q "\\<${symbol}\\>"; then
-      echo "Expected exported symbol '$symbol' not found in $artifact" >&2
-      exit 1
-    fi
-    echo "Verified exported symbol '$symbol' in $artifact"
+  done
+  if [[ -n "$found" ]]; then
+    echo "Verified exported symbol '$symbol' in $artifact (via $found)"
+  elif [[ ${#tried[@]} -eq 0 ]]; then
+    echo "Symbol export check skipped for Windows artifact (no export-listing tool available)."
   else
-    echo "Symbol export check skipped for Windows artifact (no dumpbin/llvm-objdump/objdump in PATH)."
+    echo "Expected exported symbol '$symbol' not found in $artifact (tools tried: ${tried[*]})" >&2
+    exit 1
   fi
 else
   echo "Symbol export check skipped (nm not available)."
