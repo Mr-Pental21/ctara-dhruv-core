@@ -172,7 +172,7 @@ pub struct Bhava {
 /// Full result of a bhava computation: 12 bhavas plus Lagna/MC.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BhavaResult {
-    /// The 12 bhavas, indexed 0..12 (bhava[0] = house 1).
+    /// The 12 bhavas, indexed 0..12 (`bhava[0]` = house 1).
     pub bhavas: [Bhava; 12],
     /// Ecliptic longitude of the Lagna (Ascendant) in degrees, [0, 360).
     pub lagna_deg: f64,

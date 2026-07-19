@@ -20,9 +20,9 @@ pub struct LskData {
     pub k: f64,
     /// Earth orbital eccentricity for Kepler equation (DELTET/EB).
     pub eb: f64,
-    /// Mean anomaly at J2000.0 in radians (DELTET/M[0]).
+    /// Mean anomaly at J2000.0 in radians (`DELTET/M[0]`).
     pub m0: f64,
-    /// Mean anomaly rate in rad/s (DELTET/M[1]).
+    /// Mean anomaly rate in rad/s (`DELTET/M[1]`).
     pub m1: f64,
     /// Leap second table: (delta_AT, epoch_tdb_seconds_past_j2000), sorted by epoch.
     pub leap_seconds: Vec<(f64, f64)>,

@@ -1,3 +1,7 @@
+// Doc comments here are clap help text: `D<n>` and `[:variation]` are literal
+// CLI syntax, not rustdoc links/HTML.
+#![allow(rustdoc::broken_intra_doc_links, rustdoc::invalid_html_tags)]
+
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};

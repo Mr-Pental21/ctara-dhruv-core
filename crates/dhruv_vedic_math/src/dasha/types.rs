@@ -266,7 +266,7 @@ pub struct DashaHierarchy {
     pub system: DashaSystem,
     /// Birth JD UTC.
     pub birth_jd: f64,
-    /// Levels: levels[0]=mahadasha, levels[1]=antardasha, etc.
+    /// Levels: `levels[0]`=mahadasha, `levels[1]`=antardasha, etc.
     pub levels: Vec<Vec<DashaPeriod>>,
 }
 
@@ -277,7 +277,7 @@ pub struct DashaSnapshot {
     pub system: DashaSystem,
     /// The queried JD UTC.
     pub query_jd: f64,
-    /// Active periods: periods[0]=active mahadasha, [1]=active antardasha, etc.
+    /// Active periods: `periods[0]`=active mahadasha, `[1]`=active antardasha, etc.
     pub periods: Vec<DashaPeriod>,
 }
 

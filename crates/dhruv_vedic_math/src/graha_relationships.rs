@@ -73,8 +73,8 @@ pub const fn moolatrikone_range(graha: Graha) -> Option<(u8, f64, f64)> {
 
 /// Own-sign rashis.
 ///
-/// Sun [4], Moon [3], Mars [0,7], Mercury [2,5],
-/// Jupiter [8,11], Venus [1,6], Saturn [9,10], Rahu [10], Ketu [7].
+/// Sun `[4]`, Moon `[3]`, Mars `[0,7]`, Mercury `[2,5]`,
+/// Jupiter `[8,11]`, Venus `[1,6]`, Saturn `[9,10]`, Rahu `[10]`, Ketu `[7]`.
 pub fn own_signs(graha: Graha) -> &'static [u8] {
     match graha {
         Graha::Surya => &[4],     // Simha

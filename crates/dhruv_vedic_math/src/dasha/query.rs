@@ -1,7 +1,7 @@
 //! Period lookup: binary search for active periods at a given JD.
 //!
 //! Interval convention: [start_jd, end_jd) — start is inclusive, end is exclusive.
-//! Adjacent periods: period[n].end_jd == period[n+1].start_jd (no gaps, no overlaps).
+//! Adjacent periods: `period[n].end_jd == period[n+1].start_jd` (no gaps, no overlaps).
 
 use super::types::{DashaHierarchy, DashaPeriod, DashaSnapshot};
 
