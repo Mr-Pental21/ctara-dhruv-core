@@ -414,7 +414,12 @@ fn yogini_level0_valid() {
     let cfg = yogini_config();
     let birth_jd = 2451545.0;
     let ardra_start = 5.0 * (360.0 / 27.0);
-    let level0 = yogini_level0(birth_jd, ardra_start, &cfg, &DashaVariationConfig::default());
+    let level0 = yogini_level0(
+        birth_jd,
+        ardra_start,
+        &cfg,
+        &DashaVariationConfig::default(),
+    );
 
     assert_eq!(level0.len(), 8);
     assert_eq!(level0[0].entity, DashaEntity::Yogini(0)); // Mangala

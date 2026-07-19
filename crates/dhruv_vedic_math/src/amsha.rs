@@ -1674,11 +1674,8 @@ mod tests {
         // Kashinath hora: Karka div1 (105-120) maps to Karka(3), and Simha
         // div0 (120-135) also maps to Karka(3) — the 120° division boundary
         // is not a rashi change; the next change is at 135°.
-        let b = next_amsha_boundary_longitude(
-            110.0,
-            Amsha::D2,
-            Some(D2_KASHINATH_HORA_VARIATION_CODE),
-        );
+        let b =
+            next_amsha_boundary_longitude(110.0, Amsha::D2, Some(D2_KASHINATH_HORA_VARIATION_CODE));
         assert!((b - 135.0).abs() < 1e-9, "got {b}");
     }
 

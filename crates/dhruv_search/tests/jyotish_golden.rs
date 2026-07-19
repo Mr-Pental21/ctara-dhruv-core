@@ -1341,14 +1341,30 @@ fn series_rejects_invalid_requests() {
     // Zero step.
     assert!(
         dhruv_search::graha_positions_series(
-            &engine, &eop, &from, &to, 0, &location, &bhava_config, &aya_config, &config,
+            &engine,
+            &eop,
+            &from,
+            &to,
+            0,
+            &location,
+            &bhava_config,
+            &aya_config,
+            &config,
         )
         .is_err()
     );
     // Reversed range.
     assert!(
         dhruv_search::graha_positions_series(
-            &engine, &eop, &to, &from, 60, &location, &bhava_config, &aya_config, &config,
+            &engine,
+            &eop,
+            &to,
+            &from,
+            60,
+            &location,
+            &bhava_config,
+            &aya_config,
+            &config,
         )
         .is_err()
     );
@@ -1356,7 +1372,15 @@ fn series_rejects_invalid_requests() {
     let far = UtcTime::new(2025, 1, 15, 12, 0, 0.0);
     assert!(
         dhruv_search::graha_positions_series(
-            &engine, &eop, &from, &far, 1, &location, &bhava_config, &aya_config, &config,
+            &engine,
+            &eop,
+            &from,
+            &far,
+            1,
+            &location,
+            &bhava_config,
+            &aya_config,
+            &config,
         )
         .is_err()
     );

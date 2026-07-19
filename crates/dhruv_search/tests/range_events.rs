@@ -113,21 +113,41 @@ fn amsha_series_validation() {
     let loc = new_delhi();
     let requests = [AmshaRequest::new(Amsha::D9)];
 
-    let err = amsha_series(&engine, &eop, &from, &to, 0, &loc, &aya(), &requests, false)
-        .unwrap_err();
+    let err =
+        amsha_series(&engine, &eop, &from, &to, 0, &loc, &aya(), &requests, false).unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
 
     let err = amsha_series(&engine, &eop, &from, &to, 60, &loc, &aya(), &[], false).unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
 
-    let err = amsha_series(&engine, &eop, &to, &from, 60, &loc, &aya(), &requests, false)
-        .unwrap_err();
+    let err = amsha_series(
+        &engine,
+        &eop,
+        &to,
+        &from,
+        60,
+        &loc,
+        &aya(),
+        &requests,
+        false,
+    )
+    .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
 
     // 1-minute cadence over ~70 days = >100k cells for one request.
     let far = UtcTime::new(2024, 3, 26, 6, 0, 0.0);
-    let err = amsha_series(&engine, &eop, &from, &far, 1, &loc, &aya(), &requests, false)
-        .unwrap_err();
+    let err = amsha_series(
+        &engine,
+        &eop,
+        &from,
+        &far,
+        1,
+        &loc,
+        &aya(),
+        &requests,
+        false,
+    )
+    .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
 }
 
@@ -255,8 +275,7 @@ fn panchang_events_validation_and_truncation() {
     )
     .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
-    let err =
-        panchang_events(&engine, &eop, &from, &to, 0, None, &rs, &aya(), 0).unwrap_err();
+    let err = panchang_events(&engine, &eop, &from, &to, 0, None, &rs, &aya(), 0).unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
     let err = panchang_events(
         &engine,
@@ -323,7 +342,11 @@ fn panchang_events_validation_and_truncation() {
             all.push(*info);
         }
     }
-    assert_eq!(all.len(), full.tithi.len(), "stitched sweep must match full");
+    assert_eq!(
+        all.len(),
+        full.tithi.len(),
+        "stitched sweep must match full"
+    );
 }
 
 #[test]
@@ -444,8 +467,8 @@ fn amsha_lagna_events_d1_segments() {
     for segment in segments.iter().take(6) {
         let mid_jd = 0.5 * (jd(&engine, &segment.start) + jd(&engine, &segment.end));
         let mid = UtcTime::from_jd_tdb(mid_jd, engine.lsk());
-        let lagna = sidereal_lagna_for_date(&engine, &eop, &mid, &loc, &aya())
-            .expect("per-moment lagna");
+        let lagna =
+            sidereal_lagna_for_date(&engine, &eop, &mid, &loc, &aya()).expect("per-moment lagna");
         let info = amsha_rashi_info(lagna, Amsha::D1, None);
         assert_eq!(info.rashi_index, segment.rashi_index);
     }
@@ -499,8 +522,7 @@ fn amsha_lagna_events_validation_and_truncation() {
     let to = UtcTime::new(2024, 1, 15, 8, 0, 0.0);
     let loc = new_delhi();
 
-    let err =
-        amsha_lagna_events(&engine, &eop, &from, &to, &loc, &aya(), &[], 0).unwrap_err();
+    let err = amsha_lagna_events(&engine, &eop, &from, &to, &loc, &aya(), &[], 0).unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
     let err = amsha_lagna_events(
         &engine,

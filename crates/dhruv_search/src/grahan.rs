@@ -919,7 +919,11 @@ fn local_disk_geometry(
     })
 }
 
-pub(crate) fn disk_magnitude(separation_rad: f64, sun_radius_rad: f64, moon_radius_rad: f64) -> f64 {
+pub(crate) fn disk_magnitude(
+    separation_rad: f64,
+    sun_radius_rad: f64,
+    moon_radius_rad: f64,
+) -> f64 {
     ((sun_radius_rad + moon_radius_rad - separation_rad) / (2.0 * sun_radius_rad)).max(0.0)
 }
 
@@ -1632,8 +1636,13 @@ fn compute_surya_grahan(
             // At exact C1/C4 tangency the region degenerates toward a point;
             // the entry is still returned with an empty ring and consumers
             // fall back to the nearest sampled footprint.
-            let rings =
-                crate::grahan_fields::instantaneous_rings(engine, eop, jd, &magnitude_levels, true)?;
+            let rings = crate::grahan_fields::instantaneous_rings(
+                engine,
+                eop,
+                jd,
+                &magnitude_levels,
+                true,
+            )?;
             let (boundary, contains_pole) = match rings.visibility {
                 Some(ring) => (ring.boundary, ring.contains_pole),
                 None => (Vec::new(), None),
@@ -1652,8 +1661,7 @@ fn compute_surya_grahan(
         Vec::new()
     };
 
-    let umbra_footprints = if config.include_umbra_footprints
-        && centrality != SuryaCentrality::None
+    let umbra_footprints = if config.include_umbra_footprints && centrality != SuryaCentrality::None
     {
         let boundary_step = config.boundary_step_deg.clamp(1, 15);
         let mut jds: Vec<f64> = path.iter().map(|point| point.jd_tdb).collect();
@@ -1694,8 +1702,7 @@ fn compute_surya_grahan(
         Vec::new()
     };
 
-    let central_corridor = if config.include_central_corridor
-        && centrality != SuryaCentrality::None
+    let central_corridor = if config.include_central_corridor && centrality != SuryaCentrality::None
     {
         let corridor_start = c2_jd.unwrap_or(greatest_jd - 0.05) - 2.0 / 1440.0;
         let corridor_end = c3_jd.unwrap_or(greatest_jd + 0.05) + 2.0 / 1440.0;
@@ -1704,8 +1711,7 @@ fn compute_surya_grahan(
         let mut extra: Vec<EclipseGeoPoint> = Vec::new();
         if path.is_empty() {
             for index in 0..=16 {
-                let jd = corridor_start
-                    + (corridor_end - corridor_start) * index as f64 / 16.0;
+                let jd = corridor_start + (corridor_end - corridor_start) * index as f64 / 16.0;
                 track_points.push((jd, closest_axis_surface_point(engine, eop, jd)?));
             }
         } else {
@@ -1722,7 +1728,9 @@ fn compute_surya_grahan(
         // Instantaneous central outlines through the window cover the
         // rounded corridor end caps in the bounding box; the shadow's
         // ground speed peaks near the contacts, so sample densely there.
-        for fraction in [0.0, 0.01, 0.03, 0.08, 0.25, 0.5, 0.75, 0.92, 0.97, 0.99, 1.0] {
+        for fraction in [
+            0.0, 0.01, 0.03, 0.08, 0.25, 0.5, 0.75, 0.92, 0.97, 0.99, 1.0,
+        ] {
             let jd = corridor_start + (corridor_end - corridor_start) * fraction;
             extra.extend(shadow_boundary(
                 engine,
@@ -1748,7 +1756,11 @@ fn compute_surya_grahan(
 
     Ok(Some(SuryaGrahan {
         grahan_type,
-        magnitude: disk_magnitude(peak.separation_rad, peak.sun_radius_rad, peak.moon_radius_rad),
+        magnitude: disk_magnitude(
+            peak.separation_rad,
+            peak.sun_radius_rad,
+            peak.moon_radius_rad,
+        ),
         obscuration: disk_obscuration(
             peak.separation_rad,
             peak.sun_radius_rad,

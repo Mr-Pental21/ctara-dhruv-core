@@ -6683,9 +6683,10 @@ fn main() {
                 instantaneous_magnitude_levels: args.instantaneous_magnitude_levels.clone(),
             };
             let eop = args.eop.as_deref().map(load_eop);
-            let location = args.lat.zip(args.lon).map(|(lat, lon)| {
-                dhruv_search::GeoLocation::new(lat, lon, args.alt)
-            });
+            let location = args
+                .lat
+                .zip(args.lon)
+                .map(|(lat, lon)| dhruv_search::GeoLocation::new(lat, lon, args.alt));
             let query = match args.mode.as_str() {
                 "next" => {
                     let date = args.date.as_deref().unwrap_or_else(|| {
@@ -10836,11 +10837,7 @@ fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan)
     }
     if let Some(corridor) = &ev.central_corridor {
         for segment in &corridor.segments {
-            let points: usize = segment
-                .rings
-                .iter()
-                .map(|ring| ring.boundary.len())
-                .sum();
+            let points: usize = segment.rings.iter().map(|ring| ring.boundary.len()).sum();
             println!(
                 "  Corridor segment: {:?}, {} ring(s), {} points",
                 segment.grahan_type,
@@ -12101,11 +12098,7 @@ fn print_kundali(
                 nakshatra.nakshatra_index,
                 nakshatra.pada
             )?;
-            writeln!(
-                w,
-                "    Start:  {}  End: {}",
-                nakshatra.start, nakshatra.end
-            )?;
+            writeln!(w, "    Start:  {}  End: {}", nakshatra.start, nakshatra.end)?;
         }
         if let Some(ref m) = p.masa {
             let adhika_str = if m.adhika { " (Adhika)" } else { "" };
@@ -12267,7 +12260,18 @@ mod tests {
     #[test]
     fn test_resolve_kundali_flags_all_respects_explicit_panchang_mask() {
         let f = resolve_kundali_flags(
-            true, false, false, false, false, false, false, false, false, false, false, false,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
             false,
             dhruv_vedic_ops::PANCHANG_INCLUDE_TITHI,
         );
@@ -12297,7 +12301,18 @@ mod tests {
     #[test]
     fn test_resolve_kundali_flags_calendar_mask_only() {
         let f = resolve_kundali_flags(
-            false, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
             false,
             dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CALENDAR,
         );
@@ -12317,7 +12332,18 @@ mod tests {
         // When only panchang is selected, bhava cusps should be off
         // (follows include_graha which is false)
         let f = resolve_kundali_flags(
-            false, false, false, false, false, false, false, false, false, false, false, true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
             false,
             dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CORE,
         );
@@ -12377,7 +12403,18 @@ mod tests {
     #[test]
     fn test_build_kundali_config_bhava_cusps_off_when_panchang_only() {
         let resolved = resolve_kundali_flags(
-            false, false, false, false, false, false, false, false, false, false, false, true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
             false,
             dhruv_vedic_ops::PANCHANG_INCLUDE_ALL_CORE,
         );
@@ -13126,8 +13163,8 @@ mod tests {
         assert_ne!(mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT, 0);
         let mask = parse_panchang_elements("vaar,hora,ghatika").expect("mask");
         assert_eq!(mask, PANCHANG_INCLUDE_LOCATION_DEPENDENT);
-        let mask = parse_panchang_elements("tithi,karana,yoga,nakshatra,masa,ayana,varsha")
-            .expect("mask");
+        let mask =
+            parse_panchang_elements("tithi,karana,yoga,nakshatra,masa,ayana,varsha").expect("mask");
         assert_eq!(mask, PANCHANG_INCLUDE_LOCATION_INDEPENDENT);
         assert_eq!(mask & PANCHANG_INCLUDE_LOCATION_DEPENDENT, 0);
     }

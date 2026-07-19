@@ -1864,9 +1864,7 @@ pub fn graha_positions_series(
     let from_jd = utc_to_jd_utc(from_utc);
     let to_jd = utc_to_jd_utc(to_utc);
     if to_jd <= from_jd {
-        return Err(SearchError::InvalidConfig(
-            "to_utc must be after from_utc",
-        ));
+        return Err(SearchError::InvalidConfig("to_utc must be after from_utc"));
     }
     let step_days = step_minutes as f64 / 1440.0;
     // Inclusive grid: epochs from from_jd stepping by step_days, up to to_jd.
@@ -1941,9 +1939,7 @@ pub fn amsha_series(
     let from_jd = utc_to_jd_utc(from_utc);
     let to_jd = utc_to_jd_utc(to_utc);
     if to_jd <= from_jd {
-        return Err(SearchError::InvalidConfig(
-            "to_utc must be after from_utc",
-        ));
+        return Err(SearchError::InvalidConfig("to_utc must be after from_utc"));
     }
     let step_days = step_minutes as f64 / 1440.0;
     let count = (((to_jd - from_jd) / step_days) + 1e-5).floor() as usize + 1;
@@ -2046,9 +2042,9 @@ fn equatorial_epoch_data(
         (0.0, eps_mean)
     };
 
-    let jd_ut1 = eop
-        .utc_to_ut1_jd(ctx.jd_utc)
-        .map_err(|_| SearchError::InvalidConfig("UTC to UT1 conversion failed for sidereal time"))?;
+    let jd_ut1 = eop.utc_to_ut1_jd(ctx.jd_utc).map_err(|_| {
+        SearchError::InvalidConfig("UTC to UT1 conversion failed for sidereal time")
+    })?;
     let gmst_deg = gmst_rad(jd_ut1).to_degrees();
     let (ee_rad, _eps_true) = equation_of_equinoxes_and_true_obliquity(t);
     let gast_deg = (gmst_deg + ee_rad.to_degrees()).rem_euclid(360.0);
@@ -2081,7 +2077,10 @@ fn equatorial_epoch_data(
 
     let mut outer_lon_lat = [(0.0f64, 0.0f64); 3];
     if include_outer_planets {
-        for (i, body) in [Body::Uranus, Body::Neptune, Body::Pluto].iter().enumerate() {
+        for (i, body) in [Body::Uranus, Body::Neptune, Body::Pluto]
+            .iter()
+            .enumerate()
+        {
             outer_lon_lat[i] = body_ecliptic_lon_lat_with_model(
                 engine,
                 *body,
@@ -2102,7 +2101,13 @@ fn equatorial_epoch_data(
 }
 
 /// Fill the equatorial fields of an entry from ecliptic-of-date coordinates.
-fn fill_entry_equatorial(entry: &mut GrahaEntry, lon_deg: f64, lat_deg: f64, dpsi_deg: f64, eps_rad: f64) {
+fn fill_entry_equatorial(
+    entry: &mut GrahaEntry,
+    lon_deg: f64,
+    lat_deg: f64,
+    dpsi_deg: f64,
+    eps_rad: f64,
+) {
     let (ra, dec) = equatorial_from_ecliptic_deg(lon_deg + dpsi_deg, lat_deg, eps_rad);
     entry.equatorial_valid = true;
     entry.right_ascension_deg = ra;

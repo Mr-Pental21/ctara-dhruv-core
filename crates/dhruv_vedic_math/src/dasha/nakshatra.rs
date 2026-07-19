@@ -298,7 +298,8 @@ mod tests {
         let cfg = vimshottari_config();
         let birth_jd = 2451545.0;
         let mid_rohini = 40.0 + crate::nakshatra::NAKSHATRA_SPAN_27 / 2.0;
-        let periods = nakshatra_level0(birth_jd, mid_rohini, &cfg, &DashaVariationConfig::default());
+        let periods =
+            nakshatra_level0(birth_jd, mid_rohini, &cfg, &DashaVariationConfig::default());
 
         assert_eq!(periods[0].entity, DashaEntity::Graha(Graha::Chandra));
         let chandra_years = periods[0].duration_days() / DAYS_PER_YEAR;

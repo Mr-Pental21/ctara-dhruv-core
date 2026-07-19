@@ -553,19 +553,18 @@ fn arctic_total_2026_contact_and_umbra_footprints() {
 
     // Instantaneous magnitude rings: per-timestamp nesting
     // umbra ⊆ 0.75 ⊆ 0.5 ⊆ 0.25 ⊆ penumbral boundary.
-    let level_rings = |footprint: &dhruv_search::SuryaGrahanFootprint,
-                       level: f64|
-     -> Vec<SuryaIsolineRing> {
-        footprint
-            .magnitude_rings
-            .iter()
-            .filter(|ring| (ring.level - level).abs() < 1.0e-9)
-            .map(|ring| SuryaIsolineRing {
-                boundary: ring.boundary.clone(),
-                contains_pole: ring.contains_pole,
-            })
-            .collect()
-    };
+    let level_rings =
+        |footprint: &dhruv_search::SuryaGrahanFootprint, level: f64| -> Vec<SuryaIsolineRing> {
+            footprint
+                .magnitude_rings
+                .iter()
+                .filter(|ring| (ring.level - level).abs() < 1.0e-9)
+                .map(|ring| SuryaIsolineRing {
+                    boundary: ring.boundary.clone(),
+                    contains_pole: ring.contains_pole,
+                })
+                .collect()
+        };
     let mut nested_checks = 0usize;
     for footprint in event.footprints.iter().step_by(10) {
         if footprint.magnitude_rings.is_empty() {
@@ -645,8 +644,7 @@ fn arctic_total_2026_contact_and_umbra_footprints() {
     assert!(
         event.footprints.iter().any(|footprint| {
             footprint.magnitude_rings.iter().any(|ring| {
-                (ring.level - 0.5).abs() < 1.0e-9
-                    && ring.contains_pole == Some(PoleSide::North)
+                (ring.level - 0.5).abs() < 1.0e-9 && ring.contains_pole == Some(PoleSide::North)
             })
         }),
         "no 0.5 magnitude ring encloses the north pole for the Arctic event"

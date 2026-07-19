@@ -170,7 +170,8 @@ impl RequestSweep {
             "varga lagna did not change past a computed boundary",
         ))?;
 
-        let boundary = next_amsha_boundary_longitude(lagna, self.request.amsha, self.request.variation);
+        let boundary =
+            next_amsha_boundary_longitude(lagna, self.request.amsha, self.request.variation);
         let next_end_jd = lagna_crossing_time(
             engine,
             eop,
@@ -219,9 +220,7 @@ pub fn amsha_lagna_events(
     let from_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), from_utc);
     let to_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), to_utc);
     if to_jd <= from_jd {
-        return Err(SearchError::InvalidConfig(
-            "to_utc must be after from_utc",
-        ));
+        return Err(SearchError::InvalidConfig("to_utc must be after from_utc"));
     }
     let cap = if max_segments == 0 {
         MAX_AMSHA_LAGNA_SEGMENTS

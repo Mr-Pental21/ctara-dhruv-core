@@ -126,7 +126,12 @@ impl FieldTable {
     }
 
     fn eval_index(&self, index: usize, observer: &ObserverPoint) -> PointEval {
-        eval_with(self.sun[index], self.moon[index], self.gast[index], observer)
+        eval_with(
+            self.sun[index],
+            self.moon[index],
+            self.gast[index],
+            observer,
+        )
     }
 
     /// Evaluate at an arbitrary epoch by linear interpolation of the Sun and
@@ -504,13 +509,7 @@ impl<'a> ContourGrid<'a> {
 
     /// Crossing point on a cell edge, refined by bisection against the
     /// exact field in fractional grid coordinates.
-    fn crossing(
-        &self,
-        row: usize,
-        col: usize,
-        edge: CellEdge,
-        level: f64,
-    ) -> EclipseGeoPoint {
+    fn crossing(&self, row: usize, col: usize, edge: CellEdge, level: f64) -> EclipseGeoPoint {
         let ((row_a, col_a), (row_b, col_b)) = match edge {
             CellEdge::S => ((row, col), (row, col + 1)),
             CellEdge::N => ((row + 1, col), (row + 1, col + 1)),
@@ -709,7 +708,11 @@ pub(crate) fn wrap_delta(delta_deg: f64) -> f64 {
 
 fn normalize_lon(lon: f64) -> f64 {
     let wrapped = (lon + 180.0).rem_euclid(360.0) - 180.0;
-    if wrapped == -180.0 && lon > 0.0 { 180.0 } else { wrapped }
+    if wrapped == -180.0 && lon > 0.0 {
+        180.0
+    } else {
+        wrapped
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,13 +1011,11 @@ pub(crate) fn instantaneous_rings(
                         let pole = eval(lat, 0.0);
                         vis_row.extend(std::iter::repeat_n(pole.visibility_margin(), n_lon));
                         if need_magnitude {
-                            mag_row
-                                .extend(std::iter::repeat_n(pole.visible_magnitude(), n_lon));
+                            mag_row.extend(std::iter::repeat_n(pole.visible_magnitude(), n_lon));
                         }
                     } else {
                         for col in 0..n_lon {
-                            let sample =
-                                eval(lat, normalize_lon(lon0 + col as f64 * STEP_DEG));
+                            let sample = eval(lat, normalize_lon(lon0 + col as f64 * STEP_DEG));
                             vis_row.push(sample.visibility_margin());
                             if need_magnitude {
                                 mag_row.push(sample.visible_magnitude());
@@ -1562,8 +1563,7 @@ pub(crate) fn central_corridor(
                         for col in 0..n_d {
                             let cross = cross0 + col as f64 * cross_step;
                             let geo = frame_ref.offset_point(row as f64, cross);
-                            let observer =
-                                ObserverPoint::new(geo.latitude_deg, geo.longitude_deg);
+                            let observer = ObserverPoint::new(geo.latitude_deg, geo.longitude_deg);
                             let (f_total, f_annular) =
                                 central_maxima_windowed(table_ref, &observer, jd_center);
                             totals.push(f_total);

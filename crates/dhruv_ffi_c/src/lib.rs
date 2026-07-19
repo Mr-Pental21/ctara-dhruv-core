@@ -21,14 +21,13 @@ use dhruv_search::{
     SuryaContactFootprint, SuryaContactKind, SuryaGrahan, SuryaGrahanFootprint,
     SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample,
     SuryaMagnitudeRing, SuryaUmbraFootprint, TajakaReturnBasis, TajakaReturnEvent,
-    TithiPraveshaEvent, TransitAspectKind,
-    TransitAspectOwner, TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date,
-    ayana_for_date, balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat,
-    charakaraka_for_date, dasha_child_period_with_inputs, dasha_children_with_inputs,
-    dasha_complete_level_with_inputs, dasha_hierarchy_with_inputs, dasha_level0_entity_with_inputs,
-    dasha_level0_with_inputs, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
-    ghatika_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes, hora_for_date,
-    hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
+    TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
+    amsha_charts_for_date, avastha_for_date, ayana_for_date, balas_for_date, bhavabala_for_date,
+    body_ecliptic_lon_lat, charakaraka_for_date, dasha_child_period_with_inputs,
+    dasha_children_with_inputs, dasha_complete_level_with_inputs, dasha_hierarchy_with_inputs,
+    dasha_level0_entity_with_inputs, dasha_level0_with_inputs, dasha_snapshot_with_inputs,
+    elongation_at, full_kundali_for_date, ghatika_for_date, ghatika_from_sunrises, gochar_events,
+    graha_longitudes, hora_for_date, hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
     moving_osculating_apogees_for_date, nakshatra_at, nakshatra_for_date, next_amavasya,
     next_chandra_grahan, next_conjunction, next_max_speed, next_purnima, next_sankranti,
     next_specific_sankranti, next_stationary, next_surya_grahan, prev_amavasya,
@@ -3966,9 +3965,10 @@ impl OwnedSuryaGrahanGeometry {
     fn ring_set_level_count(&self, set_kind: i32) -> Option<usize> {
         match set_kind {
             DHRUV_SURYA_RING_SET_VISIBILITY => self.isolines.as_ref().map(|_| 1),
-            DHRUV_SURYA_RING_SET_DURATION => {
-                self.isolines.as_ref().map(|iso| iso.duration_isolines.len())
-            }
+            DHRUV_SURYA_RING_SET_DURATION => self
+                .isolines
+                .as_ref()
+                .map(|iso| iso.duration_isolines.len()),
             DHRUV_SURYA_RING_SET_MAGNITUDE => self
                 .isolines
                 .as_ref()

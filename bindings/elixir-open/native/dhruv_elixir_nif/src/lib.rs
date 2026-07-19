@@ -23,21 +23,20 @@ use dhruv_search::{
     GocharTransitBody, NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL_CORE,
     PANCHANG_INCLUDE_LOCATION_INDEPENDENT, SankrantiConfig, StationaryConfig, TajakaReturnBasis,
     TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner,
-    TransitToNatalAspectEvent, amsha_lagna_events, ayanamsha,
-    body_ecliptic_lon_lat, conjunction, dasha_child_period_for_birth,
-    dasha_child_period_with_inputs, dasha_children_for_birth, dasha_children_with_inputs,
-    dasha_complete_level_for_birth, dasha_complete_level_with_inputs, dasha_hierarchy_for_birth,
-    dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth, dasha_level0_entity_with_inputs,
-    dasha_level0_for_birth, dasha_level0_with_inputs, dasha_snapshot_at, dasha_snapshot_with_inputs,
-    elongation_at, full_kundali_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes,
-    hora_from_sunrises, karana_at, lunar_node, motion, nakshatra_at, panchang, panchang_events,
-    panchang_include_bits, set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at,
-    vaar_from_sunrises, vedic_day_sunrises, yoga_at,
+    TransitToNatalAspectEvent, amsha_lagna_events, ayanamsha, body_ecliptic_lon_lat, conjunction,
+    dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
+    dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
+    dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth,
+    dasha_level0_entity_with_inputs, dasha_level0_for_birth, dasha_level0_with_inputs,
+    dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
+    ghatika_from_sunrises, gochar_events, graha_longitudes, hora_from_sunrises, karana_at,
+    lunar_node, motion, nakshatra_at, panchang, panchang_events, panchang_include_bits,
+    set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at, vaar_from_sunrises,
+    vedic_day_sunrises, yoga_at,
 };
 use dhruv_search::{
     GrahaLongitudeKind, GrahaLongitudesConfig, all_upagrahas_for_date,
-    all_upagrahas_for_date_with_config, amsha_charts_for_date, amsha_series,
-    arudha_padas_for_date,
+    all_upagrahas_for_date_with_config, amsha_charts_for_date, amsha_series, arudha_padas_for_date,
     ashtakavarga_for_date, avastha_for_date, balas_for_date, bhavabala_for_date,
     charakaraka_for_date, core_bindus, drishti_for_date, graha_positions as graha_positions_fn,
     moving_osculating_apogees_for_date, shadbala_for_date, sidereal_bhavas_for_date,
@@ -4796,18 +4795,19 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
                 Ok(graha_positions_json(positions))
             }
             "graha_positions_series" => {
-                let from_utc = parse_utc(request.from_utc.clone().ok_or_else(|| {
-                    error_payload("invalid_request", "from_utc is required")
-                })?)?;
+                let from_utc =
+                    parse_utc(request.from_utc.clone().ok_or_else(|| {
+                        error_payload("invalid_request", "from_utc is required")
+                    })?)?;
                 let to_utc = parse_utc(
                     request
                         .to_utc
                         .clone()
                         .ok_or_else(|| error_payload("invalid_request", "to_utc is required"))?,
                 )?;
-                let step_minutes = request.step_minutes.ok_or_else(|| {
-                    error_payload("invalid_request", "step_minutes is required")
-                })?;
+                let step_minutes = request
+                    .step_minutes
+                    .ok_or_else(|| error_payload("invalid_request", "step_minutes is required"))?;
                 let series = dhruv_search::graha_positions_series(
                     engine,
                     eop,
@@ -6349,7 +6349,11 @@ mod tests {
         assert_eq!(requests[0].variation, None);
         assert_eq!(requests[1].amsha, Amsha::D2);
         assert_eq!(requests[1].variation, Some(1));
-        assert!(to_amsha_requests(None).expect("no input is empty").is_empty());
+        assert!(
+            to_amsha_requests(None)
+                .expect("no input is empty")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -6495,11 +6499,10 @@ mod tests {
             panchang_include_bits("tithi").unwrap() | panchang_include_bits("masa").unwrap()
         );
 
-        let independent =
-            parse_panchang_include_mask(&PanchangIncludeInput::Str(
-                "location_independent".to_string(),
-            ))
-            .expect("group name should parse");
+        let independent = parse_panchang_include_mask(&PanchangIncludeInput::Str(
+            "location_independent".to_string(),
+        ))
+        .expect("group name should parse");
         assert_eq!(independent, PANCHANG_INCLUDE_LOCATION_INDEPENDENT);
         assert_eq!(independent & !PANCHANG_INCLUDE_LOCATION_INDEPENDENT, 0);
     }

@@ -354,8 +354,7 @@ impl Sweeper {
                         // Classify at the segment start so `pada` is the
                         // segment-start pada (1); the nakshatra itself is
                         // constant across the segment.
-                        let pos =
-                            nakshatra_from_longitude(next_index as f64 * segment_deg + 1e-9);
+                        let pos = nakshatra_from_longitude(next_index as f64 * segment_deg + 1e-9);
                         PendingAngular::Nakshatra(PanchangNakshatraInfo {
                             nakshatra: pos.nakshatra,
                             nakshatra_index: pos.nakshatra_index,
@@ -462,8 +461,7 @@ impl Sweeper {
                 };
                 let prev_end = current.end;
                 let probe = day.division_probe(next_index, count);
-                let mut next =
-                    ghatika_from_sunrises(probe, day.start_jd, day.end_jd, engine.lsk());
+                let mut next = ghatika_from_sunrises(probe, day.start_jd, day.end_jd, engine.lsk());
                 next.start = prev_end;
                 let (s, e) = day.division(next_index, count);
                 *current = next;
@@ -586,9 +584,7 @@ pub fn panchang_events(
     let from_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), from_utc);
     let to_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), to_utc);
     if to_jd <= from_jd {
-        return Err(SearchError::InvalidConfig(
-            "to_utc must be after from_utc",
-        ));
+        return Err(SearchError::InvalidConfig("to_utc must be after from_utc"));
     }
     let cap = if max_events == 0 {
         MAX_PANCHANG_EVENTS

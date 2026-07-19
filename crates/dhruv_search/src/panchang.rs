@@ -810,7 +810,11 @@ pub fn panchang_for_date(
         let (sunrise_jd, next_sunrise_jd) =
             vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
         if include(PANCHANG_INCLUDE_VAAR) {
-            result.vaar = Some(vaar_from_sunrises(sunrise_jd, next_sunrise_jd, engine.lsk()));
+            result.vaar = Some(vaar_from_sunrises(
+                sunrise_jd,
+                next_sunrise_jd,
+                engine.lsk(),
+            ));
         }
         if include(PANCHANG_INCLUDE_HORA) {
             result.hora = Some(hora_from_sunrises(

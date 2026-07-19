@@ -162,7 +162,13 @@ fn sanitize_levels(levels: &[f64], min: f64, max: f64, max_inclusive: bool) -> V
         .iter()
         .copied()
         .filter(|value| {
-            value.is_finite() && *value > min && if max_inclusive { *value <= max } else { *value < max }
+            value.is_finite()
+                && *value > min
+                && if max_inclusive {
+                    *value <= max
+                } else {
+                    *value < max
+                }
         })
         .collect();
     sanitized.sort_by(f64::total_cmp);

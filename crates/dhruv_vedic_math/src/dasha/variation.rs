@@ -161,7 +161,10 @@ mod tests {
     #[test]
     fn effective_cycle_count_default() {
         let cfg = DashaVariationConfig::default();
-        assert_eq!(cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 2);
+        assert_eq!(
+            cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25),
+            2
+        );
     }
 
     #[test]
@@ -171,7 +174,10 @@ mod tests {
             min_span_years: Some(1000.0),
             ..DashaVariationConfig::default()
         };
-        assert_eq!(cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25), 4);
+        assert_eq!(
+            cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25),
+            4
+        );
     }
 
     #[test]
@@ -180,7 +186,10 @@ mod tests {
             cycles: Some(0),
             ..DashaVariationConfig::default()
         };
-        assert_eq!(cfg.effective_cycle_count(3, 30.0 * 365.25, 36.0 * 365.25), 1);
+        assert_eq!(
+            cfg.effective_cycle_count(3, 30.0 * 365.25, 36.0 * 365.25),
+            1
+        );
     }
 
     #[test]
@@ -191,7 +200,10 @@ mod tests {
             min_span_years: Some(100.0),
             ..DashaVariationConfig::default()
         };
-        assert_eq!(cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25), 3);
+        assert_eq!(
+            cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25),
+            3
+        );
     }
 
     #[test]
@@ -200,7 +212,10 @@ mod tests {
             min_span_years: Some(20.0),
             ..DashaVariationConfig::default()
         };
-        assert_eq!(cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 1);
+        assert_eq!(
+            cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25),
+            1
+        );
     }
 
     #[test]
@@ -210,7 +225,10 @@ mod tests {
             min_span_years: Some(66.0),
             ..DashaVariationConfig::default()
         };
-        assert_eq!(cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25), 2);
+        assert_eq!(
+            cfg.effective_cycle_count(1, 30.0 * 365.25, 36.0 * 365.25),
+            2
+        );
     }
 
     #[test]
@@ -219,12 +237,18 @@ mod tests {
             min_span_years: Some(-5.0),
             ..DashaVariationConfig::default()
         };
-        assert_eq!(cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 2);
+        assert_eq!(
+            cfg.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25),
+            2
+        );
         let nan = DashaVariationConfig {
             min_span_years: Some(f64::NAN),
             ..DashaVariationConfig::default()
         };
-        assert_eq!(nan.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25), 2);
+        assert_eq!(
+            nan.effective_cycle_count(2, 30.0 * 365.25, 36.0 * 365.25),
+            2
+        );
     }
 
     #[test]
