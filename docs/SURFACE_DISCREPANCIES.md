@@ -196,7 +196,7 @@ This audit therefore does not treat a missing `_with_*` symbol as a discrepancy 
   lookup surfaces remain on the single canonical `*_name` APIs, and removed
   English/western-style parallel variants are not being reintroduced.
 - Evidence:
-  `crates/dhruv_vedic_base/src/lib.rs`, `crates/dhruv_vedic_base/src/graha_relationships.rs`, `crates/dhruv_ffi_c/include/dhruv.h`, `bindings/python-open/src/ctara_dhruv/vedic.py`, `bindings/node-open/src/extras.js`, `bindings/go-open/dhruv/extras.go`, `bindings/elixir-open/lib/ctara_dhruv/math.ex`, `crates/dhruv_cli/src/main.rs`.
+  `crates/dhruv_vedic_base/src/lib.rs`, `crates/dhruv_vedic_math/src/graha_relationships.rs`, `crates/dhruv_ffi_c/include/dhruv.h`, `bindings/python-open/src/ctara_dhruv/vedic.py`, `bindings/node-open/src/extras.js`, `bindings/go-open/dhruv/extras.go`, `bindings/elixir-open/lib/ctara_dhruv/math.ex`, `crates/dhruv_cli/src/main.rs`.
 
 ## CLI-specific discrepancies
 
