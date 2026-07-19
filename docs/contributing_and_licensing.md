@@ -19,15 +19,12 @@ record listing its conceptual sources.
 
 ## Licensing
 
-The workspace is a mix of MIT (workspace default) and Apache-2.0
-(per-crate overrides); the root `LICENSE` file is the Apache-2.0 text.
-Automated enforcement: `deny.toml` + `scripts/ci/license_gate.sh` run in CI
-across all five ecosystems (Rust, Node, Python, Go, Elixir).
-
-> **Note for maintainers:** the per-crate license fields, the workspace
-> default, and the root LICENSE file do not currently tell one consistent
-> story (MIT vs Apache-2.0). Worth unifying — or documenting the split
-> deliberately — before wider publication.
+The project is licensed under **Apache-2.0** across every surface: the
+workspace and all crates (via `license.workspace = true`), the npm package,
+the PyPI package, and the Hex package. The root `LICENSE` file carries the
+license text. Dependency licenses are enforced automatically: `deny.toml` +
+`scripts/ci/license_gate.sh` run in CI across all five ecosystems (Rust,
+Node, Python, Go, Elixir) against an allowlist of permissive licenses.
 
 ## Development conventions
 

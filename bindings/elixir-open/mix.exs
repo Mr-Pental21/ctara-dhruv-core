@@ -29,7 +29,7 @@ defmodule CtaraDhruv.MixProject do
 
   defp package do
     [
-      licenses: ["MIT"],
+      licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => "https://github.com/Mr-Pental21/ctara-dhruv-core"
       },

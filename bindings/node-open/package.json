@@ -2,7 +2,7 @@
   "name": "ctara-dhruv-node-open",
   "version": "0.1.0",
   "description": "Open-source Node.js wrapper for ctara-dhruv-core via dhruv_ffi_c",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Mr-Pental21/ctara-dhruv-core.git",

@@ -1,7 +1,7 @@
 [package]
 name = "dhruv_ffi_c"
 version = "0.1.0"
-license = "Apache-2.0"
+license.workspace = true
 edition = "2024"
 description = "Canonical C ABI for ctara-dhruv-core"
 repository = "https://github.com/Mr-Pental21/ctara-dhruv-core"

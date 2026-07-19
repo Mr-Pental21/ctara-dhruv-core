@@ -60,4 +60,4 @@ cargo build -p dhruv_cli --release
 
 Read `LICENSE_POLICY.md` and `CONTRIBUTING.md` first — this is a clean-room
 project and contributions must follow the source-intake and provenance
-rules. License: see `LICENSE`.
+rules. Licensed under Apache-2.0 (see `LICENSE`).
