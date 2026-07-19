@@ -1,7 +1,61 @@
-//! Layered configuration loader and resolver.
+//! Layered configuration loader and resolver for every dhruv surface
+//! (CLI, C ABI, Rust facade, wrappers).
 //!
-//! Precedence (highest -> lowest): explicit overrides, operation config,
-//! common config, recommended defaults.
+//! # The layering model
+//!
+//! Every resolved field takes its value from the highest-precedence layer
+//! that provides one:
+//!
+//! 1. **Explicit** — a patch passed programmatically to a
+//!    [`ConfigResolver::resolve_*`](ConfigResolver) call (e.g. from CLI
+//!    flags or an FFI request).
+//! 2. **Operation** — the `[operations.<name>]` section of the config file.
+//! 3. **Common** — the `[common]` section of the config file (only for
+//!    fields that are shared across operations, such as `step_size_days`).
+//! 4. **Recommended default** — the built-in default, used only when the
+//!    resolver was constructed with [`DefaultsMode::Recommended`]. With
+//!    [`DefaultsMode::None`], a field no layer provides is a
+//!    [`ConfigError::MissingRequired`] error instead.
+//!
+//! The chosen layer is recorded per field, so callers can always report
+//! where each effective value came from — see [`EffectiveConfig`] and
+//! [`ConfigSource`].
+//!
+//! # Config files
+//!
+//! Config files are TOML or JSON (see [`DhruvConfigFile`]) and are parsed
+//! strictly: unknown keys are rejected rather than ignored, so typos fail
+//! loudly. Files are found via [`load_with_discovery`], which checks an
+//! explicit path, then the `DHRUV_CONFIG_FILE` environment variable, then
+//! platform-standard per-user and per-system directories.
+//!
+//! # Example
+//!
+//! ```
+//! use dhruv_config::{ConfigResolver, ConfigSource, DefaultsMode, DhruvConfigFile};
+//!
+//! let file: DhruvConfigFile = toml::from_str(
+//!     r#"
+//! version = 1
+//! [common]
+//! step_size_days = 0.5
+//! [operations.conjunction]
+//! target_separation_deg = 1.0
+//! "#,
+//! )
+//! .unwrap();
+//!
+//! let resolver = ConfigResolver::new(file, DefaultsMode::Recommended);
+//! let effective = resolver.resolve_conjunction(None).unwrap();
+//!
+//! assert_eq!(effective.value.target_separation_deg, 1.0); // operation section
+//! assert_eq!(effective.value.step_size_days, 0.5); // common section
+//! assert_eq!(effective.value.max_iterations, 50); // recommended default
+//! assert_eq!(
+//!     effective.source_by_field["step_size_days"],
+//!     ConfigSource::Common
+//! );
+//! ```
 
 use std::collections::BTreeMap;
 use std::env;
@@ -29,40 +83,67 @@ use serde::Deserialize;
 
 const CURRENT_CONFIG_VERSION: u32 = 1;
 
+/// On-disk format of a loaded config file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigFormat {
     Toml,
     Json,
 }
 
+/// The layer a resolved field's value came from (highest to lowest
+/// precedence). See the [crate-level docs](crate) for the layering model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigSource {
+    /// A patch passed directly to the `resolve_*` call.
     Explicit,
+    /// The `[operations.<name>]` section of the config file.
     Operation,
+    /// The `[common]` section of the config file.
     Common,
+    /// The built-in default (only under [`DefaultsMode::Recommended`]).
     RecommendedDefault,
 }
 
+/// A fully resolved operation config plus per-field provenance.
+///
+/// `T` is the operation's concrete config type (e.g.
+/// `dhruv_search::ConjunctionConfig`). `source_by_field` maps each field
+/// name to the [`ConfigSource`] layer that supplied its value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectiveConfig<T> {
     pub value: T,
     pub source_by_field: BTreeMap<String, ConfigSource>,
 }
 
+/// Whether resolution may fall back to built-in recommended defaults.
+///
+/// Under [`DefaultsMode::None`], every field must be supplied by the
+/// config file or an explicit patch; anything left unset resolves to
+/// [`ConfigError::MissingRequired`]. Use it to guarantee a deployment
+/// runs entirely on reviewed configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DefaultsMode {
     Recommended,
     None,
 }
 
+/// Errors from loading, parsing, or resolving configuration.
 #[derive(Debug)]
 pub enum ConfigError {
+    /// File read failure (includes the offending path).
     Io(String),
+    /// TOML/JSON syntax error or unknown key (parsing is strict).
     Parse(String),
+    /// A value failed semantic validation (range, length, exclusivity).
     InvalidConfig(String),
+    /// The file's `version` is not supported by this build.
     UnsupportedVersion(u32),
+    /// No layer supplied a required field (see [`DefaultsMode`]).
     MissingRequired(&'static str),
+    /// A name/index did not match any variant of the target enum.
     InvalidEnumValue { field: &'static str, value: String },
+    /// Both `config.toml` and `config.json` exist in the same discovery
+    /// directory; remove one so the choice is unambiguous.
     AmbiguousConfigFiles { toml: PathBuf, json: PathBuf },
 }
 
@@ -89,6 +170,7 @@ impl Display for ConfigError {
 
 impl Error for ConfigError {}
 
+/// A parsed config file together with where and in what format it was found.
 #[derive(Debug, Clone)]
 pub struct LoadedConfig {
     pub path: PathBuf,
@@ -96,13 +178,20 @@ pub struct LoadedConfig {
     pub file: DhruvConfigFile,
 }
 
+/// The root of a dhruv config file (TOML or JSON).
+///
+/// Unknown keys anywhere in the file are rejected at parse time. The
+/// `version` field defaults to the current config version when omitted;
+/// unsupported versions fail with [`ConfigError::UnsupportedVersion`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DhruvConfigFile {
     #[serde(default = "default_config_version")]
     pub version: u32,
+    /// The `[common]` section: values shared across operations.
     #[serde(default)]
     pub common: CommonConfigPatch,
+    /// The `[operations.*]` sections: per-operation overrides.
     #[serde(default)]
     pub operations: OperationConfigPatchSet,
 }
@@ -111,6 +200,9 @@ fn default_config_version() -> u32 {
     CURRENT_CONFIG_VERSION
 }
 
+/// The `[common]` section: engine setup plus values that several
+/// operations share (search stepping, ayanamsha, precession, caching).
+/// Individual operations override these via their own sections.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommonConfigPatch {
@@ -126,6 +218,8 @@ pub struct CommonConfigPatch {
     pub strict_validation: Option<bool>,
 }
 
+/// All `[operations.*]` sections; each field is one operation family's
+/// patch and defaults to empty (no overrides).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationConfigPatchSet {
@@ -153,6 +247,12 @@ pub struct OperationConfigPatchSet {
     pub full_kundali: FullKundaliConfigPatch,
 }
 
+/// Engine setup (`[common.engine]`): kernel paths and engine policy.
+///
+/// `spk_paths` and `lsk_path` have no recommended default — they must come
+/// from the config file or an explicit patch, otherwise
+/// [`ConfigResolver::resolve_engine`] fails with
+/// [`ConfigError::MissingRequired`].
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineConfigPatch {
@@ -162,6 +262,7 @@ pub struct EngineConfigPatch {
     pub strict_validation: Option<bool>,
 }
 
+/// `[operations.conjunction]`: conjunction-search stepping and convergence.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConjunctionConfigPatch {
@@ -171,6 +272,9 @@ pub struct ConjunctionConfigPatch {
     pub convergence_days: Option<f64>,
 }
 
+/// `[operations.grahan]`: which eclipse products to compute (path,
+/// footprints, isolines, local grid) and their sampling resolution.
+/// `path_step_minutes` must be 1..=30 and `boundary_step_deg` 1..=15.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrahanConfigPatch {
@@ -190,6 +294,8 @@ pub struct GrahanConfigPatch {
     pub instantaneous_magnitude_levels: Option<Vec<f64>>,
 }
 
+/// `[operations.stationary]`: stationary-point search stepping,
+/// convergence, and the numerical-derivative step.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StationaryConfigPatch {
@@ -199,6 +305,9 @@ pub struct StationaryConfigPatch {
     pub numerical_step_days: Option<f64>,
 }
 
+/// `[operations.sankranti]`: sankranti-search astronomy policy
+/// (ayanamsha, nutation, precession, reference plane) and stepping.
+/// `reference_plane` additionally accepts `"default-from-ayanamsha"`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SankrantiConfigPatch {
@@ -211,6 +320,8 @@ pub struct SankrantiConfigPatch {
     pub convergence_days: Option<f64>,
 }
 
+/// `[operations.riseset]`: rise/set observation model (refraction,
+/// solar limb, observer-altitude correction).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RiseSetConfigPatch {
@@ -219,6 +330,11 @@ pub struct RiseSetConfigPatch {
     pub altitude_correction: Option<bool>,
 }
 
+/// `[operations.bhava]`: house-system selection and bhava policy knobs.
+///
+/// `starting_point_kind` decides which of `starting_point_body_code`
+/// (for `"body"`) or `starting_point_custom_deg` (for `"custom"`) is
+/// required; with the default `"lagna"` neither is used.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BhavaConfigPatch {
@@ -236,6 +352,7 @@ pub struct BhavaConfigPatch {
     pub include_rashi_bhava_results: Option<bool>,
 }
 
+/// `[operations.tara]`: fixed-star position accuracy and parallax.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaraConfigPatch {
@@ -243,6 +360,8 @@ pub struct TaraConfigPatch {
     pub apply_parallax: Option<bool>,
 }
 
+/// `[operations.graha_positions]`: which extras to attach to graha
+/// position results (nakshatra, lagna, bhava, basic states, equatorial).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrahaPositionsConfigPatch {
@@ -254,6 +373,8 @@ pub struct GrahaPositionsConfigPatch {
     pub include_equatorial: Option<bool>,
 }
 
+/// Nested `basic_states` patch of
+/// [`GrahaPositionsConfigPatch`]: graha state classification toggles.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BasicStatesConfigPatch {
@@ -261,6 +382,8 @@ pub struct BasicStatesConfigPatch {
     pub include_sensitive_point_distances: Option<bool>,
 }
 
+/// `[operations.bindus]`: extras attached to bindu (upagraha/sphuta
+/// point) results.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BindusConfigPatch {
@@ -268,6 +391,8 @@ pub struct BindusConfigPatch {
     pub include_bhava: Option<bool>,
 }
 
+/// `[operations.drishti]`: which target sets drishti (aspect) results
+/// cover beyond grahas.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DrishtiConfigPatch {
@@ -276,6 +401,9 @@ pub struct DrishtiConfigPatch {
     pub include_bindus: Option<bool>,
 }
 
+/// Amsha (divisional chart) selection patch nested in
+/// [`FullKundaliConfigPatch`]: which amsha codes/variations to compute
+/// (at most 40 of each).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AmshaSelectionConfigPatch {
@@ -284,6 +412,8 @@ pub struct AmshaSelectionConfigPatch {
     pub variations: Option<Vec<u8>>,
 }
 
+/// A calendar UTC timestamp as written in config files; converted to
+/// `dhruv_time::UtcTime` (and validated) during resolution.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UtcTimeConfigValue {
@@ -312,6 +442,13 @@ impl TryFrom<UtcTimeConfigValue> for UtcTime {
     }
 }
 
+/// Dasha selection patch nested in [`FullKundaliConfigPatch`]: which
+/// dasha systems, levels, and scheme options to compute.
+///
+/// `snapshot_utc` and `snapshot_jd_utc` are mutually exclusive ways to
+/// pin the snapshot instant; setting both is
+/// [`ConfigError::InvalidConfig`]. The resolved selection is sanitized
+/// and validated as a whole.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DashaSelectionConfigPatch {
@@ -328,6 +465,9 @@ pub struct DashaSelectionConfigPatch {
     pub snapshot_jd_utc: Option<f64>,
 }
 
+/// `[operations.full_kundali]`: which sections a full-kundali result
+/// includes, plus nested patches for the sub-operations it drives
+/// (graha positions, bindus, drishti, amsha selection, dasha selection).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FullKundaliConfigPatch {
@@ -356,6 +496,10 @@ pub struct FullKundaliConfigPatch {
     pub dasha: Option<DashaSelectionConfigPatch>,
 }
 
+/// An enum-valued config field as written in the file: either the
+/// variant's integer index (e.g. `0`) or its name (e.g. `"vondrak2011"`,
+/// case-insensitive, `-`/`_` interchangeable). Resolution maps it to the
+/// target Rust enum or fails with [`ConfigError::InvalidEnumValue`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum EnumInput {
@@ -409,6 +553,16 @@ impl EnumInput {
     }
 }
 
+/// Resolves effective operation configs by layering explicit patches over
+/// a parsed config file and (optionally) recommended defaults.
+///
+/// Construct one from a [`DhruvConfigFile`] (usually via
+/// [`load_with_discovery`], falling back to `DhruvConfigFile` defaults
+/// when no file exists) and call the `resolve_*` method for the operation
+/// at hand. Each method takes an optional explicit patch — the
+/// highest-precedence layer — and returns an [`EffectiveConfig`] carrying
+/// both the concrete config value and per-field provenance. See the
+/// [crate-level docs](crate) for the full layering model and an example.
 #[derive(Debug, Clone)]
 pub struct ConfigResolver {
     file: DhruvConfigFile,
@@ -423,6 +577,7 @@ impl ConfigResolver {
         }
     }
 
+    /// The parsed config file this resolver layers over.
     pub fn file(&self) -> &DhruvConfigFile {
         &self.file
     }
@@ -431,6 +586,9 @@ impl ConfigResolver {
         self.defaults_mode
     }
 
+    /// Resolves the engine config (`[common.engine]`). `spk_paths` and
+    /// `lsk_path` are required from the file or the explicit patch;
+    /// there is no built-in kernel-path default.
     pub fn resolve_engine(
         &self,
         explicit: Option<EngineConfigPatch>,
@@ -502,6 +660,7 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the conjunction-search config (`[operations.conjunction]`).
     pub fn resolve_conjunction(
         &self,
         explicit: Option<ConjunctionConfigPatch>,
@@ -557,6 +716,8 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the grahan (eclipse) products config
+    /// (`[operations.grahan]`), validating sampling-step ranges.
     pub fn resolve_grahan(
         &self,
         explicit: Option<GrahanConfigPatch>,
@@ -730,6 +891,8 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the stationary-point search config
+    /// (`[operations.stationary]`).
     pub fn resolve_stationary(
         &self,
         explicit: Option<StationaryConfigPatch>,
@@ -783,6 +946,9 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the sankranti-search config (`[operations.sankranti]`).
+    /// A `reference_plane` of `"default-from-ayanamsha"` (the recommended
+    /// default) derives the plane from the resolved ayanamsha system.
     pub fn resolve_sankranti(
         &self,
         explicit: Option<SankrantiConfigPatch>,
@@ -886,6 +1052,7 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the rise/set config (`[operations.riseset]`).
     pub fn resolve_riseset(
         &self,
         explicit: Option<RiseSetConfigPatch>,
@@ -933,6 +1100,8 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the bhava (house) config (`[operations.bhava]`),
+    /// including the starting-point kind and its dependent inputs.
     pub fn resolve_bhava(
         &self,
         explicit: Option<BhavaConfigPatch>,
@@ -1040,6 +1209,7 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the fixed-star config (`[operations.tara]`).
     pub fn resolve_tara(
         &self,
         explicit: Option<TaraConfigPatch>,
@@ -1080,6 +1250,9 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the graha-positions config
+    /// (`[operations.graha_positions]`), including the nested
+    /// `basic_states` toggles.
     pub fn resolve_graha_positions(
         &self,
         explicit: Option<GrahaPositionsConfigPatch>,
@@ -1170,6 +1343,7 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the bindus config (`[operations.bindus]`).
     pub fn resolve_bindus(
         &self,
         explicit: Option<BindusConfigPatch>,
@@ -1206,6 +1380,7 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the drishti config (`[operations.drishti]`).
     pub fn resolve_drishti(
         &self,
         explicit: Option<DrishtiConfigPatch>,
@@ -1250,6 +1425,9 @@ impl ConfigResolver {
         })
     }
 
+    /// Resolves the full-kundali config (`[operations.full_kundali]`),
+    /// recursively resolving the nested graha-positions, bindus,
+    /// drishti, amsha-selection, and dasha-selection patches.
     pub fn resolve_full_kundali(
         &self,
         explicit: Option<FullKundaliConfigPatch>,
@@ -1475,6 +1653,11 @@ impl ConfigResolver {
     }
 }
 
+/// Loads and strictly parses a config file from `path`.
+///
+/// The format follows the extension (`.toml`/`.tml`, `.json`); with any
+/// other extension, TOML is tried first, then JSON. The file's `version`
+/// must match the supported config version.
 pub fn load_from_path(path: &Path) -> Result<LoadedConfig, ConfigError> {
     let content = fs::read_to_string(path)
         .map_err(|e| ConfigError::Io(format!("{}: {e}", path.display())))?;
@@ -1523,6 +1706,16 @@ pub fn load_from_path(path: &Path) -> Result<LoadedConfig, ConfigError> {
     })
 }
 
+/// Finds the config file to use, without loading it.
+///
+/// Checks, in order: the `explicit` path (must exist if given), the
+/// `DHRUV_CONFIG_FILE` environment variable (must exist if set), then
+/// platform-standard directories — per-user before per-system (e.g.
+/// `~/.config/dhruv/`, `/etc/xdg/dhruv/`, `/etc/dhruv/` on Linux; the
+/// AppData / Application Support equivalents on Windows and macOS). Each
+/// directory may hold `config.toml` or `config.json`, but not both
+/// ([`ConfigError::AmbiguousConfigFiles`]). `disable: true` (or no file
+/// found) yields `Ok(None)`.
 pub fn discover_config_path(
     explicit: Option<&Path>,
     disable: bool,
@@ -1575,6 +1768,23 @@ pub fn discover_config_path(
     Ok(None)
 }
 
+/// Discovers ([`discover_config_path`]) and loads ([`load_from_path`])
+/// the config file in one step; `Ok(None)` means "run without a file"
+/// (resolvers then layer explicit patches over defaults only).
+///
+/// ```no_run
+/// use dhruv_config::{ConfigResolver, DefaultsMode, load_with_discovery};
+///
+/// let resolver = match load_with_discovery(None, false)? {
+///     Some(loaded) => ConfigResolver::new(loaded.file, DefaultsMode::Recommended),
+///     None => {
+///         let empty = toml::from_str("version = 1").unwrap();
+///         ConfigResolver::new(empty, DefaultsMode::Recommended)
+///     }
+/// };
+/// let riseset = resolver.resolve_riseset(None)?.value;
+/// # Ok::<(), dhruv_config::ConfigError>(())
+/// ```
 pub fn load_with_discovery(
     explicit: Option<&Path>,
     disable: bool,
