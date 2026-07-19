@@ -61,6 +61,10 @@ jobs:
 
       - name: Tests
         run: cargo test --workspace --all-targets --quiet
+        env:
+          # dhruv_cli arg-parse tests overflow the default test-thread
+          # stack in debug builds on windows-x64 (large clap enum).
+          RUST_MIN_STACK: 16777216
 
       - name: cdylib artifact check
         shell: bash
