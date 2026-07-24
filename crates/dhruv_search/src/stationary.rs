@@ -15,13 +15,15 @@
 
 use dhruv_core::{Body, Engine};
 use dhruv_time::UtcTime;
+use dhruv_vedic_base::NodeMode;
 
-use crate::conjunction::body_ecliptic_state;
+use crate::conjunction::{body_ecliptic_state, transit_body_ecliptic_lon_lat};
 use crate::conjunction_types::SearchDirection;
 use crate::error::SearchError;
 use crate::stationary_types::{
     MaxSpeedEvent, MaxSpeedType, StationType, StationaryConfig, StationaryEvent,
 };
+use crate::transit_body::TransitBody;
 
 /// Maximum scan range in days (~800 days covers all synodic periods).
 const MAX_SCAN_DAYS: f64 = 800.0;
@@ -34,24 +36,68 @@ const MAX_SCAN_DAYS: f64 = 800.0;
 /// Sun: always moves eastward along the ecliptic.
 /// Moon: always moves eastward (geocentrically).
 /// Earth: we observe from Earth, so its geocentric longitude is undefined.
-fn validate_stationary_body(body: Body) -> Result<(), SearchError> {
+/// Mean node: always regresses, so only the true (osculating) node has stations.
+fn validate_stationary_body(
+    body: TransitBody,
+    config: &StationaryConfig,
+) -> Result<(), SearchError> {
     match body {
-        Body::Sun | Body::Moon | Body::Earth => Err(SearchError::InvalidConfig(
+        TransitBody::Body(Body::Sun | Body::Moon | Body::Earth) => Err(SearchError::InvalidConfig(
             "Sun, Moon, and Earth do not have stationary points",
         )),
+        TransitBody::Rahu | TransitBody::Ketu if config.node_mode == NodeMode::Mean => {
+            Err(SearchError::InvalidConfig(
+                "the mean lunar node is always retrograde; use node_mode = true",
+            ))
+        }
         _ => Ok(()),
     }
 }
 
 /// Bodies invalid for max-speed search.
 /// Earth: we observe from Earth.
-fn validate_max_speed_body(body: Body) -> Result<(), SearchError> {
-    if body == Body::Earth {
-        Err(SearchError::InvalidConfig(
+/// Mean node: its rate is a near-constant polynomial, so speed extrema are
+/// numerical noise rather than physical events.
+fn validate_max_speed_body(
+    body: TransitBody,
+    config: &StationaryConfig,
+) -> Result<(), SearchError> {
+    match body {
+        TransitBody::Body(Body::Earth) => Err(SearchError::InvalidConfig(
             "Earth cannot be searched from Earth observer",
-        ))
-    } else {
-        Ok(())
+        )),
+        TransitBody::Rahu | TransitBody::Ketu if config.node_mode == NodeMode::Mean => {
+            Err(SearchError::InvalidConfig(
+                "the mean lunar node has no speed extrema; use node_mode = true",
+            ))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// A transit body's ecliptic longitude, latitude, and longitude speed.
+///
+/// Plain bodies use [`body_ecliptic_state`]. Rahu/Ketu use the lunar-node
+/// model with the same 1-minute finite-difference stencil for speed.
+fn transit_body_ecliptic_state(
+    engine: &Engine,
+    body: TransitBody,
+    jd_tdb: f64,
+    node_mode: NodeMode,
+) -> Result<(f64, f64, f64), SearchError> {
+    match body {
+        TransitBody::Body(b) => body_ecliptic_state(engine, b, jd_tdb),
+        TransitBody::Rahu | TransitBody::Ketu => {
+            const DT: f64 = 1.0 / 1440.0;
+            let (lon, lat) = transit_body_ecliptic_lon_lat(engine, body, jd_tdb, node_mode)?;
+            let (lon_plus, _) =
+                transit_body_ecliptic_lon_lat(engine, body, jd_tdb + DT, node_mode)?;
+            let (lon_minus, _) =
+                transit_body_ecliptic_lon_lat(engine, body, jd_tdb - DT, node_mode)?;
+            let lon_speed =
+                crate::search_util::normalize_to_pm180(lon_plus - lon_minus) / (2.0 * DT);
+            Ok((lon, lat, lon_speed))
+        }
     }
 }
 
@@ -101,13 +147,13 @@ where
 /// Find a single stationary event by coarse scan for speed sign change, then bisect.
 fn find_stationary_event(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_start: f64,
     direction: SearchDirection,
     config: &StationaryConfig,
 ) -> Result<Option<StationaryEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
-    validate_stationary_body(body)?;
+    validate_stationary_body(body, config)?;
 
     let step = match direction {
         SearchDirection::Forward => config.step_size_days,
@@ -116,12 +162,17 @@ fn find_stationary_event(
 
     let max_steps = (MAX_SCAN_DAYS / config.step_size_days).ceil() as usize;
 
-    let (_, _, mut v_prev) = body_ecliptic_state(engine, body, jd_start)?;
+    let (_, _, mut v_prev) = transit_body_ecliptic_state(engine, body, jd_start, config.node_mode)?;
     let mut t_prev = jd_start;
 
     for _ in 0..max_steps {
         let t_curr = t_prev + step;
-        let (_, _, v_curr) = body_ecliptic_state(engine, body, t_curr)?;
+        let (_, _, v_curr) =
+            match transit_body_ecliptic_state(engine, body, t_curr, config.node_mode) {
+                Ok(v) => v,
+                Err(e) if crate::search_util::is_coverage_edge(&e) => return Ok(None),
+                Err(e) => return Err(e),
+            };
 
         // Check for sign change in velocity
         if v_prev * v_curr < 0.0 {
@@ -133,7 +184,7 @@ fn find_stationary_event(
             };
 
             let speed_at = |t: f64| -> Result<f64, SearchError> {
-                let (_, _, v) = body_ecliptic_state(engine, body, t)?;
+                let (_, _, v) = transit_body_ecliptic_state(engine, body, t, config.node_mode)?;
                 Ok(v)
             };
 
@@ -147,7 +198,8 @@ fn find_stationary_event(
                 &speed_at,
             )?;
 
-            let (lon, lat, _) = body_ecliptic_state(engine, body, t_station)?;
+            let (lon, lat, _) =
+                transit_body_ecliptic_state(engine, body, t_station, config.node_mode)?;
 
             // Classify: positive→negative = StationRetrograde, negative→positive = StationDirect
             let station_type = if v_a > 0.0 {
@@ -163,6 +215,8 @@ fn find_stationary_event(
                 longitude_deg: lon,
                 latitude_deg: lat,
                 station_type,
+                sidereal_longitude_deg: None,
+                rashi_index: None,
             }));
         }
 
@@ -176,7 +230,7 @@ fn find_stationary_event(
 /// Find the next stationary point after `jd_tdb`.
 pub fn next_stationary(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_tdb: f64,
     config: &StationaryConfig,
 ) -> Result<Option<StationaryEvent>, SearchError> {
@@ -186,7 +240,7 @@ pub fn next_stationary(
 /// Find the previous stationary point before `jd_tdb`.
 pub fn prev_stationary(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_tdb: f64,
     config: &StationaryConfig,
 ) -> Result<Option<StationaryEvent>, SearchError> {
@@ -196,13 +250,13 @@ pub fn prev_stationary(
 /// Search for all stationary points in a time range.
 pub fn search_stationary(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_start: f64,
     jd_end: f64,
     config: &StationaryConfig,
 ) -> Result<Vec<StationaryEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
-    validate_stationary_body(body)?;
+    validate_stationary_body(body, config)?;
 
     if jd_end <= jd_start {
         return Err(SearchError::InvalidConfig("jd_end must be after jd_start"));
@@ -211,16 +265,16 @@ pub fn search_stationary(
     let mut events = Vec::new();
     let step = config.step_size_days;
 
-    let (_, _, mut v_prev) = body_ecliptic_state(engine, body, jd_start)?;
+    let (_, _, mut v_prev) = transit_body_ecliptic_state(engine, body, jd_start, config.node_mode)?;
     let mut t_prev = jd_start;
 
     loop {
         let t_curr = (t_prev + step).min(jd_end);
-        let (_, _, v_curr) = body_ecliptic_state(engine, body, t_curr)?;
+        let (_, _, v_curr) = transit_body_ecliptic_state(engine, body, t_curr, config.node_mode)?;
 
         if v_prev * v_curr < 0.0 {
             let speed_at = |t: f64| -> Result<f64, SearchError> {
-                let (_, _, v) = body_ecliptic_state(engine, body, t)?;
+                let (_, _, v) = transit_body_ecliptic_state(engine, body, t, config.node_mode)?;
                 Ok(v)
             };
 
@@ -235,7 +289,8 @@ pub fn search_stationary(
             )?;
 
             if t_station >= jd_start && t_station <= jd_end {
-                let (lon, lat, _) = body_ecliptic_state(engine, body, t_station)?;
+                let (lon, lat, _) =
+                    transit_body_ecliptic_state(engine, body, t_station, config.node_mode)?;
 
                 let station_type = if v_prev > 0.0 {
                     StationType::StationRetrograde
@@ -250,6 +305,8 @@ pub fn search_stationary(
                     longitude_deg: lon,
                     latitude_deg: lat,
                     station_type,
+                    sidereal_longitude_deg: None,
+                    rashi_index: None,
                 });
             }
         }
@@ -270,22 +327,28 @@ pub fn search_stationary(
 // ---------------------------------------------------------------------------
 
 /// Numerical acceleration via central difference: (v(t+h) - v(t-h)) / (2h).
-fn numerical_acceleration(engine: &Engine, body: Body, t: f64, h: f64) -> Result<f64, SearchError> {
-    let (_, _, v_plus) = body_ecliptic_state(engine, body, t + h)?;
-    let (_, _, v_minus) = body_ecliptic_state(engine, body, t - h)?;
+fn numerical_acceleration(
+    engine: &Engine,
+    body: TransitBody,
+    t: f64,
+    h: f64,
+    node_mode: NodeMode,
+) -> Result<f64, SearchError> {
+    let (_, _, v_plus) = transit_body_ecliptic_state(engine, body, t + h, node_mode)?;
+    let (_, _, v_minus) = transit_body_ecliptic_state(engine, body, t - h, node_mode)?;
     Ok((v_plus - v_minus) / (2.0 * h))
 }
 
 /// Find a single max-speed event by coarse scan for acceleration sign change, then bisect.
 fn find_max_speed_event(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_start: f64,
     direction: SearchDirection,
     config: &StationaryConfig,
 ) -> Result<Option<MaxSpeedEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
-    validate_max_speed_body(body)?;
+    validate_max_speed_body(body, config)?;
 
     let step = match direction {
         SearchDirection::Forward => config.step_size_days,
@@ -295,12 +358,16 @@ fn find_max_speed_event(
     let h = config.numerical_step_days;
     let max_steps = (MAX_SCAN_DAYS / config.step_size_days).ceil() as usize;
 
-    let mut a_prev = numerical_acceleration(engine, body, jd_start, h)?;
+    let mut a_prev = numerical_acceleration(engine, body, jd_start, h, config.node_mode)?;
     let mut t_prev = jd_start;
 
     for _ in 0..max_steps {
         let t_curr = t_prev + step;
-        let a_curr = numerical_acceleration(engine, body, t_curr, h)?;
+        let a_curr = match numerical_acceleration(engine, body, t_curr, h, config.node_mode) {
+            Ok(a) => a,
+            Err(e) if crate::search_util::is_coverage_edge(&e) => return Ok(None),
+            Err(e) => return Err(e),
+        };
 
         if a_prev * a_curr < 0.0 {
             let (t_a, a_a, t_b, a_b) = if t_prev < t_curr {
@@ -309,8 +376,9 @@ fn find_max_speed_event(
                 (t_curr, a_curr, t_prev, a_prev)
             };
 
-            let accel_at =
-                |t: f64| -> Result<f64, SearchError> { numerical_acceleration(engine, body, t, h) };
+            let accel_at = |t: f64| -> Result<f64, SearchError> {
+                numerical_acceleration(engine, body, t, h, config.node_mode)
+            };
 
             let t_peak = bisect_zero(
                 t_a,
@@ -322,7 +390,8 @@ fn find_max_speed_event(
                 &accel_at,
             )?;
 
-            let (lon, lat, speed) = body_ecliptic_state(engine, body, t_peak)?;
+            let (lon, lat, speed) =
+                transit_body_ecliptic_state(engine, body, t_peak, config.node_mode)?;
 
             let speed_type = if speed >= 0.0 {
                 MaxSpeedType::MaxDirect
@@ -338,6 +407,8 @@ fn find_max_speed_event(
                 latitude_deg: lat,
                 speed_deg_per_day: speed,
                 speed_type,
+                sidereal_longitude_deg: None,
+                rashi_index: None,
             }));
         }
 
@@ -351,7 +422,7 @@ fn find_max_speed_event(
 /// Find the next max-speed event after `jd_tdb`.
 pub fn next_max_speed(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_tdb: f64,
     config: &StationaryConfig,
 ) -> Result<Option<MaxSpeedEvent>, SearchError> {
@@ -361,7 +432,7 @@ pub fn next_max_speed(
 /// Find the previous max-speed event before `jd_tdb`.
 pub fn prev_max_speed(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_tdb: f64,
     config: &StationaryConfig,
 ) -> Result<Option<MaxSpeedEvent>, SearchError> {
@@ -371,13 +442,13 @@ pub fn prev_max_speed(
 /// Search for all max-speed events in a time range.
 pub fn search_max_speed(
     engine: &Engine,
-    body: Body,
+    body: TransitBody,
     jd_start: f64,
     jd_end: f64,
     config: &StationaryConfig,
 ) -> Result<Vec<MaxSpeedEvent>, SearchError> {
     config.validate().map_err(SearchError::InvalidConfig)?;
-    validate_max_speed_body(body)?;
+    validate_max_speed_body(body, config)?;
 
     if jd_end <= jd_start {
         return Err(SearchError::InvalidConfig("jd_end must be after jd_start"));
@@ -387,16 +458,17 @@ pub fn search_max_speed(
     let step = config.step_size_days;
     let h = config.numerical_step_days;
 
-    let mut a_prev = numerical_acceleration(engine, body, jd_start, h)?;
+    let mut a_prev = numerical_acceleration(engine, body, jd_start, h, config.node_mode)?;
     let mut t_prev = jd_start;
 
     loop {
         let t_curr = (t_prev + step).min(jd_end);
-        let a_curr = numerical_acceleration(engine, body, t_curr, h)?;
+        let a_curr = numerical_acceleration(engine, body, t_curr, h, config.node_mode)?;
 
         if a_prev * a_curr < 0.0 {
-            let accel_at =
-                |t: f64| -> Result<f64, SearchError> { numerical_acceleration(engine, body, t, h) };
+            let accel_at = |t: f64| -> Result<f64, SearchError> {
+                numerical_acceleration(engine, body, t, h, config.node_mode)
+            };
 
             let t_peak = bisect_zero(
                 t_prev,
@@ -409,7 +481,8 @@ pub fn search_max_speed(
             )?;
 
             if t_peak >= jd_start && t_peak <= jd_end {
-                let (lon, lat, speed) = body_ecliptic_state(engine, body, t_peak)?;
+                let (lon, lat, speed) =
+                    transit_body_ecliptic_state(engine, body, t_peak, config.node_mode)?;
 
                 let speed_type = if speed >= 0.0 {
                     MaxSpeedType::MaxDirect
@@ -425,6 +498,8 @@ pub fn search_max_speed(
                     latitude_deg: lat,
                     speed_deg_per_day: speed,
                     speed_type,
+                    sidereal_longitude_deg: None,
+                    rashi_index: None,
                 });
             }
         }
@@ -444,48 +519,79 @@ pub fn search_max_speed(
 mod tests {
     use super::*;
 
+    fn cfg() -> StationaryConfig {
+        StationaryConfig::inner_planet()
+    }
+
     #[test]
     fn sun_rejected_for_stationary() {
-        assert!(validate_stationary_body(Body::Sun).is_err());
+        assert!(validate_stationary_body(TransitBody::Body(Body::Sun), &cfg()).is_err());
     }
 
     #[test]
     fn moon_rejected_for_stationary() {
-        assert!(validate_stationary_body(Body::Moon).is_err());
+        assert!(validate_stationary_body(TransitBody::Body(Body::Moon), &cfg()).is_err());
     }
 
     #[test]
     fn earth_rejected_for_stationary() {
-        assert!(validate_stationary_body(Body::Earth).is_err());
+        assert!(validate_stationary_body(TransitBody::Body(Body::Earth), &cfg()).is_err());
     }
 
     #[test]
     fn mercury_allowed_for_stationary() {
-        assert!(validate_stationary_body(Body::Mercury).is_ok());
+        assert!(validate_stationary_body(TransitBody::Body(Body::Mercury), &cfg()).is_ok());
     }
 
     #[test]
     fn mars_allowed_for_stationary() {
-        assert!(validate_stationary_body(Body::Mars).is_ok());
+        assert!(validate_stationary_body(TransitBody::Body(Body::Mars), &cfg()).is_ok());
+    }
+
+    #[test]
+    fn true_node_allowed_for_stationary() {
+        assert!(validate_stationary_body(TransitBody::Rahu, &cfg()).is_ok());
+        assert!(validate_stationary_body(TransitBody::Ketu, &cfg()).is_ok());
+    }
+
+    #[test]
+    fn mean_node_rejected_for_stationary() {
+        let mut config = cfg();
+        config.node_mode = NodeMode::Mean;
+        assert!(validate_stationary_body(TransitBody::Rahu, &config).is_err());
+        assert!(validate_stationary_body(TransitBody::Ketu, &config).is_err());
     }
 
     #[test]
     fn earth_rejected_for_max_speed() {
-        assert!(validate_max_speed_body(Body::Earth).is_err());
+        assert!(validate_max_speed_body(TransitBody::Body(Body::Earth), &cfg()).is_err());
     }
 
     #[test]
     fn sun_allowed_for_max_speed() {
-        assert!(validate_max_speed_body(Body::Sun).is_ok());
+        assert!(validate_max_speed_body(TransitBody::Body(Body::Sun), &cfg()).is_ok());
     }
 
     #[test]
     fn moon_allowed_for_max_speed() {
-        assert!(validate_max_speed_body(Body::Moon).is_ok());
+        assert!(validate_max_speed_body(TransitBody::Body(Body::Moon), &cfg()).is_ok());
     }
 
     #[test]
     fn mercury_allowed_for_max_speed() {
-        assert!(validate_max_speed_body(Body::Mercury).is_ok());
+        assert!(validate_max_speed_body(TransitBody::Body(Body::Mercury), &cfg()).is_ok());
+    }
+
+    #[test]
+    fn true_node_allowed_for_max_speed() {
+        assert!(validate_max_speed_body(TransitBody::Rahu, &cfg()).is_ok());
+    }
+
+    #[test]
+    fn mean_node_rejected_for_max_speed() {
+        let mut config = cfg();
+        config.node_mode = NodeMode::Mean;
+        assert!(validate_max_speed_body(TransitBody::Rahu, &config).is_err());
+        assert!(validate_max_speed_body(TransitBody::Ketu, &config).is_err());
     }
 }

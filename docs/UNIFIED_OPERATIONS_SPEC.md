@@ -24,6 +24,18 @@ This replaces function/command proliferation by direction (`next/prev/search`) a
 - `JdTdb(f64)`: Julian Date in TDB
 - `Utc(UtcTime)`: UTC calendar timestamp
 
+## TransitBody
+
+Shared body selector for the conjunction, motion, and sankranti/ingress
+families (and `gochar_events`, whose `GocharTransitBody` is an alias):
+
+- `Body(Body)`: plain ephemeris body (NAIF code)
+- `Rahu` (wire code 10007) / `Ketu` (10008): lunar nodes, computed from the
+  lunar-node model selected by the relevant config's `node_mode`
+  (`NodeMode::Mean` or `NodeMode::True`; default true/osculating)
+
+`TransitBody: From<Body>`, so plain-body call sites use `Body::Sun.into()`.
+
 ## Window Semantics
 
 - `Next` / `Prev`: require `at` time
@@ -51,9 +63,15 @@ Each family gets one canonical request + result contract:
 ## Request
 
 `ConjunctionOperation` fields:
-- `body1: Body`
-- `body2: Body`
-- `config: ConjunctionConfig`
+- `body1: TransitBody`
+- `body2: TransitBody`
+- `config: ConjunctionConfig` (includes `node_mode: NodeMode`, used when
+  either body is Rahu/Ketu)
+- `target_separations_deg: Vec<f64>`: additional target angles for a
+  multi-angle sweep; empty = use `config.target_separation_deg` only
+- `sankranti_config: Option<SankrantiConfig>`: when set, events also carry
+  sidereal longitudes and rashi indices computed with this configuration
+  (its node model is forced to match `config.node_mode`)
 - `query: ConjunctionQuery`
 
 `ConjunctionQuery` variants:
@@ -67,10 +85,27 @@ Each family gets one canonical request + result contract:
 - `Single(Option<ConjunctionEvent>)` for `Next` / `Prev`
 - `Many(Vec<ConjunctionEvent>)` for `Range`
 
+Each `ConjunctionEvent` carries `body1`/`body2` (`TransitBody`), the matched
+`target_separation_deg` (the config's single target or one of the requested
+sweep angles), and optional `body{1,2}_sidereal_longitude_deg` /
+`body{1,2}_rashi_index` echoes (populated when `sankranti_config` is set).
+Multi-angle semantics: `Next`/`Prev` return the event nearest to the anchor
+across all angles; `Range` merges per-angle results sorted by time (ties by
+angle).
+
 ## Validation
 
 - `ConjunctionConfig` must validate
 - range requires `end_jd_tdb > start_jd_tdb`
+
+## Scan Window
+
+Next/prev scans are bounded per pair: `max(800 d, 1.3 x mean synodic
+estimate)` from the bodies' mean geocentric longitude rates, so slow pairs
+such as Jupiter-Saturn are found; near-equal-rate pairs (Sun with
+Mercury/Venus) keep the 800-day baseline. A mid-scan engine error
+(ephemeris coverage edge) ends a next/prev scan as "no event"; an error at
+the first sample still propagates.
 
 ## Adapter Policy
 
@@ -112,9 +147,15 @@ Interim implementation may expose both legacy and canonical paths while parity t
 ## Request
 
 `MotionOperation` fields:
-- `body: Body`
+- `body: TransitBody` (stationary search of Rahu/Ketu requires the true
+  node model — `node_mode = Mean` with a node body is rejected with
+  `InvalidConfig`; max-speed accepts both models)
 - `kind: MotionKind` (`Stationary` or `MaxSpeed`)
-- `config: StationaryConfig`
+- `config: StationaryConfig` (includes `node_mode: NodeMode`; the
+  `StationaryConfig::lunar_node()` preset uses a 0.25-day step)
+- `sankranti_config: Option<SankrantiConfig>`: when set, events also carry
+  `sidereal_longitude_deg` and `rashi_index` echoes (its node model is
+  forced to match `config.node_mode`)
 - `query: MotionQuery`
 
 `MotionQuery` variants:
@@ -130,12 +171,17 @@ Interim implementation may expose both legacy and canonical paths while parity t
 - `MaxSpeedSingle(Option<MaxSpeedEvent>)`
 - `MaxSpeedMany(Vec<MaxSpeedEvent>)`
 
+Events carry `body: TransitBody` and the optional sidereal echo fields
+above (`None` unless `sankranti_config` was set).
+
 ## Lunar Phase (Implemented)
 
 ## Request
 
 `LunarPhaseOperation` fields:
 - `kind: LunarPhaseKind` (`Amavasya` or `Purnima`)
+- `sankranti_config: Option<SankrantiConfig>`: when set, events also carry
+  sidereal longitudes and rashi indices for the Sun and Moon
 - `query: LunarPhaseQuery`
 
 `LunarPhaseQuery` variants:
@@ -149,13 +195,21 @@ Interim implementation may expose both legacy and canonical paths while parity t
 - `Single(Option<LunarPhaseEvent>)`
 - `Many(Vec<LunarPhaseEvent>)`
 
+`LunarPhaseEvent` carries four optional sidereal echo fields —
+`moon_sidereal_longitude_deg`, `sun_sidereal_longitude_deg`,
+`moon_rashi_index`, `sun_rashi_index` — populated only when
+`sankranti_config` was set.
+
 ## Sankranti (Implemented)
 
 ## Request
 
 `SankrantiOperation` fields:
+- `body: TransitBody` (Sun = classical sankranti; any plain body or
+  Rahu/Ketu; Earth rejected)
 - `target: SankrantiTarget` (`Any` or `SpecificRashi(Rashi)`)
-- `config: SankrantiConfig`
+- `config: SankrantiConfig` (includes `node_mode: NodeMode` for node
+  bodies; `SankrantiConfig::for_body` picks the per-body scan step)
 - `query: SankrantiQuery`
 
 `SankrantiQuery` variants:
@@ -168,6 +222,11 @@ Interim implementation may expose both legacy and canonical paths while parity t
 `SankrantiResult` variants:
 - `Single(Option<SankrantiEvent>)`
 - `Many(Vec<SankrantiEvent>)`
+
+`SankrantiEvent` fields: `utc`, `body: TransitBody`, `rashi`,
+`rashi_index`, `sidereal_longitude_deg`, `tropical_longitude_deg`, and
+`is_retrograde` (true when the boundary was crossed in retrograde motion —
+a re-entry into the preceding rashi; always false for the Sun).
 
 ## Ayanamsha (Implemented)
 

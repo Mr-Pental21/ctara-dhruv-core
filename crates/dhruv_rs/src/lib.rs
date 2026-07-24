@@ -78,6 +78,7 @@ pub use dhruv_search::{
     ConjunctionResult, GrahanKind, GrahanResult, LunarPhaseKind, LunarPhaseResult, MotionKind,
     MotionResult, SankrantiResult, SankrantiTarget,
 };
+pub use dhruv_search::{TRANSIT_CODE_KETU, TRANSIT_CODE_RAHU, TransitBody};
 pub use dhruv_tara::{
     EarthState, EquatorialPosition, TaraAccuracy, TaraCatalog, TaraConfig, TaraError, TaraId,
 };

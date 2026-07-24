@@ -2,15 +2,22 @@
 
 This is the runtime/query surface of `dhruv_search` re-exported from `crates/dhruv_search/src/lib.rs`.
 
-Total runtime functions documented here: **68**.
+Total runtime functions documented here: **74**.
 
-## Conjunction / Aspect (4)
+Body arguments named `body`, `body1`, or `body2` in the conjunction,
+sankranti/ingress, and stationary/max-speed families are `TransitBody`
+values: plain ephemeris bodies plus Rahu/Ketu (codes 10007/10008, computed
+from the lunar-node model per the search config's `node_mode`;
+`TransitBody: From<Body>`).
+
+## Conjunction / Aspect (5)
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `body_ecliptic_lon_lat` | `engine`, `body`, `jd_tdb` | `Result<(f64, f64), SearchError>` | Geocentric ecliptic lon/lat (degrees) for a body. |
-| `next_conjunction` | `engine`, `body1`, `body2`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Next event where separation reaches target aspect angle. |
-| `prev_conjunction` | `engine`, `body1`, `body2`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Previous event where separation reaches target angle. |
+| `body_ecliptic_lon_lat` | `engine`, `body: Body`, `jd_tdb` | `Result<(f64, f64), SearchError>` | Geocentric ecliptic lon/lat (degrees) for a plain body. |
+| `transit_body_ecliptic_lon_lat` | `engine`, `body: TransitBody`, `jd_tdb`, `node_mode` | `Result<(f64, f64), SearchError>` | Same for a transit body; Rahu/Ketu via the lunar-node model, latitude 0. |
+| `next_conjunction` | `engine`, `body1`, `body2`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Next event where separation reaches target aspect angle. Pair-aware scan ceiling `max(800 d, 1.3 x mean synodic estimate)`; near-equal-rate pairs (Sun with Mercury/Venus) keep 800 d. Mid-scan engine error ends the scan with `Ok(None)`. |
+| `prev_conjunction` | `engine`, `body1`, `body2`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Previous event where separation reaches target angle (same ceiling and error policy). |
 | `search_conjunctions` | `engine`, `body1`, `body2`, `jd_start`, `jd_end`, `config` | `Result<Vec<ConjunctionEvent>, SearchError>` | All target-separation events in a range. |
 
 ## Lunar Phase (6)
@@ -83,17 +90,38 @@ like the visibility products, so the rings nest per timestamp (umbra ⊆
 higher levels ⊆ lower levels ⊆ penumbral boundary). Levels the moment's
 maximum magnitude does not reach are omitted.
 
-## Sankranti (5)
+## Sankranti / Rashi-Ingress (10)
+
+Generalized rashi-ingress search for any `TransitBody` (Earth rejected):
+coarse scan of the sidereal rashi index + bisection on the crossed cusp, so
+retrograde re-ingresses are events (`SankrantiEvent.is_retrograde`). Events
+carry `body`, `sidereal_longitude_deg`, and `tropical_longitude_deg`. The
+classical `*_sankranti` functions are Sun wrappers. `SankrantiConfig` adds
+`node_mode` (default true) and the `SankrantiConfig::for_body` constructor
+for per-body scan steps. Mid-scan engine errors end next/prev scans with
+`Ok(None)` and range sweeps with the events found so far.
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `next_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next Sun entry into any rashi. |
-| `prev_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous Sun entry into any rashi. |
-| `search_sankrantis` | `engine`, `start`, `end`, `config` | `Result<Vec<SankrantiEvent>, SearchError>` | All sankrantis in UTC range. |
-| `next_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next Sun entry into a chosen rashi. |
-| `prev_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous Sun entry into a chosen rashi. |
+| `next_ingress` | `engine`, `body`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next rashi ingress of `body` after UTC time. |
+| `prev_ingress` | `engine`, `body`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous rashi ingress of `body` before UTC time. |
+| `search_ingresses` | `engine`, `body`, `start`, `end`, `config` | `Result<Vec<SankrantiEvent>, SearchError>` | All rashi ingresses of `body` in UTC range. |
+| `next_specific_ingress` | `engine`, `body`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next time `body` enters a chosen rashi. |
+| `prev_specific_ingress` | `engine`, `body`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous time `body` entered a chosen rashi. |
+| `next_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: next Sun entry into any rashi. |
+| `prev_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: previous Sun entry into any rashi. |
+| `search_sankrantis` | `engine`, `start`, `end`, `config` | `Result<Vec<SankrantiEvent>, SearchError>` | Sun wrapper: all sankrantis in UTC range. |
+| `next_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: next Sun entry into a chosen rashi. |
+| `prev_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: previous Sun entry into a chosen rashi. |
 
 ## Stationary / Max-Speed (6)
+
+`StationaryConfig` adds `node_mode` (default true) and the
+`StationaryConfig::lunar_node()` preset (0.25-day step). Stationary search
+supports true-node Rahu/Ketu (the true node stations roughly weekly); the
+mean node is always retrograde, so `node_mode = Mean` with a node body is
+rejected with `InvalidConfig`. Max-speed search accepts both node models.
+Mid-scan engine errors end next/prev scans with `Ok(None)`.
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
@@ -162,4 +190,4 @@ maximum magnitude does not reach are omitted.
 ## Related Detailed Docs
 
 - Full inventory (includes helper methods): `docs/SEARCH_API_INVENTORY.md`
-- Clean-room provenance: `docs/clean_room_conjunction.md`, `docs/clean_room_grahan.md`, `docs/clean_room_solar_eclipse_visibility.md`, `docs/clean_room_stationary.md`, `docs/clean_room_panchang.md`, `docs/clean_room_tithi_karana_yoga.md`, `docs/clean_room_ashtakavarga.md`, `docs/clean_room_drishti.md`, `docs/clean_room_upagraha.md`, `docs/clean_room_gochar_events.md`
+- Clean-room provenance: `docs/clean_room_conjunction.md`, `docs/clean_room_ingress.md`, `docs/clean_room_grahan.md`, `docs/clean_room_solar_eclipse_visibility.md`, `docs/clean_room_stationary.md`, `docs/clean_room_panchang.md`, `docs/clean_room_tithi_karana_yoga.md`, `docs/clean_room_ashtakavarga.md`, `docs/clean_room_drishti.md`, `docs/clean_room_upagraha.md`, `docs/clean_room_gochar_events.md`

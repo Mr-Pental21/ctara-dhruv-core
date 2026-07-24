@@ -31,4 +31,13 @@ pub struct LunarPhaseEvent {
     pub moon_longitude_deg: f64,
     /// Tropical ecliptic longitude of the Sun at the event (degrees).
     pub sun_longitude_deg: f64,
+    /// Sidereal longitude of the Moon in degrees, when a sidereal
+    /// (sankranti) config was supplied with the request.
+    pub moon_sidereal_longitude_deg: Option<f64>,
+    /// Sidereal longitude of the Sun in degrees (see above).
+    pub sun_sidereal_longitude_deg: Option<f64>,
+    /// Moon sidereal rashi index 0-11 (see above).
+    pub moon_rashi_index: Option<u8>,
+    /// Sun sidereal rashi index 0-11 (see above).
+    pub sun_rashi_index: Option<u8>,
 }

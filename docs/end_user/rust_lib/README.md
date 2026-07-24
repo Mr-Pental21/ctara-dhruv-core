@@ -4,6 +4,11 @@
 It includes:
 
 - `DhruvContext` and request/operation APIs
+- search operations (`conjunction`, `motion`, `sankranti`, `lunar_phase`,
+  `grahan`) — the conjunction/motion/sankranti requests track any
+  `TransitBody` (plain bodies plus Rahu/Ketu), and the sankranti operation
+  is a general rashi-ingress search for any body (Sun = classical
+  sankranti)
 - canonical request/context-driven jyotish operations such as `upagraha_op`,
   `avastha_op`, `full_kundali`, and `gochar_events`
 - re-exported config/result types used by end users

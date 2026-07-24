@@ -4,6 +4,12 @@
 Detection of planetary stationary points (retrograde/direct stations) and
 peak-speed events via geocentric ecliptic longitude velocity analysis.
 
+The searched body is a `TransitBody`: any plain ephemeris body plus
+Rahu/Ketu (wire codes 10007/10008). Node longitudes come from the existing
+clean-room lunar-node model (`docs/clean_room_lunar_nodes.md`) with the
+model selected by `StationaryConfig::node_mode` (default true/osculating);
+node speed uses the same 1-minute central-difference stencil as planets.
+
 ## Algorithm Description
 
 ### Stationary Points
@@ -49,6 +55,12 @@ The ecliptic longitude speed is obtained from the existing engine pipeline:
   planet appears to move retrograde when Earth overtakes it (superior
   planets) or it overtakes Earth (inferior planets). This is apparent
   motion only, caused by the relative orbital velocities.
+- **Lunar-node stations**: the true (osculating) node oscillates around its
+  mean regression and stations roughly weekly, so
+  `StationaryConfig::lunar_node()` uses a 0.25-day coarse step. The mean
+  node regresses monotonically and has no stations; stationary search with
+  `node_mode = Mean` is rejected with `InvalidConfig`. Max-speed search
+  accepts both node models.
 - **Ecliptic longitude velocity**: derivative of the standard ecliptic
   longitude coordinate, a direct output of the spherical coordinate
   transformation applied to Cartesian state vectors.
@@ -61,7 +73,20 @@ The ecliptic longitude speed is obtained from the existing engine pipeline:
 - Classification and body validation rules derived from first principles
   of orbital mechanics (Sun and Moon never retrograde geocentrically)
 
+## Notes
+
+- Next/prev scans treat a mid-scan engine error (ephemeris coverage edge)
+  as "no event" (`Ok(None)`); an error at the start sample still
+  propagates.
+- The operation layer (`MotionOperation`) accepts an optional
+  `sankranti_config`; when set, events also carry `sidereal_longitude_deg`
+  and `rashi_index` echoes computed with that ayanamsha configuration (the
+  echo's node model is forced to match the search's `node_mode`).
+
 ## Validation
 
 Golden values compared against widely published retrograde dates for
 Mercury and Mars (public astronomical almanac data, e.g., USNO/HMNAO).
+True-node station behavior is covered by kernel-gated tests in
+`crates/dhruv_search/tests/stationary_golden.rs`; mean-node rejection is
+unit-tested in `crates/dhruv_search/src/stationary.rs`.

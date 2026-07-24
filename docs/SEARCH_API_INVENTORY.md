@@ -11,6 +11,7 @@ Notes:
 ## Related Docs
 
 - `docs/clean_room_conjunction.md`
+- `docs/clean_room_ingress.md`
 - `docs/clean_room_grahan.md`
 - `docs/clean_room_stationary.md`
 - `docs/clean_room_panchang.md`
@@ -27,19 +28,47 @@ Notes:
 - `InvalidConfig(&'static str)`
 - `NoConvergence(&'static str)`
 
+## Transit Body Selector
+
+Source: `crates/dhruv_search/src/transit_body.rs`
+
+`TransitBody` (`Body(Body) | Rahu | Ketu`) is the shared body selector for
+the ingress, conjunction, motion, and gochar-events searches. Rahu/Ketu use
+wire codes `TRANSIT_CODE_RAHU` = 10007 and `TRANSIT_CODE_KETU` = 10008 and
+are computed from the lunar-node model (mean or true, per the search
+config's `node_mode`). `GocharTransitBody` is an alias of `TransitBody`,
+and `TransitBody: From<Body>` so `Body::Sun.into()` works at call sites.
+
+| Function | Inputs | Output | What it does |
+|---|---|---|---|
+| `TransitBody::code` | `self` | `i32` | NAIF body code, or 10007/10008 for Rahu/Ketu. |
+| `TransitBody::from_code` | `code` | `Option<TransitBody>` | Decodes a NAIF or node wire code. |
+| `TransitBody::name` | `self` | `&'static str` | Display name (`"Sun"`, `"Rahu"`, ...). |
+| `TransitBody::lunar_node` | `self` | `Option<LunarNode>` | The node for Rahu/Ketu variants, `None` for plain bodies. |
+| `TransitBody::body` | `self` | `Option<Body>` | The wrapped plain body, `None` for Rahu/Ketu. |
+| `TransitBody::default_ingress_step_days` | `self` | `f64` | Per-body coarse-scan step for rashi-ingress search (Moon 0.25, Mercury/Venus 0.5, Sun/Mars 1.0, Jupiter/Saturn 2.0, Uranus/Neptune/Pluto 5.0, Rahu/Ketu 1.0). |
+| `TransitBody::ingress_max_scan_days` | `self` | `f64` | Scan ceiling for next/prev any-rashi ingress search (Moon 40, Sun 400, Mercury 500, Venus 700, Mars/Jupiter 1500, Saturn 2000, Uranus 4000, Neptune 7000, Pluto 13000, Rahu/Ketu 800). |
+
 ## Conjunction APIs
 
 Source: `crates/dhruv_search/src/conjunction.rs`, `crates/dhruv_search/src/conjunction_types.rs`
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `body_ecliptic_lon_lat` | `engine`, `body`, `jd_tdb` | `Result<(f64, f64), SearchError>` | Queries geocentric ecliptic longitude/latitude of a body (degrees). |
-| `next_conjunction` | `engine`, `body1`, `body2`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Finds next event where body separation hits target angle in `config`. |
-| `prev_conjunction` | `engine`, `body1`, `body2`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Finds previous target-separation event. |
-| `search_conjunctions` | `engine`, `body1`, `body2`, `jd_start`, `jd_end`, `config` | `Result<Vec<ConjunctionEvent>, SearchError>` | Finds all target-separation events in range. |
-| `ConjunctionConfig::conjunction` | `step_size_days` | `ConjunctionConfig` | Factory for 0 degree separation search. |
+| `body_ecliptic_lon_lat` | `engine`, `body: Body`, `jd_tdb` | `Result<(f64, f64), SearchError>` | Queries geocentric ecliptic longitude/latitude of a plain body (degrees). |
+| `transit_body_ecliptic_lon_lat` | `engine`, `body: TransitBody`, `jd_tdb`, `node_mode` | `Result<(f64, f64), SearchError>` | Same for a transit body; Rahu/Ketu use the lunar-node model with latitude 0. |
+| `next_conjunction` | `engine`, `body1: TransitBody`, `body2: TransitBody`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Finds next event where body separation hits target angle in `config`. Scan ceiling is pair-aware: `max(800 d, 1.3 x mean synodic estimate)`, so slow pairs (Jupiter-Saturn, node-Saturn) are found; near-equal-rate pairs (Sun with Mercury/Venus) keep 800 d. A mid-scan engine error ends the scan with `Ok(None)`. |
+| `prev_conjunction` | `engine`, `body1: TransitBody`, `body2: TransitBody`, `jd_tdb`, `config` | `Result<Option<ConjunctionEvent>, SearchError>` | Finds previous target-separation event (same pair-aware ceiling and error policy). |
+| `search_conjunctions` | `engine`, `body1: TransitBody`, `body2: TransitBody`, `jd_start`, `jd_end`, `config` | `Result<Vec<ConjunctionEvent>, SearchError>` | Finds all target-separation events in range (bounded by the range itself). |
+| `ConjunctionConfig::conjunction` | `step_size_days` | `ConjunctionConfig` | Factory for 0 degree separation search (true node model by default). |
 | `ConjunctionConfig::opposition` | `step_size_days` | `ConjunctionConfig` | Factory for 180 degree separation search. |
 | `ConjunctionConfig::aspect` | `target_deg`, `step_size_days` | `ConjunctionConfig` | Factory for arbitrary aspect angle search. |
+
+`ConjunctionConfig` carries `node_mode: NodeMode` (default true/osculating),
+used when either body is Rahu/Ketu. `ConjunctionEvent` carries `body1`/`body2`
+(`TransitBody`), the matched `target_separation_deg`, and optional sidereal
+echo fields (`body{1,2}_sidereal_longitude_deg`, `body{1,2}_rashi_index`)
+populated only by the operation layer when a sankranti config is supplied.
 
 ## Lunar Phase APIs
 
@@ -54,6 +83,11 @@ Source: `crates/dhruv_search/src/lunar_phase.rs`, `crates/dhruv_search/src/lunar
 | `search_purnimas` | `engine`, `start`, `end` | `Result<Vec<LunarPhaseEvent>, SearchError>` | All full moons in UTC range. |
 | `search_amavasyas` | `engine`, `start`, `end` | `Result<Vec<LunarPhaseEvent>, SearchError>` | All new moons in UTC range. |
 | `LunarPhase::name` | `self` | `&'static str` | Returns display name (`"Amavasya"` or `"Purnima"`). |
+
+`LunarPhaseEvent` carries optional sidereal echo fields
+(`moon_sidereal_longitude_deg`, `sun_sidereal_longitude_deg`,
+`moon_rashi_index`, `sun_rashi_index`) populated only by the operation layer
+when a sankranti config is supplied.
 
 ## Grahan (Eclipse) APIs
 
@@ -72,20 +106,41 @@ Source: `crates/dhruv_search/src/grahan.rs`, `crates/dhruv_search/src/grahan_typ
 | `GeoLocation::latitude_rad` | `self` | `f64` | Latitude in radians. |
 | `GeoLocation::longitude_rad` | `self` | `f64` | Longitude in radians. |
 
-## Sankranti APIs
+## Sankranti / Rashi-Ingress APIs
 
 Source: `crates/dhruv_search/src/sankranti.rs`, `crates/dhruv_search/src/sankranti_types.rs`
 
+The engine is a general rashi-ingress search for any `TransitBody` (Sun
+through Pluto plus Rahu/Ketu; Earth rejected): coarse scan of the sidereal
+rashi index plus bisection on the crossed cusp, so retrograde re-ingresses
+are first-class events (`SankrantiEvent.is_retrograde`). The classical
+`*_sankranti` functions are Sun wrappers over the same engine.
+`SankrantiEvent` carries `body`, `rashi`, `rashi_index`,
+`sidereal_longitude_deg`, `tropical_longitude_deg`, and `is_retrograde`.
+A mid-scan engine error (ephemeris coverage edge) ends next/prev scans with
+`Ok(None)` and range sweeps with the events found so far; the first sample
+still propagates errors. See `docs/clean_room_ingress.md`.
+
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `next_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next Sun-entry into any rashi after UTC time. |
-| `prev_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous Sun-entry into any rashi before UTC time. |
-| `search_sankrantis` | `engine`, `start`, `end`, `config` | `Result<Vec<SankrantiEvent>, SearchError>` | All sankrantis in UTC range. |
-| `next_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next entry into a specific rashi. |
-| `prev_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous entry into a specific rashi. |
-| `SankrantiConfig::new` | `ayanamsha_system`, `use_nutation` | `SankrantiConfig` | Constructor with default scan parameters. |
+| `next_ingress` | `engine`, `body: TransitBody`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next rashi ingress of `body` after UTC time (scan bounded by `TransitBody::ingress_max_scan_days`). |
+| `prev_ingress` | `engine`, `body: TransitBody`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous rashi ingress of `body` before UTC time. |
+| `search_ingresses` | `engine`, `body: TransitBody`, `start`, `end`, `config` | `Result<Vec<SankrantiEvent>, SearchError>` | All rashi ingresses of `body` in UTC range (scan bounded by the range). |
+| `next_specific_ingress` | `engine`, `body: TransitBody`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Next time `body` enters a specific rashi. |
+| `prev_specific_ingress` | `engine`, `body: TransitBody`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Previous time `body` entered a specific rashi. |
+| `next_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: next Sun-entry into any rashi. |
+| `prev_sankranti` | `engine`, `utc`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: previous Sun-entry into any rashi. |
+| `search_sankrantis` | `engine`, `start`, `end`, `config` | `Result<Vec<SankrantiEvent>, SearchError>` | Sun wrapper: all sankrantis in UTC range. |
+| `next_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: next entry into a specific rashi. |
+| `prev_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: previous entry into a specific rashi. |
+| `SankrantiConfig::new` | `ayanamsha_system`, `use_nutation` | `SankrantiConfig` | Constructor with default scan parameters (1.0-day step, true node model). |
+| `SankrantiConfig::new_with_model` | `ayanamsha_system`, `use_nutation`, `precession_model` | `SankrantiConfig` | Constructor with an explicit precession model. |
+| `SankrantiConfig::for_body` | `ayanamsha_system`, `use_nutation`, `body: TransitBody` | `SankrantiConfig` | Constructor using the per-body coarse-scan step (`TransitBody::default_ingress_step_days`). |
 | `SankrantiConfig::default_lahiri` | none | `SankrantiConfig` | Factory using Lahiri ayanamsha. |
 | `SankrantiConfig::validate` | `&self` | `Result<(), &'static str>` | Validates search parameter ranges. |
+
+`SankrantiConfig` carries `node_mode: NodeMode` (default true/osculating),
+used when the ingress body is Rahu/Ketu.
 
 ## Stationary and Max-Speed APIs
 
@@ -93,14 +148,24 @@ Source: `crates/dhruv_search/src/stationary.rs`, `crates/dhruv_search/src/statio
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `next_stationary` | `engine`, `body`, `jd_tdb`, `config` | `Result<Option<StationaryEvent>, SearchError>` | Next station (velocity sign-crossing) after `jd_tdb`. |
-| `prev_stationary` | `engine`, `body`, `jd_tdb`, `config` | `Result<Option<StationaryEvent>, SearchError>` | Previous station before `jd_tdb`. |
-| `search_stationary` | `engine`, `body`, `jd_start`, `jd_end`, `config` | `Result<Vec<StationaryEvent>, SearchError>` | All stations in range. |
-| `next_max_speed` | `engine`, `body`, `jd_tdb`, `config` | `Result<Option<MaxSpeedEvent>, SearchError>` | Next local speed extremum after `jd_tdb`. |
-| `prev_max_speed` | `engine`, `body`, `jd_tdb`, `config` | `Result<Option<MaxSpeedEvent>, SearchError>` | Previous speed extremum before `jd_tdb`. |
-| `search_max_speed` | `engine`, `body`, `jd_start`, `jd_end`, `config` | `Result<Vec<MaxSpeedEvent>, SearchError>` | All speed extrema in range. |
-| `StationaryConfig::inner_planet` | none | `StationaryConfig` | Preset config for inner planets. |
-| `StationaryConfig::outer_planet` | none | `StationaryConfig` | Preset config for outer planets. |
+| `next_stationary` | `engine`, `body: TransitBody`, `jd_tdb`, `config` | `Result<Option<StationaryEvent>, SearchError>` | Next station (velocity sign-crossing) after `jd_tdb`. A mid-scan engine error ends the scan with `Ok(None)`. |
+| `prev_stationary` | `engine`, `body: TransitBody`, `jd_tdb`, `config` | `Result<Option<StationaryEvent>, SearchError>` | Previous station before `jd_tdb`. |
+| `search_stationary` | `engine`, `body: TransitBody`, `jd_start`, `jd_end`, `config` | `Result<Vec<StationaryEvent>, SearchError>` | All stations in range. |
+| `next_max_speed` | `engine`, `body: TransitBody`, `jd_tdb`, `config` | `Result<Option<MaxSpeedEvent>, SearchError>` | Next local speed extremum after `jd_tdb`. |
+| `prev_max_speed` | `engine`, `body: TransitBody`, `jd_tdb`, `config` | `Result<Option<MaxSpeedEvent>, SearchError>` | Previous speed extremum before `jd_tdb`. |
+| `search_max_speed` | `engine`, `body: TransitBody`, `jd_start`, `jd_end`, `config` | `Result<Vec<MaxSpeedEvent>, SearchError>` | All speed extrema in range. |
+| `StationaryConfig::inner_planet` | none | `StationaryConfig` | Preset config for inner planets (1-day step). |
+| `StationaryConfig::outer_planet` | none | `StationaryConfig` | Preset config for outer planets (2-day step). |
+| `StationaryConfig::lunar_node` | none | `StationaryConfig` | Preset config for Rahu/Ketu (0.25-day step; the true node stations roughly weekly). |
+
+`StationaryConfig` carries `node_mode: NodeMode` (default true/osculating).
+Stationary search accepts Rahu/Ketu only with the true node model — the mean
+node is always retrograde, so `node_mode = Mean` is rejected with
+`InvalidConfig` (Sun, Moon, and Earth remain rejected as before). Max-speed
+search accepts both node models. `StationaryEvent`/`MaxSpeedEvent` carry
+`body: TransitBody` and optional `sidereal_longitude_deg`/`rashi_index`
+echoes populated only by the operation layer when a sankranti config is
+supplied.
 
 ## Panchang APIs
 

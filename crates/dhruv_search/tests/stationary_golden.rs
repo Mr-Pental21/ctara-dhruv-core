@@ -34,8 +34,8 @@ fn mercury_station_retrograde_apr_2024() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2024, 3, 1.0);
     let config = StationaryConfig::inner_planet();
-    let result =
-        next_stationary(&engine, Body::Mercury, jd_start, &config).expect("search should succeed");
+    let result = next_stationary(&engine, Body::Mercury.into(), jd_start, &config)
+        .expect("search should succeed");
     let event = result.expect("should find a Mercury station");
 
     // Mercury station retrograde ~2024-Apr-01 ± a few days
@@ -48,7 +48,7 @@ fn mercury_station_retrograde_apr_2024() {
         expected_jd
     );
     assert_eq!(event.station_type, StationType::StationRetrograde);
-    assert_eq!(event.body, Body::Mercury);
+    assert_eq!(event.body, Body::Mercury.into());
     assert!(event.longitude_deg >= 0.0 && event.longitude_deg < 360.0);
 }
 
@@ -60,8 +60,8 @@ fn mercury_station_direct_apr_2024() {
     // Start after the retrograde station
     let jd_start = jd_from_date(2024, 4, 5.0);
     let config = StationaryConfig::inner_planet();
-    let result =
-        next_stationary(&engine, Body::Mercury, jd_start, &config).expect("search should succeed");
+    let result = next_stationary(&engine, Body::Mercury.into(), jd_start, &config)
+        .expect("search should succeed");
     let event = result.expect("should find a Mercury direct station");
 
     let expected_jd = jd_from_date(2024, 4, 25.0);
@@ -80,8 +80,8 @@ fn mercury_station_retrograde_aug_2024() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2024, 7, 1.0);
     let config = StationaryConfig::inner_planet();
-    let result =
-        next_stationary(&engine, Body::Mercury, jd_start, &config).expect("search should succeed");
+    let result = next_stationary(&engine, Body::Mercury.into(), jd_start, &config)
+        .expect("search should succeed");
     let event = result.expect("should find a Mercury station");
 
     let expected_jd = jd_from_date(2024, 8, 5.0);
@@ -102,7 +102,7 @@ fn mars_retrograde_2024_2025() {
     let jd_start = jd_from_date(2024, 10, 1.0);
     let jd_end = jd_from_date(2025, 4, 1.0);
     let config = StationaryConfig::inner_planet();
-    let events = search_stationary(&engine, Body::Mars, jd_start, jd_end, &config)
+    let events = search_stationary(&engine, Body::Mars.into(), jd_start, jd_end, &config)
         .expect("search should succeed");
 
     assert!(
@@ -140,8 +140,8 @@ fn prev_stationary_mercury() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2024, 5, 1.0);
     let config = StationaryConfig::inner_planet();
-    let result =
-        prev_stationary(&engine, Body::Mercury, jd_start, &config).expect("search should succeed");
+    let result = prev_stationary(&engine, Body::Mercury.into(), jd_start, &config)
+        .expect("search should succeed");
     let event = result.expect("should find a previous Mercury station");
 
     // Should find a station before May 2024 — the direct station ~Apr 25 or earlier
@@ -156,7 +156,12 @@ fn prev_stationary_mercury() {
 fn sun_rejected_for_stationary() {
     let Some(engine) = load_engine() else { return };
     let config = StationaryConfig::inner_planet();
-    let result = next_stationary(&engine, Body::Sun, jd_from_date(2024, 1, 1.0), &config);
+    let result = next_stationary(
+        &engine,
+        Body::Sun.into(),
+        jd_from_date(2024, 1, 1.0),
+        &config,
+    );
     assert!(matches!(result, Err(SearchError::InvalidConfig(_))));
 }
 
@@ -165,7 +170,12 @@ fn sun_rejected_for_stationary() {
 fn moon_rejected_for_stationary() {
     let Some(engine) = load_engine() else { return };
     let config = StationaryConfig::inner_planet();
-    let result = next_stationary(&engine, Body::Moon, jd_from_date(2024, 1, 1.0), &config);
+    let result = next_stationary(
+        &engine,
+        Body::Moon.into(),
+        jd_from_date(2024, 1, 1.0),
+        &config,
+    );
     assert!(matches!(result, Err(SearchError::InvalidConfig(_))));
 }
 
@@ -174,7 +184,12 @@ fn moon_rejected_for_stationary() {
 fn earth_rejected_for_stationary() {
     let Some(engine) = load_engine() else { return };
     let config = StationaryConfig::inner_planet();
-    let result = next_stationary(&engine, Body::Earth, jd_from_date(2024, 1, 1.0), &config);
+    let result = next_stationary(
+        &engine,
+        Body::Earth.into(),
+        jd_from_date(2024, 1, 1.0),
+        &config,
+    );
     assert!(matches!(result, Err(SearchError::InvalidConfig(_))));
 }
 
@@ -183,7 +198,12 @@ fn earth_rejected_for_stationary() {
 fn moon_max_speed_allowed() {
     let Some(engine) = load_engine() else { return };
     let config = StationaryConfig::inner_planet();
-    let result = next_max_speed(&engine, Body::Moon, jd_from_date(2024, 1, 1.0), &config);
+    let result = next_max_speed(
+        &engine,
+        Body::Moon.into(),
+        jd_from_date(2024, 1, 1.0),
+        &config,
+    );
     assert!(result.is_ok(), "Moon should be allowed for max_speed");
     let event = result.unwrap();
     assert!(event.is_some(), "should find a Moon max-speed event");
@@ -194,8 +214,13 @@ fn moon_max_speed_allowed() {
 fn mercury_max_speed_significant() {
     let Some(engine) = load_engine() else { return };
     let config = StationaryConfig::inner_planet();
-    let result = next_max_speed(&engine, Body::Mercury, jd_from_date(2024, 1, 1.0), &config)
-        .expect("search should succeed");
+    let result = next_max_speed(
+        &engine,
+        Body::Mercury.into(),
+        jd_from_date(2024, 1, 1.0),
+        &config,
+    )
+    .expect("search should succeed");
     let event = result.expect("should find a Mercury max-speed event");
 
     // Mercury's direct speed peak is typically > 1 deg/day
@@ -214,8 +239,8 @@ fn saturn_station_retrograde_2024() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2024, 5, 1.0);
     let config = StationaryConfig::outer_planet();
-    let result =
-        next_stationary(&engine, Body::Saturn, jd_start, &config).expect("search should succeed");
+    let result = next_stationary(&engine, Body::Saturn.into(), jd_start, &config)
+        .expect("search should succeed");
     let event = result.expect("should find a Saturn station");
 
     let expected_jd = jd_from_date(2024, 6, 29.0);
@@ -236,8 +261,9 @@ fn max_speed_classifies_direct_and_retrograde() {
     let jd_start = jd_from_date(2024, 1, 1.0);
     let jd_end = jd_from_date(2024, 12, 31.0);
     let config = StationaryConfig::inner_planet();
-    let events = dhruv_search::search_max_speed(&engine, Body::Mercury, jd_start, jd_end, &config)
-        .expect("search should succeed");
+    let events =
+        dhruv_search::search_max_speed(&engine, Body::Mercury.into(), jd_start, jd_end, &config)
+            .expect("search should succeed");
 
     let has_direct = events
         .iter()
@@ -254,6 +280,57 @@ fn max_speed_classifies_direct_and_retrograde() {
 fn earth_rejected_for_max_speed() {
     let Some(engine) = load_engine() else { return };
     let config = StationaryConfig::inner_planet();
-    let result = next_max_speed(&engine, Body::Earth, jd_from_date(2024, 1, 1.0), &config);
+    let result = next_max_speed(
+        &engine,
+        Body::Earth.into(),
+        jd_from_date(2024, 1, 1.0),
+        &config,
+    );
+    assert!(matches!(result, Err(SearchError::InvalidConfig(_))));
+}
+
+/// True-node stations: the osculating node oscillates, stationing roughly
+/// weekly, with alternating retrograde/direct types.
+#[test]
+fn true_node_stations_in_60_days() {
+    let Some(engine) = load_engine() else { return };
+    use dhruv_search::TransitBody;
+    let config = StationaryConfig::lunar_node();
+    let jd_start = jd_from_date(2024, 1, 1.0);
+    let jd_end = jd_from_date(2024, 3, 1.0);
+
+    let events =
+        dhruv_search::search_stationary(&engine, TransitBody::Rahu, jd_start, jd_end, &config)
+            .expect("node station search should succeed");
+    assert!(
+        events.len() >= 4,
+        "expected several true-node stations in 60 days, got {}",
+        events.len()
+    );
+    for pair in events.windows(2) {
+        assert_ne!(
+            pair[0].station_type, pair[1].station_type,
+            "station types must alternate"
+        );
+    }
+    for ev in &events {
+        assert_eq!(ev.body, TransitBody::Rahu);
+    }
+}
+
+/// Mean-node stationary search is rejected (the mean node never stations).
+#[test]
+fn mean_node_rejected_for_stationary() {
+    let Some(engine) = load_engine() else { return };
+    use dhruv_search::TransitBody;
+    use dhruv_vedic_base::NodeMode;
+    let mut config = StationaryConfig::lunar_node();
+    config.node_mode = NodeMode::Mean;
+    let result = next_stationary(
+        &engine,
+        TransitBody::Rahu,
+        jd_from_date(2024, 1, 1.0),
+        &config,
+    );
     assert!(matches!(result, Err(SearchError::InvalidConfig(_))));
 }

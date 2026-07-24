@@ -1,10 +1,8 @@
 //! Typed request/result data for `gochar_events`.
 
-use dhruv_core::Body;
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{
-    ALL_ARUDHA_PADAS, ALL_GRAHAS, ALL_SPECIAL_LAGNAS, ALL_SPHUTAS, BhavaConfig, LunarNode,
-    RiseSetConfig,
+    ALL_ARUDHA_PADAS, ALL_GRAHAS, ALL_SPECIAL_LAGNAS, ALL_SPHUTAS, BhavaConfig, RiseSetConfig,
 };
 
 use crate::jyotish_types::{FullKundaliConfig, FullKundaliResult};
@@ -72,80 +70,14 @@ pub struct NatalTargetLongitude {
     pub longitude_deg: f64,
 }
 
-/// Gochar transit code for Rahu (true ascending node).
-pub const GOCHAR_TRANSIT_CODE_RAHU: i32 = 10_007;
 /// Gochar transit code for Ketu (true descending node).
-pub const GOCHAR_TRANSIT_CODE_KETU: i32 = 10_008;
+pub use crate::transit_body::TRANSIT_CODE_KETU as GOCHAR_TRANSIT_CODE_KETU;
+/// Gochar transit code for Rahu (true ascending node).
+pub use crate::transit_body::TRANSIT_CODE_RAHU as GOCHAR_TRANSIT_CODE_RAHU;
 
-/// Transit source supported by `gochar_events`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum GocharTransitBody {
-    Body(Body),
-    Rahu,
-    Ketu,
-}
-
-impl GocharTransitBody {
-    pub const fn code(self) -> i32 {
-        match self {
-            Self::Body(body) => body.code(),
-            Self::Rahu => GOCHAR_TRANSIT_CODE_RAHU,
-            Self::Ketu => GOCHAR_TRANSIT_CODE_KETU,
-        }
-    }
-
-    pub const fn from_code(code: i32) -> Option<Self> {
-        match code {
-            GOCHAR_TRANSIT_CODE_RAHU => Some(Self::Rahu),
-            GOCHAR_TRANSIT_CODE_KETU => Some(Self::Ketu),
-            _ => match Body::from_code(code) {
-                Some(body) => Some(Self::Body(body)),
-                None => None,
-            },
-        }
-    }
-
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Body(body) => match body {
-                Body::Sun => "Sun",
-                Body::Mercury => "Mercury",
-                Body::Venus => "Venus",
-                Body::Earth => "Earth",
-                Body::Moon => "Moon",
-                Body::Mars => "Mars",
-                Body::Jupiter => "Jupiter",
-                Body::Saturn => "Saturn",
-                Body::Uranus => "Uranus",
-                Body::Neptune => "Neptune",
-                Body::Pluto => "Pluto",
-            },
-            Self::Rahu => "Rahu",
-            Self::Ketu => "Ketu",
-        }
-    }
-
-    pub const fn lunar_node(self) -> Option<LunarNode> {
-        match self {
-            Self::Rahu => Some(LunarNode::Rahu),
-            Self::Ketu => Some(LunarNode::Ketu),
-            Self::Body(_) => None,
-        }
-    }
-
-    pub const fn body(self) -> Option<Body> {
-        match self {
-            Self::Body(body) => Some(body),
-            Self::Rahu | Self::Ketu => None,
-        }
-    }
-}
-
-impl From<Body> for GocharTransitBody {
-    fn from(value: Body) -> Self {
-        Self::Body(value)
-    }
-}
+/// Transit source supported by `gochar_events` (alias of [`TransitBody`],
+/// which is shared with the ingress/conjunction/motion searches).
+pub use crate::transit_body::TransitBody as GocharTransitBody;
 
 impl NatalTargetLongitude {
     pub fn display_name(&self) -> &str {

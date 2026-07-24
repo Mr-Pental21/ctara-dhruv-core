@@ -336,6 +336,7 @@ func cSankrantiConfig(cfg SankrantiConfig) C.DhruvSankrantiConfig {
 		step_size_days:   C.double(cfg.StepSizeDays),
 		max_iterations:   C.uint32_t(cfg.MaxIterations),
 		convergence_days: C.double(cfg.ConvergenceDays),
+		node_mode:        C.int32_t(cfg.NodeMode),
 	}
 }
 
@@ -347,6 +348,7 @@ func goSankrantiConfig(cfg C.DhruvSankrantiConfig) SankrantiConfig {
 		StepSizeDays:    float64(cfg.step_size_days),
 		MaxIterations:   uint32(cfg.max_iterations),
 		ConvergenceDays: float64(cfg.convergence_days),
+		NodeMode:        int32(cfg.node_mode),
 	}
 }
 
@@ -896,6 +898,7 @@ func ConjunctionConfigDefault() ConjunctionConfig {
 		StepSizeDays:        float64(cfg.step_size_days),
 		MaxIterations:       uint32(cfg.max_iterations),
 		ConvergenceDays:     float64(cfg.convergence_days),
+		NodeMode:            int32(cfg.node_mode),
 	}
 }
 
@@ -917,8 +920,16 @@ func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capaci
 			step_size_days:        C.double(req.Config.StepSizeDays),
 			max_iterations:        C.uint32_t(req.Config.MaxIterations),
 			convergence_days:      C.double(req.Config.ConvergenceDays),
+			node_mode:             C.int32_t(req.Config.NodeMode),
 		},
+		has_sidereal_config: boolU8(req.HasSiderealConfig),
+		sidereal_config:     cSankrantiConfig(req.SiderealConfig),
 	}
+	targetCount := min(len(req.TargetSeparationsDeg), MaxConjunctionTargets)
+	for i := 0; i < targetCount; i++ {
+		creq.target_separations_deg[i] = C.double(req.TargetSeparationsDeg[i])
+	}
+	creq.target_separation_count = C.uint32_t(targetCount)
 	var outEvent C.DhruvConjunctionEvent
 	var found C.uint8_t
 	var outCount C.uint32_t
@@ -929,16 +940,24 @@ func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capaci
 		arrPtr = &arr[0]
 	}
 	st := Status(C.dhruv_conjunction_search_ex(engine.ptr, &creq, &outEvent, &found, arrPtr, C.uint32_t(capacity), &outCount))
-	goEvent := ConjunctionEvent{
-		UTC:                 goUTC(outEvent.utc),
-		JdTdb:               float64(outEvent.jd_tdb),
-		ActualSeparationDeg: float64(outEvent.actual_separation_deg),
-		Body1LongitudeDeg:   float64(outEvent.body1_longitude_deg),
-		Body2LongitudeDeg:   float64(outEvent.body2_longitude_deg),
-		Body1LatitudeDeg:    float64(outEvent.body1_latitude_deg),
-		Body2LatitudeDeg:    float64(outEvent.body2_latitude_deg),
-		Body1Code:           int32(outEvent.body1_code),
-		Body2Code:           int32(outEvent.body2_code),
+	conv := func(v C.DhruvConjunctionEvent) ConjunctionEvent {
+		return ConjunctionEvent{
+			UTC:                       goUTC(v.utc),
+			JdTdb:                     float64(v.jd_tdb),
+			ActualSeparationDeg:       float64(v.actual_separation_deg),
+			Body1LongitudeDeg:         float64(v.body1_longitude_deg),
+			Body2LongitudeDeg:         float64(v.body2_longitude_deg),
+			Body1LatitudeDeg:          float64(v.body1_latitude_deg),
+			Body2LatitudeDeg:          float64(v.body2_latitude_deg),
+			Body1Code:                 int32(v.body1_code),
+			Body2Code:                 int32(v.body2_code),
+			TargetSeparationDeg:       float64(v.target_separation_deg),
+			HasSidereal:               v.has_sidereal != 0,
+			Body1SiderealLongitudeDeg: float64(v.body1_sidereal_longitude_deg),
+			Body2SiderealLongitudeDeg: float64(v.body2_sidereal_longitude_deg),
+			Body1RashiIndex:           int32(v.body1_rashi_index),
+			Body2RashiIndex:           int32(v.body2_rashi_index),
+		}
 	}
 	count := int(outCount)
 	if count > len(arr) {
@@ -946,19 +965,9 @@ func SearchConjunction(engine EngineHandle, req ConjunctionSearchRequest, capaci
 	}
 	events := make([]ConjunctionEvent, count)
 	for i := 0; i < count; i++ {
-		events[i] = ConjunctionEvent{
-			UTC:                 goUTC(arr[i].utc),
-			JdTdb:               float64(arr[i].jd_tdb),
-			ActualSeparationDeg: float64(arr[i].actual_separation_deg),
-			Body1LongitudeDeg:   float64(arr[i].body1_longitude_deg),
-			Body2LongitudeDeg:   float64(arr[i].body2_longitude_deg),
-			Body1LatitudeDeg:    float64(arr[i].body1_latitude_deg),
-			Body2LatitudeDeg:    float64(arr[i].body2_latitude_deg),
-			Body1Code:           int32(arr[i].body1_code),
-			Body2Code:           int32(arr[i].body2_code),
-		}
+		events[i] = conv(arr[i])
 	}
-	return goEvent, found != 0, events, st
+	return conv(outEvent), found != 0, events, st
 }
 
 func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
@@ -1376,6 +1385,7 @@ func StationaryConfigDefault() StationaryConfig {
 		MaxIterations:     uint32(cfg.max_iterations),
 		ConvergenceDays:   float64(cfg.convergence_days),
 		NumericalStepDays: float64(cfg.numerical_step_days),
+		NodeMode:          int32(cfg.node_mode),
 	}
 }
 
@@ -1397,7 +1407,10 @@ func SearchMotion(engine EngineHandle, req MotionSearchRequest, capacity uint32)
 			max_iterations:      C.uint32_t(req.Config.MaxIterations),
 			convergence_days:    C.double(req.Config.ConvergenceDays),
 			numerical_step_days: C.double(req.Config.NumericalStepDays),
+			node_mode:           C.int32_t(req.Config.NodeMode),
 		},
+		has_sidereal_config: boolU8(req.HasSiderealConfig),
+		sidereal_config:     cSankrantiConfig(req.SiderealConfig),
 	}
 	var outSt C.DhruvStationaryEvent
 	var outMs C.DhruvMaxSpeedEvent
@@ -1415,10 +1428,10 @@ func SearchMotion(engine EngineHandle, req MotionSearchRequest, capacity uint32)
 	}
 	st := Status(C.dhruv_motion_search_ex(engine.ptr, &creq, &outSt, &outMs, &found, stPtr, msPtr, C.uint32_t(capacity), &outCount))
 	convSt := func(v C.DhruvStationaryEvent) StationaryEvent {
-		return StationaryEvent{UTC: goUTC(v.utc), JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), StationType: int32(v.station_type)}
+		return StationaryEvent{UTC: goUTC(v.utc), JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), StationType: int32(v.station_type), HasSidereal: v.has_sidereal != 0, SiderealLongitudeDeg: float64(v.sidereal_longitude_deg), RashiIndex: int32(v.rashi_index)}
 	}
 	convMs := func(v C.DhruvMaxSpeedEvent) MaxSpeedEvent {
-		return MaxSpeedEvent{UTC: goUTC(v.utc), JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), SpeedDegPerDay: float64(v.speed_deg_per_day), SpeedType: int32(v.speed_type)}
+		return MaxSpeedEvent{UTC: goUTC(v.utc), JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), LongitudeDeg: float64(v.longitude_deg), LatitudeDeg: float64(v.latitude_deg), SpeedDegPerDay: float64(v.speed_deg_per_day), SpeedType: int32(v.speed_type), HasSidereal: v.has_sidereal != 0, SiderealLongitudeDeg: float64(v.sidereal_longitude_deg), RashiIndex: int32(v.rashi_index)}
 	}
 	count := int(outCount)
 	if count > len(stArr) {
@@ -1488,6 +1501,7 @@ func SearchSankranti(engine EngineHandle, req SankrantiSearchRequest, capacity u
 		start_utc:    cUTC(req.StartUTC),
 		end_utc:      cUTC(req.EndUTC),
 		config:       cSankrantiConfig(req.Config),
+		body_code:    C.int32_t(req.BodyCode),
 	}
 	var out C.DhruvSankrantiEvent
 	var found C.uint8_t
@@ -1500,7 +1514,7 @@ func SearchSankranti(engine EngineHandle, req SankrantiSearchRequest, capacity u
 	}
 	st := Status(C.dhruv_sankranti_search_ex(engine.ptr, &creq, &out, &found, ptr, C.uint32_t(capacity), &outCount))
 	conv := func(v C.DhruvSankrantiEvent) SankrantiEvent {
-		return SankrantiEvent{UTC: goUTC(v.utc), RashiIndex: int32(v.rashi_index), SunSiderealLongitudeDeg: float64(v.sun_sidereal_longitude_deg), SunTropicalLongitudeDeg: float64(v.sun_tropical_longitude_deg)}
+		return SankrantiEvent{UTC: goUTC(v.utc), RashiIndex: int32(v.rashi_index), SunSiderealLongitudeDeg: float64(v.sun_sidereal_longitude_deg), SunTropicalLongitudeDeg: float64(v.sun_tropical_longitude_deg), BodyCode: int32(v.body_code), SiderealLongitudeDeg: float64(v.sidereal_longitude_deg), TropicalLongitudeDeg: float64(v.tropical_longitude_deg), IsRetrograde: v.is_retrograde != 0}
 	}
 	count := int(outCount)
 	if count > len(arr) {

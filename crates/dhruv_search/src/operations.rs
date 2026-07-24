@@ -3,6 +3,7 @@
 //! This module is the migration layer from split function surfaces
 //! (`next_*`, `prev_*`, `search_*`) to config-driven operation requests.
 
+use crate::transit_body::TransitBody;
 use dhruv_core::{Body, Engine};
 use dhruv_frames::SphericalCoords;
 use dhruv_tara::{
@@ -25,12 +26,12 @@ use crate::lunar_phase_types::LunarPhaseEvent;
 use crate::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use crate::stationary_types::{MaxSpeedEvent, StationaryConfig, StationaryEvent};
 use crate::{
-    next_amavasya, next_chandra_grahan, next_conjunction, next_max_speed, next_purnima,
-    next_sankranti, next_specific_sankranti, next_stationary, next_surya_grahan, panchang_for_date,
-    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima,
-    prev_sankranti, prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
-    search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
-    search_sankrantis, search_stationary, search_surya_grahan,
+    next_amavasya, next_chandra_grahan, next_conjunction, next_ingress, next_max_speed,
+    next_purnima, next_specific_ingress, next_stationary, next_surya_grahan, panchang_for_date,
+    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_ingress, prev_max_speed,
+    prev_purnima, prev_specific_ingress, prev_stationary, prev_surya_grahan, search_amavasyas,
+    search_chandra_grahan, search_conjunctions, search_ingresses, search_max_speed,
+    search_purnimas, search_stationary, search_surya_grahan,
 };
 
 /// High-level query mode used by operation requests.
@@ -67,14 +68,21 @@ impl ConjunctionQuery {
 }
 
 /// Canonical conjunction operation request.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConjunctionOperation {
-    /// First body.
-    pub body1: Body,
-    /// Second body.
-    pub body2: Body,
+    /// First body (plain body or Rahu/Ketu).
+    pub body1: TransitBody,
+    /// Second body (plain body or Rahu/Ketu).
+    pub body2: TransitBody,
     /// Numerical search configuration.
     pub config: ConjunctionConfig,
+    /// Additional target separation angles for a multi-angle sweep.
+    /// Empty = use `config.target_separation_deg` only. Each returned event
+    /// carries the angle it matched in `target_separation_deg`.
+    pub target_separations_deg: Vec<f64>,
+    /// When set, events also carry sidereal longitudes and rashi indices
+    /// computed with this configuration.
+    pub sankranti_config: Option<SankrantiConfig>,
     /// Query selector and time bounds.
     pub query: ConjunctionQuery,
 }
@@ -88,18 +96,86 @@ pub enum ConjunctionResult {
     Many(Vec<ConjunctionEvent>),
 }
 
+/// Sidereal longitude + rashi index of a transit body at an event time.
+fn sidereal_echo_at(
+    engine: &Engine,
+    body: TransitBody,
+    jd_tdb: f64,
+    sankranti_config: &SankrantiConfig,
+) -> Result<(f64, u8), SearchError> {
+    let sid = crate::sankranti::transit_sidereal_longitude(engine, body, jd_tdb, sankranti_config)?;
+    Ok((sid, (sid.rem_euclid(360.0) / 30.0) as u8 % 12))
+}
+
+fn enrich_conjunction_event(
+    engine: &Engine,
+    event: &mut ConjunctionEvent,
+    sankranti_config: &SankrantiConfig,
+) -> Result<(), SearchError> {
+    let (s1, r1) = sidereal_echo_at(engine, event.body1, event.jd_tdb, sankranti_config)?;
+    let (s2, r2) = sidereal_echo_at(engine, event.body2, event.jd_tdb, sankranti_config)?;
+    event.body1_sidereal_longitude_deg = Some(s1);
+    event.body2_sidereal_longitude_deg = Some(s2);
+    event.body1_rashi_index = Some(r1);
+    event.body2_rashi_index = Some(r2);
+    Ok(())
+}
+
+/// Sidereal config used for echoes: the node model must match the one the
+/// search itself used, so it is taken from the search config.
+fn echo_config(
+    sankranti_config: &SankrantiConfig,
+    node_mode: dhruv_vedic_base::NodeMode,
+) -> SankrantiConfig {
+    SankrantiConfig {
+        node_mode,
+        ..*sankranti_config
+    }
+}
+
 /// Execute a conjunction operation request.
 pub fn conjunction(
     engine: &Engine,
     op: &ConjunctionOperation,
 ) -> Result<ConjunctionResult, SearchError> {
-    match op.query {
-        ConjunctionQuery::Next { at_jd_tdb } => Ok(ConjunctionResult::Single(next_conjunction(
-            engine, op.body1, op.body2, at_jd_tdb, &op.config,
-        )?)),
-        ConjunctionQuery::Prev { at_jd_tdb } => Ok(ConjunctionResult::Single(prev_conjunction(
-            engine, op.body1, op.body2, at_jd_tdb, &op.config,
-        )?)),
+    let single_angle = [op.config.target_separation_deg];
+    let angles: &[f64] = if op.target_separations_deg.is_empty() {
+        &single_angle
+    } else {
+        &op.target_separations_deg
+    };
+    let config_for = |angle: f64| ConjunctionConfig {
+        target_separation_deg: angle,
+        ..op.config
+    };
+
+    let mut result = match op.query {
+        ConjunctionQuery::Next { at_jd_tdb } => {
+            let mut best: Option<ConjunctionEvent> = None;
+            for &angle in angles {
+                let found =
+                    next_conjunction(engine, op.body1, op.body2, at_jd_tdb, &config_for(angle))?;
+                if let Some(ev) = found {
+                    if best.is_none_or(|b| ev.jd_tdb < b.jd_tdb) {
+                        best = Some(ev);
+                    }
+                }
+            }
+            ConjunctionResult::Single(best)
+        }
+        ConjunctionQuery::Prev { at_jd_tdb } => {
+            let mut best: Option<ConjunctionEvent> = None;
+            for &angle in angles {
+                let found =
+                    prev_conjunction(engine, op.body1, op.body2, at_jd_tdb, &config_for(angle))?;
+                if let Some(ev) = found {
+                    if best.is_none_or(|b| ev.jd_tdb > b.jd_tdb) {
+                        best = Some(ev);
+                    }
+                }
+            }
+            ConjunctionResult::Single(best)
+        }
         ConjunctionQuery::Range {
             start_jd_tdb,
             end_jd_tdb,
@@ -109,16 +185,40 @@ pub fn conjunction(
                     "end_jd_tdb must be greater than start_jd_tdb",
                 ));
             }
-            Ok(ConjunctionResult::Many(search_conjunctions(
-                engine,
-                op.body1,
-                op.body2,
-                start_jd_tdb,
-                end_jd_tdb,
-                &op.config,
-            )?))
+            let mut events = Vec::new();
+            for &angle in angles {
+                events.extend(search_conjunctions(
+                    engine,
+                    op.body1,
+                    op.body2,
+                    start_jd_tdb,
+                    end_jd_tdb,
+                    &config_for(angle),
+                )?);
+            }
+            events.sort_by(|a, b| {
+                a.jd_tdb
+                    .total_cmp(&b.jd_tdb)
+                    .then_with(|| a.target_separation_deg.total_cmp(&b.target_separation_deg))
+            });
+            ConjunctionResult::Many(events)
+        }
+    };
+
+    if let Some(sc) = op.sankranti_config.as_ref() {
+        let sc = echo_config(sc, op.config.node_mode);
+        match &mut result {
+            ConjunctionResult::Single(Some(ev)) => enrich_conjunction_event(engine, ev, &sc)?,
+            ConjunctionResult::Many(events) => {
+                for ev in events.iter_mut() {
+                    enrich_conjunction_event(engine, ev, &sc)?;
+                }
+            }
+            ConjunctionResult::Single(None) => {}
         }
     }
+
+    Ok(result)
 }
 
 /// Grahan kind selector.
@@ -275,12 +375,16 @@ impl MotionQuery {
 /// Canonical motion operation request.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MotionOperation {
-    /// Body to search for.
-    pub body: Body,
+    /// Body to search for (plain body or Rahu/Ketu; stationary search of the
+    /// nodes requires the true node model).
+    pub body: TransitBody,
     /// Motion event family.
     pub kind: MotionKind,
     /// Search configuration.
     pub config: StationaryConfig,
+    /// When set, events also carry sidereal longitudes and rashi indices
+    /// computed with this configuration.
+    pub sankranti_config: Option<SankrantiConfig>,
     /// Query selector and time bounds.
     pub query: MotionQuery,
 }
@@ -298,8 +402,53 @@ pub enum MotionResult {
     MaxSpeedMany(Vec<MaxSpeedEvent>),
 }
 
+fn enrich_stationary_event(
+    engine: &Engine,
+    event: &mut StationaryEvent,
+    sankranti_config: &SankrantiConfig,
+) -> Result<(), SearchError> {
+    let (sid, rashi) = sidereal_echo_at(engine, event.body, event.jd_tdb, sankranti_config)?;
+    event.sidereal_longitude_deg = Some(sid);
+    event.rashi_index = Some(rashi);
+    Ok(())
+}
+
+fn enrich_max_speed_event(
+    engine: &Engine,
+    event: &mut MaxSpeedEvent,
+    sankranti_config: &SankrantiConfig,
+) -> Result<(), SearchError> {
+    let (sid, rashi) = sidereal_echo_at(engine, event.body, event.jd_tdb, sankranti_config)?;
+    event.sidereal_longitude_deg = Some(sid);
+    event.rashi_index = Some(rashi);
+    Ok(())
+}
+
 /// Execute a motion operation request.
 pub fn motion(engine: &Engine, op: &MotionOperation) -> Result<MotionResult, SearchError> {
+    let mut result = motion_query(engine, op)?;
+    if let Some(sc) = op.sankranti_config.as_ref() {
+        let sc = echo_config(sc, op.config.node_mode);
+        match &mut result {
+            MotionResult::StationarySingle(Some(ev)) => enrich_stationary_event(engine, ev, &sc)?,
+            MotionResult::StationaryMany(events) => {
+                for ev in events.iter_mut() {
+                    enrich_stationary_event(engine, ev, &sc)?;
+                }
+            }
+            MotionResult::MaxSpeedSingle(Some(ev)) => enrich_max_speed_event(engine, ev, &sc)?,
+            MotionResult::MaxSpeedMany(events) => {
+                for ev in events.iter_mut() {
+                    enrich_max_speed_event(engine, ev, &sc)?;
+                }
+            }
+            MotionResult::StationarySingle(None) | MotionResult::MaxSpeedSingle(None) => {}
+        }
+    }
+    Ok(result)
+}
+
+fn motion_query(engine: &Engine, op: &MotionOperation) -> Result<MotionResult, SearchError> {
     match (op.kind, op.query) {
         (MotionKind::Stationary, MotionQuery::Next { at_jd_tdb }) => {
             Ok(MotionResult::StationarySingle(next_stationary(
@@ -471,6 +620,9 @@ impl LunarPhaseQuery {
 pub struct LunarPhaseOperation {
     /// Which lunar phase family to query.
     pub kind: LunarPhaseKind,
+    /// When set, events also carry sidereal longitudes and rashi indices
+    /// computed with this configuration.
+    pub sankranti_config: Option<SankrantiConfig>,
     /// Query selector and time bounds.
     pub query: LunarPhaseQuery,
 }
@@ -488,8 +640,52 @@ fn jd_tdb_to_utc(engine: &Engine, jd_tdb: f64) -> UtcTime {
     UtcTime::from_jd_tdb(jd_tdb, engine.lsk())
 }
 
+fn enrich_lunar_phase_event(
+    engine: &Engine,
+    event: &mut LunarPhaseEvent,
+    sankranti_config: &SankrantiConfig,
+) -> Result<(), SearchError> {
+    let jd_tdb = crate::search_util::utc_to_jd_tdb(engine, &event.utc);
+    let (sun_sid, sun_rashi) = sidereal_echo_at(
+        engine,
+        TransitBody::Body(Body::Sun),
+        jd_tdb,
+        sankranti_config,
+    )?;
+    let (moon_sid, moon_rashi) = sidereal_echo_at(
+        engine,
+        TransitBody::Body(Body::Moon),
+        jd_tdb,
+        sankranti_config,
+    )?;
+    event.sun_sidereal_longitude_deg = Some(sun_sid);
+    event.moon_sidereal_longitude_deg = Some(moon_sid);
+    event.sun_rashi_index = Some(sun_rashi);
+    event.moon_rashi_index = Some(moon_rashi);
+    Ok(())
+}
+
 /// Execute a lunar-phase operation request.
 pub fn lunar_phase(
+    engine: &Engine,
+    op: &LunarPhaseOperation,
+) -> Result<LunarPhaseResult, SearchError> {
+    let mut result = lunar_phase_query(engine, op)?;
+    if let Some(sc) = op.sankranti_config.as_ref() {
+        match &mut result {
+            LunarPhaseResult::Single(Some(ev)) => enrich_lunar_phase_event(engine, ev, sc)?,
+            LunarPhaseResult::Many(events) => {
+                for ev in events.iter_mut() {
+                    enrich_lunar_phase_event(engine, ev, sc)?;
+                }
+            }
+            LunarPhaseResult::Single(None) => {}
+        }
+    }
+    Ok(result)
+}
+
+fn lunar_phase_query(
     engine: &Engine,
     op: &LunarPhaseOperation,
 ) -> Result<LunarPhaseResult, SearchError> {
@@ -576,9 +772,12 @@ impl SankrantiQuery {
     }
 }
 
-/// Canonical sankranti operation request.
+/// Canonical sankranti / ingress operation request.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SankrantiOperation {
+    /// Body whose rashi ingresses are searched. Defaults to the Sun
+    /// (classical sankranti); accepts any plain body or Rahu/Ketu.
+    pub body: TransitBody,
     /// Which sankranti target family to query.
     pub target: SankrantiTarget,
     /// Search configuration.
@@ -596,15 +795,25 @@ pub enum SankrantiResult {
     Many(Vec<SankrantiEvent>),
 }
 
-/// Execute a sankranti operation request.
+/// Execute a sankranti / ingress operation request.
 pub fn sankranti(engine: &Engine, op: &SankrantiOperation) -> Result<SankrantiResult, SearchError> {
     match (op.target, op.query) {
-        (SankrantiTarget::Any, SankrantiQuery::Next { at_jd_tdb }) => Ok(SankrantiResult::Single(
-            next_sankranti(engine, &jd_tdb_to_utc(engine, at_jd_tdb), &op.config)?,
-        )),
-        (SankrantiTarget::Any, SankrantiQuery::Prev { at_jd_tdb }) => Ok(SankrantiResult::Single(
-            prev_sankranti(engine, &jd_tdb_to_utc(engine, at_jd_tdb), &op.config)?,
-        )),
+        (SankrantiTarget::Any, SankrantiQuery::Next { at_jd_tdb }) => {
+            Ok(SankrantiResult::Single(next_ingress(
+                engine,
+                op.body,
+                &jd_tdb_to_utc(engine, at_jd_tdb),
+                &op.config,
+            )?))
+        }
+        (SankrantiTarget::Any, SankrantiQuery::Prev { at_jd_tdb }) => {
+            Ok(SankrantiResult::Single(prev_ingress(
+                engine,
+                op.body,
+                &jd_tdb_to_utc(engine, at_jd_tdb),
+                &op.config,
+            )?))
+        }
         (
             SankrantiTarget::Any,
             SankrantiQuery::Range {
@@ -617,24 +826,27 @@ pub fn sankranti(engine: &Engine, op: &SankrantiOperation) -> Result<SankrantiRe
                     "end_jd_tdb must be greater than start_jd_tdb",
                 ));
             }
-            Ok(SankrantiResult::Many(search_sankrantis(
+            Ok(SankrantiResult::Many(search_ingresses(
                 engine,
+                op.body,
                 &jd_tdb_to_utc(engine, start_jd_tdb),
                 &jd_tdb_to_utc(engine, end_jd_tdb),
                 &op.config,
             )?))
         }
         (SankrantiTarget::SpecificRashi(rashi), SankrantiQuery::Next { at_jd_tdb }) => {
-            Ok(SankrantiResult::Single(next_specific_sankranti(
+            Ok(SankrantiResult::Single(next_specific_ingress(
                 engine,
+                op.body,
                 &jd_tdb_to_utc(engine, at_jd_tdb),
                 rashi,
                 &op.config,
             )?))
         }
         (SankrantiTarget::SpecificRashi(rashi), SankrantiQuery::Prev { at_jd_tdb }) => {
-            Ok(SankrantiResult::Single(prev_specific_sankranti(
+            Ok(SankrantiResult::Single(prev_specific_ingress(
                 engine,
+                op.body,
                 &jd_tdb_to_utc(engine, at_jd_tdb),
                 rashi,
                 &op.config,
@@ -652,8 +864,9 @@ pub fn sankranti(engine: &Engine, op: &SankrantiOperation) -> Result<SankrantiRe
                     "end_jd_tdb must be greater than start_jd_tdb",
                 ));
             }
-            let all = search_sankrantis(
+            let all = search_ingresses(
                 engine,
+                op.body,
                 &jd_tdb_to_utc(engine, start_jd_tdb),
                 &jd_tdb_to_utc(engine, end_jd_tdb),
                 &op.config,

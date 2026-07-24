@@ -5,7 +5,7 @@ canonical C ABI (`dhruv_ffi_c`) via `cffi`.
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=83`
+- ABI target: `DHRUV_API_VERSION=84`
 - Package root: `bindings/python-open`
 - Runtime dependency: `cffi`
 - Primary distribution: PyPI wheels plus sdist from unified `vX.Y.Z` tags
@@ -137,6 +137,36 @@ first segment may start before `from_utc` and the last may end after
 `to_utc`. Sweeps are capped at `MAX_PANCHANG_EVENTS` (50,000) events; a
 truncated result carries a `next_from` resume point (dedup on
 `(kind, start)` when merging).
+
+## Search: Nodes, Any-Body Sankranti, Multi-Angle Conjunctions
+
+The `ctara_dhruv.search` conjunction, motion, and sankranti operations accept
+the lunar node body codes `10007` (Rahu) and `10008` (Ketu) alongside NAIF
+codes (conjunction `body1_code`/`body2_code`, motion `body_code`, sankranti
+`body_code`). The `DhruvSankrantiConfig`, `DhruvConjunctionConfig`, and
+`DhruvStationaryConfig` structs (and the dict form accepted where sankranti
+configs are dict-based) carry a `node_mode` field selecting the node model
+(`0` = mean, `1` = true; default `1`). Stationary search of Rahu/Ketu
+requires the true node — the true node stations roughly weekly — and rejects
+`node_mode=0` with an invalid-query/config error.
+
+Sankranti search generalizes to any-body rashi ingress: `next_sankranti`,
+`prev_sankranti`, `specific_sankranti`, and `search_sankrantis` take an
+optional `body_code` (`0` = Sun, the classical default). `SankrantiEvent`
+now carries `body_code`, `sidereal_longitude_deg`, `tropical_longitude_deg`,
+and `is_retrograde` (retrograde bodies re-entering a rashi); the legacy
+`sun_sidereal_longitude_deg` / `sun_tropical_longitude_deg` fields remain as
+aliases for the tracked body's longitudes.
+
+Conjunction searches additionally accept `target_separations` (a list of up
+to `MAX_CONJUNCTION_TARGETS` = 16 target angles swept in one pass; events
+echo the matched angle as `target_separation_deg`) and `sidereal_config` (a
+`DhruvSankrantiConfig` struct or dict). Motion searches accept the same
+`sidereal_config`. When it is set, conjunction events carry
+`body1_sidereal_longitude_deg` / `body2_sidereal_longitude_deg` and
+`body1_rashi_index` / `body2_rashi_index`, and stationary/max-speed events
+carry `sidereal_longitude_deg` / `rashi_index` (all `None` otherwise, with
+`has_sidereal` flagging presence).
 
 ## Amsha Surface
 

@@ -7,7 +7,7 @@
 - time, rise/set, lagna, and bhava tools
 - panchang and jyotish chart calculations
 - pure-math classifiers and scalar helpers
-- unified search commands for conjunction, grahan, lunar phase, sankranti, motion, and gochar events
+- unified search commands for conjunction, grahan, lunar phase, sankranti, motion, and gochar events (conjunction, sankranti, and motion also accept the lunar nodes as transit bodies: 10007=Rahu, 10008=Ketu)
 - dasha and tara commands
 
 Start here:

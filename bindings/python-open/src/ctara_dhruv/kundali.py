@@ -131,6 +131,7 @@ def _make_sankranti_config(sankranti_config):
     cfg.step_size_days = sankranti_config.get("step_size_days", 1.0)
     cfg.max_iterations = sankranti_config.get("max_iterations", 50)
     cfg.convergence_days = sankranti_config.get("convergence_days", 1e-10)
+    cfg.node_mode = sankranti_config.get("node_mode", 1)
     return cfg
 
 

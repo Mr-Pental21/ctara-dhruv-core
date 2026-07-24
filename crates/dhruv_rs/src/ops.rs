@@ -3,7 +3,6 @@
 //! Search/event requests stay backed by `dhruv_search`, while assembled Vedic
 //! operations map to `dhruv_vedic_ops`.
 
-use dhruv_core::Body;
 use dhruv_search::{
     AmshaSelectionConfig, ConjunctionConfig, ConjunctionOperation, ConjunctionQuery,
     ConjunctionResult, GocharEventsConfig, GocharEventsOperation, GocharEventsResult,
@@ -11,7 +10,8 @@ use dhruv_search::{
     LunarPhaseKind, LunarPhaseOperation, LunarPhaseQuery, LunarPhaseResult, MotionKind,
     MotionOperation, MotionQuery, MotionResult, NatalTargetLongitude, SankrantiConfig,
     SankrantiOperation, SankrantiQuery, SankrantiResult, SankrantiTarget, StationaryConfig,
-    all_upagrahas_for_date_with_config, avastha_for_date, avastha_for_graha, full_kundali_for_date,
+    TransitBody, all_upagrahas_for_date_with_config, avastha_for_date, avastha_for_graha,
+    full_kundali_for_date,
 };
 use dhruv_search::{FullKundaliConfig, FullKundaliResult};
 use dhruv_tara::{EarthState, TaraCatalog, TaraConfig, TaraId};
@@ -51,11 +51,18 @@ pub enum ConjunctionRequestQuery {
 }
 
 /// Unified conjunction request.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConjunctionRequest {
-    pub body1: Body,
-    pub body2: Body,
+    /// First body (plain body or Rahu/Ketu; `TransitBody` is `From<Body>`).
+    pub body1: TransitBody,
+    /// Second body (plain body or Rahu/Ketu).
+    pub body2: TransitBody,
     pub config: Option<ConjunctionConfig>,
+    /// Additional target separation angles for a multi-angle sweep
+    /// (empty = the config's single `target_separation_deg`).
+    pub target_separations_deg: Vec<f64>,
+    /// When set, events also carry sidereal longitudes and rashi indices.
+    pub sankranti_config: Option<SankrantiConfig>,
     pub query: ConjunctionRequestQuery,
 }
 
@@ -123,6 +130,8 @@ pub fn conjunction(
         body1: request.body1,
         body2: request.body2,
         config: resolve_conjunction_config(ctx, request.config)?,
+        target_separations_deg: request.target_separations_deg.clone(),
+        sankranti_config: request.sankranti_config,
         query,
     };
     Ok(dhruv_search::conjunction(eng, &op)?)
@@ -209,9 +218,12 @@ pub enum MotionRequestQuery {
 /// Unified motion request.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MotionRequest {
-    pub body: Body,
+    /// Body to search (plain body or Rahu/Ketu).
+    pub body: TransitBody,
     pub kind: MotionKind,
     pub config: Option<StationaryConfig>,
+    /// When set, events also carry sidereal longitudes and rashi indices.
+    pub sankranti_config: Option<SankrantiConfig>,
     pub query: MotionRequestQuery,
 }
 
@@ -266,6 +278,7 @@ pub fn motion(ctx: &DhruvContext, request: &MotionRequest) -> Result<MotionResul
         body: request.body,
         kind: request.kind,
         config: resolve_motion_config(ctx, request.config)?,
+        sankranti_config: request.sankranti_config,
         query,
     };
     Ok(dhruv_search::motion(eng, &op)?)
@@ -286,6 +299,8 @@ pub enum LunarPhaseRequestQuery {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LunarPhaseRequest {
     pub kind: LunarPhaseKind,
+    /// When set, events also carry sidereal longitudes and rashi indices.
+    pub sankranti_config: Option<SankrantiConfig>,
     pub query: LunarPhaseRequestQuery,
 }
 
@@ -309,6 +324,7 @@ pub fn lunar_phase(
     };
     let op = LunarPhaseOperation {
         kind: request.kind,
+        sankranti_config: request.sankranti_config,
         query,
     };
     Ok(dhruv_search::lunar_phase(eng, &op)?)
@@ -325,9 +341,12 @@ pub enum SankrantiRequestQuery {
     Range { start: TimeInput, end: TimeInput },
 }
 
-/// Unified sankranti request.
+/// Unified sankranti / ingress request.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SankrantiRequest {
+    /// Body whose rashi ingresses are searched (Sun = classical sankranti;
+    /// any plain body or Rahu/Ketu).
+    pub body: TransitBody,
     pub target: SankrantiTarget,
     pub config: Option<SankrantiConfig>,
     pub query: SankrantiRequestQuery,
@@ -368,6 +387,7 @@ pub fn sankranti(
         },
     };
     let op = SankrantiOperation {
+        body: request.body,
         target: request.target,
         config: resolve_sankranti_config(ctx, request.config)?,
         query,

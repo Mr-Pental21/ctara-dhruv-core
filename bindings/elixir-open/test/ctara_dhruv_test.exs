@@ -322,6 +322,108 @@ defmodule CtaraDhruvTest do
     end
   end
 
+  test "search ops accept transit bodies, multi-angle sweeps, and sidereal echo" do
+    case with_engine() do
+      :skip ->
+        assert true
+
+      {:ok, engine} ->
+        january = %{year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0}
+        february = %{january | month: 2}
+        end_of_january = %{january | day: 31}
+
+        # Non-Sun ingress: the Moon changes rashi every ~2.5 days.
+        assert {:ok, %{events: moon_ingresses}} =
+                 Search.sankranti(engine, %{
+                   mode: :range,
+                   start_utc: january,
+                   end_utc: february,
+                   body: :moon
+                 })
+
+        assert length(moon_ingresses) >= 12
+
+        for event <- moon_ingresses do
+          assert event.body == :moon
+          assert Map.has_key?(event, :is_retrograde)
+          offset = :math.fmod(event.sidereal_longitude_deg, 30.0)
+          assert min(offset, 30.0 - offset) < 1.0e-3
+        end
+
+        # Backward compat: no :body means the Sun, with the legacy keys intact.
+        assert {:ok, %{events: sun_event}} =
+                 Search.sankranti(engine, %{mode: :next, at_utc: january})
+
+        assert sun_event.body == :sun
+        assert is_float(sun_event.sun_sidereal_longitude_deg)
+        assert is_float(sun_event.sun_tropical_longitude_deg)
+        assert sun_event.sidereal_longitude_deg == sun_event.sun_sidereal_longitude_deg
+
+        # Conjunction accepts Rahu/Ketu; Sun conjoins Rahu near the April
+        # 2024 eclipse season.
+        assert {:ok, %{events: node_event}} =
+                 Search.conjunction(engine, %{
+                   mode: :next,
+                   body1: :sun,
+                   body2: :rahu,
+                   at_utc: %{january | month: 3}
+                 })
+
+        refute is_nil(node_event)
+        assert node_event.utc.year == 2024
+        assert node_event.utc.month in [3, 4]
+
+        # Multi-angle sweep: new moon and full moon in one range request.
+        assert {:ok, %{events: phase_events}} =
+                 Search.conjunction(engine, %{
+                   mode: :range,
+                   body1: :sun,
+                   body2: :moon,
+                   start_utc: january,
+                   end_utc: end_of_january,
+                   config: %{target_separations_deg: [0.0, 180.0], step_size_days: 0.5}
+                 })
+
+        assert length(phase_events) >= 2
+        for event <- phase_events, do: assert(event.target_separation_deg in [0.0, 180.0])
+
+        # Opt-in sidereal echo via :sankranti_config.
+        assert {:ok, %{events: echo_event}} =
+                 Search.conjunction(engine, %{
+                   mode: :next,
+                   body1: :sun,
+                   body2: :moon,
+                   at_utc: january,
+                   sankranti_config: %{}
+                 })
+
+        assert is_float(echo_event.body1_sidereal_longitude_deg)
+        assert is_float(echo_event.body2_sidereal_longitude_deg)
+
+        # True-node stationary search works; the mean node is rejected.
+        assert {:ok, %{events: stations}} =
+                 Search.motion(engine, %{
+                   mode: :range,
+                   body: :rahu,
+                   kind: :stationary,
+                   start_utc: january,
+                   end_utc: end_of_january
+                 })
+
+        assert stations != []
+
+        assert {:error, _} =
+                 Search.motion(engine, %{
+                   mode: :range,
+                   body: :rahu,
+                   kind: :stationary,
+                   start_utc: january,
+                   end_utc: end_of_january,
+                   config: %{node_mode: :mean}
+                 })
+    end
+  end
+
   test "elixir engine constructor accepts omitted shared default fields" do
     if File.exists?(@spk) and File.exists?(@lsk) do
       assert {:ok, engine} =

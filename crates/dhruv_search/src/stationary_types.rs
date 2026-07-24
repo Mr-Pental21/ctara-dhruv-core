@@ -1,7 +1,9 @@
 //! Types for stationary point and max-speed search.
 
-use dhruv_core::Body;
 use dhruv_time::UtcTime;
+use dhruv_vedic_base::NodeMode;
+
+use crate::transit_body::TransitBody;
 
 /// Station type: retrograde or direct.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -20,13 +22,18 @@ pub struct StationaryEvent {
     /// Event time as structured Gregorian UTC.
     pub utc: UtcTime,
     /// Which body.
-    pub body: Body,
+    pub body: TransitBody,
     /// Ecliptic longitude at station in degrees [0, 360).
     pub longitude_deg: f64,
     /// Ecliptic latitude at station in degrees.
     pub latitude_deg: f64,
     /// Whether retrograde or direct station.
     pub station_type: StationType,
+    /// Sidereal longitude in degrees, when a sidereal (sankranti) config was
+    /// supplied with the request.
+    pub sidereal_longitude_deg: Option<f64>,
+    /// Sidereal rashi index 0-11 (see above).
+    pub rashi_index: Option<u8>,
 }
 
 /// Max speed type classification.
@@ -46,7 +53,7 @@ pub struct MaxSpeedEvent {
     /// Event time as structured Gregorian UTC.
     pub utc: UtcTime,
     /// Which body.
-    pub body: Body,
+    pub body: TransitBody,
     /// Ecliptic longitude at peak speed in degrees [0, 360).
     pub longitude_deg: f64,
     /// Ecliptic latitude at peak speed in degrees.
@@ -55,6 +62,11 @@ pub struct MaxSpeedEvent {
     pub speed_deg_per_day: f64,
     /// Whether the peak is in the direct or retrograde direction.
     pub speed_type: MaxSpeedType,
+    /// Sidereal longitude in degrees, when a sidereal (sankranti) config was
+    /// supplied with the request.
+    pub sidereal_longitude_deg: Option<f64>,
+    /// Sidereal rashi index 0-11 (see above).
+    pub rashi_index: Option<u8>,
 }
 
 /// Configuration for stationary and max-speed searches.
@@ -69,6 +81,10 @@ pub struct StationaryConfig {
     /// Step for numerical central difference in days (default 0.01).
     /// Only used by max-speed search for computing acceleration.
     pub numerical_step_days: f64,
+    /// Lunar-node model used when the body is Rahu/Ketu (default:
+    /// true/osculating node). Stationary search requires the true node —
+    /// the mean node is always retrograde and has no stations.
+    pub node_mode: NodeMode,
 }
 
 impl StationaryConfig {
@@ -79,6 +95,7 @@ impl StationaryConfig {
             max_iterations: 50,
             convergence_days: 1e-8,
             numerical_step_days: 0.01,
+            node_mode: NodeMode::default(),
         }
     }
 
@@ -86,9 +103,16 @@ impl StationaryConfig {
     pub fn outer_planet() -> Self {
         Self {
             step_size_days: 2.0,
-            max_iterations: 50,
-            convergence_days: 1e-8,
-            numerical_step_days: 0.01,
+            ..Self::inner_planet()
+        }
+    }
+
+    /// Default config for the lunar nodes: the true node stations roughly
+    /// weekly, so a short quarter-day step is used.
+    pub fn lunar_node() -> Self {
+        Self {
+            step_size_days: 0.25,
+            ..Self::inner_planet()
         }
     }
 

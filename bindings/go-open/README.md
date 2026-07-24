@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=83`
+- ABI target: `DHRUV_API_VERSION=84`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -81,7 +81,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v78).
+symbols from `dhruv.h` (ABI v84).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -106,7 +106,10 @@ The public `dhruv` package includes wrappers for:
 - ayanamsha and lunar-node APIs
 - riseset/bhava APIs
 - unified search APIs (conjunction/grahan/motion/lunar phase/sankranti)
-  with structured UTC on the high-level time-bearing result objects alongside JD
+  with structured UTC on the high-level time-bearing result objects alongside
+  JD; conjunction, motion, and sankranti searches also accept Rahu/Ketu body
+  codes (10007/10008), any-body sankranti tracking, multi-angle conjunction
+  sweeps, and optional sidereal echoes (see "Search Enhancements" below)
 - grouped `gochar_events` return-chart and transit-aspect API with caller-named natal targets, including `GocharTransitRahu` and `GocharTransitKetu` alongside physical-body codes
 - panchang and calendar date APIs
 - range-sweep APIs: `(*Engine).AmshaSeries` (fixed-cadence slim varga
@@ -123,6 +126,40 @@ The public `dhruv` package includes wrappers for:
 - tara catalog and compute APIs
 - low-level graha relationship/combustion/dignity helpers
 - low-level tara propagation and correction primitives
+
+## Search Enhancements
+
+The conjunction, motion, and sankranti searches accept the lunar nodes as
+bodies alongside physical NAIF codes: Rahu is `10007` and Ketu is `10008`
+(the same values as `GocharTransitRahu`/`GocharTransitKetu`). The node
+position model is selected per config through the `NodeMode` field on
+`ConjunctionConfig`, `StationaryConfig`, and `SankrantiConfig` using
+`NodeModeMean` or `NodeModeTrue`; the `*ConfigDefault()` helpers default to
+the true node. Stationary search of Rahu/Ketu requires `NodeModeTrue` (the
+true node stations roughly weekly; the mean node never stations, so
+`NodeModeMean` fails with an invalid-query/config error).
+
+Sankranti search generalizes to any-body rashi ingress through
+`SankrantiSearchRequest.BodyCode` (0 keeps the classical Sun sankranti).
+`SankrantiEvent` now carries `BodyCode`, `SiderealLongitudeDeg`,
+`TropicalLongitudeDeg`, and `IsRetrograde` (true when the boundary was
+crossed in retrograde motion, so a rashi can be re-entered); the legacy
+`SunSiderealLongitudeDeg`/`SunTropicalLongitudeDeg` fields remain as aliases
+for the tracked body's longitudes.
+
+Conjunction search sweeps multiple separation angles in one call through
+`ConjunctionSearchRequest.TargetSeparationsDeg` (at most
+`MaxConjunctionTargets` entries; empty keeps the single
+`Config.TargetSeparationDeg` angle). Each `ConjunctionEvent` reports the
+matched angle in `TargetSeparationDeg`.
+
+Conjunction and motion searches optionally echo sidereal positions: set
+`HasSiderealConfig` plus `SiderealConfig` (a `SankrantiConfig`) on the
+request, and events carry `HasSidereal` with per-body
+`...SiderealLongitudeDeg` and `...RashiIndex` fields (`StationaryEvent` and
+`MaxSpeedEvent` carry `SiderealLongitudeDeg`/`RashiIndex`). When
+`HasSidereal` is false the sidereal longitudes are 0.0 and the rashi indices
+are -1.
 
 ## Panchang Selection
 

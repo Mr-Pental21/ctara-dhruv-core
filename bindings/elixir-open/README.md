@@ -115,6 +115,38 @@ Tajaka, Tithi Pravesha, and named transit-aspect windows around a query time.
 `transit_bodies` now accepts Rahu, Ketu, and the outer planets on the same
 surface as the classical body names/codes.
 
+The core search operations share that transit-body surface:
+
+- `Search.sankranti/2` accepts an optional `:body` (any body name or code,
+  including `:rahu` / `:ketu`; default `:sun`, the classical sankranti). When
+  `:sankranti_config` omits `:step_size_days`, a per-body default scan step
+  is applied automatically (for example 0.25 days for the Moon); when you do
+  set `:step_size_days`, the engine uses it as given, so pick a
+  body-appropriate value or omit it.
+- `Search.conjunction/2` (`:body1` / `:body2`) and `Search.motion/2`
+  (`:body`) accept `:rahu` / `:ketu` too. Search `:config` maps accept
+  `:node_mode` (`"mean"` / `"true"`, or `0` / `1`; atom `:mean` also works,
+  but pass the string `"true"` since Elixir reads `:true` as a boolean)
+  selecting the lunar-node model; the default is the true node. Stationary
+  search of the nodes requires the true node — the mean node is always
+  retrograde.
+- Conjunction `:config` maps also accept `:target_separations_deg`, a list
+  of aspect angles searched in one sweep; each event reports the matched
+  angle in `:target_separation_deg`. Next/prev return the nearest event
+  across the angles; range returns the merged, time-sorted union.
+- Conjunction, motion, and lunar-phase request maps accept an optional
+  `:sankranti_config`; when present, events additionally carry sidereal
+  longitudes and rashi indices (`:body1_sidereal_longitude_deg` /
+  `:body1_rashi_index` on conjunction events, `:sidereal_longitude_deg` /
+  `:rashi_index` on motion events, `:moon_sidereal_longitude_deg` /
+  `:moon_rashi_index` and the Sun counterparts on lunar-phase events).
+  These keys are `nil` unless the echo is enabled.
+- Sankranti events now carry `:body`, `:sidereal_longitude_deg`,
+  `:tropical_longitude_deg`, and `:is_retrograde` (true when the boundary
+  was crossed in retrograde motion; always false for the Sun). Sun events
+  keep the legacy `:sun_sidereal_longitude_deg` /
+  `:sun_tropical_longitude_deg` keys for compatibility.
+
 The direct Vedic bhava surface is tropical unless you provide a
 `sankranti_config`. The Elixir wrapper now exposes convenience arities for that
 explicitly:

@@ -1443,7 +1443,13 @@ pub fn next_chandra_grahan(
 
     // Search up to ~2 years (enough for at least 2 grahan seasons)
     for _ in 0..50 {
-        let full_moon = next_conjunction(engine, Body::Sun, Body::Moon, search_jd, &moon_config)?;
+        let full_moon = next_conjunction(
+            engine,
+            Body::Sun.into(),
+            Body::Moon.into(),
+            search_jd,
+            &moon_config,
+        )?;
         let Some(fm) = full_moon else {
             return Ok(None);
         };
@@ -1469,7 +1475,13 @@ pub fn prev_chandra_grahan(
     let mut search_jd = jd_tdb;
 
     for _ in 0..50 {
-        let full_moon = prev_conjunction(engine, Body::Sun, Body::Moon, search_jd, &moon_config)?;
+        let full_moon = prev_conjunction(
+            engine,
+            Body::Sun.into(),
+            Body::Moon.into(),
+            search_jd,
+            &moon_config,
+        )?;
         let Some(fm) = full_moon else {
             return Ok(None);
         };
@@ -1498,8 +1510,8 @@ pub fn search_chandra_grahan(
     let moon_config = ConjunctionConfig::opposition(MOON_STEP_DAYS);
     let full_moons = search_conjunctions(
         engine,
-        Body::Sun,
-        Body::Moon,
+        Body::Sun.into(),
+        Body::Moon.into(),
         jd_start,
         jd_end,
         &moon_config,
@@ -1809,7 +1821,13 @@ pub fn next_surya_grahan(
     let mut search_jd = jd_tdb;
 
     for _ in 0..50 {
-        let new_moon = next_conjunction(engine, Body::Sun, Body::Moon, search_jd, &moon_config)?;
+        let new_moon = next_conjunction(
+            engine,
+            Body::Sun.into(),
+            Body::Moon.into(),
+            search_jd,
+            &moon_config,
+        )?;
         let Some(nm) = new_moon else {
             return Ok(None);
         };
@@ -1837,7 +1855,13 @@ pub fn prev_surya_grahan(
     let mut search_jd = jd_tdb;
 
     for _ in 0..50 {
-        let new_moon = prev_conjunction(engine, Body::Sun, Body::Moon, search_jd, &moon_config)?;
+        let new_moon = prev_conjunction(
+            engine,
+            Body::Sun.into(),
+            Body::Moon.into(),
+            search_jd,
+            &moon_config,
+        )?;
         let Some(nm) = new_moon else {
             return Ok(None);
         };
@@ -1869,8 +1893,8 @@ pub fn search_surya_grahan(
     let moon_config = ConjunctionConfig::conjunction(MOON_STEP_DAYS);
     let new_moons = search_conjunctions(
         engine,
-        Body::Sun,
-        Body::Moon,
+        Body::Sun.into(),
+        Body::Moon.into(),
         jd_start,
         jd_end,
         &moon_config,

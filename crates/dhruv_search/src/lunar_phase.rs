@@ -18,12 +18,7 @@ use crate::lunar_phase_types::{LunarPhase, LunarPhaseEvent};
 const LUNAR_STEP_DAYS: f64 = 0.5;
 
 fn make_config(target_deg: f64) -> ConjunctionConfig {
-    ConjunctionConfig {
-        target_separation_deg: target_deg,
-        step_size_days: LUNAR_STEP_DAYS,
-        max_iterations: 50,
-        convergence_days: 1e-8,
-    }
+    ConjunctionConfig::aspect(target_deg, LUNAR_STEP_DAYS)
 }
 
 fn conjunction_to_phase(
@@ -37,6 +32,10 @@ fn conjunction_to_phase(
         // body1=Sun, body2=Moon
         sun_longitude_deg: event.body1_longitude_deg,
         moon_longitude_deg: event.body2_longitude_deg,
+        sun_sidereal_longitude_deg: None,
+        moon_sidereal_longitude_deg: None,
+        sun_rashi_index: None,
+        moon_rashi_index: None,
     }
 }
 
@@ -47,7 +46,7 @@ pub fn next_purnima(
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
     let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(180.0);
-    let result = next_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
+    let result = next_conjunction(engine, Body::Sun.into(), Body::Moon.into(), jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::FullMoon, engine.lsk())))
 }
 
@@ -58,7 +57,7 @@ pub fn prev_purnima(
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
     let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(180.0);
-    let result = prev_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
+    let result = prev_conjunction(engine, Body::Sun.into(), Body::Moon.into(), jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::FullMoon, engine.lsk())))
 }
 
@@ -69,7 +68,7 @@ pub fn next_amavasya(
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
     let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(0.0);
-    let result = next_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
+    let result = next_conjunction(engine, Body::Sun.into(), Body::Moon.into(), jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::NewMoon, engine.lsk())))
 }
 
@@ -80,7 +79,7 @@ pub fn prev_amavasya(
 ) -> Result<Option<LunarPhaseEvent>, SearchError> {
     let jd = crate::search_util::utc_to_jd_tdb(engine, &utc);
     let config = make_config(0.0);
-    let result = prev_conjunction(engine, Body::Sun, Body::Moon, jd, &config)?;
+    let result = prev_conjunction(engine, Body::Sun.into(), Body::Moon.into(), jd, &config)?;
     Ok(result.map(|e| conjunction_to_phase(&e, LunarPhase::NewMoon, engine.lsk())))
 }
 
@@ -93,7 +92,14 @@ pub fn search_purnimas(
     let jd_start = crate::search_util::utc_to_jd_tdb(engine, &start);
     let jd_end = crate::search_util::utc_to_jd_tdb(engine, &end);
     let config = make_config(180.0);
-    let events = search_conjunctions(engine, Body::Sun, Body::Moon, jd_start, jd_end, &config)?;
+    let events = search_conjunctions(
+        engine,
+        Body::Sun.into(),
+        Body::Moon.into(),
+        jd_start,
+        jd_end,
+        &config,
+    )?;
     Ok(events
         .iter()
         .map(|e| conjunction_to_phase(e, LunarPhase::FullMoon, engine.lsk()))
@@ -109,7 +115,14 @@ pub fn search_amavasyas(
     let jd_start = crate::search_util::utc_to_jd_tdb(engine, &start);
     let jd_end = crate::search_util::utc_to_jd_tdb(engine, &end);
     let config = make_config(0.0);
-    let events = search_conjunctions(engine, Body::Sun, Body::Moon, jd_start, jd_end, &config)?;
+    let events = search_conjunctions(
+        engine,
+        Body::Sun.into(),
+        Body::Moon.into(),
+        jd_start,
+        jd_end,
+        &config,
+    )?;
     Ok(events
         .iter()
         .map(|e| conjunction_to_phase(e, LunarPhase::NewMoon, engine.lsk()))

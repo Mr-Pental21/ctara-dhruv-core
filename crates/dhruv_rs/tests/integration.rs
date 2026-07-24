@@ -56,9 +56,11 @@ fn conjunction_next_runs() {
     };
 
     let req = ConjunctionRequest {
-        body1: Body::Sun,
-        body2: Body::Mercury,
+        body1: Body::Sun.into(),
+        body2: Body::Mercury.into(),
         config: Some(ConjunctionConfig::conjunction(1.0)),
+        target_separations_deg: Vec::new(),
+        sankranti_config: None,
         query: ConjunctionRequestQuery::Next {
             at: TimeInput::Utc(UtcDate::new(2024, 3, 20, 0, 0, 0.0)),
         },
@@ -78,6 +80,7 @@ fn sankranti_range_runs() {
     };
 
     let req = SankrantiRequest {
+        body: Body::Sun.into(),
         target: SankrantiTarget::Any,
         config: Some(SankrantiConfig::default_lahiri()),
         query: SankrantiRequestQuery::Range {

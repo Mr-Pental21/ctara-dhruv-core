@@ -554,19 +554,30 @@ to the top-level upagraha section and to Gulika/Maandi inside bindus.
 | `search-purnimas --start ... --end ... --bsp ... --lsk ...` | Full moons in range |
 | `search-amavasyas --start ... --end ... --bsp ... --lsk ...` | New moons in range |
 
+The unified `lunar-phase --kind amavasya|purnima --mode next|prev|range`
+command additionally accepts `--sidereal`, which adds Lahiri sidereal
+longitudes and rashi indices (0-11) for the Moon and Sun to each printed
+event.
+
 ---
 
 ## Search: Sankranti
 
 | Command | Description |
 |---|---|
-| `next-sankranti --date ... --bsp ... --lsk ...` | Next solar ingress |
-| `prev-sankranti --date ... --bsp ... --lsk ...` | Previous solar ingress |
-| `search-sankrantis --start ... --end ... --bsp ... --lsk ...` | Solar ingresses in range |
+| `next-sankranti --date ... --bsp ... --lsk ...` | Next ingress |
+| `prev-sankranti --date ... --bsp ... --lsk ...` | Previous ingress |
+| `search-sankrantis --start ... --end ... --bsp ... --lsk ...` | Ingresses in range |
 | `next-specific-sankranti --date ... --rashi 0 --bsp ... --lsk ...` | Next entry into specific rashi |
 | `prev-specific-sankranti --date ... --rashi 0 --bsp ... --lsk ...` | Previous entry from specific rashi |
 
-All accept `--ayanamsha` and `--nutation`.
+All accept `--ayanamsha` and `--nutation`, plus `--body` to search rashi
+ingresses of a body other than the Sun (default `10` = Sun). `--body` takes a
+NAIF code (10=Sun, 301=Moon, 499=Mars, ...) or the node codes 10007=Rahu /
+10008=Ketu. The unified `sankranti --mode next|prev|range [--rashi N]`
+command accepts the same flags. Each event prints the transit body, sidereal
+and tropical longitudes, and `Retrograde: true|false` (true when the boundary
+was crossed in retrograde motion; always false for the Sun).
 
 ---
 
@@ -578,7 +589,22 @@ All accept `--ayanamsha` and `--nutation`.
 | `prev-conjunction --date ... --body1 10 --body2 301 --bsp ... --lsk ...` | Previous conjunction |
 | `search-conjunctions --start ... --end ... --body1 10 --body2 301 --bsp ... --lsk ...` | Conjunctions in range |
 
-Body codes: 10=Sun, 301=Moon, 199=Mercury, 299=Venus, 499=Mars, 599=Jupiter, 699=Saturn.
+Body codes: 10=Sun, 301=Moon, 199=Mercury, 299=Venus, 499=Mars, 599=Jupiter,
+699=Saturn, plus 10007=Rahu and 10008=Ketu.
+
+The unified `conjunction --mode next|prev|range` command additionally
+accepts:
+
+| Flag | Description |
+|---|---|
+| `--targets 0,90,180` | Comma-separated target separation angles in degrees (default: single 0-degree conjunction) |
+| `--node-mode mean\|true` | Lunar-node model when a body is Rahu/Ketu (default `true`) |
+| `--sidereal` | Add Lahiri sidereal longitudes and rashi indices (0-11) for both bodies to each event |
+
+Each printed event includes the target separation angle it matched. The
+legacy `next-conjunction`/`prev-conjunction`/`search-conjunctions` commands
+accept the node codes but keep the single 0-degree target and the true-node
+model.
 
 ---
 
@@ -605,6 +631,14 @@ Body codes: 10=Sun, 301=Moon, 199=Mercury, 299=Venus, 499=Mars, 599=Jupiter, 699
 | `next-max-speed --date ... --body 499 --bsp ... --lsk ...` | Next max-speed event |
 | `prev-max-speed --date ... --body 499 --bsp ... --lsk ...` | Previous max-speed event |
 | `search-max-speed --start ... --end ... --body 499 --bsp ... --lsk ...` | Max-speed events in range |
+
+`--body` takes a NAIF code or the node codes 10007=Rahu / 10008=Ketu.
+Stationary search rejects the Sun, Moon, and Earth (no stations) and the
+nodes under the mean-node model (always retrograde). The unified
+`motion --kind stationary|max-speed --mode next|prev|range` command
+additionally accepts `--node-mode mean|true` (default `true`) and
+`--sidereal`, which adds the Lahiri sidereal longitude and rashi index
+(0-11) to each event.
 
 ---
 

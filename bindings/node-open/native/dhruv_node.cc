@@ -399,6 +399,13 @@ bool ReadSankrantiConfig(napi_env env, napi_value obj, DhruvSankrantiConfig* out
     if (!GetNamedProperty(env, obj, "stepSizeDays", &v) || !GetDouble(env, v, &out->step_size_days)) return false;
     if (!GetNamedProperty(env, obj, "maxIterations", &v) || !GetUint32(env, v, &out->max_iterations)) return false;
     if (!GetNamedProperty(env, obj, "convergenceDays", &v) || !GetDouble(env, v, &out->convergence_days)) return false;
+    bool has_node_mode = false;
+    if (!GetOptionalNamedProperty(env, obj, "nodeMode", &v, &has_node_mode)) return false;
+    if (has_node_mode) {
+        if (!GetInt32(env, v, &out->node_mode)) return false;
+    } else {
+        out->node_mode = dhruv_sankranti_config_default().node_mode;
+    }
     return true;
 }
 
@@ -2449,6 +2456,14 @@ napi_value WriteConjunctionEvent(napi_env env, const DhruvConjunctionEvent& ev) 
     SetNamed(env, obj, "body2LatitudeDeg", MakeDouble(env, ev.body2_latitude_deg));
     SetNamed(env, obj, "body1Code", MakeInt32(env, ev.body1_code));
     SetNamed(env, obj, "body2Code", MakeInt32(env, ev.body2_code));
+    SetNamed(env, obj, "targetSeparationDeg", MakeDouble(env, ev.target_separation_deg));
+    SetNamed(env, obj, "hasSidereal", MakeBool(env, ev.has_sidereal != 0));
+    if (ev.has_sidereal != 0) {
+        SetNamed(env, obj, "body1SiderealLongitudeDeg", MakeDouble(env, ev.body1_sidereal_longitude_deg));
+        SetNamed(env, obj, "body2SiderealLongitudeDeg", MakeDouble(env, ev.body2_sidereal_longitude_deg));
+        SetNamed(env, obj, "body1RashiIndex", MakeInt32(env, ev.body1_rashi_index));
+        SetNamed(env, obj, "body2RashiIndex", MakeInt32(env, ev.body2_rashi_index));
+    }
     return obj;
 }
 
@@ -2459,6 +2474,10 @@ napi_value WriteSankrantiEvent(napi_env env, const DhruvSankrantiEvent& ev) {
     SetNamed(env, obj, "rashiIndex", MakeInt32(env, ev.rashi_index));
     SetNamed(env, obj, "sunSiderealLongitudeDeg", MakeDouble(env, ev.sun_sidereal_longitude_deg));
     SetNamed(env, obj, "sunTropicalLongitudeDeg", MakeDouble(env, ev.sun_tropical_longitude_deg));
+    SetNamed(env, obj, "bodyCode", MakeInt32(env, ev.body_code));
+    SetNamed(env, obj, "siderealLongitudeDeg", MakeDouble(env, ev.sidereal_longitude_deg));
+    SetNamed(env, obj, "tropicalLongitudeDeg", MakeDouble(env, ev.tropical_longitude_deg));
+    SetNamed(env, obj, "isRetrograde", MakeBool(env, ev.is_retrograde != 0));
     return obj;
 }
 
@@ -2471,6 +2490,11 @@ napi_value WriteStationaryEvent(napi_env env, const DhruvStationaryEvent& ev) {
     SetNamed(env, obj, "longitudeDeg", MakeDouble(env, ev.longitude_deg));
     SetNamed(env, obj, "latitudeDeg", MakeDouble(env, ev.latitude_deg));
     SetNamed(env, obj, "stationType", MakeInt32(env, ev.station_type));
+    SetNamed(env, obj, "hasSidereal", MakeBool(env, ev.has_sidereal != 0));
+    if (ev.has_sidereal != 0) {
+        SetNamed(env, obj, "siderealLongitudeDeg", MakeDouble(env, ev.sidereal_longitude_deg));
+        SetNamed(env, obj, "rashiIndex", MakeInt32(env, ev.rashi_index));
+    }
     return obj;
 }
 
@@ -2484,6 +2508,11 @@ napi_value WriteMaxSpeedEvent(napi_env env, const DhruvMaxSpeedEvent& ev) {
     SetNamed(env, obj, "latitudeDeg", MakeDouble(env, ev.latitude_deg));
     SetNamed(env, obj, "speedDegPerDay", MakeDouble(env, ev.speed_deg_per_day));
     SetNamed(env, obj, "speedType", MakeInt32(env, ev.speed_type));
+    SetNamed(env, obj, "hasSidereal", MakeBool(env, ev.has_sidereal != 0));
+    if (ev.has_sidereal != 0) {
+        SetNamed(env, obj, "siderealLongitudeDeg", MakeDouble(env, ev.sidereal_longitude_deg));
+        SetNamed(env, obj, "rashiIndex", MakeInt32(env, ev.rashi_index));
+    }
     return obj;
 }
 
@@ -4490,6 +4519,7 @@ napi_value SankrantiConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, out, "stepSizeDays", MakeDouble(env, cfg.step_size_days));
     SetNamed(env, out, "maxIterations", MakeUint32(env, cfg.max_iterations));
     SetNamed(env, out, "convergenceDays", MakeDouble(env, cfg.convergence_days));
+    SetNamed(env, out, "nodeMode", MakeInt32(env, cfg.node_mode));
     return out;
 }
 
@@ -4856,6 +4886,7 @@ napi_value ConjunctionConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, out, "stepSizeDays", MakeDouble(env, cfg.step_size_days));
     SetNamed(env, out, "maxIterations", MakeUint32(env, cfg.max_iterations));
     SetNamed(env, out, "convergenceDays", MakeDouble(env, cfg.convergence_days));
+    SetNamed(env, out, "nodeMode", MakeInt32(env, cfg.node_mode));
     return out;
 }
 
@@ -4912,6 +4943,7 @@ napi_value StationaryConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, out, "maxIterations", MakeUint32(env, cfg.max_iterations));
     SetNamed(env, out, "convergenceDays", MakeDouble(env, cfg.convergence_days));
     SetNamed(env, out, "numericalStepDays", MakeDouble(env, cfg.numerical_step_days));
+    SetNamed(env, out, "nodeMode", MakeInt32(env, cfg.node_mode));
     return out;
 }
 
@@ -4961,8 +4993,34 @@ napi_value ConjunctionSearch(napi_env env, napi_callback_info info) {
         if (present && !GetUint32(env, v, &cfg.max_iterations)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!GetOptionalNamedProperty(env, cfg_obj, "convergenceDays", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present && !GetDouble(env, v, &cfg.convergence_days)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "nodeMode", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetInt32(env, v, &cfg.node_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     }
     req.config = cfg;
+
+    bool has_targets = false;
+    napi_value targets_arr;
+    if (!GetOptionalNamedProperty(env, args[1], "targetSeparationsDeg", &targets_arr, &has_targets)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_targets) {
+        uint32_t length = 0;
+        if (napi_get_array_length(env, targets_arr, &length) != napi_ok) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (length > DHRUV_MAX_CONJUNCTION_TARGETS) length = DHRUV_MAX_CONJUNCTION_TARGETS;
+        for (uint32_t i = 0; i < length; ++i) {
+            napi_value element;
+            if (napi_get_element(env, targets_arr, i, &element) != napi_ok) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            if (!GetDouble(env, element, &req.target_separations_deg[i])) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        }
+        req.target_separation_count = length;
+    }
+
+    bool has_sidereal_cfg = false;
+    napi_value sidereal_obj;
+    if (!GetOptionalNamedProperty(env, args[1], "siderealConfig", &sidereal_obj, &has_sidereal_cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_sidereal_cfg) {
+        req.sidereal_config = dhruv_sankranti_config_default();
+        if (!ReadSankrantiConfig(env, sidereal_obj, &req.sidereal_config)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        req.has_sidereal_config = 1;
+    }
 
     uint32_t capacity = 0;
     if (!GetUint32(env, args[2], &capacity)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
@@ -5195,8 +5253,19 @@ napi_value MotionSearch(napi_env env, napi_callback_info info) {
         if (present && !GetDouble(env, v, &cfg.convergence_days)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!GetOptionalNamedProperty(env, cfg_obj, "numericalStepDays", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present && !GetDouble(env, v, &cfg.numerical_step_days)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "nodeMode", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetInt32(env, v, &cfg.node_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     }
     req.config = cfg;
+
+    bool has_sidereal_cfg = false;
+    napi_value sidereal_obj;
+    if (!GetOptionalNamedProperty(env, args[1], "siderealConfig", &sidereal_obj, &has_sidereal_cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_sidereal_cfg) {
+        req.sidereal_config = dhruv_sankranti_config_default();
+        if (!ReadSankrantiConfig(env, sidereal_obj, &req.sidereal_config)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        req.has_sidereal_config = 1;
+    }
 
     uint32_t capacity = 0;
     if (!GetUint32(env, args[2], &capacity)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
@@ -5255,6 +5324,9 @@ napi_value SankrantiSearch(napi_env env, napi_callback_info info) {
     if (!GetNamedProperty(env, args[1], "targetKind", &v) || !GetInt32(env, v, &req.target_kind)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "queryMode", &v) || !GetInt32(env, v, &req.query_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!GetNamedProperty(env, args[1], "rashiIndex", &v) || !GetInt32(env, v, &req.rashi_index)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    bool has_body_code = false;
+    if (!GetOptionalNamedProperty(env, args[1], "bodyCode", &v, &has_body_code)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_body_code && !GetInt32(env, v, &req.body_code)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     if (!ReadSearchTimeRequest(
             env,
             args[1],
@@ -5290,6 +5362,8 @@ napi_value SankrantiSearch(napi_env env, napi_callback_info info) {
         if (present && !GetUint32(env, v, &cfg.max_iterations)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!GetOptionalNamedProperty(env, cfg_obj, "convergenceDays", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present && !GetDouble(env, v, &cfg.convergence_days)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "nodeMode", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetInt32(env, v, &cfg.node_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
     }
     req.config = cfg;
 

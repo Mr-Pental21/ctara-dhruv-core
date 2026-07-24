@@ -270,6 +270,7 @@ pub struct ConjunctionConfigPatch {
     pub step_size_days: Option<f64>,
     pub max_iterations: Option<u32>,
     pub convergence_days: Option<f64>,
+    pub node_mode: Option<EnumInput>,
 }
 
 /// `[operations.grahan]`: which eclipse products to compute (path,
@@ -303,6 +304,7 @@ pub struct StationaryConfigPatch {
     pub max_iterations: Option<u32>,
     pub convergence_days: Option<f64>,
     pub numerical_step_days: Option<f64>,
+    pub node_mode: Option<EnumInput>,
 }
 
 /// `[operations.sankranti]`: sankranti-search astronomy policy
@@ -315,6 +317,7 @@ pub struct SankrantiConfigPatch {
     pub use_nutation: Option<bool>,
     pub precession_model: Option<EnumInput>,
     pub reference_plane: Option<EnumInput>,
+    pub node_mode: Option<EnumInput>,
     pub step_size_days: Option<f64>,
     pub max_iterations: Option<u32>,
     pub convergence_days: Option<f64>,
@@ -696,12 +699,21 @@ impl ConfigResolver {
             recommended(self.defaults_mode, 1e-8),
             "conjunction.convergence_days",
         )?;
+        let (node_mode_input, node_source) = choose_enum(
+            explicit.node_mode,
+            op.node_mode.clone(),
+            None,
+            recommended_enum(self.defaults_mode, EnumInput::Str("true".to_string())),
+            "conjunction.node_mode",
+        )?;
+        let node_mode = parse_node_mode(&node_mode_input, "conjunction.node_mode")?;
 
         let cfg = ConjunctionConfig {
             target_separation_deg,
             step_size_days,
             max_iterations,
             convergence_days,
+            node_mode,
         };
 
         let mut source = BTreeMap::new();
@@ -709,6 +721,7 @@ impl ConfigResolver {
         source.insert("step_size_days".to_string(), step_source);
         source.insert("max_iterations".to_string(), iter_source);
         source.insert("convergence_days".to_string(), conv_source);
+        source.insert("node_mode".to_string(), node_source);
 
         Ok(EffectiveConfig {
             value: cfg,
@@ -928,12 +941,21 @@ impl ConfigResolver {
             recommended(self.defaults_mode, 0.01),
             "stationary.numerical_step_days",
         )?;
+        let (node_mode_input, node_source) = choose_enum(
+            explicit.node_mode,
+            op.node_mode.clone(),
+            None,
+            recommended_enum(self.defaults_mode, EnumInput::Str("true".to_string())),
+            "stationary.node_mode",
+        )?;
+        let node_mode = parse_node_mode(&node_mode_input, "stationary.node_mode")?;
 
         let mut source = BTreeMap::new();
         source.insert("step_size_days".to_string(), step_source);
         source.insert("max_iterations".to_string(), iter_source);
         source.insert("convergence_days".to_string(), conv_source);
         source.insert("numerical_step_days".to_string(), nstep_source);
+        source.insert("node_mode".to_string(), node_source);
 
         Ok(EffectiveConfig {
             value: StationaryConfig {
@@ -941,6 +963,7 @@ impl ConfigResolver {
                 max_iterations,
                 convergence_days,
                 numerical_step_days,
+                node_mode,
             },
             source_by_field: source,
         })
@@ -1026,12 +1049,21 @@ impl ConfigResolver {
             recommended(self.defaults_mode, 1e-8),
             "sankranti.convergence_days",
         )?;
+        let (node_mode_input, node_source) = choose_enum(
+            explicit.node_mode,
+            op.node_mode.clone(),
+            None,
+            recommended_enum(self.defaults_mode, EnumInput::Str("true".to_string())),
+            "sankranti.node_mode",
+        )?;
+        let node_mode = parse_node_mode(&node_mode_input, "sankranti.node_mode")?;
 
         let cfg = SankrantiConfig {
             ayanamsha_system,
             use_nutation,
             precession_model,
             reference_plane,
+            node_mode,
             step_size_days,
             max_iterations,
             convergence_days,
@@ -1042,6 +1074,7 @@ impl ConfigResolver {
         source.insert("use_nutation".to_string(), nut_source);
         source.insert("precession_model".to_string(), model_source);
         source.insert("reference_plane".to_string(), plane_source);
+        source.insert("node_mode".to_string(), node_source);
         source.insert("step_size_days".to_string(), step_source);
         source.insert("max_iterations".to_string(), iter_source);
         source.insert("convergence_days".to_string(), conv_source);
@@ -1903,6 +1936,20 @@ fn parse_reference_plane(
     match input.as_lower().replace('_', "-").as_str() {
         "0" | "ecliptic" => Ok(ReferencePlane::Ecliptic),
         "1" | "invariable" => Ok(ReferencePlane::Invariable),
+        other => Err(ConfigError::InvalidEnumValue {
+            field,
+            value: other.to_string(),
+        }),
+    }
+}
+
+fn parse_node_mode(
+    input: &EnumInput,
+    field: &'static str,
+) -> Result<dhruv_vedic_base::NodeMode, ConfigError> {
+    match input.as_lower().replace('_', "-").as_str() {
+        "0" | "mean" => Ok(dhruv_vedic_base::NodeMode::Mean),
+        "1" | "true" => Ok(dhruv_vedic_base::NodeMode::True),
         other => Err(ConfigError::InvalidEnumValue {
             field,
             value: other.to_string(),

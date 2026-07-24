@@ -149,6 +149,7 @@ fn ffi_sankranti_search_ex_default_config_works() {
         start_utc: ZEROED_UTC,
         end_utc: ZEROED_UTC,
         config: dhruv_sankranti_config_default(),
+        body_code: 0,
     };
     let mut event: DhruvSankrantiEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
@@ -190,6 +191,10 @@ fn ffi_conjunction_search_ex_default_config_works() {
         start_utc: ZEROED_UTC,
         end_utc: ZEROED_UTC,
         config: dhruv_conjunction_config_default(),
+        target_separation_count: 0,
+        target_separations_deg: [0.0; DHRUV_MAX_CONJUNCTION_TARGETS],
+        has_sidereal_config: 0,
+        sidereal_config: dhruv_sankranti_config_default(),
     };
     let mut event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
@@ -208,6 +213,234 @@ fn ffi_conjunction_search_ex_default_config_works() {
     };
     assert_eq!(status, DhruvStatus::Ok);
     assert_eq!(found, 1);
+
+    // SAFETY: Pointer was returned by dhruv_engine_new.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_sankranti_search_ex_moon_ingresses_carry_body_code() {
+    let Some(engine_ptr) = make_engine() else {
+        return;
+    };
+
+    // All Moon rashi ingresses in January 2024 (one every ~2.4 days).
+    let request = DhruvSankrantiSearchRequest {
+        target_kind: DHRUV_SANKRANTI_TARGET_ANY,
+        query_mode: DHRUV_SANKRANTI_QUERY_MODE_RANGE,
+        rashi_index: 0,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
+        at_jd_tdb: 0.0,
+        start_jd_tdb: calendar_to_jd(2024, 1, 1.0),
+        end_jd_tdb: calendar_to_jd(2024, 2, 1.0),
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
+        config: dhruv_sankranti_config_default(),
+        body_code: Body::Moon.code(),
+    };
+    let mut events: Vec<DhruvSankrantiEvent> = vec![unsafe { std::mem::zeroed() }; 40];
+    let mut count: u32 = 0;
+
+    // SAFETY: Valid pointers and request for this test scope.
+    let status = unsafe {
+        dhruv_sankranti_search_ex(
+            engine_ptr,
+            &request,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            events.as_mut_ptr(),
+            events.len() as u32,
+            &mut count,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!(
+        count >= 12,
+        "expected >= 12 Moon ingresses in January 2024, got {count}"
+    );
+    for event in &events[..count as usize] {
+        assert_eq!(event.body_code, Body::Moon.code());
+        // Legacy sun_* fields alias the generic longitude fields.
+        assert_eq!(
+            event.sun_sidereal_longitude_deg,
+            event.sidereal_longitude_deg
+        );
+        assert_eq!(
+            event.sun_tropical_longitude_deg,
+            event.tropical_longitude_deg
+        );
+    }
+
+    // SAFETY: Pointer was returned by dhruv_engine_new.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_conjunction_search_ex_sun_rahu_finds_eclipse_node_crossing() {
+    let Some(engine_ptr) = make_engine() else {
+        return;
+    };
+
+    // The 2024-04-08 total solar eclipse occurred with the Sun near the
+    // ascending node, so a Sun-Rahu conjunction must land close to it.
+    let request = DhruvConjunctionSearchRequest {
+        body1_code: Body::Sun.code(),
+        body2_code: 10_007, // Rahu
+        query_mode: DHRUV_CONJUNCTION_QUERY_MODE_NEXT,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
+        at_jd_tdb: calendar_to_jd(2024, 3, 1.0),
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
+        config: dhruv_conjunction_config_default(),
+        target_separation_count: 0,
+        target_separations_deg: [0.0; DHRUV_MAX_CONJUNCTION_TARGETS],
+        has_sidereal_config: 0,
+        sidereal_config: dhruv_sankranti_config_default(),
+    };
+    let mut event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
+    let mut found: u8 = 0;
+
+    // SAFETY: Valid pointers and request for this test scope.
+    let status = unsafe {
+        dhruv_conjunction_search_ex(
+            engine_ptr,
+            &request,
+            &mut event,
+            &mut found,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(found, 1, "should find a Sun-Rahu conjunction");
+    let expected_jd = calendar_to_jd(2024, 4, 8.0);
+    assert!(
+        (event.jd_tdb - expected_jd).abs() < 10.0,
+        "Sun-Rahu conjunction at JD {} not within 10 days of {expected_jd}",
+        event.jd_tdb
+    );
+    assert_eq!(event.body1_code, Body::Sun.code());
+    assert_eq!(event.body2_code, 10_007, "Rahu code should be echoed");
+
+    // SAFETY: Pointer was returned by dhruv_engine_new.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_motion_search_ex_rahu_true_node_stations() {
+    let Some(engine_ptr) = make_engine() else {
+        return;
+    };
+
+    // The true node oscillates and stations every few days; 60 days with
+    // the default config (true node) must yield at least one station.
+    let request = DhruvMotionSearchRequest {
+        body_code: 10_007, // Rahu
+        motion_kind: DHRUV_MOTION_KIND_STATIONARY,
+        query_mode: DHRUV_MOTION_QUERY_MODE_RANGE,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
+        at_jd_tdb: 0.0,
+        start_jd_tdb: calendar_to_jd(2024, 1, 1.0),
+        end_jd_tdb: calendar_to_jd(2024, 3, 1.0),
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
+        config: dhruv_stationary_config_default(),
+        has_sidereal_config: 0,
+        sidereal_config: dhruv_sankranti_config_default(),
+    };
+    let mut events: Vec<DhruvStationaryEvent> = vec![unsafe { std::mem::zeroed() }; 64];
+    let mut count: u32 = 0;
+
+    // SAFETY: Valid pointers and request for this test scope.
+    let status = unsafe {
+        dhruv_motion_search_ex(
+            engine_ptr,
+            &request,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            events.as_mut_ptr(),
+            ptr::null_mut(),
+            events.len() as u32,
+            &mut count,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert!(
+        count >= 1,
+        "expected >= 1 true-node station in 60 days, got {count}"
+    );
+    for event in &events[..count as usize] {
+        assert_eq!(event.body_code, 10_007);
+    }
+
+    // SAFETY: Pointer was returned by dhruv_engine_new.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_conjunction_search_ex_multi_angle_sweep_tags_events() {
+    let Some(engine_ptr) = make_engine() else {
+        return;
+    };
+
+    // One lunation of Sun-Moon with angles [0, 180]: exactly one new moon
+    // (0 deg) and one full moon (180 deg) fall in January 1-31, 2024.
+    let mut targets = [0.0; DHRUV_MAX_CONJUNCTION_TARGETS];
+    targets[1] = 180.0;
+    let request = DhruvConjunctionSearchRequest {
+        body1_code: Body::Sun.code(),
+        body2_code: Body::Moon.code(),
+        query_mode: DHRUV_CONJUNCTION_QUERY_MODE_RANGE,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
+        at_jd_tdb: 0.0,
+        start_jd_tdb: calendar_to_jd(2024, 1, 1.0),
+        end_jd_tdb: calendar_to_jd(2024, 1, 31.0),
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
+        config: dhruv_conjunction_config_default(),
+        target_separation_count: 2,
+        target_separations_deg: targets,
+        has_sidereal_config: 0,
+        sidereal_config: dhruv_sankranti_config_default(),
+    };
+    let mut events: Vec<DhruvConjunctionEvent> = vec![unsafe { std::mem::zeroed() }; 8];
+    let mut count: u32 = 0;
+
+    // SAFETY: Valid pointers and request for this test scope.
+    let status = unsafe {
+        dhruv_conjunction_search_ex(
+            engine_ptr,
+            &request,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            events.as_mut_ptr(),
+            events.len() as u32,
+            &mut count,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(count, 2, "expected one new moon and one full moon");
+    let mut saw_conjunction = false;
+    let mut saw_opposition = false;
+    for event in &events[..count as usize] {
+        if event.target_separation_deg == 0.0 {
+            saw_conjunction = true;
+        } else if event.target_separation_deg == 180.0 {
+            saw_opposition = true;
+        } else {
+            panic!("unexpected target angle {}", event.target_separation_deg);
+        }
+    }
+    assert!(saw_conjunction, "missing 0-degree (new moon) event");
+    assert!(saw_opposition, "missing 180-degree (full moon) event");
 
     // SAFETY: Pointer was returned by dhruv_engine_new.
     unsafe { dhruv_engine_free(engine_ptr) };
@@ -1624,6 +1857,10 @@ fn ffi_utc_conjunction_roundtrip() {
         start_utc: ZEROED_UTC,
         end_utc: ZEROED_UTC,
         config: dhruv_conjunction_config_default(),
+        target_separation_count: 0,
+        target_separations_deg: [0.0; DHRUV_MAX_CONJUNCTION_TARGETS],
+        has_sidereal_config: 0,
+        sidereal_config: dhruv_sankranti_config_default(),
     };
     let mut jd_event: DhruvConjunctionEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;
@@ -1973,6 +2210,8 @@ fn ffi_utc_stationary_roundtrip() {
         start_utc: ZEROED_UTC,
         end_utc: ZEROED_UTC,
         config: dhruv_stationary_config_default(),
+        has_sidereal_config: 0,
+        sidereal_config: dhruv_sankranti_config_default(),
     };
     let mut jd_event: DhruvStationaryEvent = unsafe { std::mem::zeroed() };
     let mut found: u8 = 0;

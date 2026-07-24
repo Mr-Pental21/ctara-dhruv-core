@@ -1,10 +1,14 @@
-//! Types for Sankranti search results.
+//! Types for Sankranti / rashi-ingress search results.
 
 use dhruv_frames::{DEFAULT_PRECESSION_MODEL, PrecessionModel, ReferencePlane};
 use dhruv_time::UtcTime;
-use dhruv_vedic_base::{AyanamshaSystem, Rashi, ayanamsha_deg_on_plane, ayanamsha_deg_with_model};
+use dhruv_vedic_base::{
+    AyanamshaSystem, NodeMode, Rashi, ayanamsha_deg_on_plane, ayanamsha_deg_with_model,
+};
 
-/// Configuration for Sankranti search.
+use crate::transit_body::TransitBody;
+
+/// Configuration for Sankranti / rashi-ingress search.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SankrantiConfig {
     /// Ayanamsha system for sidereal longitude.
@@ -18,7 +22,11 @@ pub struct SankrantiConfig {
     /// Derived from `ayanamsha_system.default_reference_plane()` by default.
     /// Most systems use Ecliptic; Jagganatha uses Invariable.
     pub reference_plane: ReferencePlane,
-    /// Coarse scan step size in days (default: 1.0).
+    /// Lunar-node model used when the ingress body is Rahu/Ketu
+    /// (default: true/osculating node, matching the rest of the engine).
+    pub node_mode: NodeMode,
+    /// Coarse scan step size in days (default: 1.0; see
+    /// [`TransitBody::default_ingress_step_days`] for per-body values).
     pub step_size_days: f64,
     /// Maximum bisection iterations (default: 50).
     pub max_iterations: u32,
@@ -43,9 +51,24 @@ impl SankrantiConfig {
             use_nutation,
             precession_model,
             reference_plane: ayanamsha_system.default_reference_plane(),
+            node_mode: NodeMode::default(),
             step_size_days: 1.0,
             max_iterations: 50,
             convergence_days: 1e-8,
+        }
+    }
+
+    /// Create with the coarse-scan step suited to `body`
+    /// ([`TransitBody::default_ingress_step_days`]); other parameters as
+    /// [`SankrantiConfig::new`].
+    pub fn for_body(
+        ayanamsha_system: AyanamshaSystem,
+        use_nutation: bool,
+        body: TransitBody,
+    ) -> Self {
+        Self {
+            step_size_days: body.default_ingress_step_days(),
+            ..Self::new(ayanamsha_system, use_nutation)
         }
     }
 
@@ -56,6 +79,7 @@ impl SankrantiConfig {
             use_nutation: false,
             precession_model: DEFAULT_PRECESSION_MODEL,
             reference_plane: ReferencePlane::Ecliptic,
+            node_mode: NodeMode::default(),
             step_size_days: 1.0,
             max_iterations: 50,
             convergence_days: 1e-8,
@@ -103,17 +127,22 @@ impl SankrantiConfig {
     }
 }
 
-/// A Sankranti event: the Sun entering a new rashi.
+/// A Sankranti / ingress event: a body entering a new rashi.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SankrantiEvent {
     /// UTC time of the event.
     pub utc: UtcTime,
-    /// The rashi the Sun is entering.
+    /// The body crossing the rashi boundary (Sun for classical sankranti).
+    pub body: TransitBody,
+    /// The rashi the body is entering.
     pub rashi: Rashi,
     /// 0-based rashi index (0=Mesha .. 11=Meena).
     pub rashi_index: u8,
-    /// Sun's sidereal longitude at the boundary (degrees, ~N*30).
-    pub sun_sidereal_longitude_deg: f64,
-    /// Sun's tropical longitude at the event (degrees).
-    pub sun_tropical_longitude_deg: f64,
+    /// Body's sidereal longitude at the boundary (degrees, ~N*30).
+    pub sidereal_longitude_deg: f64,
+    /// Body's tropical longitude at the event (degrees).
+    pub tropical_longitude_deg: f64,
+    /// True when the boundary was crossed in retrograde motion
+    /// (the body re-entered the preceding rashi). Always false for the Sun.
+    pub is_retrograde: bool,
 }

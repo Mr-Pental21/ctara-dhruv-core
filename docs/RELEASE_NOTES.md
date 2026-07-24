@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Generalized the sankranti search to any-body rashi-ingress search and
+  added Rahu/Ketu to the conjunction and motion searches via the shared
+  `TransitBody` selector (codes 10007/10008), across `dhruv_search`,
+  `dhruv_rs`, the C ABI (v84), the CLI, and wrappers. New `dhruv_search`
+  functions `next_ingress`/`prev_ingress`/`search_ingresses`/
+  `next_specific_ingress`/`prev_specific_ingress` (classic `*_sankranti`
+  functions are now Sun wrappers); retrograde re-ingresses are reported as
+  events (`SankrantiEvent` gains `body`/`is_retrograde`). New `node_mode`
+  config knob ("mean"|"true", recommended default "true") on the
+  conjunction/stationary/sankranti configs and the corresponding
+  `[operations.*]` sections; true-node stationary search is supported
+  (mean node rejected). Conjunction operations add multi-angle
+  `target_separations_deg` sweeps, and conjunction/motion/lunar-phase
+  operations accept an optional sidereal config that adds sidereal
+  longitude and rashi-index echo fields to events. The next/prev
+  conjunction scan window is now pair-aware
+  (`max(800 d, 1.3 x mean synodic estimate)`), fixing slow pairs such as
+  Jupiter-Saturn that previously returned no event. Behavior change:
+  Saturn's special transit-aspect angles in `gochar_events` were corrected
+  from [90, 270] to [60, 270] (classical 3rd/10th drishti).
 - Added three range operations across `dhruv_search`/`dhruv_rs`, the C ABI
   (v77-v79), the CLI, and wrappers: `amsha_series` (fixed-cadence slim varga
   charts), `panchang_events` (exact boundary sweep over all ten panchang

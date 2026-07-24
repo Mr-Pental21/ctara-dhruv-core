@@ -1,7 +1,9 @@
 //! Types for conjunction, opposition, and aspect search.
 
-use dhruv_core::Body;
 use dhruv_time::UtcTime;
+use dhruv_vedic_base::NodeMode;
+
+use crate::transit_body::TransitBody;
 
 /// Configuration for a conjunction/aspect search.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -16,6 +18,9 @@ pub struct ConjunctionConfig {
     pub max_iterations: u32,
     /// Convergence threshold in days (default 1e-8, ~0.86 ms).
     pub convergence_days: f64,
+    /// Lunar-node model used when either body is Rahu/Ketu
+    /// (default: true/osculating node, matching the rest of the engine).
+    pub node_mode: NodeMode,
 }
 
 impl ConjunctionConfig {
@@ -26,6 +31,7 @@ impl ConjunctionConfig {
             step_size_days,
             max_iterations: 50,
             convergence_days: 1e-8,
+            node_mode: NodeMode::default(),
         }
     }
 
@@ -33,9 +39,7 @@ impl ConjunctionConfig {
     pub fn opposition(step_size_days: f64) -> Self {
         Self {
             target_separation_deg: 180.0,
-            step_size_days,
-            max_iterations: 50,
-            convergence_days: 1e-8,
+            ..Self::conjunction(step_size_days)
         }
     }
 
@@ -43,9 +47,7 @@ impl ConjunctionConfig {
     pub fn aspect(target_deg: f64, step_size_days: f64) -> Self {
         Self {
             target_separation_deg: target_deg,
-            step_size_days,
-            max_iterations: 50,
-            convergence_days: 1e-8,
+            ..Self::conjunction(step_size_days)
         }
     }
 
@@ -90,11 +92,23 @@ pub struct ConjunctionEvent {
     pub body1_longitude_deg: f64,
     /// Body 2 ecliptic longitude in degrees [0, 360).
     pub body2_longitude_deg: f64,
-    /// Body 1 ecliptic latitude in degrees.
+    /// Body 1 ecliptic latitude in degrees (0 for lunar nodes).
     pub body1_latitude_deg: f64,
-    /// Body 2 ecliptic latitude in degrees.
+    /// Body 2 ecliptic latitude in degrees (0 for lunar nodes).
     pub body2_latitude_deg: f64,
     /// Which bodies were involved.
-    pub body1: Body,
-    pub body2: Body,
+    pub body1: TransitBody,
+    pub body2: TransitBody,
+    /// The target separation angle this event matched (equals the config's
+    /// single target, or one of the requested angles in multi-angle mode).
+    pub target_separation_deg: f64,
+    /// Body 1 sidereal longitude in degrees, when a sidereal
+    /// (sankranti) config was supplied with the request.
+    pub body1_sidereal_longitude_deg: Option<f64>,
+    /// Body 2 sidereal longitude in degrees (see above).
+    pub body2_sidereal_longitude_deg: Option<f64>,
+    /// Body 1 sidereal rashi index 0-11 (see above).
+    pub body1_rashi_index: Option<u8>,
+    /// Body 2 sidereal rashi index 0-11 (see above).
+    pub body2_rashi_index: Option<u8>,
 }

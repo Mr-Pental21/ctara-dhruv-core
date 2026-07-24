@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 83
+const ExpectedAPIVersion = 84
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -11,6 +11,7 @@ const (
 	SphutaCount           = cabi.SphutaCount
 	MaxDashaSystems       = cabi.MaxDashaSystems
 	MaxCharakarakaEntries = cabi.MaxCharakarakaEntries
+	MaxConjunctionTargets = cabi.MaxConjunctionTargets
 )
 
 // Hard ceilings for the range-sweep operations (AmshaSeries, PanchangEvents,
@@ -81,6 +82,13 @@ const (
 const (
 	NodeDignitySignLordBased = cabi.NodeDignitySignLordBased
 	NodeDignityAlwaysSama    = cabi.NodeDignityAlwaysSama
+)
+
+// NodeMode* select mean vs true lunar node positions when a search request
+// targets Rahu/Ketu (body codes 10007/10008).
+const (
+	NodeModeMean = cabi.NodeModeMean
+	NodeModeTrue = cabi.NodeModeTrue
 )
 
 const (

@@ -31,6 +31,7 @@ pub mod sankranti_types;
 pub(crate) mod search_util;
 pub mod stationary;
 pub mod stationary_types;
+pub mod transit_body;
 
 pub use amsha_events::{
     AmshaLagnaEvents, AmshaLagnaEventsResult, AmshaLagnaSegment, MAX_AMSHA_LAGNA_SEGMENTS,
@@ -38,7 +39,7 @@ pub use amsha_events::{
 };
 pub use conjunction::{
     body_ecliptic_lon_lat, body_lon_lat_on_plane, next_conjunction, prev_conjunction,
-    search_conjunctions,
+    search_conjunctions, transit_body_ecliptic_lon_lat,
 };
 pub use conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 pub use dasha::{
@@ -127,7 +128,8 @@ pub use panchang_types::{
     VaarInfo, VarshaInfo, YogaInfo,
 };
 pub use sankranti::{
-    next_sankranti, next_specific_sankranti, prev_sankranti, prev_specific_sankranti,
+    next_ingress, next_sankranti, next_specific_ingress, next_specific_sankranti, prev_ingress,
+    prev_sankranti, prev_specific_ingress, prev_specific_sankranti, search_ingresses,
     search_sankrantis,
 };
 pub use sankranti_types::{SankrantiConfig, SankrantiEvent};
@@ -139,3 +141,4 @@ pub use stationary::{
 pub use stationary_types::{
     MaxSpeedEvent, MaxSpeedType, StationType, StationaryConfig, StationaryEvent,
 };
+pub use transit_body::{TRANSIT_CODE_KETU, TRANSIT_CODE_RAHU, TransitBody};

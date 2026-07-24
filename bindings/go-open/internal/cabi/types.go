@@ -9,6 +9,9 @@ const (
 	MaxDashaSystems       = 23
 	UpagrahaCount         = 11
 	MaxCharakarakaEntries = 8
+	// MaxConjunctionTargets mirrors DHRUV_MAX_CONJUNCTION_TARGETS: the cap on
+	// ConjunctionSearchRequest.TargetSeparationsDeg entries.
+	MaxConjunctionTargets = 16
 )
 
 // Hard ceilings for the range-sweep operations. They mirror
@@ -84,6 +87,13 @@ const (
 const (
 	NodeDignitySignLordBased int32 = 0
 	NodeDignityAlwaysSama    int32 = 1
+)
+
+// NodeMode* mirror DHRUV_NODE_MODE_*: mean vs true lunar node used when a
+// search request targets Rahu/Ketu (body codes 10007/10008).
+const (
+	NodeModeMean int32 = 0
+	NodeModeTrue int32 = 1
 )
 
 const (
@@ -412,6 +422,9 @@ type ConjunctionConfig struct {
 	StepSizeDays        float64
 	MaxIterations       uint32
 	ConvergenceDays     float64
+	// NodeMode selects NodeModeMean or NodeModeTrue when a body code is
+	// Rahu/Ketu (10007/10008); the default configuration uses NodeModeTrue.
+	NodeMode int32
 }
 
 type ConjunctionSearchRequest struct {
@@ -426,6 +439,14 @@ type ConjunctionSearchRequest struct {
 	StartUTC   UtcTime
 	EndUTC     UtcTime
 	Config     ConjunctionConfig
+	// TargetSeparationsDeg optionally sweeps multiple separation angles in
+	// one search (at most MaxConjunctionTargets); empty keeps the single
+	// Config.TargetSeparationDeg angle.
+	TargetSeparationsDeg []float64
+	// HasSiderealConfig requests sidereal echoes on events computed with
+	// SiderealConfig (events then carry HasSidereal = true).
+	HasSiderealConfig bool
+	SiderealConfig    SankrantiConfig
 }
 
 type ConjunctionEvent struct {
@@ -438,6 +459,16 @@ type ConjunctionEvent struct {
 	Body2LatitudeDeg    float64
 	Body1Code           int32
 	Body2Code           int32
+	// TargetSeparationDeg is the target angle this event matched.
+	TargetSeparationDeg float64
+	// HasSidereal reports whether the sidereal echoes below are populated
+	// (requires ConjunctionSearchRequest.HasSiderealConfig). When false the
+	// longitudes are 0.0 and the rashi indices are -1.
+	HasSidereal               bool
+	Body1SiderealLongitudeDeg float64
+	Body2SiderealLongitudeDeg float64
+	Body1RashiIndex           int32
+	Body2RashiIndex           int32
 }
 
 type GrahanConfig struct {
@@ -663,6 +694,10 @@ type StationaryConfig struct {
 	MaxIterations     uint32
 	ConvergenceDays   float64
 	NumericalStepDays float64
+	// NodeMode selects NodeModeMean or NodeModeTrue when BodyCode is
+	// Rahu/Ketu (10007/10008); the default configuration uses NodeModeTrue.
+	// Stationary search of Rahu/Ketu requires the true node.
+	NodeMode int32
 }
 
 type MotionSearchRequest struct {
@@ -677,6 +712,10 @@ type MotionSearchRequest struct {
 	StartUTC   UtcTime
 	EndUTC     UtcTime
 	Config     StationaryConfig
+	// HasSiderealConfig requests sidereal echoes on events computed with
+	// SiderealConfig (events then carry HasSidereal = true).
+	HasSiderealConfig bool
+	SiderealConfig    SankrantiConfig
 }
 
 type StationaryEvent struct {
@@ -686,6 +725,12 @@ type StationaryEvent struct {
 	LongitudeDeg float64
 	LatitudeDeg  float64
 	StationType  int32
+	// HasSidereal reports whether the sidereal echoes below are populated
+	// (requires MotionSearchRequest.HasSiderealConfig). When false the
+	// longitude is 0.0 and the rashi index is -1.
+	HasSidereal          bool
+	SiderealLongitudeDeg float64
+	RashiIndex           int32
 }
 
 type MaxSpeedEvent struct {
@@ -696,6 +741,12 @@ type MaxSpeedEvent struct {
 	LatitudeDeg    float64
 	SpeedDegPerDay float64
 	SpeedType      int32
+	// HasSidereal reports whether the sidereal echoes below are populated
+	// (requires MotionSearchRequest.HasSiderealConfig). When false the
+	// longitude is 0.0 and the rashi index is -1.
+	HasSidereal          bool
+	SiderealLongitudeDeg float64
+	RashiIndex           int32
 }
 
 type SankrantiConfig struct {
@@ -705,6 +756,9 @@ type SankrantiConfig struct {
 	StepSizeDays    float64
 	MaxIterations   uint32
 	ConvergenceDays float64
+	// NodeMode selects NodeModeMean or NodeModeTrue when the tracked body is
+	// Rahu/Ketu (10007/10008); the default configuration uses NodeModeTrue.
+	NodeMode int32
 }
 
 type GrahaLongitudesConfig struct {
@@ -716,10 +770,19 @@ type GrahaLongitudesConfig struct {
 }
 
 type SankrantiEvent struct {
-	UTC                     UtcTime
-	RashiIndex              int32
+	UTC        UtcTime
+	RashiIndex int32
+	// SunSiderealLongitudeDeg/SunTropicalLongitudeDeg are legacy aliases for
+	// the tracked body's longitudes (the Sun for classical sankranti
+	// requests); identical to SiderealLongitudeDeg/TropicalLongitudeDeg.
 	SunSiderealLongitudeDeg float64
 	SunTropicalLongitudeDeg float64
+	// BodyCode is the tracked body: a NAIF code or Rahu/Ketu (10007/10008).
+	BodyCode             int32
+	SiderealLongitudeDeg float64
+	TropicalLongitudeDeg float64
+	// IsRetrograde reports a rashi boundary crossed in retrograde motion.
+	IsRetrograde bool
 }
 
 type SankrantiSearchRequest struct {
@@ -734,6 +797,9 @@ type SankrantiSearchRequest struct {
 	StartUTC   UtcTime
 	EndUTC     UtcTime
 	Config     SankrantiConfig
+	// BodyCode selects the tracked body: 0 = Sun (classical sankranti),
+	// otherwise a NAIF code or Rahu/Ketu (10007/10008).
+	BodyCode int32
 }
 
 type LunarPhaseSearchRequest struct {

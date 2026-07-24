@@ -303,6 +303,14 @@ Search:
 - `next-conjunction`
 - `prev-conjunction`
 - `search-conjunctions`
+
+Conjunction body codes accept NAIF codes plus 10007=Rahu / 10008=Ketu. The
+unified `conjunction` command also takes `--targets` (comma-separated target
+separation angles in degrees; default a single 0-degree conjunction),
+`--node-mode mean|true` (default `true`, used when a body is Rahu/Ketu), and
+`--sidereal` (adds Lahiri sidereal longitudes and rashi indices for both
+bodies). Each printed event reports the target angle it matched.
+
 - `grahan`
 - `next-chandra-grahan`
 - `prev-chandra-grahan`
@@ -329,12 +337,22 @@ umbral outline counts. See
 - `next-amavasya`
 - `prev-amavasya`
 - `search-amavasyas`
+
+The unified `lunar-phase` command also takes `--sidereal`, adding Lahiri
+sidereal longitudes and rashi indices for the Moon and Sun to each event.
+
 - `sankranti`
 - `next-sankranti`
 - `prev-sankranti`
 - `search-sankrantis`
 - `next-specific-sankranti`
 - `prev-specific-sankranti`
+
+Sankranti commands accept `--body` (default `10` = Sun; NAIF codes plus
+10007=Rahu / 10008=Ketu) to search rashi ingresses of any transit body.
+Events report the body, sidereal and tropical longitudes, and a retrograde
+flag (true when the boundary was crossed in retrograde motion).
+
 - `motion`
 - `next-stationary`
 - `prev-stationary`
@@ -342,6 +360,13 @@ umbral outline counts. See
 - `next-max-speed`
 - `prev-max-speed`
 - `search-max-speed`
+
+Motion `--body` accepts NAIF codes plus 10007=Rahu / 10008=Ketu (stationary
+search requires the true node; the Sun, Moon, and Earth have no stations).
+The unified `motion` command also takes `--node-mode mean|true` (default
+`true`) and `--sidereal`, adding the Lahiri sidereal longitude and rashi
+index to each event.
+
 - `gochar-events`
 
 `gochar-events` is the grouped CLI surface for yearly/monthly Tajaka returns,

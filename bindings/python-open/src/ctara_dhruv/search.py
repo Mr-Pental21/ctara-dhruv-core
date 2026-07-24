@@ -52,6 +52,10 @@ _SEARCH_TIME_JD_TDB = 0
 _SEARCH_TIME_UTC = 1
 _JD_ABSENT = -1.0
 
+# Maximum angles per multi-angle conjunction sweep
+# (matches DHRUV_MAX_CONJUNCTION_TARGETS in the C ABI).
+MAX_CONJUNCTION_TARGETS = 16
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -123,7 +127,40 @@ def _set_range_search_time(req, start, end, *, start_name: str, end_name: str) -
     req.end_jd_tdb = float(end)
 
 
+def _coerce_sankranti_config(config):
+    """Coerce a ``DhruvSankrantiConfig`` value, pointer, or dict to a struct value."""
+    if isinstance(config, dict):
+        return _make_sankranti_config(config)[0]
+    if isinstance(config, ffi.CData) and ffi.typeof(config).kind == "pointer":
+        return config[0]
+    return config
+
+
+def _set_sidereal_config(req, sidereal_config) -> None:
+    """Fill the sidereal-echo request fields shared by conjunction/motion."""
+    if sidereal_config is None:
+        req.has_sidereal_config = 0
+        return
+    req.has_sidereal_config = 1
+    req.sidereal_config = _coerce_sankranti_config(sidereal_config)
+
+
+def _set_target_separations(req, target_separations) -> None:
+    """Fill the multi-angle sweep fields (None/empty = single angle from config)."""
+    if not target_separations:
+        req.target_separation_count = 0
+        return
+    if len(target_separations) > MAX_CONJUNCTION_TARGETS:
+        raise ValueError(
+            f"target_separations supports at most {MAX_CONJUNCTION_TARGETS} angles"
+        )
+    req.target_separation_count = len(target_separations)
+    for index, angle in enumerate(target_separations):
+        req.target_separations_deg[index] = float(angle)
+
+
 def _conjunction_event(e) -> ConjunctionEvent:
+    has_sidereal = bool(e.has_sidereal)
     return ConjunctionEvent(
         utc=_utc_from_c(e.utc),
         jd_tdb=e.jd_tdb,
@@ -134,6 +171,12 @@ def _conjunction_event(e) -> ConjunctionEvent:
         body2_latitude_deg=e.body2_latitude_deg,
         body1_code=e.body1_code,
         body2_code=e.body2_code,
+        target_separation_deg=e.target_separation_deg,
+        has_sidereal=has_sidereal,
+        body1_sidereal_longitude_deg=e.body1_sidereal_longitude_deg if has_sidereal else None,
+        body2_sidereal_longitude_deg=e.body2_sidereal_longitude_deg if has_sidereal else None,
+        body1_rashi_index=e.body1_rashi_index if has_sidereal else None,
+        body2_rashi_index=e.body2_rashi_index if has_sidereal else None,
     )
 
 
@@ -418,6 +461,7 @@ def _surya_grahan(r) -> SuryaGrahanResult:
 
 
 def _stationary_event(e) -> StationaryEvent:
+    has_sidereal = bool(e.has_sidereal)
     return StationaryEvent(
         utc=_utc_from_c(e.utc),
         jd_tdb=e.jd_tdb,
@@ -425,10 +469,14 @@ def _stationary_event(e) -> StationaryEvent:
         longitude_deg=e.longitude_deg,
         latitude_deg=e.latitude_deg,
         station_type=e.station_type,
+        has_sidereal=has_sidereal,
+        sidereal_longitude_deg=e.sidereal_longitude_deg if has_sidereal else None,
+        rashi_index=e.rashi_index if has_sidereal else None,
     )
 
 
 def _max_speed_event(e) -> MaxSpeedEvent:
+    has_sidereal = bool(e.has_sidereal)
     return MaxSpeedEvent(
         utc=_utc_from_c(e.utc),
         jd_tdb=e.jd_tdb,
@@ -437,6 +485,9 @@ def _max_speed_event(e) -> MaxSpeedEvent:
         latitude_deg=e.latitude_deg,
         speed_deg_per_day=e.speed_deg_per_day,
         speed_type=e.speed_type,
+        has_sidereal=has_sidereal,
+        sidereal_longitude_deg=e.sidereal_longitude_deg if has_sidereal else None,
+        rashi_index=e.rashi_index if has_sidereal else None,
     )
 
 
@@ -455,6 +506,10 @@ def _sankranti_event(e) -> SankrantiEvent:
         rashi_index=e.rashi_index,
         sun_sidereal_longitude_deg=e.sun_sidereal_longitude_deg,
         sun_tropical_longitude_deg=e.sun_tropical_longitude_deg,
+        body_code=e.body_code,
+        sidereal_longitude_deg=e.sidereal_longitude_deg,
+        tropical_longitude_deg=e.tropical_longitude_deg,
+        is_retrograde=bool(e.is_retrograde),
     )
 
 
@@ -503,14 +558,25 @@ def next_conjunction(
     body2_code: int,
     after_jd_tdb,
     config=None,
+    target_separations: Optional[list[float]] = None,
+    sidereal_config=None,
 ) -> Optional[ConjunctionEvent]:
-    """Find next conjunction after a ``UtcTime`` or JD(TDB) anchor."""
+    """Find next conjunction after a ``UtcTime`` or JD(TDB) anchor.
+
+    Body codes accept NAIF codes plus 10007 (Rahu) / 10008 (Ketu).
+    *target_separations*: optional list of target angles (deg, max
+    ``MAX_CONJUNCTION_TARGETS``); ``None`` uses the single config angle.
+    *sidereal_config*: optional ``DhruvSankrantiConfig`` (struct or dict);
+    when given, events carry sidereal longitudes and rashi indices.
+    """
     req = ffi.new("DhruvConjunctionSearchRequest *")
     req.body1_code = body1_code
     req.body2_code = body2_code
     req.query_mode = _CONJUNCTION_NEXT
     _set_single_search_time(req, after_jd_tdb, arg_name="after_jd_tdb")
     req.config = config if config is not None else lib.dhruv_conjunction_config_default()
+    _set_target_separations(req, target_separations)
+    _set_sidereal_config(req, sidereal_config)
 
     out_event = ffi.new("DhruvConjunctionEvent *")
     out_found = ffi.new("uint8_t *")
@@ -532,14 +598,21 @@ def prev_conjunction(
     body2_code: int,
     before_jd_tdb,
     config=None,
+    target_separations: Optional[list[float]] = None,
+    sidereal_config=None,
 ) -> Optional[ConjunctionEvent]:
-    """Find previous conjunction before a ``UtcTime`` or JD(TDB) anchor."""
+    """Find previous conjunction before a ``UtcTime`` or JD(TDB) anchor.
+
+    See :func:`next_conjunction` for *target_separations* / *sidereal_config*.
+    """
     req = ffi.new("DhruvConjunctionSearchRequest *")
     req.body1_code = body1_code
     req.body2_code = body2_code
     req.query_mode = _CONJUNCTION_PREV
     _set_single_search_time(req, before_jd_tdb, arg_name="before_jd_tdb")
     req.config = config if config is not None else lib.dhruv_conjunction_config_default()
+    _set_target_separations(req, target_separations)
+    _set_sidereal_config(req, sidereal_config)
 
     out_event = ffi.new("DhruvConjunctionEvent *")
     out_found = ffi.new("uint8_t *")
@@ -563,14 +636,21 @@ def search_conjunctions(
     end_jd,
     config=None,
     max_results: int = 100,
+    target_separations: Optional[list[float]] = None,
+    sidereal_config=None,
 ) -> list[ConjunctionEvent]:
-    """Search for conjunctions in a UTC or JD(TDB) range."""
+    """Search for conjunctions in a UTC or JD(TDB) range.
+
+    See :func:`next_conjunction` for *target_separations* / *sidereal_config*.
+    """
     req = ffi.new("DhruvConjunctionSearchRequest *")
     req.body1_code = body1_code
     req.body2_code = body2_code
     req.query_mode = _CONJUNCTION_RANGE
     _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_conjunction_config_default()
+    _set_target_separations(req, target_separations)
+    _set_sidereal_config(req, sidereal_config)
 
     def fetch(capacity: int):
         out_events = ffi.new("DhruvConjunctionEvent[]", capacity)
@@ -762,7 +842,7 @@ def stationary_config_default():
     return lib.dhruv_stationary_config_default()
 
 
-def _motion_single_stationary(engine, query_mode: int, body_code: int, when, config):
+def _motion_single_stationary(engine, query_mode: int, body_code: int, when, config, sidereal_config=None):
     """Internal: single stationary search."""
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
@@ -770,6 +850,7 @@ def _motion_single_stationary(engine, query_mode: int, body_code: int, when, con
     req.query_mode = query_mode
     _set_single_search_time(req, when, arg_name="jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
+    _set_sidereal_config(req, sidereal_config)
 
     out_event = ffi.new("DhruvStationaryEvent *")
     out_found = ffi.new("uint8_t *")
@@ -786,7 +867,7 @@ def _motion_single_stationary(engine, query_mode: int, body_code: int, when, con
     return _stationary_event(out_event[0])
 
 
-def _motion_single_max_speed(engine, query_mode: int, body_code: int, when, config):
+def _motion_single_max_speed(engine, query_mode: int, body_code: int, when, config, sidereal_config=None):
     """Internal: single max-speed search."""
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
@@ -794,6 +875,7 @@ def _motion_single_max_speed(engine, query_mode: int, body_code: int, when, conf
     req.query_mode = query_mode
     _set_single_search_time(req, when, arg_name="jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
+    _set_sidereal_config(req, sidereal_config)
 
     out_event = ffi.new("DhruvMaxSpeedEvent *")
     out_found = ffi.new("uint8_t *")
@@ -811,17 +893,26 @@ def _motion_single_max_speed(engine, query_mode: int, body_code: int, when, conf
 
 
 def next_stationary(
-    engine, body_code: int, after_jd, config=None
+    engine, body_code: int, after_jd, config=None, sidereal_config=None
 ) -> Optional[StationaryEvent]:
-    """Find next stationary point after a ``UtcTime`` or JD(TDB) anchor."""
-    return _motion_single_stationary(engine, _MOTION_NEXT, body_code, after_jd, config)
+    """Find next stationary point after a ``UtcTime`` or JD(TDB) anchor.
+
+    *body_code* accepts NAIF codes plus 10007 (Rahu) / 10008 (Ketu); node
+    stations require the true node (``config.node_mode = 1``, the default).
+    *sidereal_config*: optional ``DhruvSankrantiConfig`` (struct or dict);
+    when given, events carry sidereal longitude and rashi index.
+    """
+    return _motion_single_stationary(engine, _MOTION_NEXT, body_code, after_jd, config, sidereal_config)
 
 
 def prev_stationary(
-    engine, body_code: int, before_jd, config=None
+    engine, body_code: int, before_jd, config=None, sidereal_config=None
 ) -> Optional[StationaryEvent]:
-    """Find previous stationary point before a ``UtcTime`` or JD(TDB) anchor."""
-    return _motion_single_stationary(engine, _MOTION_PREV, body_code, before_jd, config)
+    """Find previous stationary point before a ``UtcTime`` or JD(TDB) anchor.
+
+    See :func:`next_stationary` for *body_code* / *sidereal_config*.
+    """
+    return _motion_single_stationary(engine, _MOTION_PREV, body_code, before_jd, config, sidereal_config)
 
 
 def search_stationary(
@@ -831,14 +922,19 @@ def search_stationary(
     end_jd,
     config=None,
     max_results: int = 100,
+    sidereal_config=None,
 ) -> list[StationaryEvent]:
-    """Search for stationary points in a UTC or JD(TDB) range."""
+    """Search for stationary points in a UTC or JD(TDB) range.
+
+    See :func:`next_stationary` for *body_code* / *sidereal_config*.
+    """
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
     req.motion_kind = _MOTION_STATIONARY
     req.query_mode = _MOTION_RANGE
     _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
+    _set_sidereal_config(req, sidereal_config)
 
     def fetch(capacity: int):
         out_events = ffi.new("DhruvStationaryEvent[]", capacity)
@@ -858,17 +954,23 @@ def search_stationary(
 
 
 def next_max_speed(
-    engine, body_code: int, after_jd, config=None
+    engine, body_code: int, after_jd, config=None, sidereal_config=None
 ) -> Optional[MaxSpeedEvent]:
-    """Find next max-speed event after a ``UtcTime`` or JD(TDB) anchor."""
-    return _motion_single_max_speed(engine, _MOTION_NEXT, body_code, after_jd, config)
+    """Find next max-speed event after a ``UtcTime`` or JD(TDB) anchor.
+
+    See :func:`next_stationary` for *body_code* / *sidereal_config*.
+    """
+    return _motion_single_max_speed(engine, _MOTION_NEXT, body_code, after_jd, config, sidereal_config)
 
 
 def prev_max_speed(
-    engine, body_code: int, before_jd, config=None
+    engine, body_code: int, before_jd, config=None, sidereal_config=None
 ) -> Optional[MaxSpeedEvent]:
-    """Find previous max-speed event before a ``UtcTime`` or JD(TDB) anchor."""
-    return _motion_single_max_speed(engine, _MOTION_PREV, body_code, before_jd, config)
+    """Find previous max-speed event before a ``UtcTime`` or JD(TDB) anchor.
+
+    See :func:`next_stationary` for *body_code* / *sidereal_config*.
+    """
+    return _motion_single_max_speed(engine, _MOTION_PREV, body_code, before_jd, config, sidereal_config)
 
 
 def search_max_speeds(
@@ -878,14 +980,19 @@ def search_max_speeds(
     end_jd,
     config=None,
     max_results: int = 100,
+    sidereal_config=None,
 ) -> list[MaxSpeedEvent]:
-    """Search for max-speed events in a UTC or JD(TDB) range."""
+    """Search for max-speed events in a UTC or JD(TDB) range.
+
+    See :func:`next_stationary` for *body_code* / *sidereal_config*.
+    """
     req = ffi.new("DhruvMotionSearchRequest *")
     req.body_code = body_code
     req.motion_kind = _MOTION_MAX_SPEED
     req.query_mode = _MOTION_RANGE
     _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_stationary_config_default()
+    _set_sidereal_config(req, sidereal_config)
 
     def fetch(capacity: int):
         out_events = ffi.new("DhruvMaxSpeedEvent[]", capacity)
@@ -1007,14 +1114,19 @@ def sankranti_config_default():
 
 
 def next_sankranti(
-    engine, after_jd, config=None
+    engine, after_jd, config=None, body_code: int = 0
 ) -> Optional[SankrantiEvent]:
-    """Find the next sankranti after a ``UtcTime`` or JD(TDB) anchor."""
+    """Find the next sankranti after a ``UtcTime`` or JD(TDB) anchor.
+
+    *body_code*: 0 = Sun (classical sankranti, default), otherwise any NAIF
+    code or 10007 (Rahu) / 10008 (Ketu) for that body's rashi ingress.
+    """
     req = ffi.new("DhruvSankrantiSearchRequest *")
     req.target_kind = _SANKRANTI_TARGET_ANY
     req.query_mode = _SANKRANTI_NEXT
     _set_single_search_time(req, after_jd, arg_name="after_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
+    req.body_code = int(body_code)
 
     out_event = ffi.new("DhruvSankrantiEvent *")
     out_found = ffi.new("uint8_t *")
@@ -1032,14 +1144,18 @@ def next_sankranti(
 
 
 def prev_sankranti(
-    engine, before_jd, config=None
+    engine, before_jd, config=None, body_code: int = 0
 ) -> Optional[SankrantiEvent]:
-    """Find the previous sankranti before a ``UtcTime`` or JD(TDB) anchor."""
+    """Find the previous sankranti before a ``UtcTime`` or JD(TDB) anchor.
+
+    See :func:`next_sankranti` for *body_code*.
+    """
     req = ffi.new("DhruvSankrantiSearchRequest *")
     req.target_kind = _SANKRANTI_TARGET_ANY
     req.query_mode = _SANKRANTI_PREV
     _set_single_search_time(req, before_jd, arg_name="before_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
+    req.body_code = int(body_code)
 
     out_event = ffi.new("DhruvSankrantiEvent *")
     out_found = ffi.new("uint8_t *")
@@ -1057,12 +1173,14 @@ def prev_sankranti(
 
 
 def specific_sankranti(
-    engine, at_jd, rashi_index: int, direction: str = "next", config=None
+    engine, at_jd, rashi_index: int, direction: str = "next", config=None,
+    body_code: int = 0,
 ) -> Optional[SankrantiEvent]:
     """Find a direction-specific sankranti into a specific rashi.
 
     *rashi_index*: 0-based (0=Mesha .. 11=Meena).
     *direction*: ``"next"`` or ``"prev"``.
+    See :func:`next_sankranti` for *body_code*.
     """
     if direction == "next":
         query_mode = _SANKRANTI_NEXT
@@ -1079,6 +1197,7 @@ def specific_sankranti(
     req.rashi_index = rashi_index
     _set_single_search_time(req, at_jd, arg_name="at_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
+    req.body_code = int(body_code)
 
     out_event = ffi.new("DhruvSankrantiEvent *")
     out_found = ffi.new("uint8_t *")
@@ -1101,13 +1220,19 @@ def search_sankrantis(
     end_jd,
     config=None,
     max_results: int = 50,
+    body_code: int = 0,
 ) -> list[SankrantiEvent]:
-    """Search for sankrantis in a UTC or JD(TDB) range."""
+    """Search for sankrantis in a UTC or JD(TDB) range.
+
+    See :func:`next_sankranti` for *body_code*. Retrograde bodies can
+    re-enter a rashi; such events carry ``is_retrograde=True``.
+    """
     req = ffi.new("DhruvSankrantiSearchRequest *")
     req.target_kind = _SANKRANTI_TARGET_ANY
     req.query_mode = _SANKRANTI_RANGE
     _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
     req.config = config if config is not None else lib.dhruv_sankranti_config_default()
+    req.body_code = int(body_code)
 
     def fetch(capacity: int):
         out_events = ffi.new("DhruvSankrantiEvent[]", capacity)

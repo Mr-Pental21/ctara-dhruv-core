@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 83`
+**ABI version:** `DHRUV_API_VERSION = 84`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -457,8 +457,12 @@ typedef struct {
     double   step_size_days;        // Coarse scan step (default 0.5)
     uint32_t max_iterations;        // Max bisection iterations (default 50)
     double   convergence_days;      // Convergence threshold (default 1e-8)
+    int32_t  node_mode;             // 0=mean node, else true node (default 1)
 } DhruvConjunctionConfig;
 ```
+
+`node_mode` selects the lunar-node model applied when either body is Rahu
+(10007) or Ketu (10008).
 
 ### DhruvConjunctionEvent
 
@@ -471,10 +475,20 @@ typedef struct {
     double  body2_longitude_deg;   // Body 2 ecliptic longitude
     double  body1_latitude_deg;    // Body 1 ecliptic latitude
     double  body2_latitude_deg;    // Body 2 ecliptic latitude
-    int32_t body1_code;            // Body 1 NAIF code
-    int32_t body2_code;            // Body 2 NAIF code
+    int32_t body1_code;            // Body 1 code (NAIF, or 10007/10008)
+    int32_t body2_code;            // Body 2 code (NAIF, or 10007/10008)
+    /* v84 additions: */
+    double  target_separation_deg; // The target angle this event matched
+    uint8_t has_sidereal;          // 1 = sidereal echo fields populated
+    double  body1_sidereal_longitude_deg; // 0.0 when has_sidereal == 0
+    double  body2_sidereal_longitude_deg; // 0.0 when has_sidereal == 0
+    int32_t body1_rashi_index;            // 0-11; -1 when has_sidereal == 0
+    int32_t body2_rashi_index;            // 0-11; -1 when has_sidereal == 0
 } DhruvConjunctionEvent;
 ```
+
+`DhruvConjunctionEventUtc` carries the same trailing v84 fields after its
+existing members.
 
 ### DhruvGrahanConfig
 
@@ -598,8 +612,14 @@ typedef struct {
     uint32_t max_iterations;        // Max bisection iterations (default 50)
     double   convergence_days;      // Convergence threshold (default 1e-8)
     double   numerical_step_days;   // Central difference step (default 0.01)
+    int32_t  node_mode;             // 0=mean node, else true node (default 1)
 } DhruvStationaryConfig;
 ```
+
+`node_mode` selects the lunar-node model applied when the body is Rahu
+(10007) or Ketu (10008). Stationary search of the nodes requires the true
+node — the mean node is always retrograde and has no stations, so
+`node_mode = 0` with a node body is rejected with `InvalidSearchConfig`.
 
 ### DhruvStationaryEvent
 
@@ -607,12 +627,19 @@ typedef struct {
 typedef struct {
     double  jd_tdb;          // Event time (JD TDB)
     DhruvUtcTime utc;        // Structured Gregorian UTC alongside JD
-    int32_t body_code;       // NAIF body code
+    int32_t body_code;       // Body code (NAIF, or 10007/10008)
     double  longitude_deg;   // Ecliptic longitude at station
     double  latitude_deg;    // Ecliptic latitude at station
     int32_t station_type;    // DHRUV_STATION_* constant
+    /* v84 additions: */
+    uint8_t has_sidereal;            // 1 = sidereal echo fields populated
+    double  sidereal_longitude_deg;  // 0.0 when has_sidereal == 0
+    int32_t rashi_index;             // 0-11; -1 when has_sidereal == 0
 } DhruvStationaryEvent;
 ```
+
+`DhruvStationaryEventUtc` carries the same trailing v84 fields after its
+existing members.
 
 ### DhruvMaxSpeedEvent
 
@@ -620,13 +647,20 @@ typedef struct {
 typedef struct {
     double  jd_tdb;              // Event time (JD TDB)
     DhruvUtcTime utc;            // Structured Gregorian UTC alongside JD
-    int32_t body_code;           // NAIF body code
+    int32_t body_code;           // Body code (NAIF, or 10007/10008)
     double  longitude_deg;       // Ecliptic longitude at peak speed
     double  latitude_deg;        // Ecliptic latitude at peak speed
     double  speed_deg_per_day;   // Longitude speed at peak (deg/day)
     int32_t speed_type;          // DHRUV_MAX_SPEED_* constant
+    /* v84 additions: */
+    uint8_t has_sidereal;            // 1 = sidereal echo fields populated
+    double  sidereal_longitude_deg;  // 0.0 when has_sidereal == 0
+    int32_t rashi_index;             // 0-11; -1 when has_sidereal == 0
 } DhruvMaxSpeedEvent;
 ```
+
+`DhruvMaxSpeedEventUtc` carries the same trailing v84 fields after its
+existing members.
 
 ### DhruvSankrantiConfig
 
@@ -638,13 +672,17 @@ typedef struct {
     double   step_size_days;     // Coarse scan step (default 1.0)
     uint32_t max_iterations;     // Max bisection iterations (default 50)
     double   convergence_days;   // Convergence threshold (default 1e-8)
+    int32_t  node_mode;          // 0=mean node, else true node (default 1)
 } DhruvSankrantiConfig;
 ```
 
 Configuration for Sankranti search, panchang, dasha, and related functions.
 The `reference_plane` field controls which plane longitudes and ayanamsha are
 measured on. Set to -1 to use the system's default (Ecliptic for most systems,
-Invariable for Jagganatha). Obtain defaults via `dhruv_sankranti_config_default()`.
+Invariable for Jagganatha). `node_mode` (v84) selects the lunar-node model
+used when the tracked body is Rahu/Ketu; 0 selects the mean node and any
+other value the true node. Obtain defaults via
+`dhruv_sankranti_config_default()`.
 
 ### DhruvSankrantiEvent
 
@@ -652,8 +690,15 @@ Invariable for Jagganatha). Obtain defaults via `dhruv_sankranti_config_default(
 typedef struct {
     DhruvUtcTime utc;                    // Event time (UTC)
     int32_t      rashi_index;            // 0-based (0=Mesha .. 11=Meena)
+    // Legacy aliases for the tracked body's longitudes (the Sun for
+    // classical requests); identical to the v84 fields below.
     double       sun_sidereal_longitude_deg;  // On configured reference plane
     double       sun_tropical_longitude_deg;  // Always ecliptic tropical
+    /* v84 additions (any-body ingress): */
+    int32_t      body_code;              // Tracked body (NAIF, or 10007/10008)
+    double       sidereal_longitude_deg; // Same value as the sun_* alias
+    double       tropical_longitude_deg; // Same value as the sun_* alias
+    uint8_t      is_retrograde;          // 1 = crossed boundary in retrograde
 } DhruvSankrantiEvent;
 ```
 
@@ -699,6 +744,9 @@ typedef struct {
     DhruvUtcTime         start_utc;     // RANGE when time_kind=UTC
     DhruvUtcTime         end_utc;       // RANGE when time_kind=UTC
     DhruvSankrantiConfig config;
+    /* v84: 0 = Sun (classical sankranti, back-compat default),
+     * otherwise a NAIF body code or 10007 (Rahu) / 10008 (Ketu). */
+    int32_t              body_code;
 } DhruvSankrantiSearchRequest;
 ```
 
@@ -1036,7 +1084,8 @@ DhruvSankrantiConfig dhruv_sankranti_config_default(void);
 ```
 
 Returns a default `DhruvSankrantiConfig` (Lahiri, no nutation,
-`reference_plane = -1` for system default, standard search parameters).
+`reference_plane = -1` for system default, `node_mode = 1` for the true
+node, standard search parameters).
 
 ---
 
@@ -1273,16 +1322,17 @@ UTC variant of `dhruv_ramc_deg`. Uses apparent (GAST) sidereal time.
 DhruvConjunctionConfig dhruv_conjunction_config_default(void);
 ```
 
-Returns default: `target_separation_deg=0`, `step_size_days=0.5`, `max_iterations=50`, `convergence_days=1e-8`.
+Returns default: `target_separation_deg=0`, `step_size_days=0.5`, `max_iterations=50`, `convergence_days=1e-8`, `node_mode=1` (true node).
 
 ```c
 #define DHRUV_CONJUNCTION_QUERY_MODE_NEXT  0
 #define DHRUV_CONJUNCTION_QUERY_MODE_PREV  1
 #define DHRUV_CONJUNCTION_QUERY_MODE_RANGE 2
+#define DHRUV_MAX_CONJUNCTION_TARGETS      16
 
 typedef struct {
-    int32_t                body1_code;
-    int32_t                body2_code;
+    int32_t                body1_code;  // NAIF, or 10007 (Rahu) / 10008 (Ketu)
+    int32_t                body2_code;  // NAIF, or 10007 (Rahu) / 10008 (Ketu)
     int32_t                query_mode;
     int32_t                time_kind;
     double                 at_jd_tdb;
@@ -1292,6 +1342,12 @@ typedef struct {
     DhruvUtcTime           start_utc;
     DhruvUtcTime           end_utc;
     DhruvConjunctionConfig config;
+    /* v84 multi-angle sweep: 0 = single angle from config. */
+    uint32_t               target_separation_count;
+    double                 target_separations_deg[DHRUV_MAX_CONJUNCTION_TARGETS];
+    /* v84 sidereal echo: read sidereal_config when non-zero. */
+    uint8_t                has_sidereal_config;
+    DhruvSankrantiConfig   sidereal_config;
 } DhruvConjunctionSearchRequest;
 
 DhruvStatus dhruv_conjunction_search_ex(
@@ -1310,6 +1366,20 @@ Unified conjunction entrypoint:
 - `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
 - `query_mode=NEXT/PREV` writes to `out_event/out_found`.
 - `query_mode=RANGE` writes to `out_events/out_count`.
+- Body codes accept all NAIF codes plus 10007 (Rahu) and 10008 (Ketu)
+  since v84; `config.node_mode` selects the node model (0 = mean, else
+  true).
+- Multi-angle sweep (v84): set `target_separation_count` (1..16, values
+  above `DHRUV_MAX_CONJUNCTION_TARGETS` are rejected with `InvalidQuery`)
+  to search each angle in `target_separations_deg`. NEXT/PREV return the
+  chronologically nearest match across all angles; RANGE returns the
+  time-sorted union. Each event's `target_separation_deg` reports the
+  matched angle. `target_separation_count = 0` preserves the legacy
+  single-angle behavior using `config.target_separation_deg`.
+- Sidereal echo (v84): set `has_sidereal_config = 1` and fill
+  `sidereal_config` so each event also carries sidereal longitudes and
+  rashi indices (`has_sidereal`, `body*_sidereal_longitude_deg`,
+  `body*_rashi_index`).
 
 ---
 
@@ -1377,7 +1447,7 @@ Unified grahan entrypoint:
 DhruvStationaryConfig dhruv_stationary_config_default(void);
 ```
 
-Returns default: `step_size_days=1.0`, `max_iterations=50`, `convergence_days=1e-8`, `numerical_step_days=0.01`.
+Returns default: `step_size_days=1.0`, `max_iterations=50`, `convergence_days=1e-8`, `numerical_step_days=0.01`, `node_mode=1` (true node).
 
 ```c
 #define DHRUV_MOTION_KIND_STATIONARY       0
@@ -1387,7 +1457,7 @@ Returns default: `step_size_days=1.0`, `max_iterations=50`, `convergence_days=1e
 #define DHRUV_MOTION_QUERY_MODE_RANGE      2
 
 typedef struct {
-    int32_t               body_code;     // NAIF code
+    int32_t               body_code;     // NAIF, or 10007 (Rahu) / 10008 (Ketu)
     int32_t               motion_kind;   // DHRUV_MOTION_KIND_*
     int32_t               query_mode;    // DHRUV_MOTION_QUERY_MODE_*
     int32_t               time_kind;     // DHRUV_SEARCH_TIME_*
@@ -1398,6 +1468,9 @@ typedef struct {
     DhruvUtcTime          start_utc;
     DhruvUtcTime          end_utc;
     DhruvStationaryConfig config;
+    /* v84 sidereal echo: read sidereal_config when non-zero. */
+    uint8_t               has_sidereal_config;
+    DhruvSankrantiConfig  sidereal_config;
 } DhruvMotionSearchRequest;
 
 DhruvStatus dhruv_motion_search_ex(
@@ -1419,6 +1492,13 @@ Unified motion entrypoint:
 - `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
 - `query_mode=NEXT/PREV` uses `out_found` and a single-result pointer.
 - `query_mode=RANGE` uses array output pointer + `out_count`.
+- `body_code` accepts all NAIF codes plus 10007 (Rahu) and 10008 (Ketu)
+  since v84; `config.node_mode` selects the node model (0 = mean, else
+  true). Stationary search of the nodes requires the true node — the mean
+  node has no stations and is rejected with `InvalidSearchConfig`.
+- Sidereal echo (v84): set `has_sidereal_config = 1` and fill
+  `sidereal_config` so each event also carries `has_sidereal`,
+  `sidereal_longitude_deg`, and `rashi_index`.
 
 **Note:** Legacy split motion wrappers were removed in v42. Use `dhruv_motion_search_ex`.
 
@@ -1480,6 +1560,15 @@ Unified sankranti entrypoint:
 - `time_kind=UTC` uses `at_utc` or `start_utc/end_utc`.
 - `query_mode=NEXT/PREV` writes `out_event/out_found`.
 - `query_mode=RANGE` writes `out_events/out_count`.
+- Any-body ingress (v84): `request.body_code = 0` tracks the Sun
+  (classical sankranti, the back-compat default for zero-initialized
+  requests); any other value is parsed as a NAIF body code or 10007
+  (Rahu) / 10008 (Ketu), with unknown codes rejected as `InvalidQuery`.
+  `config.node_mode` selects the node model for Rahu/Ketu. Events echo
+  the tracked body in `body_code`, report the generic
+  `sidereal_longitude_deg`/`tropical_longitude_deg` fields (the legacy
+  `sun_*` fields alias the same values), and flag retrograde boundary
+  crossings via `is_retrograde`.
 
 ---
 
@@ -2565,6 +2654,26 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v84**: Rahu/Ketu across the search families plus sidereal echoes.
+`dhruv_conjunction_search_ex` and `dhruv_motion_search_ex` accept body
+codes 10007 (Rahu) and 10008 (Ketu); `dhruv_sankranti_search_ex` gained
+`request.body_code` for any-body rashi ingress (0 = Sun, the classical
+back-compat default). `DhruvConjunctionConfig`, `DhruvStationaryConfig`,
+and `DhruvSankrantiConfig` gained trailing `node_mode` (0 = mean node,
+any other value = true node; defaults return 1). Conjunction requests
+gained a multi-angle sweep (`target_separation_count` +
+`target_separations_deg[DHRUV_MAX_CONJUNCTION_TARGETS]`), and
+conjunction/motion requests gained `has_sidereal_config` +
+`sidereal_config`. `DhruvConjunctionEvent`(+`Utc`) gained
+`target_separation_deg` plus sidereal echo fields;
+`DhruvStationaryEvent`/`DhruvMaxSpeedEvent`(+`Utc`) gained
+`has_sidereal`/`sidereal_longitude_deg`/`rashi_index`.
+`DhruvSankrantiEvent` gained `body_code`, generic
+`sidereal_longitude_deg`/`tropical_longitude_deg` (the legacy `sun_*`
+fields remain as aliases with identical values), and `is_retrograde`.
+All new fields are appended, so zero-initialized v83-style requests keep
+their previous behavior.
 
 **v83**: Instantaneous iso-magnitude rings. `DhruvGrahanConfig` gained
 `instantaneous_magnitude_levels` (fixed 16-entry array plus count; values

@@ -346,7 +346,12 @@ class RiseSetResult:
 class ConjunctionEvent:
     """Conjunction / aspect event.
 
-    ``body1_code`` / ``body2_code``: NAIF body codes.
+    ``body1_code`` / ``body2_code``: NAIF body codes, or 10007 (Rahu) /
+    10008 (Ketu).
+    ``target_separation_deg``: the target angle this event matched (equals
+    the config angle for single-angle searches).
+    Sidereal echo fields are ``None`` unless the request carried a
+    ``sidereal_config``.
     """
 
     utc: UtcTime
@@ -358,6 +363,12 @@ class ConjunctionEvent:
     body2_latitude_deg: float
     body1_code: int
     body2_code: int
+    target_separation_deg: float = 0.0
+    has_sidereal: bool = False
+    body1_sidereal_longitude_deg: Optional[float] = None
+    body2_sidereal_longitude_deg: Optional[float] = None
+    body1_rashi_index: Optional[int] = None
+    body2_rashi_index: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -584,6 +595,8 @@ class StationaryEvent:
     """Planetary station event.
 
     ``station_type``: 0=retrograde, 1=direct.
+    Sidereal echo fields are ``None`` unless the request carried a
+    ``sidereal_config``.
     """
 
     utc: UtcTime
@@ -592,6 +605,9 @@ class StationaryEvent:
     longitude_deg: float
     latitude_deg: float
     station_type: int
+    has_sidereal: bool = False
+    sidereal_longitude_deg: Optional[float] = None
+    rashi_index: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -599,6 +615,8 @@ class MaxSpeedEvent:
     """Peak-speed event.
 
     ``speed_type``: 0=direct, 1=retrograde.
+    Sidereal echo fields are ``None`` unless the request carried a
+    ``sidereal_config``.
     """
 
     utc: UtcTime
@@ -608,6 +626,9 @@ class MaxSpeedEvent:
     latitude_deg: float
     speed_deg_per_day: float
     speed_type: int
+    has_sidereal: bool = False
+    sidereal_longitude_deg: Optional[float] = None
+    rashi_index: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -625,15 +646,25 @@ class LunarPhaseEvent:
 
 @dataclass(frozen=True)
 class SankrantiEvent:
-    """Sankranti (solar ingress) event.
+    """Sankranti (rashi ingress) event.
 
     ``rashi_index``: 0-based (0=Mesha .. 11=Meena).
+    ``sun_sidereal_longitude_deg`` / ``sun_tropical_longitude_deg`` are
+    legacy aliases for the tracked body's longitudes (the Sun for classical
+    sankranti requests); they always equal ``sidereal_longitude_deg`` /
+    ``tropical_longitude_deg``.
+    ``body_code``: the tracked body (NAIF code, or 10007 Rahu / 10008 Ketu).
+    ``is_retrograde``: the rashi boundary was crossed in retrograde motion.
     """
 
     utc: UtcTime
     rashi_index: int
     sun_sidereal_longitude_deg: float
     sun_tropical_longitude_deg: float
+    body_code: int = 10
+    sidereal_longitude_deg: float = 0.0
+    tropical_longitude_deg: float = 0.0
+    is_retrograde: bool = False
 
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,13 @@
 # dhruv_search C ABI Coverage
 
-Scope: crate-root runtime/query APIs re-exported by `dhruv_search` (64 functions).
+Scope: crate-root runtime/query APIs re-exported by `dhruv_search`
+(74 functions; enumerated in `docs/SEARCH_RUNTIME_APIS.md`).
 
-Direct C ABI coverage is high: `60 / 64` runtime APIs have an exported
-`dhruv_ffi_c` entry point.
-Functional coverage is `64 / 64` when the gaps below are satisfied through
-other exports.
+The search/event families are covered by unified operation entry points
+(`dhruv_*_search_ex` request structs mirroring the `dhruv_search`
+operations) rather than one export per crate-root function; per-moment
+panchang/jyotish helpers keep direct exports. Functional coverage is
+`74 / 74` when the gaps below are satisfied through other exports.
 
 ## Not Wrapped Directly
 
@@ -15,27 +17,41 @@ These crate-root runtime functions do not currently have a direct C export:
 - `masa_for_date_with_eop`
 - `ayana_for_date_with_eop`
 - `varsha_for_date_with_eop`
+- `transit_body_ecliptic_lon_lat`
 
 Functional coverage notes:
 - `moon_sidereal_longitude_at` is obtainable from
   `dhruv_graha_longitudes` with sidereal config (Moon is one graha entry in that output).
 - The `*_for_date_with_eop` variants are obtainable from
   `dhruv_panchang_compute_ex` (EOP handle + `DHRUV_PANCHANG_INCLUDE_MASA`/`_AYANA`/`_VARSHA` bits).
+- `transit_body_ecliptic_lon_lat` splits into existing exports: plain
+  bodies via `dhruv_body_ecliptic_lon_lat`, node longitudes via
+  `dhruv_lunar_node_compute_ex` (node latitude is 0 by definition).
 
-## Wrapped API Families (Direct)
+## Wrapped API Families
 
-- Conjunction/aspect: `dhruv_body_ecliptic_lon_lat`, `dhruv_next_conjunction`,
-  `dhruv_prev_conjunction`, `dhruv_search_conjunctions` (+ `_utc` variants where present)
-- Lunar phase: `dhruv_next_purnima`, `dhruv_prev_purnima`, `dhruv_next_amavasya`,
-  `dhruv_prev_amavasya`, `dhruv_search_purnimas`, `dhruv_search_amavasyas`
-- Grahan: `dhruv_next_*_grahan`, `dhruv_prev_*_grahan`, `dhruv_search_*_grahan`
-  (including `_utc` variants)
-- Sankranti: `dhruv_next_sankranti`, `dhruv_prev_sankranti`,
-  `dhruv_search_sankrantis`, `dhruv_next_specific_sankranti`,
-  `dhruv_prev_specific_sankranti`
-- Stationary/max-speed: `dhruv_next_stationary`, `dhruv_prev_stationary`,
-  `dhruv_search_stationary`, `dhruv_next_max_speed`, `dhruv_prev_max_speed`,
-  `dhruv_search_max_speed` (including `_utc` variants)
+- Conjunction/aspect: `dhruv_conjunction_search_ex` (next/prev/range query
+  modes covering `next_conjunction`, `prev_conjunction`,
+  `search_conjunctions`; `TransitBody` codes 10007/10008 for Rahu/Ketu,
+  `node_mode`, multi-angle `target_separations_deg`, optional sidereal
+  echo config) plus `dhruv_conjunction_config_default` and
+  `dhruv_body_ecliptic_lon_lat`
+- Lunar phase: `dhruv_lunar_phase_search_ex` (kind + next/prev/range,
+  covering `next_purnima`, `prev_purnima`, `next_amavasya`,
+  `prev_amavasya`, `search_purnimas`, `search_amavasyas`)
+- Grahan: `dhruv_grahan_search_ex` (kind + next/prev/range, covering the
+  `*_chandra_grahan`/`*_surya_grahan` functions) plus the geometry
+  accessors and `dhruv_grahan_config_effective`
+- Sankranti/ingress: `dhruv_sankranti_search_ex` (target + next/prev/range;
+  the request's `body_code` — 0 = Sun back-compat default, else a NAIF code
+  or 10007/10008 — covers the generalized `next_ingress`, `prev_ingress`,
+  `search_ingresses`, `next_specific_ingress`, `prev_specific_ingress` as
+  well as the classical Sun wrappers) plus
+  `dhruv_sankranti_config_default`
+- Stationary/max-speed: `dhruv_motion_search_ex` (kind + next/prev/range
+  with `body_code` incl. 10007/10008, `node_mode`, optional sidereal echo
+  config, covering the `*_stationary`/`*_max_speed` functions) plus
+  `dhruv_stationary_config_default`
 - Panchang/time slices: `dhruv_masa_for_date`, `dhruv_ayana_for_date`,
   `dhruv_varsha_for_date`, `dhruv_nakshatra_for_date`, `dhruv_tithi_for_date`,
   `dhruv_karana_for_date`, `dhruv_yoga_for_date`, `dhruv_vaar_for_date`,

@@ -145,6 +145,9 @@ struct NextSankrantiArgs {
     /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
     date: String,
+    /// Transit body code (NAIF code, or 10007=Rahu, 10008=Ketu; default 10=Sun)
+    #[arg(long, default_value_t = 10)]
+    body: i32,
     /// Ayanamsha system code (0-19, default 0=Lahiri)
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
@@ -1359,6 +1362,9 @@ enum AmshaOutputFormat {
 struct PrevSankrantiArgs {
     #[arg(long)]
     date: String,
+    /// Transit body code (NAIF code, or 10007=Rahu, 10008=Ketu; default 10=Sun)
+    #[arg(long, default_value_t = 10)]
+    body: i32,
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
     #[arg(long)]
@@ -1399,6 +1405,9 @@ struct SearchSankrantisArgs {
     start: String,
     #[arg(long)]
     end: String,
+    /// Transit body code (NAIF code, or 10007=Rahu, 10008=Ketu; default 10=Sun)
+    #[arg(long, default_value_t = 10)]
+    body: i32,
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
     #[arg(long)]
@@ -1416,6 +1425,9 @@ struct NextSpecificSankrantiArgs {
     /// Rashi index (0=Mesha .. 11=Meena)
     #[arg(long)]
     rashi: u8,
+    /// Transit body code (NAIF code, or 10007=Rahu, 10008=Ketu; default 10=Sun)
+    #[arg(long, default_value_t = 10)]
+    body: i32,
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
     #[arg(long)]
@@ -1433,6 +1445,9 @@ struct PrevSpecificSankrantiArgs {
     /// Rashi index (0=Mesha .. 11=Meena)
     #[arg(long)]
     rashi: u8,
+    /// Transit body code (NAIF code, or 10007=Rahu, 10008=Ketu; default 10=Sun)
+    #[arg(long, default_value_t = 10)]
+    body: i32,
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
     #[arg(long)]
@@ -1575,12 +1590,21 @@ struct ConjunctionOpArgs {
     /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
     end: Option<String>,
-    /// NAIF body code for first body (e.g. 10=Sun, 301=Moon)
+    /// First body code (NAIF code, or 10007=Rahu, 10008=Ketu)
     #[arg(long)]
     body1: i32,
-    /// NAIF body code for second body
+    /// Second body code (NAIF code, or 10007=Rahu, 10008=Ketu)
     #[arg(long)]
     body2: i32,
+    /// Comma-separated target separation angles in degrees (default: 0 = conjunction)
+    #[arg(long, value_delimiter = ',')]
+    targets: Vec<f64>,
+    /// Lunar-node model when a body is Rahu/Ketu: mean or true
+    #[arg(long, value_parser = ["mean", "true"], default_value = "true")]
+    node_mode: String,
+    /// Include sidereal longitudes and rashi indices in results
+    #[arg(long, default_value_t = false)]
+    sidereal: bool,
     #[arg(long)]
     bsp: Option<PathBuf>,
     #[arg(long)]
@@ -1727,6 +1751,9 @@ struct LunarPhaseOpArgs {
     /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
     end: Option<String>,
+    /// Include sidereal longitudes and rashi indices in results
+    #[arg(long, default_value_t = false)]
+    sidereal: bool,
     #[arg(long)]
     bsp: Option<PathBuf>,
     #[arg(long)]
@@ -1750,6 +1777,9 @@ struct SankrantiOpArgs {
     /// Optional specific rashi index (0=Mesha .. 11=Meena)
     #[arg(long)]
     rashi: Option<i32>,
+    /// Transit body code (NAIF code, or 10007=Rahu, 10008=Ketu; default 10=Sun)
+    #[arg(long, default_value_t = 10)]
+    body: i32,
     /// Ayanamsha system code (0-19, default 0=Lahiri)
     #[arg(long, default_value = "0")]
     ayanamsha: i32,
@@ -1871,9 +1901,15 @@ struct MotionOpArgs {
     /// Mode: next, prev, or range
     #[arg(long, value_parser = ["next", "prev", "range"])]
     mode: String,
-    /// NAIF body code (e.g. 499=Mars, 599=Jupiter)
+    /// Body code (NAIF code e.g. 499=Mars, 599=Jupiter; or 10007=Rahu, 10008=Ketu)
     #[arg(long)]
     body: i32,
+    /// Lunar-node model when the body is Rahu/Ketu: mean or true
+    #[arg(long, value_parser = ["mean", "true"], default_value = "true")]
+    node_mode: String,
+    /// Include sidereal longitudes and rashi indices in results
+    #[arg(long, default_value_t = false)]
+    sidereal: bool,
     /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
     date: Option<String>,
@@ -3525,6 +3561,16 @@ fn require_body(code: i32) -> Body {
     })
 }
 
+fn require_transit_body(code: i32) -> dhruv_search::TransitBody {
+    dhruv_search::TransitBody::from_code(code).unwrap_or_else(|| {
+        eprintln!("Invalid transit body code: {code}");
+        eprintln!(
+            "Valid: NAIF body codes (10=Sun, 301=Moon, 499=Mars, ...) plus 10007=Rahu, 10008=Ketu"
+        );
+        std::process::exit(1);
+    })
+}
+
 fn require_observer(code: i32) -> Observer {
     Observer::from_code(code).unwrap_or_else(|| {
         eprintln!("Invalid observer code: {code}");
@@ -4228,6 +4274,7 @@ fn main() {
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = LunarPhaseOperation {
                 kind: LunarPhaseKind::Purnima,
+                sankranti_config: None,
                 query: LunarPhaseQuery::Next { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::lunar_phase(&engine, &op) {
@@ -4259,6 +4306,7 @@ fn main() {
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = LunarPhaseOperation {
                 kind: LunarPhaseKind::Amavasya,
+                sankranti_config: None,
                 query: LunarPhaseQuery::Next { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::lunar_phase(&engine, &op) {
@@ -4287,10 +4335,12 @@ fn main() {
                 std::process::exit(1);
             });
             let system = require_aya_system(args.ayanamsha);
+            let body = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = SankrantiOperation {
+                body,
                 target: SankrantiTarget::Any,
                 config,
                 query: SankrantiQuery::Next { at_jd_tdb: jd_tdb },
@@ -4298,11 +4348,13 @@ fn main() {
             match dhruv_search::sankranti(&engine, &op) {
                 Ok(SankrantiResult::Single(Some(ev))) => {
                     println!("Next Sankranti: {}", ev.rashi.name());
+                    println!("  Body: {}", ev.body.name());
                     println!("  Time: {}", ev.utc);
                     println!(
                         "  Sidereal lon: {:.6} deg  Tropical lon: {:.6} deg",
-                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                        ev.sidereal_longitude_deg, ev.tropical_longitude_deg
                     );
+                    println!("  Retrograde: {}", ev.is_retrograde);
                 }
                 Ok(SankrantiResult::Single(None)) => println!("No Sankranti found in search range"),
                 Ok(SankrantiResult::Many(_)) => {
@@ -5897,6 +5949,7 @@ fn main() {
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = LunarPhaseOperation {
                 kind: LunarPhaseKind::Purnima,
+                sankranti_config: None,
                 query: LunarPhaseQuery::Prev { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::lunar_phase(&engine, &op) {
@@ -5928,6 +5981,7 @@ fn main() {
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = LunarPhaseOperation {
                 kind: LunarPhaseKind::Amavasya,
+                sankranti_config: None,
                 query: LunarPhaseQuery::Prev { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::lunar_phase(&engine, &op) {
@@ -5956,10 +6010,12 @@ fn main() {
                 std::process::exit(1);
             });
             let system = require_aya_system(args.ayanamsha);
+            let body = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = SankrantiOperation {
+                body,
                 target: SankrantiTarget::Any,
                 config,
                 query: SankrantiQuery::Prev { at_jd_tdb: jd_tdb },
@@ -5967,11 +6023,13 @@ fn main() {
             match dhruv_search::sankranti(&engine, &op) {
                 Ok(SankrantiResult::Single(Some(ev))) => {
                     println!("Previous Sankranti: {}", ev.rashi.name());
+                    println!("  Body: {}", ev.body.name());
                     println!("  Time: {}", ev.utc);
                     println!(
                         "  Sidereal lon: {:.6} deg  Tropical lon: {:.6} deg",
-                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                        ev.sidereal_longitude_deg, ev.tropical_longitude_deg
                     );
+                    println!("  Retrograde: {}", ev.is_retrograde);
                 }
                 Ok(SankrantiResult::Single(None)) => println!("No Sankranti found in search range"),
                 Ok(SankrantiResult::Many(_)) => {
@@ -5999,6 +6057,7 @@ fn main() {
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let op = LunarPhaseOperation {
                 kind: LunarPhaseKind::Purnima,
+                sankranti_config: None,
                 query: LunarPhaseQuery::Range {
                     start_jd_tdb: jd_start,
                     end_jd_tdb: jd_end,
@@ -6039,6 +6098,7 @@ fn main() {
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let op = LunarPhaseOperation {
                 kind: LunarPhaseKind::Amavasya,
+                sankranti_config: None,
                 query: LunarPhaseQuery::Range {
                     start_jd_tdb: jd_start,
                     end_jd_tdb: jd_end,
@@ -6075,11 +6135,13 @@ fn main() {
                 std::process::exit(1);
             });
             let system = require_aya_system(args.ayanamsha);
+            let body = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
             let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
             let op = SankrantiOperation {
+                body,
                 target: SankrantiTarget::Any,
                 config,
                 query: SankrantiQuery::Range {
@@ -6092,11 +6154,13 @@ fn main() {
                     println!("Found {} Sankrantis:", events.len());
                     for ev in &events {
                         println!(
-                            "  {} at {}  sid: {:.6}°  trop: {:.6}°",
+                            "  {} {} at {}  sid: {:.6}°  trop: {:.6}°  retro: {}",
+                            ev.body.name(),
                             ev.rashi.name(),
                             ev.utc,
-                            ev.sun_sidereal_longitude_deg,
-                            ev.sun_tropical_longitude_deg
+                            ev.sidereal_longitude_deg,
+                            ev.tropical_longitude_deg,
+                            ev.is_retrograde
                         );
                     }
                 }
@@ -6118,10 +6182,12 @@ fn main() {
             });
             let target = rashi_from_index(args.rashi);
             let system = require_aya_system(args.ayanamsha);
+            let body = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = SankrantiOperation {
+                body,
                 target: SankrantiTarget::SpecificRashi(target),
                 config,
                 query: SankrantiQuery::Next { at_jd_tdb: jd_tdb },
@@ -6129,10 +6195,12 @@ fn main() {
             match dhruv_search::sankranti(&engine, &op) {
                 Ok(SankrantiResult::Single(Some(ev))) => {
                     println!("Next {} Sankranti: {}", ev.rashi.name(), ev.utc);
+                    println!("  Body: {}", ev.body.name());
                     println!(
                         "  Sidereal lon: {:.6}°  Tropical lon: {:.6}°",
-                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                        ev.sidereal_longitude_deg, ev.tropical_longitude_deg
                     );
+                    println!("  Retrograde: {}", ev.is_retrograde);
                 }
                 Ok(SankrantiResult::Single(None)) => {
                     println!("No {} Sankranti found", target.name())
@@ -6155,10 +6223,12 @@ fn main() {
             });
             let target = rashi_from_index(args.rashi);
             let system = require_aya_system(args.ayanamsha);
+            let body = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let op = SankrantiOperation {
+                body,
                 target: SankrantiTarget::SpecificRashi(target),
                 config,
                 query: SankrantiQuery::Prev { at_jd_tdb: jd_tdb },
@@ -6166,10 +6236,12 @@ fn main() {
             match dhruv_search::sankranti(&engine, &op) {
                 Ok(SankrantiResult::Single(Some(ev))) => {
                     println!("Previous {} Sankranti: {}", ev.rashi.name(), ev.utc);
+                    println!("  Body: {}", ev.body.name());
                     println!(
                         "  Sidereal lon: {:.6}°  Tropical lon: {:.6}°",
-                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                        ev.sidereal_longitude_deg, ev.tropical_longitude_deg
                     );
+                    println!("  Retrograde: {}", ev.is_retrograde);
                 }
                 Ok(SankrantiResult::Single(None)) => {
                     println!("No {} Sankranti found", target.name())
@@ -6461,10 +6533,19 @@ fn main() {
         }
 
         Commands::Conjunction(args) => {
-            let b1 = require_body(args.body1);
-            let b2 = require_body(args.body2);
+            let b1 = require_transit_body(args.body1);
+            let b2 = require_transit_body(args.body2);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let config = ConjunctionConfig::conjunction(1.0);
+            let node_mode = parse_node_mode(&args.node_mode);
+            let mut config = ConjunctionConfig::conjunction(1.0);
+            config.node_mode = node_mode;
+            let sankranti_config = if args.sidereal {
+                let mut sc = SankrantiConfig::default_lahiri();
+                sc.node_mode = node_mode;
+                Some(sc)
+            } else {
+                None
+            };
             let query = match args.mode.as_str() {
                 "next" => {
                     let date = args.date.as_deref().unwrap_or_else(|| {
@@ -6523,6 +6604,8 @@ fn main() {
                 body1: b1,
                 body2: b2,
                 config,
+                target_separations_deg: args.targets.clone(),
+                sankranti_config,
                 query,
             };
             match dhruv_search::conjunction(&engine, &op) {
@@ -6555,8 +6638,8 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b1 = require_body(args.body1);
-            let b2 = require_body(args.body2);
+            let b1 = require_transit_body(args.body1);
+            let b2 = require_transit_body(args.body2);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
@@ -6564,6 +6647,8 @@ fn main() {
                 body1: b1,
                 body2: b2,
                 config,
+                target_separations_deg: Vec::new(),
+                sankranti_config: None,
                 query: ConjunctionQuery::Next { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::conjunction(&engine, &op) {
@@ -6587,8 +6672,8 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b1 = require_body(args.body1);
-            let b2 = require_body(args.body2);
+            let b1 = require_transit_body(args.body1);
+            let b2 = require_transit_body(args.body2);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = ConjunctionConfig::conjunction(1.0);
@@ -6596,6 +6681,8 @@ fn main() {
                 body1: b1,
                 body2: b2,
                 config,
+                target_separations_deg: Vec::new(),
+                sankranti_config: None,
                 query: ConjunctionQuery::Prev { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::conjunction(&engine, &op) {
@@ -6623,8 +6710,8 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b1 = require_body(args.body1);
-            let b2 = require_body(args.body2);
+            let b1 = require_transit_body(args.body1);
+            let b2 = require_transit_body(args.body2);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
@@ -6633,6 +6720,8 @@ fn main() {
                 body1: b1,
                 body2: b2,
                 config,
+                target_separations_deg: Vec::new(),
+                sankranti_config: None,
                 query: ConjunctionQuery::Range {
                     start_jd_tdb: jd_start,
                     end_jd_tdb: jd_end,
@@ -6853,7 +6942,16 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            let op = LunarPhaseOperation { kind, query };
+            let sankranti_config = if args.sidereal {
+                Some(SankrantiConfig::default_lahiri())
+            } else {
+                None
+            };
+            let op = LunarPhaseOperation {
+                kind,
+                sankranti_config,
+                query,
+            };
             match dhruv_search::lunar_phase(&engine, &op) {
                 Ok(LunarPhaseResult::Single(Some(ev))) => {
                     let label = match (args.mode.as_str(), kind) {
@@ -6868,6 +6966,7 @@ fn main() {
                         "  Moon lon: {:.6} deg  Sun lon: {:.6} deg",
                         ev.moon_longitude_deg, ev.sun_longitude_deg
                     );
+                    print_lunar_phase_sidereal(&ev);
                 }
                 Ok(LunarPhaseResult::Single(None)) => {
                     let label = match kind {
@@ -6887,6 +6986,7 @@ fn main() {
                             "  {}  Moon: {:.6}°  Sun: {:.6}°",
                             ev.utc, ev.moon_longitude_deg, ev.sun_longitude_deg
                         );
+                        print_lunar_phase_sidereal(ev);
                     }
                 }
                 Err(e) => {
@@ -6911,6 +7011,7 @@ fn main() {
                 None => SankrantiTarget::Any,
             };
             let system = require_aya_system(args.ayanamsha);
+            let body = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let config = SankrantiConfig::new(system, args.nutation);
             let query = match args.mode.as_str() {
@@ -6968,6 +7069,7 @@ fn main() {
                 }
             };
             let op = SankrantiOperation {
+                body,
                 target,
                 config,
                 query,
@@ -6987,11 +7089,13 @@ fn main() {
                         _ => "Sankranti".to_string(),
                     };
                     println!("{label}: {}", ev.rashi.name());
+                    println!("  Body: {}", ev.body.name());
                     println!("  Time: {}", ev.utc);
                     println!(
                         "  Sidereal lon: {:.6} deg  Tropical lon: {:.6} deg",
-                        ev.sun_sidereal_longitude_deg, ev.sun_tropical_longitude_deg
+                        ev.sidereal_longitude_deg, ev.tropical_longitude_deg
                     );
+                    println!("  Retrograde: {}", ev.is_retrograde);
                 }
                 Ok(SankrantiResult::Single(None)) => match target {
                     SankrantiTarget::Any => println!("No Sankranti found"),
@@ -7008,11 +7112,13 @@ fn main() {
                     }
                     for ev in &events {
                         println!(
-                            "  {} at {}  sid: {:.6}°  trop: {:.6}°",
+                            "  {} {} at {}  sid: {:.6}°  trop: {:.6}°  retro: {}",
+                            ev.body.name(),
                             ev.rashi.name(),
                             ev.utc,
-                            ev.sun_sidereal_longitude_deg,
-                            ev.sun_tropical_longitude_deg
+                            ev.sidereal_longitude_deg,
+                            ev.tropical_longitude_deg,
+                            ev.is_retrograde
                         );
                     }
                 }
@@ -7256,9 +7362,18 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            let body = require_body(args.body);
+            let body = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
-            let config = StationaryConfig::inner_planet();
+            let node_mode = parse_node_mode(&args.node_mode);
+            let mut config = StationaryConfig::inner_planet();
+            config.node_mode = node_mode;
+            let sankranti_config = if args.sidereal {
+                let mut sc = SankrantiConfig::default_lahiri();
+                sc.node_mode = node_mode;
+                Some(sc)
+            } else {
+                None
+            };
             let query = match args.mode.as_str() {
                 "next" => {
                     let date = args.date.as_deref().unwrap_or_else(|| {
@@ -7317,6 +7432,7 @@ fn main() {
                 body,
                 kind,
                 config,
+                sankranti_config,
                 query,
             };
             match dhruv_search::motion(&engine, &op) {
@@ -7366,7 +7482,7 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(args.body);
+            let b = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
@@ -7374,6 +7490,7 @@ fn main() {
                 body: b,
                 kind: MotionKind::Stationary,
                 config,
+                sankranti_config: None,
                 query: MotionQuery::Next { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::motion(&engine, &op) {
@@ -7397,7 +7514,7 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(args.body);
+            let b = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
@@ -7405,6 +7522,7 @@ fn main() {
                 body: b,
                 kind: MotionKind::Stationary,
                 config,
+                sankranti_config: None,
                 query: MotionQuery::Prev { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::motion(&engine, &op) {
@@ -7432,7 +7550,7 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(args.body);
+            let b = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
@@ -7441,6 +7559,7 @@ fn main() {
                 body: b,
                 kind: MotionKind::Stationary,
                 config,
+                sankranti_config: None,
                 query: MotionQuery::Range {
                     start_jd_tdb: jd_start,
                     end_jd_tdb: jd_end,
@@ -7469,7 +7588,7 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(args.body);
+            let b = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
@@ -7477,6 +7596,7 @@ fn main() {
                 body: b,
                 kind: MotionKind::MaxSpeed,
                 config,
+                sankranti_config: None,
                 query: MotionQuery::Next { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::motion(&engine, &op) {
@@ -7500,7 +7620,7 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(args.body);
+            let b = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_tdb = utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy);
             let config = StationaryConfig::inner_planet();
@@ -7508,6 +7628,7 @@ fn main() {
                 body: b,
                 kind: MotionKind::MaxSpeed,
                 config,
+                sankranti_config: None,
                 query: MotionQuery::Prev { at_jd_tdb: jd_tdb },
             };
             match dhruv_search::motion(&engine, &op) {
@@ -7535,7 +7656,7 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(1);
             });
-            let b = require_body(args.body);
+            let b = require_transit_body(args.body);
             let engine = load_engine(&args.bsp, &args.lsk);
             let jd_start = utc_to_jd_tdb_with_policy(&s, engine.lsk(), time_policy);
             let jd_end = utc_to_jd_tdb_with_policy(&e, engine.lsk(), time_policy);
@@ -7544,6 +7665,7 @@ fn main() {
                 body: b,
                 kind: MotionKind::MaxSpeed,
                 config,
+                sankranti_config: None,
                 query: MotionQuery::Range {
                     start_jd_tdb: jd_start,
                     end_jd_tdb: jd_end,
@@ -10733,13 +10855,49 @@ fn has_amsha_scope(scope: &dhruv_search::AmshaChartScope) -> bool {
 
 fn print_conjunction_event(label: &str, ev: &ConjunctionEvent) {
     println!(
-        "{}: UTC {}  JD TDB {:.6}  sep: {:.6}°",
-        label, ev.utc, ev.jd_tdb, ev.actual_separation_deg
+        "{}: UTC {}  JD TDB {:.6}  sep: {:.6}°  target: {:.6}°",
+        label, ev.utc, ev.jd_tdb, ev.actual_separation_deg, ev.target_separation_deg
     );
     println!(
-        "  Body1 lon: {:.6}°  Body2 lon: {:.6}°",
-        ev.body1_longitude_deg, ev.body2_longitude_deg
+        "  {} lon: {:.6}°  {} lon: {:.6}°",
+        ev.body1.name(),
+        ev.body1_longitude_deg,
+        ev.body2.name(),
+        ev.body2_longitude_deg
     );
+    if let (Some(s1), Some(s2)) = (
+        ev.body1_sidereal_longitude_deg,
+        ev.body2_sidereal_longitude_deg,
+    ) {
+        println!(
+            "  {} sidereal lon: {:.6}°  {} sidereal lon: {:.6}°",
+            ev.body1.name(),
+            s1,
+            ev.body2.name(),
+            s2
+        );
+    }
+    if let (Some(r1), Some(r2)) = (ev.body1_rashi_index, ev.body2_rashi_index) {
+        println!(
+            "  {} rashi index: {}  {} rashi index: {}",
+            ev.body1.name(),
+            r1,
+            ev.body2.name(),
+            r2
+        );
+    }
+}
+
+fn print_lunar_phase_sidereal(ev: &dhruv_search::LunarPhaseEvent) {
+    if let (Some(moon_sid), Some(sun_sid)) = (
+        ev.moon_sidereal_longitude_deg,
+        ev.sun_sidereal_longitude_deg,
+    ) {
+        println!("  Moon sidereal lon: {moon_sid:.6}°  Sun sidereal lon: {sun_sid:.6}°");
+    }
+    if let (Some(moon_rashi), Some(sun_rashi)) = (ev.moon_rashi_index, ev.sun_rashi_index) {
+        println!("  Moon rashi index: {moon_rashi}  Sun rashi index: {sun_rashi}");
+    }
 }
 
 fn print_chandra_grahan(label: &str, ev: &dhruv_search::grahan_types::ChandraGrahan) {
@@ -10898,6 +11056,9 @@ fn print_stationary_event(label: &str, ev: &dhruv_search::stationary_types::Stat
         "  Longitude: {:.6}°  Latitude: {:.6}°",
         ev.longitude_deg, ev.latitude_deg
     );
+    if let (Some(sid), Some(rashi)) = (ev.sidereal_longitude_deg, ev.rashi_index) {
+        println!("  Sidereal lon: {sid:.6}°  Rashi index: {rashi}");
+    }
 }
 
 fn masa_label(masa: &dhruv_search::MasaInfo) -> String {
@@ -11112,6 +11273,9 @@ fn print_max_speed_event(label: &str, ev: &dhruv_search::stationary_types::MaxSp
         "  Longitude: {:.6}°  Speed: {:.6} deg/day",
         ev.longitude_deg, ev.speed_deg_per_day
     );
+    if let (Some(sid), Some(rashi)) = (ev.sidereal_longitude_deg, ev.rashi_index) {
+        println!("  Sidereal lon: {sid:.6}°  Rashi index: {rashi}");
+    }
 }
 
 // ---------------------------------------------------------------------------

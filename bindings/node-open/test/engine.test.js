@@ -10,7 +10,7 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
-  assert.equal(dhruv.EXPECTED_API_VERSION, 83);
+  assert.equal(dhruv.EXPECTED_API_VERSION, 84);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
 });
@@ -806,6 +806,98 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
 
   lsk.close();
   eop.close();
+  engine.close();
+});
+
+test('v84 search: any-body sankranti, node bodies, multi-angle conjunction', { skip: !hasKernels() }, () => {
+  const paths = kernelPaths();
+  const engine = dhruv.Engine.create({
+    spkPaths: [paths.spk],
+    lskPath: paths.lsk,
+    cacheCapacity: 64,
+    strictValidation: false,
+  });
+
+  const janStart = { year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0 };
+  const janEnd = { year: 2024, month: 1, day: 31, hour: 0, minute: 0, second: 0 };
+
+  const sankCfg = dhruv.sankrantiConfigDefault();
+  assert.equal(sankCfg.nodeMode, 1);
+  assert.equal(dhruv.conjunctionConfigDefault().nodeMode, 1);
+  assert.equal(dhruv.stationaryConfigDefault().nodeMode, 1);
+
+  // Moon rashi ingresses over one month: roughly one sidereal cycle.
+  const moonSank = dhruv.sankrantiSearch(
+    engine,
+    {
+      targetKind: 0,
+      queryMode: 2,
+      rashiIndex: 0,
+      bodyCode: 301,
+      startUtc: janStart,
+      endUtc: janEnd,
+    },
+    16,
+  );
+  assert.ok(moonSank.events.length >= 12);
+  for (const ev of moonSank.events) {
+    assert.equal(ev.bodyCode, 301);
+    assert.equal(typeof ev.isRetrograde, 'boolean');
+    assert.equal(ev.sunSiderealLongitudeDeg, ev.siderealLongitudeDeg);
+    assert.equal(ev.sunTropicalLongitudeDeg, ev.tropicalLongitudeDeg);
+  }
+
+  // Sun-Rahu conjunction with sidereal echoes.
+  const sunRahu = dhruv.conjunctionSearch(
+    engine,
+    {
+      body1Code: 10,
+      body2Code: 10007,
+      queryMode: 0,
+      atUtc: { year: 2024, month: 3, day: 1, hour: 0, minute: 0, second: 0 },
+      siderealConfig: sankCfg,
+    },
+    4,
+  );
+  assert.equal(sunRahu.found, true);
+  assert.equal(sunRahu.event.body2Code, 10007);
+  assert.equal(sunRahu.event.hasSidereal, true);
+  assert.ok(sunRahu.event.body1RashiIndex >= 0 && sunRahu.event.body1RashiIndex < 12);
+  assert.ok(sunRahu.event.body2RashiIndex >= 0 && sunRahu.event.body2RashiIndex < 12);
+
+  // True-node Rahu stations roughly weekly.
+  const rahuMotion = dhruv.motionSearch(
+    engine,
+    {
+      bodyCode: 10007,
+      motionKind: 0,
+      queryMode: 2,
+      startUtc: janStart,
+      endUtc: janEnd,
+    },
+    16,
+  );
+  assert.ok(rahuMotion.stationaryEvents.length >= 1);
+  assert.equal(rahuMotion.stationaryEvents[0].bodyCode, 10007);
+
+  // Multi-angle sweep: new and full moon in one synodic month.
+  const phases = dhruv.conjunctionSearch(
+    engine,
+    {
+      body1Code: 10,
+      body2Code: 301,
+      queryMode: 2,
+      startUtc: janStart,
+      endUtc: { year: 2024, month: 1, day: 30, hour: 0, minute: 0, second: 0 },
+      targetSeparationsDeg: [0, 180],
+    },
+    8,
+  );
+  assert.equal(phases.events.length, 2);
+  for (const ev of phases.events) {
+    assert.ok([0, 180].includes(ev.targetSeparationDeg));
+  }
+
   engine.close();
 });
 

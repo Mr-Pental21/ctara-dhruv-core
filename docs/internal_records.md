@@ -8,15 +8,16 @@ chapters; this index says what exists so you can find it on
 ## Clean-room provenance records (`docs/clean_room_*.md`)
 
 One record per subsystem documenting scope, conceptual sources, excluded
-sources, and data provenance — 39 records covering: amsha, arudha,
+sources, and data provenance — 40 records covering: amsha, arudha,
 ashtakavarga, avastha, ayanamsha, basic states, bhava, bhavabala,
 charakaraka, conjunction search, dasha (23 systems), delta-T, drishti,
 dual rashi–bhava, equatorial output, gochar events, grahan geometry,
-invariable plane, lunar nodes, nutation (IAU 2000B), osculating apogee,
-outer planets, panchang, precession (Vondrák), range events,
-rashi/nakshatra, rise/set, shadbala, solar-eclipse visibility, special
-lagnas, sphutas, stationary points, tara (fixed stars), tithi/karana/yoga,
-upagrahas, vimsopaka, and the Elixir/Go/Node wrappers.
+ingress (rashi-ingress search), invariable plane, lunar nodes, nutation
+(IAU 2000B), osculating apogee, outer planets, panchang, precession
+(Vondrák), range events, rashi/nakshatra, rise/set, shadbala,
+solar-eclipse visibility, special lagnas, sphutas, stationary points,
+tara (fixed stars), tithi/karana/yoga, upagrahas, vimsopaka, and the
+Elixir/Go/Node wrappers.
 
 ## API surface tracking
 

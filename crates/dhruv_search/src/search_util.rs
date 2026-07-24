@@ -98,6 +98,16 @@ fn emit_warning_once(warning: &TimeWarning) {
     }
 }
 
+/// True when the error is the ephemeris coverage edge — the only engine
+/// error that legitimately terminates an open-ended next/prev scan as
+/// "no event found". All other engine errors must propagate.
+pub(crate) fn is_coverage_edge(err: &SearchError) -> bool {
+    matches!(
+        err,
+        SearchError::Engine(dhruv_core::EngineError::EpochOutOfRange { .. })
+    )
+}
+
 /// Normalize an angle to [-180, +180].
 pub(crate) fn normalize_to_pm180(deg: f64) -> f64 {
     let mut d = deg % 360.0;

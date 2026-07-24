@@ -826,10 +826,14 @@ fn natal_graha_body(target: &crate::gochar_events_types::NatalTargetLongitude) -
     }
 }
 
+/// Exact-degree special drishti angles per graha: Mangala 4th/8th (90/210),
+/// Guru 5th/9th (120/240), Shani 3rd/10th (60/270). Matches the classical
+/// (BPHS) special aspects used by the virupa drishti engine
+/// (`dhruv_vedic_math::drishti::special_virupa`).
 fn special_angles_for_body(body: Body) -> &'static [f64] {
     match body {
         Body::Jupiter => &[120.0, 240.0],
-        Body::Saturn => &[90.0, 270.0],
+        Body::Saturn => &[60.0, 270.0],
         Body::Mars => &[90.0, 210.0],
         _ => &[],
     }

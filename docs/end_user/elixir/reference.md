@@ -338,6 +338,38 @@ The same search request maps accept `:at_utc`, `:start_utc`, and `:end_utc`
 alongside `:at_jd_tdb`, `:start_jd_tdb`, and `:end_jd_tdb`, keeping UTC input
 on the main operations instead of splitting out separate UTC-specific APIs.
 
+`sankranti/2` accepts an optional `:body` (any body name or code, including
+`:rahu` / `:ketu`; default `:sun`, the classical sankranti). `conjunction/2`
+(`:body1` / `:body2`) and `motion/2` (`:body`) accept `:rahu` / `:ketu` too.
+Search `:config` maps accept `:node_mode` (`"mean"` / `"true"`, or `0` /
+`1`; the atom `:mean` also works, but pass the string `"true"` since Elixir
+reads `:true` as a boolean) selecting the lunar-node model; the default is
+the true node. Stationary search of the nodes requires the true node — the
+mean node is always retrograde and has no stations.
+
+Conjunction `:config` maps also accept `:target_separations_deg`, a list of
+aspect angles searched in one sweep; each event reports the matched angle in
+`:target_separation_deg`. Next/prev return the nearest event across the
+angles; range returns the merged, time-sorted union.
+
+Conjunction, motion, and lunar-phase request maps accept an optional
+`:sankranti_config`; when present, events additionally carry sidereal
+longitudes and rashi indices (`:body1_sidereal_longitude_deg` /
+`:body1_rashi_index` and the body-2 counterparts on conjunction events,
+`:sidereal_longitude_deg` / `:rashi_index` on motion events, and
+`:moon_sidereal_longitude_deg` / `:moon_rashi_index` plus the Sun
+counterparts on lunar-phase events). These keys are `nil` unless the echo
+is enabled.
+
+Sankranti events carry `:body`, `:rashi`, `:rashi_index`,
+`:sidereal_longitude_deg`, `:tropical_longitude_deg`, and `:is_retrograde`
+(true when the boundary was crossed in retrograde motion; always false for
+the Sun). Sun events keep the legacy `:sun_sidereal_longitude_deg` /
+`:sun_tropical_longitude_deg` keys for compatibility. When
+`:sankranti_config` omits `:step_size_days` and `:body` is not the Sun, a
+per-body default scan step is applied automatically (for example 0.25 days
+for the Moon, 1.0 for the true node).
+
 `CtaraDhruv.Dasha`:
 
 - `hierarchy/2`
@@ -393,7 +425,7 @@ Chart-related config maps:
 - `full_kundali_config`
 - `amsha_scope`
 - `amsha_selection`
-- search request maps with `:op`-specific fields for conjunction, grahan, lunar phase, sankranti, and motion
+- search request maps with `:op`-specific fields for conjunction, grahan, lunar phase, sankranti, and motion (conjunction, motion, and lunar-phase maps also take an optional `:sankranti_config` enabling sidereal echo fields; search `:config` maps take `:node_mode`, and conjunction `:config` maps take `:target_separations_deg`)
 - dasha request maps for hierarchy, snapshot, `level0`, `level0_entity`, `children`, `child_period`, and `complete_level` queries
 
 Standalone `:shadbala`, `:vimsopaka`, `:balas`, and `:avastha` jyotish request

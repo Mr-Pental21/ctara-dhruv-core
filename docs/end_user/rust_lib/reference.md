@@ -36,6 +36,7 @@ Core public types:
 Public request/query types in `ops.rs`:
 
 - `TimeInput`
+- `TransitBody` (with `TRANSIT_CODE_RAHU` = 10007, `TRANSIT_CODE_KETU` = 10008)
 - `ConjunctionRequestQuery`, `ConjunctionRequest`
 - `GrahanRequestQuery`, `GrahanRequest`
 - `MotionRequestQuery`, `MotionRequest`
@@ -68,6 +69,37 @@ Request-driven functions:
 - `avastha_op`
 - `full_kundali`
 - `gochar_events`
+
+The conjunction, motion, and sankranti searches track `TransitBody` values:
+any plain `Body` plus `Rahu`/`Ketu` (from the lunar-node model selected by
+the relevant config's `node_mode`; default true/osculating).
+`TransitBody: From<Body>`, so plain-body call sites use `Body::Sun.into()`.
+
+- `SankrantiRequest.body` selects the ingress body: the search finds when
+  that body's sidereal longitude enters a rashi (Sun = classical
+  sankranti; Earth rejected). `SankrantiEvent` reports `body`, `rashi`,
+  `rashi_index`, `sidereal_longitude_deg`, `tropical_longitude_deg`, and
+  `is_retrograde` (retrograde re-entry into the preceding rashi; always
+  false for the Sun). `SankrantiConfig::for_body(system, use_nutation,
+  body)` picks the per-body scan step.
+- `ConjunctionRequest` takes `body1`/`body2: TransitBody`, an optional
+  `target_separations_deg: Vec<f64>` multi-angle sweep (each event carries
+  the matched angle in `target_separation_deg`), and an optional
+  `sankranti_config` that adds sidereal longitude and rashi-index echoes
+  for both bodies to each event. The next/prev scan window is pair-aware,
+  so slow pairs such as Jupiter-Saturn are found.
+- `MotionRequest.body` is a `TransitBody`; true-node Rahu/Ketu stationary
+  search is supported (`StationaryConfig::lunar_node()` preset with a
+  0.25-day step; the mean node never stations and is rejected with an
+  invalid-config error). The optional `sankranti_config` adds
+  `sidereal_longitude_deg`/`rashi_index` echoes to events.
+- `LunarPhaseRequest` accepts an optional `sankranti_config` that adds
+  Sun/Moon sidereal longitude and rashi-index echoes to each event.
+
+`ConjunctionConfig`, `StationaryConfig`, and `SankrantiConfig` each carry
+`node_mode: NodeMode` (also settable through layered config as
+`node_mode = "mean" | "true"` under `[operations.conjunction]`,
+`[operations.stationary]`, and `[operations.sankranti]`).
 
 Solar `GrahanRequest` accepts an optional observer location; `GrahanConfig`
 controls optional path and footprint sampling plus the field products

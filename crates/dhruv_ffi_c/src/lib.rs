@@ -12,32 +12,31 @@ use dhruv_core::{
 };
 use dhruv_frames::PrecessionModel;
 use dhruv_search::{
-    ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, EclipseGeoPoint,
-    EventWindow, GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig,
-    GocharEventsOperation, GocharEventsResult, GocharReference, GocharTransitBody,
-    GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig, LunarPhase, MaxSpeedEvent,
-    MaxSpeedType, NatalTargetKind, NatalTargetLongitude, PoleSide, SankrantiConfig, SearchError,
+    ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, ConjunctionOperation,
+    ConjunctionQuery, ConjunctionResult, EclipseGeoPoint, EventWindow, GOCHAR_TRANSIT_CODE_KETU,
+    GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig, GocharEventsOperation, GocharEventsResult,
+    GocharReference, GocharTransitBody, GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig,
+    LunarPhase, MaxSpeedEvent, MaxSpeedType, MotionKind, MotionOperation, MotionQuery,
+    MotionResult, NatalTargetKind, NatalTargetLongitude, PoleSide, SankrantiConfig, SearchError,
     StationType, StationaryConfig, StationaryEvent, SuryaCentralCorridor, SuryaCentrality,
     SuryaContactFootprint, SuryaContactKind, SuryaGrahan, SuryaGrahanFootprint,
     SuryaGrahanPathPoint, SuryaGrahanType, SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample,
     SuryaMagnitudeRing, SuryaUmbraFootprint, TajakaReturnBasis, TajakaReturnEvent,
-    TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitToNatalAspectEvent,
-    amsha_charts_for_date, avastha_for_date, ayana_for_date, balas_for_date, bhavabala_for_date,
-    body_ecliptic_lon_lat, charakaraka_for_date, dasha_child_period_with_inputs,
-    dasha_children_with_inputs, dasha_complete_level_with_inputs, dasha_hierarchy_with_inputs,
-    dasha_level0_entity_with_inputs, dasha_level0_with_inputs, dasha_snapshot_with_inputs,
-    elongation_at, full_kundali_for_date, ghatika_for_date, ghatika_from_sunrises, gochar_events,
-    graha_longitudes, hora_for_date, hora_from_sunrises, karana_at, karana_for_date, masa_for_date,
-    moving_osculating_apogees_for_date, nakshatra_at, nakshatra_for_date, next_amavasya,
-    next_chandra_grahan, next_conjunction, next_max_speed, next_purnima, next_sankranti,
-    next_specific_sankranti, next_stationary, next_surya_grahan, prev_amavasya,
-    prev_chandra_grahan, prev_conjunction, prev_max_speed, prev_purnima, prev_sankranti,
-    prev_specific_sankranti, prev_stationary, prev_surya_grahan, search_amavasyas,
-    search_chandra_grahan, search_conjunctions, search_max_speed, search_purnimas,
-    search_sankrantis, search_stationary, search_surya_grahan, shadbala_for_date, sidereal_sum_at,
-    siderealize_bhava_result, special_lagnas_for_date, tithi_at, tithi_for_date,
-    tropical_to_sidereal_longitude, vaar_for_date, vaar_from_sunrises, varsha_for_date,
-    vedic_day_sunrises, vimsopaka_for_date, yoga_at, yoga_for_date,
+    TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitBody,
+    TransitToNatalAspectEvent, amsha_charts_for_date, avastha_for_date, ayana_for_date,
+    balas_for_date, bhavabala_for_date, body_ecliptic_lon_lat, charakaraka_for_date,
+    dasha_child_period_with_inputs, dasha_children_with_inputs, dasha_complete_level_with_inputs,
+    dasha_hierarchy_with_inputs, dasha_level0_entity_with_inputs, dasha_level0_with_inputs,
+    dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date, ghatika_for_date,
+    ghatika_from_sunrises, gochar_events, graha_longitudes, hora_for_date, hora_from_sunrises,
+    karana_at, karana_for_date, masa_for_date, moving_osculating_apogees_for_date, nakshatra_at,
+    nakshatra_for_date, next_amavasya, next_chandra_grahan, next_ingress, next_purnima,
+    next_specific_ingress, next_surya_grahan, prev_amavasya, prev_chandra_grahan, prev_ingress,
+    prev_purnima, prev_specific_ingress, prev_surya_grahan, search_amavasyas,
+    search_chandra_grahan, search_ingresses, search_purnimas, search_surya_grahan,
+    shadbala_for_date, sidereal_sum_at, siderealize_bhava_result, special_lagnas_for_date,
+    tithi_at, tithi_for_date, tropical_to_sidereal_longitude, vaar_for_date, vaar_from_sunrises,
+    varsha_for_date, vedic_day_sunrises, vimsopaka_for_date, yoga_at, yoga_for_date,
 };
 use dhruv_tara::{TaraAccuracy, TaraCatalog, TaraConfig, TaraError, TaraId};
 use dhruv_time::{
@@ -68,7 +67,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 83;
+pub const DHRUV_API_VERSION: u32 = 84;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -79,6 +78,8 @@ pub const DHRUV_MAX_SPK_PATHS: usize = 8;
 pub const DHRUV_MAX_AMSHA_VARIATIONS: usize = 16;
 /// Maximum number of moving osculating apogee graha requests in one C call.
 pub const DHRUV_MAX_OSCULATING_APOGEE_REQUESTS: usize = 32;
+/// Maximum number of target separation angles in one conjunction request.
+pub const DHRUV_MAX_CONJUNCTION_TARGETS: usize = 16;
 /// Fixed UTF-8 buffer size for amsha variation machine names.
 pub const DHRUV_AMSHA_VARIATION_NAME_CAPACITY: usize = 48;
 /// Fixed UTF-8 buffer size for amsha variation labels.
@@ -3093,6 +3094,18 @@ fn lunar_node_from_code(code: i32) -> Option<LunarNode> {
     nodes.get(idx).copied()
 }
 
+/// Map a config node-mode code leniently: `DHRUV_NODE_MODE_MEAN` (0) selects
+/// the mean node, any other value (including zero-initialized-then-set 1)
+/// selects the true node. Used by search configs where the true node is the
+/// back-compat default.
+fn config_node_mode_from_code(code: i32) -> NodeMode {
+    if code == DHRUV_NODE_MODE_MEAN {
+        NodeMode::Mean
+    } else {
+        NodeMode::True
+    }
+}
+
 /// Map integer code to NodeMode enum.
 fn node_mode_from_code(code: i32) -> Option<NodeMode> {
     let modes = NodeMode::all();
@@ -3285,6 +3298,9 @@ pub struct DhruvConjunctionConfig {
     pub max_iterations: u32,
     /// Convergence threshold in days.
     pub convergence_days: f64,
+    /// Lunar-node model used when a body is Rahu/Ketu
+    /// (`DHRUV_NODE_MODE_MEAN` = mean node, any other value = true node).
+    pub node_mode: i32,
 }
 
 /// Conjunction query mode: next event after `at_jd_tdb`.
@@ -3346,9 +3362,9 @@ fn search_time_to_utc(
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DhruvConjunctionSearchRequest {
-    /// Body 1 NAIF code.
+    /// Body 1 code: NAIF body code, or 10007 (Rahu) / 10008 (Ketu).
     pub body1_code: i32,
-    /// Body 2 NAIF code.
+    /// Body 2 code: NAIF body code, or 10007 (Rahu) / 10008 (Ketu).
     pub body2_code: i32,
     /// Query mode (see `DHRUV_CONJUNCTION_QUERY_MODE_*` constants).
     pub query_mode: i32,
@@ -3368,6 +3384,18 @@ pub struct DhruvConjunctionSearchRequest {
     pub end_utc: DhruvUtcTime,
     /// Conjunction search configuration.
     pub config: DhruvConjunctionConfig,
+    /// Number of valid entries in `target_separations_deg`
+    /// (0 = single-angle search using `config.target_separation_deg`;
+    /// values above `DHRUV_MAX_CONJUNCTION_TARGETS` are rejected).
+    pub target_separation_count: u32,
+    /// Multi-angle sweep targets in degrees; each returned event carries the
+    /// angle it matched in `target_separation_deg`.
+    pub target_separations_deg: [f64; DHRUV_MAX_CONJUNCTION_TARGETS],
+    /// 1 when `sidereal_config` is set; events then carry sidereal echoes.
+    pub has_sidereal_config: u8,
+    /// Sidereal (sankranti) configuration used for the echo fields.
+    /// Read only when `has_sidereal_config` is non-zero.
+    pub sidereal_config: DhruvSankrantiConfig,
 }
 
 /// C-compatible conjunction event result.
@@ -3388,14 +3416,28 @@ pub struct DhruvConjunctionEvent {
     pub body1_latitude_deg: f64,
     /// Body 2 ecliptic latitude in degrees.
     pub body2_latitude_deg: f64,
-    /// Body 1 NAIF code.
+    /// Body 1 code (NAIF, or 10007/10008 for Rahu/Ketu).
     pub body1_code: i32,
-    /// Body 2 NAIF code.
+    /// Body 2 code (NAIF, or 10007/10008 for Rahu/Ketu).
     pub body2_code: i32,
+    /// Target separation angle this event matched, in degrees.
+    pub target_separation_deg: f64,
+    /// 1 when the sidereal echo fields below are populated
+    /// (a sidereal config was supplied with the request).
+    pub has_sidereal: u8,
+    /// Body 1 sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub body1_sidereal_longitude_deg: f64,
+    /// Body 2 sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub body2_sidereal_longitude_deg: f64,
+    /// Body 1 sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub body1_rashi_index: i32,
+    /// Body 2 sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub body2_rashi_index: i32,
 }
 
 impl From<&ConjunctionEvent> for DhruvConjunctionEvent {
     fn from(e: &ConjunctionEvent) -> Self {
+        let has_sidereal = e.body1_sidereal_longitude_deg.is_some();
         Self {
             jd_tdb: e.jd_tdb,
             utc: utc_time_to_ffi(&e.utc),
@@ -3406,6 +3448,12 @@ impl From<&ConjunctionEvent> for DhruvConjunctionEvent {
             body2_latitude_deg: e.body2_latitude_deg,
             body1_code: e.body1.code(),
             body2_code: e.body2.code(),
+            target_separation_deg: e.target_separation_deg,
+            has_sidereal: u8::from(has_sidereal),
+            body1_sidereal_longitude_deg: e.body1_sidereal_longitude_deg.unwrap_or(0.0),
+            body2_sidereal_longitude_deg: e.body2_sidereal_longitude_deg.unwrap_or(0.0),
+            body1_rashi_index: e.body1_rashi_index.map_or(-1, i32::from),
+            body2_rashi_index: e.body2_rashi_index.map_or(-1, i32::from),
         }
     }
 }
@@ -3416,10 +3464,11 @@ fn conjunction_config_from_ffi(cfg: &DhruvConjunctionConfig) -> ConjunctionConfi
         step_size_days: cfg.step_size_days,
         max_iterations: cfg.max_iterations,
         convergence_days: cfg.convergence_days,
+        node_mode: config_node_mode_from_code(cfg.node_mode),
     }
 }
 
-/// Returns default conjunction configuration (0 deg, step=0.5 days).
+/// Returns default conjunction configuration (0 deg, step=0.5 days, true node).
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_conjunction_config_default() -> DhruvConjunctionConfig {
     DhruvConjunctionConfig {
@@ -3427,6 +3476,7 @@ pub extern "C" fn dhruv_conjunction_config_default() -> DhruvConjunctionConfig {
         step_size_days: 0.5,
         max_iterations: 50,
         convergence_days: 1e-8,
+        node_mode: DHRUV_NODE_MODE_TRUE,
     }
 }
 
@@ -3437,6 +3487,11 @@ pub extern "C" fn dhruv_conjunction_config_default() -> DhruvConjunctionConfig {
 ///   writes single-event result to `out_event` and found flag to `out_found`.
 /// - `DHRUV_CONJUNCTION_QUERY_MODE_RANGE`:
 ///   writes events to `out_events[..max_count]` and actual count to `out_count`.
+///
+/// Body codes accept NAIF codes plus 10007 (Rahu) and 10008 (Ketu); the node
+/// model is selected by `config.node_mode`. Set `target_separation_count` for
+/// a multi-angle sweep and `has_sidereal_config`/`sidereal_config` to receive
+/// sidereal longitude and rashi echo fields on each event.
 ///
 /// # Safety
 /// `engine` and `request` must be valid and non-null.
@@ -3460,21 +3515,34 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
         let engine_ref = unsafe { &*engine };
         let req = unsafe { &*request };
 
-        let body1 = match Body::from_code(req.body1_code) {
+        let body1 = match TransitBody::from_code(req.body1_code) {
             Some(b) => b,
             None => return DhruvStatus::InvalidQuery,
         };
-        let body2 = match Body::from_code(req.body2_code) {
+        let body2 = match TransitBody::from_code(req.body2_code) {
             Some(b) => b,
             None => return DhruvStatus::InvalidQuery,
         };
         if let Err(status) = validate_search_time_kind(req.time_kind) {
             return status;
         }
+        if req.target_separation_count as usize > DHRUV_MAX_CONJUNCTION_TARGETS {
+            return DhruvStatus::InvalidQuery;
+        }
+        let target_separations_deg =
+            req.target_separations_deg[..req.target_separation_count as usize].to_vec();
+        let sankranti_config = if req.has_sidereal_config != 0 {
+            match sankranti_config_from_ffi(&req.sidereal_config) {
+                Some(c) => Some(c),
+                None => return DhruvStatus::InvalidQuery,
+            }
+        } else {
+            None
+        };
         let rust_config = conjunction_config_from_ffi(&req.config);
 
         match req.query_mode {
-            DHRUV_CONJUNCTION_QUERY_MODE_NEXT => {
+            DHRUV_CONJUNCTION_QUERY_MODE_NEXT | DHRUV_CONJUNCTION_QUERY_MODE_PREV => {
                 if out_event.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
@@ -3487,46 +3555,32 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match next_conjunction(engine_ref, body1, body2, at, &rust_config) {
-                    Ok(Some(event)) => {
-                        unsafe {
-                            *out_event = DhruvConjunctionEvent::from(&event);
-                            *out_found = 1;
-                        }
-                        DhruvStatus::Ok
-                    }
-                    Ok(None) => {
-                        unsafe { *out_found = 0 };
-                        DhruvStatus::Ok
-                    }
-                    Err(e) => DhruvStatus::from(&e),
-                }
-            }
-            DHRUV_CONJUNCTION_QUERY_MODE_PREV => {
-                if out_event.is_null() || out_found.is_null() {
-                    return DhruvStatus::NullPointer;
-                }
-                let at = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.at_jd_tdb,
-                    req.at_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
+                let query = if req.query_mode == DHRUV_CONJUNCTION_QUERY_MODE_NEXT {
+                    ConjunctionQuery::Next { at_jd_tdb: at }
+                } else {
+                    ConjunctionQuery::Prev { at_jd_tdb: at }
                 };
-                match prev_conjunction(engine_ref, body1, body2, at, &rust_config) {
-                    Ok(Some(event)) => {
+                let op = ConjunctionOperation {
+                    body1,
+                    body2,
+                    config: rust_config,
+                    target_separations_deg,
+                    sankranti_config,
+                    query,
+                };
+                match dhruv_search::conjunction(engine_ref, &op) {
+                    Ok(ConjunctionResult::Single(Some(event))) => {
                         unsafe {
                             *out_event = DhruvConjunctionEvent::from(&event);
                             *out_found = 1;
                         }
                         DhruvStatus::Ok
                     }
-                    Ok(None) => {
+                    Ok(ConjunctionResult::Single(None)) => {
                         unsafe { *out_found = 0 };
                         DhruvStatus::Ok
                     }
+                    Ok(ConjunctionResult::Many(_)) => DhruvStatus::Internal,
                     Err(e) => DhruvStatus::from(&e),
                 }
             }
@@ -3552,8 +3606,19 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match search_conjunctions(engine_ref, body1, body2, start, end, &rust_config) {
-                    Ok(events) => {
+                let op = ConjunctionOperation {
+                    body1,
+                    body2,
+                    config: rust_config,
+                    target_separations_deg,
+                    sankranti_config,
+                    query: ConjunctionQuery::Range {
+                        start_jd_tdb: start,
+                        end_jd_tdb: end,
+                    },
+                };
+                match dhruv_search::conjunction(engine_ref, &op) {
+                    Ok(ConjunctionResult::Many(events)) => {
                         let count = events.len().min(max_count as usize);
                         let out_slice = unsafe {
                             std::slice::from_raw_parts_mut(out_events, max_count as usize)
@@ -3564,6 +3629,7 @@ pub unsafe extern "C" fn dhruv_conjunction_search_ex(
                         unsafe { *out_count = count as u32 };
                         DhruvStatus::Ok
                     }
+                    Ok(ConjunctionResult::Single(_)) => DhruvStatus::Internal,
                     Err(e) => DhruvStatus::from(&e),
                 }
             }
@@ -5192,6 +5258,11 @@ pub struct DhruvStationaryConfig {
     pub convergence_days: f64,
     /// Numerical central difference step in days (used by max-speed only).
     pub numerical_step_days: f64,
+    /// Lunar-node model used when the body is Rahu/Ketu
+    /// (`DHRUV_NODE_MODE_MEAN` = mean node, any other value = true node).
+    /// Stationary search of the nodes requires the true node — the mean
+    /// node is always retrograde and has no stations.
+    pub node_mode: i32,
 }
 
 /// Motion kind selector: stationary event search.
@@ -5210,7 +5281,7 @@ pub const DHRUV_MOTION_QUERY_MODE_RANGE: i32 = 2;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DhruvMotionSearchRequest {
-    /// NAIF body code.
+    /// Body code: NAIF body code, or 10007 (Rahu) / 10008 (Ketu).
     pub body_code: i32,
     /// Motion kind selector (`DHRUV_MOTION_KIND_*`).
     pub motion_kind: i32,
@@ -5232,6 +5303,11 @@ pub struct DhruvMotionSearchRequest {
     pub end_utc: DhruvUtcTime,
     /// Search configuration.
     pub config: DhruvStationaryConfig,
+    /// 1 when `sidereal_config` is set; events then carry sidereal echoes.
+    pub has_sidereal_config: u8,
+    /// Sidereal (sankranti) configuration used for the echo fields.
+    /// Read only when `has_sidereal_config` is non-zero.
+    pub sidereal_config: DhruvSankrantiConfig,
 }
 
 /// C-compatible stationary point event result.
@@ -5242,7 +5318,7 @@ pub struct DhruvStationaryEvent {
     pub jd_tdb: f64,
     /// Event time as structured Gregorian UTC.
     pub utc: DhruvUtcTime,
-    /// NAIF body code.
+    /// Body code (NAIF, or 10007/10008 for Rahu/Ketu).
     pub body_code: i32,
     /// Ecliptic longitude at station in degrees.
     pub longitude_deg: f64,
@@ -5250,6 +5326,13 @@ pub struct DhruvStationaryEvent {
     pub latitude_deg: f64,
     /// Station type code (see DHRUV_STATION_* constants).
     pub station_type: i32,
+    /// 1 when the sidereal echo fields below are populated
+    /// (a sidereal config was supplied with the request).
+    pub has_sidereal: u8,
+    /// Sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub sidereal_longitude_deg: f64,
+    /// Sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub rashi_index: i32,
 }
 
 /// C-compatible max-speed event result.
@@ -5260,7 +5343,7 @@ pub struct DhruvMaxSpeedEvent {
     pub jd_tdb: f64,
     /// Event time as structured Gregorian UTC.
     pub utc: DhruvUtcTime,
-    /// NAIF body code.
+    /// Body code (NAIF, or 10007/10008 for Rahu/Ketu).
     pub body_code: i32,
     /// Ecliptic longitude at peak speed in degrees.
     pub longitude_deg: f64,
@@ -5270,6 +5353,13 @@ pub struct DhruvMaxSpeedEvent {
     pub speed_deg_per_day: f64,
     /// Speed type code (see DHRUV_MAX_SPEED_* constants).
     pub speed_type: i32,
+    /// 1 when the sidereal echo fields below are populated
+    /// (a sidereal config was supplied with the request).
+    pub has_sidereal: u8,
+    /// Sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub sidereal_longitude_deg: f64,
+    /// Sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub rashi_index: i32,
 }
 
 fn stationary_config_from_ffi(cfg: &DhruvStationaryConfig) -> StationaryConfig {
@@ -5278,6 +5368,7 @@ fn stationary_config_from_ffi(cfg: &DhruvStationaryConfig) -> StationaryConfig {
         max_iterations: cfg.max_iterations,
         convergence_days: cfg.convergence_days,
         numerical_step_days: cfg.numerical_step_days,
+        node_mode: config_node_mode_from_code(cfg.node_mode),
     }
 }
 
@@ -5304,6 +5395,9 @@ impl From<&StationaryEvent> for DhruvStationaryEvent {
             longitude_deg: e.longitude_deg,
             latitude_deg: e.latitude_deg,
             station_type: station_type_to_code(e.station_type),
+            has_sidereal: u8::from(e.sidereal_longitude_deg.is_some()),
+            sidereal_longitude_deg: e.sidereal_longitude_deg.unwrap_or(0.0),
+            rashi_index: e.rashi_index.map_or(-1, i32::from),
         }
     }
 }
@@ -5318,11 +5412,15 @@ impl From<&MaxSpeedEvent> for DhruvMaxSpeedEvent {
             latitude_deg: e.latitude_deg,
             speed_deg_per_day: e.speed_deg_per_day,
             speed_type: max_speed_type_to_code(e.speed_type),
+            has_sidereal: u8::from(e.sidereal_longitude_deg.is_some()),
+            sidereal_longitude_deg: e.sidereal_longitude_deg.unwrap_or(0.0),
+            rashi_index: e.rashi_index.map_or(-1, i32::from),
         }
     }
 }
 
-/// Returns default stationary search configuration (inner planet defaults).
+/// Returns default stationary search configuration (inner planet defaults,
+/// true node).
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_stationary_config_default() -> DhruvStationaryConfig {
     DhruvStationaryConfig {
@@ -5330,6 +5428,7 @@ pub extern "C" fn dhruv_stationary_config_default() -> DhruvStationaryConfig {
         max_iterations: 50,
         convergence_days: 1e-8,
         numerical_step_days: 0.01,
+        node_mode: DHRUV_NODE_MODE_TRUE,
     }
 }
 
@@ -5344,6 +5443,11 @@ pub extern "C" fn dhruv_stationary_config_default() -> DhruvStationaryConfig {
 /// Kind behavior:
 /// - `DHRUV_MOTION_KIND_STATIONARY` uses stationary output pointers.
 /// - `DHRUV_MOTION_KIND_MAX_SPEED` uses max-speed output pointers.
+///
+/// `body_code` accepts NAIF codes plus 10007 (Rahu) and 10008 (Ketu); the
+/// node model is selected by `config.node_mode` (stationary search of the
+/// nodes requires the true node). Set `has_sidereal_config`/`sidereal_config`
+/// to receive sidereal longitude and rashi echo fields on each event.
 ///
 /// # Safety
 /// `engine` and `request` must be valid and non-null.
@@ -5367,203 +5471,137 @@ pub unsafe extern "C" fn dhruv_motion_search_ex(
 
         let engine_ref = unsafe { &*engine };
         let req = unsafe { &*request };
-        let body = match Body::from_code(req.body_code) {
+        let body = match TransitBody::from_code(req.body_code) {
             Some(b) => b,
             None => return DhruvStatus::InvalidQuery,
         };
         if let Err(status) = validate_search_time_kind(req.time_kind) {
             return status;
         }
-        let rust_config = stationary_config_from_ffi(&req.config);
-
-        match (req.motion_kind, req.query_mode) {
-            (DHRUV_MOTION_KIND_STATIONARY, DHRUV_MOTION_QUERY_MODE_NEXT) => {
+        let kind = match req.motion_kind {
+            DHRUV_MOTION_KIND_STATIONARY => MotionKind::Stationary,
+            DHRUV_MOTION_KIND_MAX_SPEED => MotionKind::MaxSpeed,
+            _ => return DhruvStatus::InvalidQuery,
+        };
+        let single = match req.query_mode {
+            DHRUV_MOTION_QUERY_MODE_NEXT | DHRUV_MOTION_QUERY_MODE_PREV => true,
+            DHRUV_MOTION_QUERY_MODE_RANGE => false,
+            _ => return DhruvStatus::InvalidQuery,
+        };
+        match (kind, single) {
+            (MotionKind::Stationary, true) => {
                 if out_stationary_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.at_jd_tdb,
-                    req.at_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                match next_stationary(engine_ref, body, at, &rust_config) {
-                    Ok(Some(event)) => {
-                        unsafe {
-                            *out_stationary_single = DhruvStationaryEvent::from(&event);
-                            *out_found = 1;
-                        }
-                        DhruvStatus::Ok
-                    }
-                    Ok(None) => {
-                        unsafe { *out_found = 0 };
-                        DhruvStatus::Ok
-                    }
-                    Err(e) => DhruvStatus::from(&e),
-                }
             }
-            (DHRUV_MOTION_KIND_STATIONARY, DHRUV_MOTION_QUERY_MODE_PREV) => {
-                if out_stationary_single.is_null() || out_found.is_null() {
+            (MotionKind::MaxSpeed, true) => {
+                if out_max_speed_single.is_null() || out_found.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let at = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.at_jd_tdb,
-                    req.at_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                match prev_stationary(engine_ref, body, at, &rust_config) {
-                    Ok(Some(event)) => {
-                        unsafe {
-                            *out_stationary_single = DhruvStationaryEvent::from(&event);
-                            *out_found = 1;
-                        }
-                        DhruvStatus::Ok
-                    }
-                    Ok(None) => {
-                        unsafe { *out_found = 0 };
-                        DhruvStatus::Ok
-                    }
-                    Err(e) => DhruvStatus::from(&e),
-                }
             }
-            (DHRUV_MOTION_KIND_STATIONARY, DHRUV_MOTION_QUERY_MODE_RANGE) => {
+            (MotionKind::Stationary, false) => {
                 if out_stationary_many.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let start = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.start_jd_tdb,
-                    req.start_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                let end = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.end_jd_tdb,
-                    req.end_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                match search_stationary(engine_ref, body, start, end, &rust_config) {
-                    Ok(events) => {
-                        let count = events.len().min(max_count as usize);
-                        let out_slice = unsafe {
-                            std::slice::from_raw_parts_mut(out_stationary_many, max_count as usize)
-                        };
-                        for (i, e) in events.iter().take(count).enumerate() {
-                            out_slice[i] = DhruvStationaryEvent::from(e);
-                        }
-                        unsafe { *out_count = count as u32 };
-                        DhruvStatus::Ok
-                    }
-                    Err(e) => DhruvStatus::from(&e),
-                }
             }
-            (DHRUV_MOTION_KIND_MAX_SPEED, DHRUV_MOTION_QUERY_MODE_NEXT) => {
-                if out_max_speed_single.is_null() || out_found.is_null() {
-                    return DhruvStatus::NullPointer;
-                }
-                let at = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.at_jd_tdb,
-                    req.at_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                match next_max_speed(engine_ref, body, at, &rust_config) {
-                    Ok(Some(event)) => {
-                        unsafe {
-                            *out_max_speed_single = DhruvMaxSpeedEvent::from(&event);
-                            *out_found = 1;
-                        }
-                        DhruvStatus::Ok
-                    }
-                    Ok(None) => {
-                        unsafe { *out_found = 0 };
-                        DhruvStatus::Ok
-                    }
-                    Err(e) => DhruvStatus::from(&e),
-                }
-            }
-            (DHRUV_MOTION_KIND_MAX_SPEED, DHRUV_MOTION_QUERY_MODE_PREV) => {
-                if out_max_speed_single.is_null() || out_found.is_null() {
-                    return DhruvStatus::NullPointer;
-                }
-                let at = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.at_jd_tdb,
-                    req.at_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                match prev_max_speed(engine_ref, body, at, &rust_config) {
-                    Ok(Some(event)) => {
-                        unsafe {
-                            *out_max_speed_single = DhruvMaxSpeedEvent::from(&event);
-                            *out_found = 1;
-                        }
-                        DhruvStatus::Ok
-                    }
-                    Ok(None) => {
-                        unsafe { *out_found = 0 };
-                        DhruvStatus::Ok
-                    }
-                    Err(e) => DhruvStatus::from(&e),
-                }
-            }
-            (DHRUV_MOTION_KIND_MAX_SPEED, DHRUV_MOTION_QUERY_MODE_RANGE) => {
+            (MotionKind::MaxSpeed, false) => {
                 if out_max_speed_many.is_null() || out_count.is_null() {
                     return DhruvStatus::NullPointer;
                 }
-                let start = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.start_jd_tdb,
-                    req.start_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                let end = match search_time_to_jd_tdb(
-                    engine_ref,
-                    req.time_kind,
-                    req.end_jd_tdb,
-                    req.end_utc,
-                ) {
-                    Ok(v) => v,
-                    Err(status) => return status,
-                };
-                match search_max_speed(engine_ref, body, start, end, &rust_config) {
-                    Ok(events) => {
-                        let count = events.len().min(max_count as usize);
-                        let out_slice = unsafe {
-                            std::slice::from_raw_parts_mut(out_max_speed_many, max_count as usize)
-                        };
-                        for (i, e) in events.iter().take(count).enumerate() {
-                            out_slice[i] = DhruvMaxSpeedEvent::from(e);
-                        }
-                        unsafe { *out_count = count as u32 };
-                        DhruvStatus::Ok
-                    }
-                    Err(e) => DhruvStatus::from(&e),
-                }
             }
-            _ => DhruvStatus::InvalidQuery,
+        }
+        let sankranti_config = if req.has_sidereal_config != 0 {
+            match sankranti_config_from_ffi(&req.sidereal_config) {
+                Some(c) => Some(c),
+                None => return DhruvStatus::InvalidQuery,
+            }
+        } else {
+            None
+        };
+        let rust_config = stationary_config_from_ffi(&req.config);
+
+        let query = if single {
+            let at =
+                match search_time_to_jd_tdb(engine_ref, req.time_kind, req.at_jd_tdb, req.at_utc) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+            if req.query_mode == DHRUV_MOTION_QUERY_MODE_NEXT {
+                MotionQuery::Next { at_jd_tdb: at }
+            } else {
+                MotionQuery::Prev { at_jd_tdb: at }
+            }
+        } else {
+            let start = match search_time_to_jd_tdb(
+                engine_ref,
+                req.time_kind,
+                req.start_jd_tdb,
+                req.start_utc,
+            ) {
+                Ok(v) => v,
+                Err(status) => return status,
+            };
+            let end =
+                match search_time_to_jd_tdb(engine_ref, req.time_kind, req.end_jd_tdb, req.end_utc)
+                {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+            MotionQuery::Range {
+                start_jd_tdb: start,
+                end_jd_tdb: end,
+            }
+        };
+
+        let op = MotionOperation {
+            body,
+            kind,
+            config: rust_config,
+            sankranti_config,
+            query,
+        };
+        match dhruv_search::motion(engine_ref, &op) {
+            Ok(MotionResult::StationarySingle(Some(event))) => {
+                unsafe {
+                    *out_stationary_single = DhruvStationaryEvent::from(&event);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(MotionResult::MaxSpeedSingle(Some(event))) => {
+                unsafe {
+                    *out_max_speed_single = DhruvMaxSpeedEvent::from(&event);
+                    *out_found = 1;
+                }
+                DhruvStatus::Ok
+            }
+            Ok(MotionResult::StationarySingle(None) | MotionResult::MaxSpeedSingle(None)) => {
+                unsafe { *out_found = 0 };
+                DhruvStatus::Ok
+            }
+            Ok(MotionResult::StationaryMany(events)) => {
+                let count = events.len().min(max_count as usize);
+                let out_slice = unsafe {
+                    std::slice::from_raw_parts_mut(out_stationary_many, max_count as usize)
+                };
+                for (i, e) in events.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvStationaryEvent::from(e);
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Ok(MotionResult::MaxSpeedMany(events)) => {
+                let count = events.len().min(max_count as usize);
+                let out_slice = unsafe {
+                    std::slice::from_raw_parts_mut(out_max_speed_many, max_count as usize)
+                };
+                for (i, e) in events.iter().take(count).enumerate() {
+                    out_slice[i] = DhruvMaxSpeedEvent::from(e);
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
         }
     })
 }
@@ -6078,6 +6116,9 @@ pub struct DhruvSankrantiConfig {
     pub step_size_days: f64,
     pub max_iterations: u32,
     pub convergence_days: f64,
+    /// Lunar-node model used when the tracked body is Rahu/Ketu
+    /// (`DHRUV_NODE_MODE_MEAN` = mean node, any other value = true node).
+    pub node_mode: i32,
 }
 
 /// C-compatible Sankranti event.
@@ -6087,8 +6128,21 @@ pub struct DhruvSankrantiEvent {
     pub utc: DhruvUtcTime,
     /// 0-based rashi index (0=Mesha .. 11=Meena).
     pub rashi_index: i32,
+    /// Legacy alias for `sidereal_longitude_deg`: the tracked body's sidereal
+    /// longitude (the Sun for classical sankranti requests).
     pub sun_sidereal_longitude_deg: f64,
+    /// Legacy alias for `tropical_longitude_deg`: the tracked body's tropical
+    /// longitude (the Sun for classical sankranti requests).
     pub sun_tropical_longitude_deg: f64,
+    /// Tracked body code (NAIF, or 10007/10008 for Rahu/Ketu).
+    pub body_code: i32,
+    /// Body's sidereal longitude at the boundary (degrees, ~N*30).
+    pub sidereal_longitude_deg: f64,
+    /// Body's tropical longitude at the event (degrees).
+    pub tropical_longitude_deg: f64,
+    /// 1 when the boundary was crossed in retrograde motion (the body
+    /// re-entered the preceding rashi). Always 0 for the Sun.
+    pub is_retrograde: u8,
 }
 
 /// C-compatible request for unified sankranti search.
@@ -6117,6 +6171,10 @@ pub struct DhruvSankrantiSearchRequest {
     pub end_utc: DhruvUtcTime,
     /// Sankranti search configuration.
     pub config: DhruvSankrantiConfig,
+    /// Body whose rashi ingresses are searched: 0 = Sun (classical
+    /// sankranti, back-compat default), otherwise a NAIF body code or
+    /// 10007 (Rahu) / 10008 (Ketu).
+    pub body_code: i32,
 }
 
 /// C-compatible Masa info.
@@ -6397,8 +6455,13 @@ fn sankranti_event_to_ffi(event: &dhruv_search::SankrantiEvent) -> DhruvSankrant
     DhruvSankrantiEvent {
         utc: utc_time_to_ffi(&event.utc),
         rashi_index: event.rashi_index as i32,
-        sun_sidereal_longitude_deg: event.sun_sidereal_longitude_deg,
-        sun_tropical_longitude_deg: event.sun_tropical_longitude_deg,
+        // Legacy aliases: identical to the generic longitude fields below.
+        sun_sidereal_longitude_deg: event.sidereal_longitude_deg,
+        sun_tropical_longitude_deg: event.tropical_longitude_deg,
+        body_code: event.body.code(),
+        sidereal_longitude_deg: event.sidereal_longitude_deg,
+        tropical_longitude_deg: event.tropical_longitude_deg,
+        is_retrograde: u8::from(event.is_retrograde),
     }
 }
 
@@ -6464,6 +6527,7 @@ fn sankranti_config_from_ffi(cfg: &DhruvSankrantiConfig) -> Option<SankrantiConf
         use_nutation: cfg.use_nutation != 0,
         precession_model: dhruv_frames::DEFAULT_PRECESSION_MODEL,
         reference_plane: reference_plane_from_code(cfg.reference_plane, system),
+        node_mode: config_node_mode_from_code(cfg.node_mode),
         step_size_days: cfg.step_size_days,
         max_iterations: cfg.max_iterations,
         convergence_days: cfg.convergence_days,
@@ -6508,7 +6572,8 @@ fn panchang_include_mask_from_ffi(mask: u32) -> Option<u32> {
     Some(out)
 }
 
-/// Returns default Sankranti search configuration (Lahiri, no nutation).
+/// Returns default Sankranti search configuration (Lahiri, no nutation,
+/// true node).
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_sankranti_config_default() -> DhruvSankrantiConfig {
     DhruvSankrantiConfig {
@@ -6518,6 +6583,7 @@ pub extern "C" fn dhruv_sankranti_config_default() -> DhruvSankrantiConfig {
         step_size_days: 1.0,
         max_iterations: 50,
         convergence_days: 1e-8,
+        node_mode: DHRUV_NODE_MODE_TRUE,
     }
 }
 
@@ -6761,6 +6827,12 @@ pub unsafe extern "C" fn dhruv_lunar_phase_search_ex(
 /// - `DHRUV_SANKRANTI_TARGET_ANY` searches all rashi entries.
 /// - `DHRUV_SANKRANTI_TARGET_SPECIFIC` limits results to `rashi_index`.
 ///
+/// Body behavior:
+/// - `body_code = 0` tracks the Sun (classical sankranti, back-compat
+///   default for zero-initialized requests).
+/// - Any other value is parsed as a NAIF body code or 10007 (Rahu) /
+///   10008 (Ketu); the node model is selected by `config.node_mode`.
+///
 /// # Safety
 /// `engine` and `request` must be valid and non-null.
 /// Output pointers required depend on `query_mode`.
@@ -6787,6 +6859,14 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
         let config = match sankranti_config_from_ffi(&req.config) {
             Some(c) => c,
             None => return DhruvStatus::InvalidQuery,
+        };
+        let body = if req.body_code == 0 {
+            TransitBody::Body(Body::Sun)
+        } else {
+            match TransitBody::from_code(req.body_code) {
+                Some(b) => b,
+                None => return DhruvStatus::InvalidQuery,
+            }
         };
         let specific_rashi = match req.target_kind {
             DHRUV_SANKRANTI_TARGET_ANY => None,
@@ -6815,8 +6895,8 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                     Err(status) => return status,
                 };
                 let result = match specific_rashi {
-                    Some(rashi) => next_specific_sankranti(engine_ref, &at, rashi, &config),
-                    None => next_sankranti(engine_ref, &at, &config),
+                    Some(rashi) => next_specific_ingress(engine_ref, body, &at, rashi, &config),
+                    None => next_ingress(engine_ref, body, &at, &config),
                 };
                 match result {
                     Ok(Some(event)) => {
@@ -6847,8 +6927,8 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                     Err(status) => return status,
                 };
                 let result = match specific_rashi {
-                    Some(rashi) => prev_specific_sankranti(engine_ref, &at, rashi, &config),
-                    None => prev_sankranti(engine_ref, &at, &config),
+                    Some(rashi) => prev_specific_ingress(engine_ref, body, &at, rashi, &config),
+                    None => prev_ingress(engine_ref, body, &at, &config),
                 };
                 match result {
                     Ok(Some(event)) => {
@@ -6887,7 +6967,7 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match search_sankrantis(engine_ref, &start, &end, &config) {
+                match search_ingresses(engine_ref, body, &start, &end, &config) {
                     Ok(events) => {
                         let filtered: Vec<_> = match specific_rashi {
                             Some(rashi) => {
@@ -7728,6 +7808,18 @@ pub struct DhruvConjunctionEventUtc {
     pub body2_latitude_deg: f64,
     pub body1_code: i32,
     pub body2_code: i32,
+    /// Target separation angle this event matched, in degrees.
+    pub target_separation_deg: f64,
+    /// 1 when the sidereal echo fields below are populated.
+    pub has_sidereal: u8,
+    /// Body 1 sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub body1_sidereal_longitude_deg: f64,
+    /// Body 2 sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub body2_sidereal_longitude_deg: f64,
+    /// Body 1 sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub body1_rashi_index: i32,
+    /// Body 2 sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub body2_rashi_index: i32,
 }
 
 /// C-compatible stationary event with UTC time.
@@ -7739,6 +7831,12 @@ pub struct DhruvStationaryEventUtc {
     pub longitude_deg: f64,
     pub latitude_deg: f64,
     pub station_type: i32,
+    /// 1 when the sidereal echo fields below are populated.
+    pub has_sidereal: u8,
+    /// Sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub sidereal_longitude_deg: f64,
+    /// Sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub rashi_index: i32,
 }
 
 /// C-compatible max-speed event with UTC time.
@@ -7751,6 +7849,12 @@ pub struct DhruvMaxSpeedEventUtc {
     pub latitude_deg: f64,
     pub speed_deg_per_day: f64,
     pub speed_type: i32,
+    /// 1 when the sidereal echo fields below are populated.
+    pub has_sidereal: u8,
+    /// Sidereal longitude in degrees (0.0 when `has_sidereal` is 0).
+    pub sidereal_longitude_deg: f64,
+    /// Sidereal rashi index 0-11 (-1 when `has_sidereal` is 0).
+    pub rashi_index: i32,
 }
 
 /// C-compatible rise/set result with UTC time.
@@ -18488,6 +18592,10 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_conjunction_config_default(),
+            target_separation_count: 0,
+            target_separations_deg: [0.0; DHRUV_MAX_CONJUNCTION_TARGETS],
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
         let mut found: u8 = 0;
@@ -18519,6 +18627,10 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_conjunction_config_default(),
+            target_separation_count: 0,
+            target_separations_deg: [0.0; DHRUV_MAX_CONJUNCTION_TARGETS],
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
         let mut found: u8 = 0;
@@ -18551,6 +18663,10 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_conjunction_config_default(),
+            target_separation_count: 0,
+            target_separations_deg: [0.0; DHRUV_MAX_CONJUNCTION_TARGETS],
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut event = std::mem::MaybeUninit::<DhruvConjunctionEvent>::uninit();
         let mut found: u8 = 0;
@@ -18803,6 +18919,8 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut found: u8 = 0;
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
@@ -18836,6 +18954,8 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
         let mut found: u8 = 0;
@@ -18869,6 +18989,8 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut max_speed = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
         let mut found: u8 = 0;
@@ -18903,6 +19025,8 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
         let mut found: u8 = 0;
@@ -18937,6 +19061,8 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut stationary = std::mem::MaybeUninit::<DhruvStationaryEvent>::uninit();
         let mut found: u8 = 0;
@@ -18971,6 +19097,8 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_stationary_config_default(),
+            has_sidereal_config: 0,
+            sidereal_config: dhruv_sankranti_config_default(),
         };
         let mut max_speed = std::mem::MaybeUninit::<DhruvMaxSpeedEvent>::uninit();
         let mut found: u8 = 0;
@@ -19327,6 +19455,7 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_sankranti_config_default(),
+            body_code: 0,
         };
         let mut event = std::mem::MaybeUninit::<DhruvSankrantiEvent>::uninit();
         let mut found: u8 = 0;
@@ -19358,6 +19487,7 @@ mod tests {
             start_utc: ZEROED_UTC,
             end_utc: ZEROED_UTC,
             config: dhruv_sankranti_config_default(),
+            body_code: 0,
         };
         let mut event = std::mem::MaybeUninit::<DhruvSankrantiEvent>::uninit();
         let mut found: u8 = 0;

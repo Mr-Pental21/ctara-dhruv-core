@@ -93,6 +93,40 @@ Their `TimeInput` fields accept either structured Gregorian UTC or numeric
 JD/TDB transport without splitting the public API into `*_utc` or similar
 variant entrypoints.
 
+Body-tracking requests use the shared `TransitBody` selector (re-exported
+from `dhruv_search` together with `TRANSIT_CODE_RAHU` = 10007 and
+`TRANSIT_CODE_KETU` = 10008): any plain `Body` plus `Rahu`/`Ketu` computed
+from the lunar-node model chosen by the relevant config's `node_mode`
+(default true/osculating). `TransitBody: From<Body>`, so plain-body call
+sites use `Body::Sun.into()`. Concretely:
+
+- `ConjunctionRequest { body1: TransitBody, body2: TransitBody, config:
+  Option<ConjunctionConfig>, target_separations_deg: Vec<f64>,
+  sankranti_config: Option<SankrantiConfig>, query }` — the optional angle
+  list runs a multi-angle sweep (each event reports the matched angle in
+  `target_separation_deg`); the optional sidereal config adds
+  `body{1,2}_sidereal_longitude_deg`/`body{1,2}_rashi_index` echoes to
+  events.
+- `MotionRequest { body: TransitBody, kind, config:
+  Option<StationaryConfig>, sankranti_config: Option<SankrantiConfig>,
+  query }` — true-node stationary search is supported
+  (`StationaryConfig::lunar_node()` preset; the mean node never stations
+  and is rejected); the sidereal config adds
+  `sidereal_longitude_deg`/`rashi_index` echoes.
+- `SankrantiRequest { body: TransitBody, target, config:
+  Option<SankrantiConfig>, query }` — rashi-ingress search for any body
+  (Sun = classical sankranti); events carry `body`, renamed
+  `sidereal_longitude_deg`/`tropical_longitude_deg` fields, and
+  `is_retrograde` for retrograde re-ingresses.
+- `LunarPhaseRequest { kind, sankranti_config: Option<SankrantiConfig>,
+  query }` — the sidereal config adds Sun/Moon sidereal longitude and
+  rashi-index echoes to events.
+
+`ConjunctionConfig`, `StationaryConfig`, and `SankrantiConfig` each carry a
+`node_mode: NodeMode` policy field, resolvable from layered config
+(`[operations.conjunction]`/`[operations.stationary]`/
+`[operations.sankranti]` accept `node_mode = "mean" | "true"` or `0 | 1`).
+
 `PanchangRequest.include_mask` (`PANCHANG_INCLUDE_*` bits) gates computation:
 only selected elements are computed, and `panchang_op` returns a
 `PanchangResult` whose fields are `Option`, populated only for selected

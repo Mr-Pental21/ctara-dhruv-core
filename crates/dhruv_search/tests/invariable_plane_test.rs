@@ -379,9 +379,9 @@ fn sankranti_jagganatha_makar_2024() {
     assert_eq!(event.rashi, Rashi::Makara);
     // Sidereal longitude should be very close to 270°
     assert!(
-        (event.sun_sidereal_longitude_deg - 270.0).abs() < 0.1,
+        (event.sidereal_longitude_deg - 270.0).abs() < 0.1,
         "expected ~270°, got {:.4}°",
-        event.sun_sidereal_longitude_deg
+        event.sidereal_longitude_deg
     );
 }
 
@@ -422,13 +422,13 @@ fn sankranti_jagganatha_12_events_per_year() {
     );
     // Each event's sidereal longitude should be near a 30° boundary
     for event in &events {
-        let boundary = (event.sun_sidereal_longitude_deg / 30.0).round() * 30.0;
-        let diff = (event.sun_sidereal_longitude_deg - boundary).abs();
+        let boundary = (event.sidereal_longitude_deg / 30.0).round() * 30.0;
+        let diff = (event.sidereal_longitude_deg - boundary).abs();
         assert!(
             diff < 0.1,
             "event rashi={:?}: sidereal={:.4}°, nearest boundary={boundary:.0}°",
             event.rashi,
-            event.sun_sidereal_longitude_deg
+            event.sidereal_longitude_deg
         );
     }
 }

@@ -50,9 +50,9 @@ fn makar_sankranti_2024() {
     assert_eq!(event.rashi, Rashi::Makara);
     // Sidereal longitude should be very close to 270 deg
     assert!(
-        (event.sun_sidereal_longitude_deg - 270.0).abs() < 0.1,
+        (event.sidereal_longitude_deg - 270.0).abs() < 0.1,
         "expected ~270 deg, got {:.4}",
-        event.sun_sidereal_longitude_deg
+        event.sidereal_longitude_deg
     );
 }
 
@@ -89,9 +89,9 @@ fn next_sankranti_from_jan_2024() {
     // Sidereal longitude should be close to a multiple of 30
     let boundary = (event.rashi_index as f64) * 30.0;
     assert!(
-        (event.sun_sidereal_longitude_deg - boundary).abs() < 0.1,
+        (event.sidereal_longitude_deg - boundary).abs() < 0.1,
         "expected ~{boundary} deg, got {:.4}",
-        event.sun_sidereal_longitude_deg
+        event.sidereal_longitude_deg
     );
 }
 

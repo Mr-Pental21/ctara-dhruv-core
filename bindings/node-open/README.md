@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=83`
+- ABI target: `DHRUV_API_VERSION=84`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 - Primary distribution: npm package with bundled platform prebuilds from unified `vX.Y.Z` tags
@@ -82,7 +82,7 @@ Public modules included in this wrapper:
 - runtime SPK replacement and listing through `engine.replaceSpks(...)` and
   `engine.listSpks()`
 - time conversions, nutation, ayanamsha, and lunar-node APIs
-- unified search APIs (conjunction/grahan/motion/lunar phase/sankranti/gochar events)
+- unified search APIs (conjunction/grahan/motion/lunar phase/sankranti/gochar events), including Rahu/Ketu bodies, any-body sankranti, multi-angle conjunction sweeps, and optional sidereal echoes (see "Search Notes")
 - panchang/date APIs (`compute_rise_set*`, `compute_all_events*`, `compute_bhavas*`, `lagna/mc/ramc`, `tithi`, `karana`, `yoga`, `nakshatra`, `vaar`, `hora`, `ghatika`, `masa`, `ayana`, `varsha`)
 - unified panchang selection (`panchangComputeEx` with a `PANCHANG_INCLUDE`
   bitmask and optional `location`; the same mask drives
@@ -100,6 +100,35 @@ Public modules included in this wrapper:
 - dasha hierarchy and snapshot, with `entityName` on returned period objects for the exact canonical Sanskrit entity name
 - dasha level-0 cycle repetition through `variationConfig.cycles` and `variationConfig.minSpanYears`
 - tara catalog load/compute helpers plus low-level propagation/correction primitives
+
+## Search Notes
+
+The unified search APIs accept the lunar nodes as first-class bodies: pass
+`10007` (Rahu) or `10008` (Ketu) as `body1Code`/`body2Code` in
+`conjunctionSearch`, as `bodyCode` in `motionSearch`, and as `bodyCode` in
+`sankrantiSearch`. The sankranti, conjunction, and stationary configs carry a
+`nodeMode` field (`0` = mean node, `1` = true node; default `1`). Stationary
+search of Rahu/Ketu requires the true node (`nodeMode: 1`); with the mean node
+it fails with an invalid-query/config error.
+
+`sankrantiSearch` requests take an optional `bodyCode` (default `0` = the Sun,
+the classical sankranti) to search rashi ingresses of any body, including
+retrograde re-ingresses. Events keep `sunSiderealLongitudeDeg`/
+`sunTropicalLongitudeDeg` as legacy aliases for the tracked body and add
+`bodyCode`, `siderealLongitudeDeg`, `tropicalLongitudeDeg`, and `isRetrograde`
+(`true` when the boundary was crossed in retrograde motion).
+
+`conjunctionSearch` requests accept an optional `targetSeparationsDeg` array
+(up to 16 angles) to sweep several separation angles in one range search;
+omitted or empty, the single `config.targetSeparationDeg` is used. Each event
+reports the matched angle as `targetSeparationDeg`.
+
+`conjunctionSearch` and `motionSearch` requests accept an optional
+`siderealConfig` (a sankranti config object, e.g. from
+`sankrantiConfigDefault()`). When present, events carry `hasSidereal: true`
+plus sidereal echoes: `body1SiderealLongitudeDeg`/`body2SiderealLongitudeDeg`
+and `body1RashiIndex`/`body2RashiIndex` on conjunction events,
+`siderealLongitudeDeg`/`rashiIndex` on stationary and max-speed events.
 
 ## Panchang Selection
 

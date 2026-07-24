@@ -41,11 +41,12 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       83
+#define DHRUV_API_VERSION       84
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
 #define DHRUV_MAX_OSCULATING_APOGEE_REQUESTS 32
+#define DHRUV_MAX_CONJUNCTION_TARGETS 16
 #define DHRUV_AMSHA_VARIATION_NAME_CAPACITY 48
 #define DHRUV_AMSHA_VARIATION_LABEL_CAPACITY 64
 #define DHRUV_AMSHA_VARIATION_DESCRIPTION_CAPACITY 160
@@ -240,6 +241,32 @@ typedef int32_t DhruvStatus;
 #define DHRUV_SURYA_GRAHAN_TOTAL    2
 #define DHRUV_SURYA_GRAHAN_HYBRID   3
 
+/* Whether and how the central shadow reaches Earth */
+#define DHRUV_SURYA_CENTRALITY_NONE    0
+#define DHRUV_SURYA_CENTRALITY_PARTIAL 1
+#define DHRUV_SURYA_CENTRALITY_FULL    2
+
+/* Ring-set selectors for isoline/corridor geometry */
+#define DHRUV_SURYA_RING_SET_VISIBILITY 0
+#define DHRUV_SURYA_RING_SET_DURATION   1
+#define DHRUV_SURYA_RING_SET_MAGNITUDE  2
+#define DHRUV_SURYA_RING_SET_CORRIDOR   3
+
+/* Ring pole containment */
+#define DHRUV_RING_POLE_NONE  0
+#define DHRUV_RING_POLE_NORTH 1
+#define DHRUV_RING_POLE_SOUTH 2
+
+/* Contact selectors for contact-moment footprints */
+#define DHRUV_SURYA_CONTACT_C1       0
+#define DHRUV_SURYA_CONTACT_C2       1
+#define DHRUV_SURYA_CONTACT_GREATEST 2
+#define DHRUV_SURYA_CONTACT_C3       3
+#define DHRUV_SURYA_CONTACT_C4       4
+
+/* Maximum isoline levels per family in DhruvGrahanConfig */
+#define DHRUV_GRAHAN_MAX_ISOLINE_LEVELS 16
+
 /* Eclipse query */
 #define DHRUV_GRAHAN_KIND_CHANDRA 0
 #define DHRUV_GRAHAN_KIND_SURYA   1
@@ -398,9 +425,10 @@ typedef struct DhruvTaraCatalogHandle DhruvTaraCatalogHandle;
 typedef void *DhruvDashaHierarchyHandle;
 /* DhruvDashaPeriodListHandle is void* */
 typedef void *DhruvDashaPeriodListHandle;
-typedef void *DhruvSuryaGrahanGeometryHandle;
 /* DhruvGocharEventsHandle is void* */
 typedef void *DhruvGocharEventsHandle;
+/* DhruvSuryaGrahanGeometryHandle is void* */
+typedef void *DhruvSuryaGrahanGeometryHandle;
 
 /* ===================================================================
  * Structs
@@ -636,6 +664,19 @@ typedef struct {
     DhruvUtcTime utc;
 } DhruvLunarNodeRequest;
 
+/* --- Sankranti config (shared by search requests below) --- */
+
+typedef struct {
+    int32_t  ayanamsha_system;
+    uint8_t  use_nutation;
+    int32_t  reference_plane;
+    double   step_size_days;
+    uint32_t max_iterations;
+    double   convergence_days;
+    /* 0 = mean node, any other value = true node (v84). */
+    int32_t  node_mode;
+} DhruvSankrantiConfig;
+
 /* --- Conjunction --- */
 
 typedef struct {
@@ -643,11 +684,13 @@ typedef struct {
     double   step_size_days;
     uint32_t max_iterations;
     double   convergence_days;
+    /* 0 = mean node, any other value = true node (v84). */
+    int32_t  node_mode;
 } DhruvConjunctionConfig;
 
 typedef struct {
-    int32_t body1_code;
-    int32_t body2_code;
+    int32_t body1_code;   /* NAIF code, or 10007 (Rahu) / 10008 (Ketu) */
+    int32_t body2_code;   /* NAIF code, or 10007 (Rahu) / 10008 (Ketu) */
     int32_t query_mode;
     int32_t time_kind;
     double  at_jd_tdb;
@@ -657,6 +700,12 @@ typedef struct {
     DhruvUtcTime start_utc;
     DhruvUtcTime end_utc;
     DhruvConjunctionConfig config;
+    /* v84 multi-angle sweep: 0 = single angle from config. */
+    uint32_t target_separation_count;
+    double   target_separations_deg[DHRUV_MAX_CONJUNCTION_TARGETS];
+    /* v84 sidereal echo: read sidereal_config when non-zero. */
+    uint8_t  has_sidereal_config;
+    DhruvSankrantiConfig sidereal_config;
 } DhruvConjunctionSearchRequest;
 
 typedef struct {
@@ -669,6 +718,13 @@ typedef struct {
     double  body2_latitude_deg;
     int32_t body1_code;
     int32_t body2_code;
+    /* v84: matched target angle plus optional sidereal echoes. */
+    double  target_separation_deg;
+    uint8_t has_sidereal;
+    double  body1_sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    double  body2_sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    int32_t body1_rashi_index;            /* -1 when has_sidereal == 0 */
+    int32_t body2_rashi_index;            /* -1 when has_sidereal == 0 */
 } DhruvConjunctionEvent;
 
 /* --- Grahan (eclipse) --- */
@@ -684,12 +740,16 @@ typedef struct {
     uint8_t include_umbra_footprints;
     uint32_t path_step_minutes;
     uint32_t boundary_step_deg;
+    /* Local-grid spacing in degrees; values outside [0.5, 10] are clamped. */
     double local_grid_step_deg;
-    double duration_isoline_fractions[16];
+    /* Visible-duration isoline levels as fractions of the C1-C4 span. */
+    double duration_isoline_fractions[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
     uint32_t duration_isoline_fraction_count;
-    double magnitude_isoline_levels[16];
+    /* Local maximum-magnitude isoline levels. */
+    double magnitude_isoline_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
     uint32_t magnitude_isoline_level_count;
-    double instantaneous_magnitude_levels[16];
+    /* Instantaneous iso-magnitude contour levels for footprints. */
+    double instantaneous_magnitude_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
     uint32_t instantaneous_magnitude_level_count;
 } DhruvGrahanConfig;
 
@@ -758,33 +818,40 @@ typedef struct {
     double jd_tdb;
     DhruvUtcTime utc;
     uint32_t boundary_count;
+    /* Pole containment of the shadow region (DHRUV_RING_POLE_*). */
     int32_t contains_pole;
+    /* Number of instantaneous iso-magnitude rings at this timestamp. */
     uint32_t magnitude_ring_count;
 } DhruvSuryaGrahanFootprint;
 
+/* One instantaneous iso-magnitude contour ring. */
 typedef struct {
     double level;
-    int32_t contains_pole;
-    uint32_t point_count;
+    int32_t contains_pole;   /* DHRUV_RING_POLE_* */
+    uint32_t point_count;    /* final point repeats the first */
 } DhruvSuryaMagnitudeRing;
 
+/* One contact-moment penumbral footprint. boundary_count may be zero at
+   exact C1/C4 tangency; fall back to the nearest sampled footprint. */
 typedef struct {
-    int32_t contact;
+    int32_t contact;   /* DHRUV_SURYA_CONTACT_* */
     double jd_tdb;
     DhruvUtcTime utc;
     uint32_t boundary_count;
-    int32_t contains_pole;
+    int32_t contains_pole;   /* DHRUV_RING_POLE_* */
     uint32_t magnitude_ring_count;
 } DhruvSuryaContactFootprint;
 
+/* One instantaneous umbral/antumbral shadow outline. */
 typedef struct {
     double jd_tdb;
     DhruvUtcTime utc;
-    int32_t grahan_type;
+    int32_t grahan_type;     /* DHRUV_SURYA_GRAHAN_TOTAL or _ANNULAR */
     uint32_t boundary_count;
-    int32_t contains_pole;
+    int32_t contains_pole;   /* DHRUV_RING_POLE_* */
 } DhruvSuryaUmbraFootprint;
 
+/* One sample of the per-event local-circumstance grid. */
 typedef struct {
     double latitude_deg;
     double longitude_deg;
@@ -799,14 +866,20 @@ typedef struct {
     double visible_duration_seconds;
 } DhruvSuryaLocalGridSample;
 
+/* Metadata for one level of a ring set (isoline level or corridor segment). */
 typedef struct {
+    /* Duration fraction or magnitude level; 0 for visibility/corridor sets. */
     double level_value;
+    /* Corridor segment type (DHRUV_SURYA_GRAHAN_*), or -1 for isoline sets. */
     int32_t grahan_type;
     uint32_t ring_count;
 } DhruvSuryaRingSetLevel;
 
+/* Metadata for one closed ring of a ring set. */
 typedef struct {
+    /* Pole containment (DHRUV_RING_POLE_*). */
     int32_t contains_pole;
+    /* Number of boundary points; the final point repeats the first. */
     uint32_t point_count;
 } DhruvSuryaIsolineRing;
 
@@ -845,6 +918,8 @@ typedef struct {
     double  bessel_tan_f2;
     uint32_t path_count;
     uint32_t footprint_count;
+    /* Whether and how the central shadow reaches Earth
+       (DHRUV_SURYA_CENTRALITY_*). */
     int32_t centrality;
     uint32_t local_grid_count;
     uint8_t isolines_valid;
@@ -879,10 +954,13 @@ typedef struct {
     uint32_t max_iterations;
     double   convergence_days;
     double   numerical_step_days;
+    /* 0 = mean node, any other value = true node (v84). Stationary
+     * search of Rahu/Ketu requires the true node. */
+    int32_t  node_mode;
 } DhruvStationaryConfig;
 
 typedef struct {
-    int32_t body_code;
+    int32_t body_code;    /* NAIF code, or 10007 (Rahu) / 10008 (Ketu) */
     int32_t motion_kind;
     int32_t query_mode;
     int32_t time_kind;
@@ -893,6 +971,9 @@ typedef struct {
     DhruvUtcTime start_utc;
     DhruvUtcTime end_utc;
     DhruvStationaryConfig config;
+    /* v84 sidereal echo: read sidereal_config when non-zero. */
+    uint8_t has_sidereal_config;
+    DhruvSankrantiConfig sidereal_config;
 } DhruvMotionSearchRequest;
 
 typedef struct {
@@ -902,6 +983,10 @@ typedef struct {
     double  longitude_deg;
     double  latitude_deg;
     int32_t station_type;
+    /* v84 sidereal echoes. */
+    uint8_t has_sidereal;
+    double  sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    int32_t rashi_index;            /* -1 when has_sidereal == 0 */
 } DhruvStationaryEvent;
 
 typedef struct {
@@ -912,24 +997,28 @@ typedef struct {
     double  latitude_deg;
     double  speed_deg_per_day;
     int32_t speed_type;
+    /* v84 sidereal echoes. */
+    uint8_t has_sidereal;
+    double  sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    int32_t rashi_index;            /* -1 when has_sidereal == 0 */
 } DhruvMaxSpeedEvent;
 
 /* --- Sankranti / Lunar phase --- */
 
-typedef struct {
-    int32_t  ayanamsha_system;
-    uint8_t  use_nutation;
-    int32_t  reference_plane;
-    double   step_size_days;
-    uint32_t max_iterations;
-    double   convergence_days;
-} DhruvSankrantiConfig;
+/* DhruvSankrantiConfig is defined above the conjunction section. */
 
 typedef struct {
     DhruvUtcTime utc;
     int32_t rashi_index;
+    /* Legacy aliases for the tracked body's longitudes (the Sun for
+     * classical sankranti requests); identical to the v84 fields below. */
     double  sun_sidereal_longitude_deg;
     double  sun_tropical_longitude_deg;
+    /* v84 any-body ingress fields. */
+    int32_t body_code;              /* NAIF code, or 10007/10008 */
+    double  sidereal_longitude_deg;
+    double  tropical_longitude_deg;
+    uint8_t is_retrograde;          /* 1 = boundary crossed in retrograde */
 } DhruvSankrantiEvent;
 
 typedef struct {
@@ -944,6 +1033,9 @@ typedef struct {
     DhruvUtcTime start_utc;
     DhruvUtcTime end_utc;
     DhruvSankrantiConfig config;
+    /* v84: 0 = Sun (classical sankranti), otherwise a NAIF code or
+     * 10007 (Rahu) / 10008 (Ketu). */
+    int32_t body_code;
 } DhruvSankrantiSearchRequest;
 
 typedef struct {
@@ -1181,6 +1273,13 @@ typedef struct {
     double  body2_latitude_deg;
     int32_t body1_code;
     int32_t body2_code;
+    /* v84: matched target angle plus optional sidereal echoes. */
+    double  target_separation_deg;
+    uint8_t has_sidereal;
+    double  body1_sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    double  body2_sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    int32_t body1_rashi_index;            /* -1 when has_sidereal == 0 */
+    int32_t body2_rashi_index;            /* -1 when has_sidereal == 0 */
 } DhruvConjunctionEventUtc;
 
 typedef struct {
@@ -1189,6 +1288,10 @@ typedef struct {
     double  longitude_deg;
     double  latitude_deg;
     int32_t station_type;
+    /* v84 sidereal echoes. */
+    uint8_t has_sidereal;
+    double  sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    int32_t rashi_index;            /* -1 when has_sidereal == 0 */
 } DhruvStationaryEventUtc;
 
 typedef struct {
@@ -1198,6 +1301,10 @@ typedef struct {
     double  latitude_deg;
     double  speed_deg_per_day;
     int32_t speed_type;
+    /* v84 sidereal echoes. */
+    uint8_t has_sidereal;
+    double  sidereal_longitude_deg; /* 0.0 when has_sidereal == 0 */
+    int32_t rashi_index;            /* -1 when has_sidereal == 0 */
 } DhruvMaxSpeedEventUtc;
 
 typedef struct {
@@ -2146,6 +2253,8 @@ DhruvStatus dhruv_conjunction_search_ex(
 
 /* --- Grahan (eclipse) --- */
 DhruvGrahanConfig dhruv_grahan_config_default(void);
+/* Writes the configuration actually applied after clamping/sanitizing;
+   build cache keys against this echo rather than the raw request. */
 DhruvStatus dhruv_grahan_config_effective(
     const DhruvGrahanConfig *config,
     DhruvGrahanConfig *out);

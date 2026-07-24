@@ -681,6 +681,111 @@ func newRangeOpsFixtures(t *testing.T) (*Engine, *EOP) {
 	return eng, eop
 }
 
+func TestSankrantiSearchAnyBodyMoon(t *testing.T) {
+	eng, _ := newRangeOpsFixtures(t)
+
+	cfg := SankrantiConfigDefault()
+	if cfg.NodeMode != NodeModeTrue {
+		t.Fatalf("expected true-node sankranti default, got %d", cfg.NodeMode)
+	}
+	req := SankrantiSearchRequest{
+		TargetKind: 0,
+		QueryMode:  2,
+		StartUTC:   UtcTime{Year: 2024, Month: 1, Day: 1},
+		EndUTC:     UtcTime{Year: 2024, Month: 2, Day: 1},
+		Config:     cfg,
+		BodyCode:   301,
+	}
+	_, _, events, err := eng.SankrantiSearch(req)
+	if err != nil {
+		t.Fatalf("SankrantiSearch moon range: %v", err)
+	}
+	if len(events) < 12 {
+		t.Fatalf("expected >=12 moon ingresses in January 2024, got %d", len(events))
+	}
+	for i, ev := range events {
+		if ev.BodyCode != 301 {
+			t.Fatalf("event %d body code: got %d want 301", i, ev.BodyCode)
+		}
+		if ev.RashiIndex < 0 || ev.RashiIndex > 11 {
+			t.Fatalf("event %d rashi index out of range: %d", i, ev.RashiIndex)
+		}
+		if ev.SunSiderealLongitudeDeg != ev.SiderealLongitudeDeg ||
+			ev.SunTropicalLongitudeDeg != ev.TropicalLongitudeDeg {
+			t.Fatalf("event %d legacy longitude aliases must match tracked-body fields", i)
+		}
+	}
+}
+
+func TestConjunctionSearchSunRahuSiderealEcho(t *testing.T) {
+	eng, _ := newRangeOpsFixtures(t)
+
+	cfg := ConjunctionConfigDefault()
+	if cfg.NodeMode != NodeModeTrue {
+		t.Fatalf("expected true-node conjunction default, got %d", cfg.NodeMode)
+	}
+	req := ConjunctionSearchRequest{
+		Body1Code:         10,
+		Body2Code:         10007,
+		QueryMode:         0,
+		AtUTC:             UtcTime{Year: 2024, Month: 3, Day: 1},
+		Config:            cfg,
+		HasSiderealConfig: true,
+		SiderealConfig:    SankrantiConfigDefault(),
+	}
+	ev, found, _, err := eng.ConjunctionSearch(req)
+	if err != nil || !found {
+		t.Fatalf("ConjunctionSearch sun-rahu next: found=%v err=%v", found, err)
+	}
+	if ev.Body1Code != 10 || ev.Body2Code != 10007 {
+		t.Fatalf("unexpected event body codes: %d/%d", ev.Body1Code, ev.Body2Code)
+	}
+	if angularSepDeg(ev.Body1LongitudeDeg, ev.Body2LongitudeDeg) > 0.1 {
+		t.Fatalf("expected near-zero separation, got %v", ev.ActualSeparationDeg)
+	}
+	if !ev.HasSidereal {
+		t.Fatalf("expected sidereal echoes with HasSiderealConfig")
+	}
+	if ev.Body1RashiIndex < 0 || ev.Body1RashiIndex > 11 ||
+		ev.Body2RashiIndex < 0 || ev.Body2RashiIndex > 11 {
+		t.Fatalf("sidereal rashi indices out of range: %d/%d", ev.Body1RashiIndex, ev.Body2RashiIndex)
+	}
+}
+
+func TestMotionSearchRahuStationary(t *testing.T) {
+	eng, _ := newRangeOpsFixtures(t)
+
+	cfg := StationaryConfigDefault()
+	if cfg.NodeMode != NodeModeTrue {
+		t.Fatalf("expected true-node stationary default, got %d", cfg.NodeMode)
+	}
+	req := MotionSearchRequest{
+		BodyCode:   10007,
+		MotionKind: 0,
+		QueryMode:  2,
+		StartUTC:   UtcTime{Year: 2024, Month: 1, Day: 1},
+		EndUTC:     UtcTime{Year: 2024, Month: 3, Day: 1},
+		Config:     cfg,
+	}
+	_, _, _, stations, _, err := eng.MotionSearch(req)
+	if err != nil {
+		t.Fatalf("MotionSearch rahu stationary range: %v", err)
+	}
+	if len(stations) < 1 {
+		t.Fatalf("expected >=1 true-node station in 60 days, got %d", len(stations))
+	}
+	for i, ev := range stations {
+		if ev.BodyCode != 10007 {
+			t.Fatalf("station %d body code: got %d want 10007", i, ev.BodyCode)
+		}
+	}
+
+	req.Config.NodeMode = NodeModeMean
+	if _, _, _, _, _, err := eng.MotionSearch(req); err == nil {
+		t.Fatalf("expected error for mean-node stationary search of Rahu")
+	}
+}
+
 func TestAmshaSeriesMatchesSingleEpochChart(t *testing.T) {
 	eng, eop := newRangeOpsFixtures(t)
 

@@ -57,6 +57,7 @@ fn rs_search_bench(c: &mut Criterion) {
         b.iter(|| {
             let req = LunarPhaseRequest {
                 kind: LunarPhaseKind::Purnima,
+                sankranti_config: None,
                 query: LunarPhaseRequestQuery::Next {
                     at: TimeInput::Utc(black_box(date)),
                 },

@@ -20,9 +20,9 @@ use dhruv_search::operations::{
 };
 use dhruv_search::{
     GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
-    GocharTransitBody, NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL_CORE,
+    NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL_CORE,
     PANCHANG_INCLUDE_LOCATION_INDEPENDENT, SankrantiConfig, StationaryConfig, TajakaReturnBasis,
-    TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner,
+    TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitBody,
     TransitToNatalAspectEvent, amsha_lagna_events, ayanamsha, body_ecliptic_lon_lat, conjunction,
     dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
     dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
@@ -459,6 +459,7 @@ struct SankrantiConfigInput {
     use_nutation: Option<bool>,
     precession_model: Option<EnumInput>,
     reference_plane: Option<EnumInput>,
+    node_mode: Option<EnumInput>,
     step_size_days: Option<f64>,
     max_iterations: Option<u32>,
     convergence_days: Option<f64>,
@@ -467,6 +468,8 @@ struct SankrantiConfigInput {
 #[derive(Debug, Clone, Deserialize)]
 struct SearchConfigInput {
     target_separation_deg: Option<f64>,
+    target_separations_deg: Option<Vec<f64>>,
+    node_mode: Option<EnumInput>,
     step_size_days: Option<f64>,
     max_iterations: Option<u32>,
     convergence_days: Option<f64>,
@@ -1096,18 +1099,18 @@ fn parse_body(input: &EnumInput) -> Result<Body, Value> {
     }
 }
 
-fn parse_gochar_transit_body(input: &EnumInput) -> Result<GocharTransitBody, Value> {
+fn parse_transit_body(input: &EnumInput) -> Result<TransitBody, Value> {
     match input {
-        EnumInput::Int(code) => GocharTransitBody::from_code(*code as i32)
-            .ok_or_else(|| error_payload("invalid_request", "unknown gochar transit code")),
+        EnumInput::Int(code) => TransitBody::from_code(*code as i32)
+            .ok_or_else(|| error_payload("invalid_request", "unknown transit body code")),
         EnumInput::Str(value) => {
             let normalized = value.trim().to_ascii_lowercase().replace('_', "-");
             match normalized.as_str() {
-                "rahu" => Ok(GocharTransitBody::Rahu),
-                "ketu" => Ok(GocharTransitBody::Ketu),
+                "rahu" => Ok(TransitBody::Rahu),
+                "ketu" => Ok(TransitBody::Ketu),
                 _ => parse_named(value, &BODY_VARIANTS)
-                    .map(GocharTransitBody::Body)
-                    .ok_or_else(|| error_payload("invalid_request", "unknown gochar transit body")),
+                    .map(TransitBody::Body)
+                    .ok_or_else(|| error_payload("invalid_request", "unknown transit body")),
             }
         }
     }
@@ -1816,6 +1819,9 @@ fn to_sankranti_config(
         if let Some(model) = parse_precession_model(input.precession_model.as_ref())? {
             config.precession_model = model;
         }
+        if input.node_mode.is_some() {
+            config.node_mode = parse_node_mode(input.node_mode.as_ref())?;
+        }
         if let Some(step) = input.step_size_days {
             config.step_size_days = step;
         }
@@ -1911,7 +1917,7 @@ fn to_gochar_events_config(
 fn to_conjunction_config(
     state: &EngineState,
     input: Option<&SearchConfigInput>,
-) -> ConjunctionConfig {
+) -> Result<ConjunctionConfig, Value> {
     let mut config = state
         .resolver
         .as_ref()
@@ -1926,6 +1932,9 @@ fn to_conjunction_config(
         if let Some(target) = input.target_separation_deg {
             config.target_separation_deg = target;
         }
+        if input.node_mode.is_some() {
+            config.node_mode = parse_node_mode(input.node_mode.as_ref())?;
+        }
         if let Some(step) = input.step_size_days {
             config.step_size_days = step;
         }
@@ -1936,13 +1945,13 @@ fn to_conjunction_config(
             config.convergence_days = convergence;
         }
     }
-    config
+    Ok(config)
 }
 
 fn to_stationary_config(
     state: &EngineState,
     input: Option<&SearchConfigInput>,
-) -> StationaryConfig {
+) -> Result<StationaryConfig, Value> {
     let mut config = state
         .resolver
         .as_ref()
@@ -1954,6 +1963,9 @@ fn to_stationary_config(
         })
         .unwrap_or_else(StationaryConfig::inner_planet);
     if let Some(input) = input {
+        if input.node_mode.is_some() {
+            config.node_mode = parse_node_mode(input.node_mode.as_ref())?;
+        }
         if let Some(step) = input.step_size_days {
             config.step_size_days = step;
         }
@@ -1967,7 +1979,7 @@ fn to_stationary_config(
             config.numerical_step_days = numerical;
         }
     }
-    config
+    Ok(config)
 }
 
 fn to_grahan_config(
@@ -2881,10 +2893,15 @@ fn conjunction_event_json(event: dhruv_search::ConjunctionEvent) -> Value {
         "utc": utc_json(event.utc),
         "jd_tdb": event.jd_tdb,
         "actual_separation_deg": event.actual_separation_deg,
+        "target_separation_deg": event.target_separation_deg,
         "body1_longitude_deg": event.body1_longitude_deg,
         "body2_longitude_deg": event.body2_longitude_deg,
         "body1_latitude_deg": event.body1_latitude_deg,
         "body2_latitude_deg": event.body2_latitude_deg,
+        "body1_sidereal_longitude_deg": event.body1_sidereal_longitude_deg,
+        "body2_sidereal_longitude_deg": event.body2_sidereal_longitude_deg,
+        "body1_rashi_index": event.body1_rashi_index,
+        "body2_rashi_index": event.body2_rashi_index,
         "body1": debug_name(event.body1),
         "body2": debug_name(event.body2)
     })
@@ -3120,7 +3137,11 @@ fn lunar_phase_event_json(event: dhruv_search::LunarPhaseEvent) -> Value {
         "utc": utc_json(event.utc),
         "phase": debug_name(event.phase),
         "moon_longitude_deg": event.moon_longitude_deg,
-        "sun_longitude_deg": event.sun_longitude_deg
+        "sun_longitude_deg": event.sun_longitude_deg,
+        "moon_sidereal_longitude_deg": event.moon_sidereal_longitude_deg,
+        "sun_sidereal_longitude_deg": event.sun_sidereal_longitude_deg,
+        "moon_rashi_index": event.moon_rashi_index,
+        "sun_rashi_index": event.sun_rashi_index
     })
 }
 
@@ -3134,13 +3155,21 @@ fn sankranti_result_json(result: SankrantiResult) -> Value {
 }
 
 fn sankranti_event_json(event: dhruv_search::SankrantiEvent) -> Value {
-    json!({
+    let mut value = json!({
         "utc": utc_json(event.utc),
+        "body": debug_name(event.body),
         "rashi": debug_name(event.rashi),
         "rashi_index": event.rashi_index,
-        "sun_sidereal_longitude_deg": event.sun_sidereal_longitude_deg,
-        "sun_tropical_longitude_deg": event.sun_tropical_longitude_deg
-    })
+        "sidereal_longitude_deg": event.sidereal_longitude_deg,
+        "tropical_longitude_deg": event.tropical_longitude_deg,
+        "is_retrograde": event.is_retrograde
+    });
+    if event.body == TransitBody::Body(Body::Sun) {
+        // Legacy keys kept for wire compatibility with Sun-only callers.
+        value["sun_sidereal_longitude_deg"] = json!(event.sidereal_longitude_deg);
+        value["sun_tropical_longitude_deg"] = json!(event.tropical_longitude_deg);
+    }
+    value
 }
 
 fn motion_result_json(result: MotionResult) -> Value {
@@ -3167,6 +3196,8 @@ fn stationary_event_json(event: dhruv_search::StationaryEvent) -> Value {
         "body": debug_name(event.body),
         "longitude_deg": event.longitude_deg,
         "latitude_deg": event.latitude_deg,
+        "sidereal_longitude_deg": event.sidereal_longitude_deg,
+        "rashi_index": event.rashi_index,
         "station_type": debug_name(event.station_type)
     })
 }
@@ -3179,6 +3210,8 @@ fn max_speed_event_json(event: dhruv_search::MaxSpeedEvent) -> Value {
         "longitude_deg": event.longitude_deg,
         "latitude_deg": event.latitude_deg,
         "speed_deg_per_day": event.speed_deg_per_day,
+        "sidereal_longitude_deg": event.sidereal_longitude_deg,
+        "rashi_index": event.rashi_index,
         "speed_type": debug_name(event.speed_type)
     })
 }
@@ -4390,13 +4423,23 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                 };
                 let op =
                     ConjunctionOperation {
-                        body1: parse_body(request.body1.as_ref().ok_or_else(|| {
+                        body1: parse_transit_body(request.body1.as_ref().ok_or_else(|| {
                             error_payload("invalid_request", "body1 is required")
                         })?)?,
-                        body2: parse_body(request.body2.as_ref().ok_or_else(|| {
+                        body2: parse_transit_body(request.body2.as_ref().ok_or_else(|| {
                             error_payload("invalid_request", "body2 is required")
                         })?)?,
-                        config: to_conjunction_config(state, request.config.as_ref()),
+                        config: to_conjunction_config(state, request.config.as_ref())?,
+                        target_separations_deg: request
+                            .config
+                            .as_ref()
+                            .and_then(|config| config.target_separations_deg.clone())
+                            .unwrap_or_default(),
+                        sankranti_config: request
+                            .sankranti_config
+                            .as_ref()
+                            .map(|input| to_sankranti_config(state, Some(input)))
+                            .transpose()?,
                         query,
                     };
                 conjunction(engine, &op)
@@ -4459,6 +4502,11 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                         kind: parse_lunar_phase_kind(request.kind.as_ref().ok_or_else(|| {
                             error_payload("invalid_request", "kind is required")
                         })?)?,
+                        sankranti_config: request
+                            .sankranti_config
+                            .as_ref()
+                            .map(|input| to_sankranti_config(state, Some(input)))
+                            .transpose()?,
                         query,
                     };
                 dhruv_search::lunar_phase(engine, &op)
@@ -4499,9 +4547,23 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                         SankrantiTarget::SpecificRashi(rashi)
                     }
                 };
+                let body = match request.body.as_ref() {
+                    Some(input) => parse_transit_body(input)?,
+                    None => TransitBody::Body(Body::Sun),
+                };
+                let mut config = to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                let step_given = request
+                    .sankranti_config
+                    .as_ref()
+                    .and_then(|input| input.step_size_days)
+                    .is_some();
+                if !step_given && body != TransitBody::Body(Body::Sun) {
+                    config.step_size_days = body.default_ingress_step_days();
+                }
                 let op = SankrantiOperation {
+                    body,
                     target,
-                    config: to_sankranti_config(state, request.sankranti_config.as_ref())?,
+                    config,
                     query,
                 };
                 dhruv_search::sankranti(engine, &op)
@@ -4526,13 +4588,18 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                 };
                 let op =
                     MotionOperation {
-                        body: parse_body(request.body.as_ref().ok_or_else(|| {
+                        body: parse_transit_body(request.body.as_ref().ok_or_else(|| {
                             error_payload("invalid_request", "body is required")
                         })?)?,
                         kind: parse_motion_kind(request.kind.as_ref().ok_or_else(|| {
                             error_payload("invalid_request", "kind is required")
                         })?)?,
-                        config: to_stationary_config(state, request.config.as_ref()),
+                        config: to_stationary_config(state, request.config.as_ref())?,
+                        sankranti_config: request
+                            .sankranti_config
+                            .as_ref()
+                            .map(|input| to_sankranti_config(state, Some(input)))
+                            .transpose()?,
                         query,
                     };
                 motion(engine, &op)
@@ -4564,7 +4631,7 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                     .clone()
                     .unwrap_or_default()
                     .into_iter()
-                    .map(|input| parse_gochar_transit_body(&input))
+                    .map(|input| parse_transit_body(&input))
                     .collect::<Result<Vec<_>, _>>()?;
                 let natal_targets = request
                     .natal_targets

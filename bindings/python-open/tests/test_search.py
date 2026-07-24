@@ -169,3 +169,63 @@ class TestSankranti:
             max_results=1,
         )
         assert len(events) == 12
+
+
+@skip_no_kernels
+class TestNodeAndAnyBodySearch:
+    def test_moon_sankranti_range(self, engine_handles):
+        """Moon rashi ingresses across Jan 2024 (any-body sankranti)."""
+        from ctara_dhruv.search import search_sankrantis
+        events = search_sankrantis(
+            engine_handles._ptr,
+            start_jd=UtcTime(2024, 1, 1, 0, 0, 0.0),
+            end_jd=UtcTime(2024, 2, 1, 0, 0, 0.0),
+            body_code=301,
+        )
+        # Moon crosses a rashi boundary roughly every 2.25 days
+        assert len(events) >= 12
+        for e in events:
+            assert e.body_code == 301
+            assert isinstance(e.is_retrograde, bool)
+            assert 0 <= e.rashi_index <= 11
+            # Legacy fields alias the tracked body's longitudes
+            assert e.sun_sidereal_longitude_deg == e.sidereal_longitude_deg
+            assert e.sun_tropical_longitude_deg == e.tropical_longitude_deg
+
+    def test_next_sun_rahu_conjunction(self, engine_handles):
+        """Conjunction search accepts the Rahu node body code."""
+        from ctara_dhruv.search import next_conjunction
+        evt = next_conjunction(
+            engine_handles._ptr,
+            body1_code=10, body2_code=10007,
+            after_jd_tdb=UtcTime(2024, 3, 1, 0, 0, 0.0),
+        )
+        assert evt is not None
+        assert evt.body2_code == 10007
+
+    def test_rahu_stationary_range(self, engine_handles):
+        """True-node Rahu stations occur roughly weekly."""
+        from ctara_dhruv.search import search_stationary
+        events = search_stationary(
+            engine_handles._ptr,
+            body_code=10007,
+            start_jd=UtcTime(2024, 1, 1, 0, 0, 0.0),
+            end_jd=UtcTime(2024, 3, 1, 0, 0, 0.0),
+        )
+        assert len(events) >= 1
+        for e in events:
+            assert e.body_code == 10007
+            assert e.station_type in (0, 1)
+
+    def test_multi_angle_sun_moon(self, engine_handles):
+        """Multi-angle sweep finds Jan 2024 new and full moon in one pass."""
+        from ctara_dhruv.search import search_conjunctions
+        events = search_conjunctions(
+            engine_handles._ptr,
+            body1_code=10, body2_code=301,
+            start_jd=UtcTime(2024, 1, 1, 0, 0, 0.0),
+            end_jd=UtcTime(2024, 2, 1, 0, 0, 0.0),
+            target_separations=[0.0, 180.0],
+        )
+        assert len(events) == 2
+        assert sorted(e.target_separation_deg for e in events) == [0.0, 180.0]

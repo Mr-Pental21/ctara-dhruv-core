@@ -13,13 +13,31 @@ use dhruv_frames::{
     icrf_to_ecliptic, icrf_to_invariable, precess_ecliptic_j2000_to_date_with_model,
 };
 use dhruv_time::UtcTime;
+use dhruv_vedic_base::{NodeMode, lunar_node_deg_for_epoch_with_model};
 
 use crate::conjunction_types::{ConjunctionConfig, ConjunctionEvent, SearchDirection};
 use crate::error::SearchError;
 use crate::search_util::{is_genuine_crossing, normalize_to_pm180};
+use crate::transit_body::TransitBody;
 
-/// Maximum scan range in days (~800 days covers all synodic periods).
+/// Baseline scan range in days (covers most planet-pair synodic periods).
 const MAX_SCAN_DAYS: f64 = 800.0;
+
+/// Next/prev scan ceiling for a body pair, in days.
+///
+/// Slow pairs (e.g. Jupiter-Saturn, node-Saturn) have synodic periods far
+/// beyond the 800-day baseline; bound the scan by the pair's mean synodic
+/// period with margin. Pairs with near-identical mean rates (Sun with
+/// Mercury/Venus) oscillate about each other: any reachable separation
+/// recurs within the baseline window, so the baseline is kept.
+fn max_scan_days_for_pair(body1: TransitBody, body2: TransitBody) -> f64 {
+    let rel = (body1.mean_rate_deg_per_day() - body2.mean_rate_deg_per_day()).abs();
+    if rel < 1e-3 {
+        MAX_SCAN_DAYS
+    } else {
+        (1.3 * 360.0 / rel).max(MAX_SCAN_DAYS)
+    }
+}
 
 /// Query a body's ecliptic-of-date longitude and latitude in degrees.
 ///
@@ -111,17 +129,45 @@ pub(crate) fn body_ecliptic_state(
     Ok((lon, lat, lon_speed))
 }
 
+/// Query a transit body's ecliptic-of-date longitude and latitude in degrees.
+///
+/// Plain bodies use the ephemeris path; Rahu/Ketu use the lunar-node model
+/// selected by `node_mode` (latitude 0 by definition — the node lies in the
+/// reference plane).
+pub fn transit_body_ecliptic_lon_lat(
+    engine: &Engine,
+    body: TransitBody,
+    jd_tdb: f64,
+    node_mode: NodeMode,
+) -> Result<(f64, f64), SearchError> {
+    match body {
+        TransitBody::Body(b) => body_ecliptic_lon_lat(engine, b, jd_tdb),
+        TransitBody::Rahu | TransitBody::Ketu => {
+            let node = body.lunar_node().expect("node variants carry a node");
+            let lon = lunar_node_deg_for_epoch_with_model(
+                engine,
+                node,
+                jd_tdb,
+                node_mode,
+                DEFAULT_PRECESSION_MODEL,
+            )?;
+            Ok((lon, 0.0))
+        }
+    }
+}
+
 /// Compute the separation function f(t) = normalize(lon1 - lon2 - target).
 /// Returns (f_val, lon1, lon2, lat1, lat2).
 fn separation_function(
     engine: &Engine,
-    body1: Body,
-    body2: Body,
+    body1: TransitBody,
+    body2: TransitBody,
     target_deg: f64,
+    node_mode: NodeMode,
     jd_tdb: f64,
 ) -> Result<(f64, f64, f64, f64, f64), SearchError> {
-    let (lon1, lat1) = body_ecliptic_lon_lat(engine, body1, jd_tdb)?;
-    let (lon2, lat2) = body_ecliptic_lon_lat(engine, body2, jd_tdb)?;
+    let (lon1, lat1) = transit_body_ecliptic_lon_lat(engine, body1, jd_tdb, node_mode)?;
+    let (lon2, lat2) = transit_body_ecliptic_lon_lat(engine, body2, jd_tdb, node_mode)?;
     let f = normalize_to_pm180(lon1 - lon2 - target_deg);
     Ok((f, lon1, lon2, lat1, lat2))
 }
@@ -141,8 +187,8 @@ fn compute_actual_separation(lon1: f64, lon2: f64, target_deg: f64) -> f64 {
 #[allow(clippy::too_many_arguments)]
 fn bisect_refinement(
     engine: &Engine,
-    body1: Body,
-    body2: Body,
+    body1: TransitBody,
+    body2: TransitBody,
     target_deg: f64,
     mut t_a: f64,
     mut f_a: f64,
@@ -158,7 +204,7 @@ fn bisect_refinement(
     for _ in 0..config.max_iterations {
         let t_mid = 0.5 * (t_a + t_b);
         let (f_mid, l1, l2, la1, la2) =
-            separation_function(engine, body1, body2, target_deg, t_mid)?;
+            separation_function(engine, body1, body2, target_deg, config.node_mode, t_mid)?;
 
         lon1 = l1;
         lon2 = l2;
@@ -190,14 +236,22 @@ fn bisect_refinement(
         body2_latitude_deg: lat2,
         body1,
         body2,
+        target_separation_deg: target_deg,
+        body1_sidereal_longitude_deg: None,
+        body2_sidereal_longitude_deg: None,
+        body1_rashi_index: None,
+        body2_rashi_index: None,
     })
 }
 
 /// Find the next or previous conjunction/aspect event.
+///
+/// A mid-scan engine error (ephemeris coverage edge) ends the scan with
+/// `Ok(None)`; an error at the start time still propagates.
 fn find_event(
     engine: &Engine,
-    body1: Body,
-    body2: Body,
+    body1: TransitBody,
+    body2: TransitBody,
     jd_start: f64,
     direction: SearchDirection,
     config: &ConjunctionConfig,
@@ -209,16 +263,32 @@ fn find_event(
         SearchDirection::Backward => -config.step_size_days,
     };
 
-    let max_steps = (MAX_SCAN_DAYS / config.step_size_days).ceil() as usize;
+    let max_steps = (max_scan_days_for_pair(body1, body2) / config.step_size_days).ceil() as usize;
 
-    let (mut f_prev, _, _, _, _) =
-        separation_function(engine, body1, body2, config.target_separation_deg, jd_start)?;
+    let (mut f_prev, _, _, _, _) = separation_function(
+        engine,
+        body1,
+        body2,
+        config.target_separation_deg,
+        config.node_mode,
+        jd_start,
+    )?;
     let mut t_prev = jd_start;
 
     for _ in 0..max_steps {
         let t_curr = t_prev + step;
-        let (f_curr, _, _, _, _) =
-            separation_function(engine, body1, body2, config.target_separation_deg, t_curr)?;
+        let (f_curr, _, _, _, _) = match separation_function(
+            engine,
+            body1,
+            body2,
+            config.target_separation_deg,
+            config.node_mode,
+            t_curr,
+        ) {
+            Ok(v) => v,
+            Err(e) if crate::search_util::is_coverage_edge(&e) => return Ok(None),
+            Err(e) => return Err(e),
+        };
 
         // Check for genuine zero crossing (not a wrap-around discontinuity)
         if is_genuine_crossing(f_prev, f_curr) {
@@ -250,10 +320,13 @@ fn find_event(
 }
 
 /// Find the next conjunction/aspect event after `jd_tdb`.
+///
+/// `body1`/`body2` accept plain bodies and Rahu/Ketu (`TransitBody` is
+/// `From<Body>`, so `Body::Sun.into()` works at call sites).
 pub fn next_conjunction(
     engine: &Engine,
-    body1: Body,
-    body2: Body,
+    body1: TransitBody,
+    body2: TransitBody,
     jd_tdb: f64,
     config: &ConjunctionConfig,
 ) -> Result<Option<ConjunctionEvent>, SearchError> {
@@ -270,8 +343,8 @@ pub fn next_conjunction(
 /// Find the previous conjunction/aspect event before `jd_tdb`.
 pub fn prev_conjunction(
     engine: &Engine,
-    body1: Body,
-    body2: Body,
+    body1: TransitBody,
+    body2: TransitBody,
     jd_tdb: f64,
     config: &ConjunctionConfig,
 ) -> Result<Option<ConjunctionEvent>, SearchError> {
@@ -288,8 +361,8 @@ pub fn prev_conjunction(
 /// Search for all conjunction/aspect events in a time range.
 pub fn search_conjunctions(
     engine: &Engine,
-    body1: Body,
-    body2: Body,
+    body1: TransitBody,
+    body2: TransitBody,
     jd_start: f64,
     jd_end: f64,
     config: &ConjunctionConfig,
@@ -303,14 +376,26 @@ pub fn search_conjunctions(
     let mut events = Vec::new();
     let step = config.step_size_days;
 
-    let (mut f_prev, _, _, _, _) =
-        separation_function(engine, body1, body2, config.target_separation_deg, jd_start)?;
+    let (mut f_prev, _, _, _, _) = separation_function(
+        engine,
+        body1,
+        body2,
+        config.target_separation_deg,
+        config.node_mode,
+        jd_start,
+    )?;
     let mut t_prev = jd_start;
 
     loop {
         let t_curr = (t_prev + step).min(jd_end);
-        let (f_curr, _, _, _, _) =
-            separation_function(engine, body1, body2, config.target_separation_deg, t_curr)?;
+        let (f_curr, _, _, _, _) = separation_function(
+            engine,
+            body1,
+            body2,
+            config.target_separation_deg,
+            config.node_mode,
+            t_curr,
+        )?;
 
         if is_genuine_crossing(f_prev, f_curr) {
             let event = bisect_refinement(
@@ -405,5 +490,28 @@ mod tests {
         let mut c = ConjunctionConfig::conjunction(1.0);
         c.max_iterations = 0;
         assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn pair_scan_cap_extends_for_slow_pairs() {
+        // Fast pair keeps the baseline.
+        let moon_sun =
+            max_scan_days_for_pair(TransitBody::Body(Body::Moon), TransitBody::Body(Body::Sun));
+        assert!((moon_sun - 800.0).abs() < 1e-9);
+        // Sun/Mercury share a mean rate: baseline (separations oscillate).
+        let sun_mercury = max_scan_days_for_pair(
+            TransitBody::Body(Body::Sun),
+            TransitBody::Body(Body::Mercury),
+        );
+        assert!((sun_mercury - 800.0).abs() < 1e-9);
+        // Jupiter-Saturn synodic ~7250 d: cap must cover it.
+        let jup_sat = max_scan_days_for_pair(
+            TransitBody::Body(Body::Jupiter),
+            TransitBody::Body(Body::Saturn),
+        );
+        assert!(jup_sat > 7_250.0, "cap = {jup_sat}");
+        // Node-Saturn synodic ~4160 d: cap must cover it.
+        let rahu_sat = max_scan_days_for_pair(TransitBody::Rahu, TransitBody::Body(Body::Saturn));
+        assert!(rahu_sat > 4_160.0, "cap = {rahu_sat}");
     }
 }
