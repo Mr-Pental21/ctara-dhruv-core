@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       85
+#define DHRUV_API_VERSION       86
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -3114,6 +3114,10 @@ uint32_t dhruv_amsha_point_count(uint32_t family);
  * an unknown family or out-of-range index. */
 const char *dhruv_amsha_point_name(uint32_t family, uint32_t index);
 const char *dhruv_amsha_point_key(uint32_t family, uint32_t index);
+/* Sanskrit display name of the amsha with this D-number code (for example
+ * "Navamsha" for 9). Returns NUL-terminated UTF-8 valid for the process
+ * lifetime, or NULL for a code outside the 34 supported amshas. */
+const char *dhruv_amsha_sanskrit_name(uint16_t amsha_code);
 DhruvStatus dhruv_amsha_longitude(
     double sidereal_lon,
     uint16_t amsha_code,

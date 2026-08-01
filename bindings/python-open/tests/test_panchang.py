@@ -58,12 +58,12 @@ class TestPanchangCompute:
 
 
 class TestAbiVersion:
-    def test_api_version_is_84(self):
-        """Library and embedded header agree on ABI v84."""
+    def test_api_version_matches_expected(self):
+        """Library and embedded header agree on the expected ABI version."""
         from ctara_dhruv._ffi import lib
         from ctara_dhruv._cdef import EXPECTED_API_VERSION
-        assert EXPECTED_API_VERSION == 85
-        assert lib.dhruv_api_version() == 85
+        assert EXPECTED_API_VERSION == 86
+        assert lib.dhruv_api_version() == EXPECTED_API_VERSION
 
 
 @skip_no_kernels

@@ -10649,26 +10649,27 @@ fn write_amsha_transform_rows(
         },
         AmshaOutputFormat::Tsv => match output {
             AmshaOutputMode::Longitude => {
-                writeln!(w, "amsha\tvariation\tlongitude_deg")?;
+                writeln!(w, "amsha\tvariation\tlongitude_deg\tsanskrit_name")?;
                 for row in rows {
                     writeln!(
                         w,
-                        "D{}\t{}\t{:.6}",
+                        "D{}\t{}\t{:.6}\t{}",
                         row.amsha.code(),
                         row.variation_code,
-                        row.longitude
+                        row.longitude,
+                        row.amsha.sanskrit_name()
                     )?;
                 }
             }
             AmshaOutputMode::Rashi => {
                 writeln!(
                     w,
-                    "amsha\tvariation\tlongitude_deg\trashi_index\trashi\tdegrees_in_rashi\tdms_degrees\tdms_minutes\tdms_seconds"
+                    "amsha\tvariation\tlongitude_deg\trashi_index\trashi\tdegrees_in_rashi\tdms_degrees\tdms_minutes\tdms_seconds\tsanskrit_name"
                 )?;
                 for row in rows {
                     writeln!(
                         w,
-                        "D{}\t{}\t{:.6}\t{}\t{}\t{:.6}\t{}\t{}\t{:.2}",
+                        "D{}\t{}\t{:.6}\t{}\t{}\t{:.6}\t{}\t{}\t{:.2}\t{}",
                         row.amsha.code(),
                         row.variation_code,
                         row.longitude,
@@ -10678,6 +10679,7 @@ fn write_amsha_transform_rows(
                         row.info.dms.degrees,
                         row.info.dms.minutes,
                         row.info.dms.seconds,
+                        row.amsha.sanskrit_name(),
                     )?;
                 }
             }
@@ -10785,18 +10787,22 @@ fn write_amsha_variation_catalogs(
             }
         }
         AmshaOutputFormat::Tsv => {
-            writeln!(w, "amsha\tvariation\tname\tlabel\tis_default\tdescription")?;
+            writeln!(
+                w,
+                "amsha\tvariation\tname\tlabel\tis_default\tdescription\tsanskrit_name"
+            )?;
             for amsha in amshas {
                 for info in dhruv_vedic_base::amsha_variations(*amsha) {
                     writeln!(
                         w,
-                        "D{}\t{}\t{}\t{}\t{}\t{}",
+                        "D{}\t{}\t{}\t{}\t{}\t{}\t{}",
                         amsha.code(),
                         info.variation_code,
                         info.name,
                         info.label,
                         info.is_default as u8,
-                        info.description
+                        info.description,
+                        amsha.sanskrit_name()
                     )?;
                 }
             }
@@ -12817,6 +12823,18 @@ mod tests {
         );
         assert!(rendered.contains("\nD9\t0\t"));
         assert_eq!(rendered.lines().count(), 2);
+        // The sanskrit name is the last column, so a TSV consumer can build a
+        // D-number -> display-name table straight from `amsha --format tsv`.
+        let header: Vec<&str> = rendered
+            .lines()
+            .next()
+            .expect("header")
+            .split('\t')
+            .collect();
+        let row: Vec<&str> = rendered.lines().nth(1).expect("row").split('\t').collect();
+        assert_eq!(header.last(), Some(&"sanskrit_name"));
+        assert_eq!(row.len(), header.len());
+        assert_eq!(row.last(), Some(&"Navamsha"));
     }
 
     #[test]

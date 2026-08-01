@@ -23,6 +23,24 @@ func TestAmshaLongitudeNewD2HoraVariations(t *testing.T) {
 	}
 }
 
+func TestAmshaSanskritName(t *testing.T) {
+	for _, tc := range []struct {
+		code uint16
+		want string
+	}{
+		{1, "Rashi"},
+		{9, "Navamsha"},
+		{144, "Dwadashashtottaramsha"},
+		{0, ""},
+		{13, ""},
+		{145, ""},
+	} {
+		if got := AmshaSanskritName(tc.code); got != tc.want {
+			t.Fatalf("AmshaSanskritName(%d) = %q, want %q", tc.code, got, tc.want)
+		}
+	}
+}
+
 func TestAmshaVariations(t *testing.T) {
 	out, err := AmshaVariations(2)
 	if err != nil {

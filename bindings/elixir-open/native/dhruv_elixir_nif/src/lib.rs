@@ -3493,6 +3493,7 @@ fn amsha_result_json(result: dhruv_search::AmshaResult) -> Value {
     json!({
         "charts": result.charts.into_iter().map(|chart| json!({
             "amsha": debug_name(chart.amsha),
+            "sanskrit_name": chart.amsha.sanskrit_name(),
             "variation": amsha_variation_info(chart.amsha, chart.variation_code)
                 .map(|info| info.name)
                 .unwrap_or("default"),
@@ -3529,6 +3530,7 @@ fn amsha_result_json(result: dhruv_search::AmshaResult) -> Value {
 fn amsha_series_chart_json(chart: dhruv_search::AmshaSeriesChart) -> Value {
     json!({
         "amsha": debug_name(chart.amsha),
+        "sanskrit_name": chart.amsha.sanskrit_name(),
         "variation_code": chart.variation_code,
         "lagna": amsha_entry_json(chart.lagna),
         "grahas": chart

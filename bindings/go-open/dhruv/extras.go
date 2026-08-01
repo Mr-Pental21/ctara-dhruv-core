@@ -72,6 +72,10 @@ func SpecialLagnaName(index uint32) string    { return cabi.SpecialLagnaName(ind
 func ArudhaPadaName(index uint32) string      { return cabi.ArudhaPadaName(index) }
 func UpagrahaName(index uint32) string        { return cabi.UpagrahaName(index) }
 
+// AmshaSanskritName returns the sanskrit display name for a D-number
+// ("Navamsha" for 9), or "" for a code outside the 34 supported amshas.
+func AmshaSanskritName(amshaCode uint16) string { return cabi.AmshaSanskritName(amshaCode) }
+
 func TithiFromElongation(elongation float64) (TithiPosition, error) {
 	out, st := cabi.TithiFromElongation(elongation)
 	return out, statusErr("tithi_from_elongation", st)

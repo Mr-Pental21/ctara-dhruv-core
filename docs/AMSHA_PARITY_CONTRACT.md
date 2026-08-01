@@ -27,7 +27,7 @@ Primary source files:
 
 Current ABI constants relevant to amsha:
 
-- `DHRUV_API_VERSION = 85`
+- `DHRUV_API_VERSION = 86`
 - `DHRUV_MAX_AMSHA_REQUESTS = 40`
 - `DHRUV_AMSHA_POINT_FAMILY_COUNT = 10`
 
@@ -153,6 +153,11 @@ constant of (family, index) and is queried instead:
 - `dhruv_amsha_point_count(family)`
 - `dhruv_amsha_point_name(family, index)`
 - `dhruv_amsha_point_key(family, index)`
+
+The amsha's own display name is queried the same way, keyed by D-number:
+`dhruv_amsha_sanskrit_name(amsha_code)` returns `Amsha::sanskrit_name()`
+("Navamsha" for `9`), or null for an unsupported code. Object- and JSON-shaped
+surfaces carry it resolved on every chart instead.
 
 JSON-shaped and object-shaped wrapper surfaces (Elixir, Node, Python, Go) do
 carry the resolved identity on every entry, as additive fields — `name` (the
@@ -344,6 +349,8 @@ Use this checklist as the acceptance gate for any wrapper claiming amsha parity.
 - preserves the canonical point order for every family
 - exposes point identity: resolved per entry on JSON/object surfaces, or via
   the indexed accessors on the C ABI
+- exposes the amsha's sanskrit display name: resolved per chart on
+  JSON/object surfaces, or via `dhruv_amsha_sanskrit_name` on the C ABI
 - keeps optional sections as arrays
 - exposes `nakshatra_index`, `pada`, and `rashi_bhava_number` per entry
 

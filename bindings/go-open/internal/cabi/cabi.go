@@ -2799,6 +2799,7 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 			chart := AmshaChart{
 				AmshaCode:                  uint16(out.amshas[i].amsha_code),
 				VariationCode:              uint8(out.amshas[i].variation_code),
+				SanskritName:               AmshaSanskritName(uint16(out.amshas[i].amsha_code)),
 				Lagna:                      goAmshaEntry(out.amshas[i].lagna, AmshaPointFamilyLagna, 0),
 				BhavaCuspsValid:            out.amshas[i].bhava_cusps_valid != 0,
 				RashiBhavaCuspsValid:       out.amshas[i].rashi_bhava_cusps_valid != 0,

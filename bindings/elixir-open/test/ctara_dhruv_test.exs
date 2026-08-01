@@ -585,8 +585,14 @@ defmodule CtaraDhruvTest do
 
           assert length(chart.amshas.charts) == 16
           assert hd(chart.amshas.charts).amsha == "d2"
+          assert hd(chart.amshas.charts).sanskrit_name == "Hora"
           assert hd(chart.amshas.charts).variation == "cancer-leo-only"
           assert Enum.any?(chart.amshas.charts, &(&1.amsha == "d60"))
+
+          assert Enum.any?(
+                   chart.amshas.charts,
+                   &(&1.amsha == "d60" and &1.sanskrit_name == "Shashtiamsha")
+                 )
         else
           assert true
         end

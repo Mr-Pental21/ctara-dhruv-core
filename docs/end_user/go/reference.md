@@ -442,6 +442,10 @@ Strength, dasha, amsha, and tara:
   order — prefer reading `Name` over the slice index.
   `AmshaPointCount` / `AmshaPointName` / `AmshaPointKey` with the
   `AmshaPointFamily*` constants enumerate a family without a chart in hand.
+  `AmshaSanskritName(amshaCode)` gives the library's display name for a
+  D-number (`"Navamsha"` for `9`), or `""` for an unsupported code; every
+  `AmshaChart` and `AmshaSeriesChart` also carries it as `SanskritName`, so a
+  consumer does not need its own D-number to display-name table.
 - `(*Engine).AmshaSeries(eop, fromUTC, toUTC, stepMinutes, loc, sankrantiCfg, requests, includeGrahas)`
   Fixed-cadence slim varga charts, returned as `[]AmshaSeriesPoint`. Grid
   semantics match `GrahaPositionsSeriesForDate`: one point per `stepMinutes`

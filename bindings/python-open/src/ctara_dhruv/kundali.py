@@ -23,6 +23,7 @@ from .amsha import (
     AMSHA_POINT_FAMILY_UPAGRAHA,
     _extract_amsha_entry,
     _extract_amsha_family,
+    amsha_sanskrit_name,
 )
 from .vedic import _make_time_upagraha_config
 from .types import (
@@ -644,6 +645,7 @@ def _extract_amsha_chart(c):
     return AmshaChart(
         amsha_code=c.amsha_code,
         variation_code=c.variation_code,
+        sanskrit_name=amsha_sanskrit_name(c.amsha_code),
         grahas=grahas,
         lagna=lagna,
         outer_planets=outer_planets,

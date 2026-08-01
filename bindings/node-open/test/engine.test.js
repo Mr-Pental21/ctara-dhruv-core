@@ -10,9 +10,19 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
-  assert.equal(dhruv.EXPECTED_API_VERSION, 85);
+  assert.equal(dhruv.EXPECTED_API_VERSION, 86);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
+});
+
+test('amshaSanskritName resolves D-numbers and rejects unsupported codes', () => {
+  assert.equal(dhruv.amshaSanskritName(1), 'Rashi');
+  assert.equal(dhruv.amshaSanskritName(9), 'Navamsha');
+  assert.equal(dhruv.amshaSanskritName(144), 'Dwadashashtottaramsha');
+  // 13 is not an amsha; 65545 must not wrap onto 9 and report 'Navamsha'.
+  for (const code of [0, 13, 145, 65545]) {
+    assert.equal(dhruv.amshaSanskritName(code), null);
+  }
 });
 
 test('panchang include mask constants match the C ABI', () => {

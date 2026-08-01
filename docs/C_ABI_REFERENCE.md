@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 85`
+**ABI version:** `DHRUV_API_VERSION = 86`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -2087,6 +2087,18 @@ const char *dhruv_amsha_point_key(uint32_t family, uint32_t index);
 (`sree_lagna`, `gulika`, `bhava_3`, `a1`, `surya`). Both return
 NUL-terminated UTF-8 valid for the process lifetime, or `NULL` for an unknown
 family or an out-of-range index.
+
+The amsha itself is named the same way, keyed by the D-number carried in
+`DhruvAmshaChart.amsha_code`:
+
+```c
+const char *dhruv_amsha_sanskrit_name(uint16_t amsha_code);  /* 9 -> "Navamsha" */
+```
+
+It returns NUL-terminated UTF-8 valid for the process lifetime, or `NULL` for
+a code outside the 34 supported amshas. This is the library's own display
+vocabulary, so a C consumer does not have to carry its own D-number to
+display-name table.
 
 Names are not repeated inside `DhruvAmshaEntry` because they are compile-time
 constants of (family, index) — they never vary by amsha, variation, date or

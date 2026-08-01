@@ -316,6 +316,10 @@ sweeps re-solve boundaries, so match starts with a small tolerance).
   - `amshaSeries`
   - `amshaLagnaEvents`
   - `amshaPointCount` / `amshaPointName` / `amshaPointKey`
+  - `amshaSanskritName(amshaCode)` — the library's display name for a D-number
+    (`'Navamsha'` for `9`), or `null` for an unsupported code. Every amsha
+    chart and series chart also carries it as `sanskritName`, so a consumer
+    does not need its own D-number to display-name table.
   - `AMSHA_POINT_FAMILY`
   - `MAX_AMSHA_SERIES_CELLS`
   - `MAX_AMSHA_LAGNA_SEGMENTS`

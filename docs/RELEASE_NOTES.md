@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Exposed the library's own display vocabulary for divisional charts across
+  every public surface. `Amsha::sanskrit_name()` ("Rashi", "Hora", "Drekkana",
+  "Navamsha", ...) already existed in `dhruv_vedic_math` but never crossed the
+  ABI boundary, so consumers hand-maintained their own D-number to
+  display-name tables. Purely additive — no existing field, column or key
+  changes meaning.
+  - C ABI (v86): new `dhruv_amsha_sanskrit_name(uint16_t amsha_code)` keyed by
+    the D-number in `DhruvAmshaChart.amsha_code`, returning NUL-terminated
+    UTF-8 (or `NULL` for a code outside the 34 supported amshas). It reads
+    from a `CStr` table rather than the Rust `&'static str`, which is not
+    NUL-terminated; a test walks every `ALL_AMSHAS` entry through the C
+    accessor and compares against `sanskrit_name()`, so a stale table entry
+    fails loudly instead of handing C the wrong name.
+  - Python (`amsha_sanskrit_name`), Go (`AmshaSanskritName`) and Node
+    (`amshaSanskritName`) expose the accessor, and their amsha chart and
+    series-chart results carry the resolved name (`sanskrit_name` /
+    `SanskritName` / `sanskritName`).
+  - Elixir amsha chart and series-chart maps gain `"sanskrit_name"` alongside
+    the code-derived `"amsha"` key (`"d9"`).
+  - CLI `--format tsv` on `amsha` and `amsha-variations` gains a trailing
+    `sanskrit_name` column, appended last so existing column positions are
+    unchanged. The text format is untouched — its `D9_Navamsha` chart label
+    already spells the name.
+
 - Amsha chart entries now carry their own identity. Each `AmshaEntry` gains a
   `point` (`AmshaPoint { family, index }`) whose `name()`/`key()` resolve to
   the library's existing vocabulary and to a stable snake_case identifier, so

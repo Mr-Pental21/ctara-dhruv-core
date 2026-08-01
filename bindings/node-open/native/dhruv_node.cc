@@ -2176,6 +2176,7 @@ napi_value WriteAmshaChart(napi_env env, const DhruvAmshaChart& a) {
     napi_create_object(env, &obj);
     SetNamed(env, obj, "amshaCode", MakeUint32(env, a.amsha_code));
     SetNamed(env, obj, "variationCode", MakeUint32(env, a.variation_code));
+    SetNamed(env, obj, "sanskritName", MakeString(env, dhruv_amsha_sanskrit_name(a.amsha_code)));
     SetNamed(env, obj, "grahas",
              WriteAmshaEntryArray(env, a.grahas, DHRUV_GRAHA_COUNT,
                                   DHRUV_AMSHA_POINT_FAMILY_GRAHA));
@@ -2237,6 +2238,7 @@ napi_value WriteAmshaSeriesChart(napi_env env, const DhruvAmshaSeriesChart& c) {
     napi_create_object(env, &obj);
     SetNamed(env, obj, "amshaCode", MakeUint32(env, c.amsha_code));
     SetNamed(env, obj, "variationCode", MakeUint32(env, c.variation_code));
+    SetNamed(env, obj, "sanskritName", MakeString(env, dhruv_amsha_sanskrit_name(c.amsha_code)));
     SetNamed(env, obj, "lagna",
              WriteAmshaEntry(env, c.lagna, DHRUV_AMSHA_POINT_FAMILY_LAGNA, 0));
     if (c.grahas_valid != 0) {
@@ -6889,6 +6891,19 @@ napi_value AmshaPointName(napi_env env, napi_callback_info info) {
     return MakeString(env, dhruv_amsha_point_name(family, index));
 }
 
+napi_value AmshaSanskritName(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    uint32_t amsha_code = 0;
+    // Reject out-of-range codes rather than truncating: a narrowing cast would
+    // fold e.g. 65545 onto 9 and hand back "Navamsha" for a code that is not one.
+    if (argc < 1 || !GetUint32(env, args[0], &amsha_code) || amsha_code > 0xFFFF) {
+        return MakeString(env, nullptr);
+    }
+    return MakeString(env, dhruv_amsha_sanskrit_name(static_cast<uint16_t>(amsha_code)));
+}
+
 napi_value AmshaPointKey(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2];
@@ -9002,6 +9017,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"amshaPointCount", nullptr, AmshaPointCount, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaPointName", nullptr, AmshaPointName, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaPointKey", nullptr, AmshaPointKey, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"amshaSanskritName", nullptr, AmshaSanskritName, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaLongitude", nullptr, AmshaLongitude, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaRashiInfo", nullptr, AmshaRashiInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaLongitudes", nullptr, AmshaLongitudes, nullptr, nullptr, nullptr, napi_default, nullptr},

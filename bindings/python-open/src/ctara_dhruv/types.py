@@ -1228,12 +1228,15 @@ class AmshaChart:
 
     ``amsha_code``: D-number of this chart.
     ``variation_code``: amsha-specific variation code; 0=default for that amsha.
+    ``sanskrit_name``: the library's display name for this amsha ("Navamsha",
+    "Drekkana", ...); ``None`` for an unrecognised ``amsha_code``.
     """
 
     amsha_code: int
     variation_code: int
     grahas: list[AmshaEntry]
     lagna: AmshaEntry
+    sanskrit_name: Optional[str] = None
     outer_planets: Optional[list[AmshaEntry]] = None
     bhava_cusps: Optional[list[AmshaEntry]] = None
     rashi_bhava_cusps: Optional[list[AmshaEntry]] = None
@@ -1271,12 +1274,13 @@ class AmshaSeriesChart:
 
     ``grahas`` holds the 9 navagraha entries when the series was requested
     with ``include_grahas``; ``None`` otherwise. The varga lagna is always
-    present.
+    present. ``sanskrit_name`` is the library's display name for ``amsha_code``.
     """
 
     amsha_code: int
     variation_code: int
     lagna: AmshaEntry
+    sanskrit_name: Optional[str] = None
     grahas: Optional[list[AmshaEntry]] = None
 
 

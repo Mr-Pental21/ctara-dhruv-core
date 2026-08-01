@@ -65,6 +65,17 @@ def amsha_point_key(family, index):
     return ffi.string(ptr).decode("utf-8")
 
 
+def amsha_sanskrit_name(amsha_code):
+    """Sanskrit display name for a D-number ("Navamsha" for 9), or None.
+
+    Returns None for a code outside the 34 supported amshas.
+    """
+    ptr = lib.dhruv_amsha_sanskrit_name(amsha_code)
+    if ptr == ffi.NULL:
+        return None
+    return ffi.string(ptr).decode("utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -393,6 +404,7 @@ def amsha_chart_for_date(
     return AmshaChart(
         amsha_code=out.amsha_code,
         variation_code=out.variation_code,
+        sanskrit_name=amsha_sanskrit_name(out.amsha_code),
         grahas=grahas,
         lagna=lagna,
         outer_planets=outer_planets,
@@ -562,6 +574,7 @@ def amsha_series(
                     AmshaSeriesChart(
                         amsha_code=chart_c.amsha_code,
                         variation_code=chart_c.variation_code,
+                        sanskrit_name=amsha_sanskrit_name(chart_c.amsha_code),
                         lagna=_extract_amsha_entry(chart_c.lagna),
                         grahas=grahas,
                     )

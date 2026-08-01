@@ -67,7 +67,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 85;
+pub const DHRUV_API_VERSION: u32 = 86;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -13355,6 +13355,60 @@ pub extern "C" fn dhruv_amsha_point_key(family: u32, index: u32) -> *const std::
     amsha_point_lookup(family, index, true)
 }
 
+/// Sanskrit display name of the amsha identified by `amsha_code`.
+///
+/// `amsha_code` is the D-number (1, 2, 3, ..., 144) as carried by
+/// `DhruvAmshaChart::amsha_code`. Returns a NUL-terminated UTF-8 string valid
+/// for the process lifetime (for example `Navamsha` for code `9`), or null for
+/// a code that is not one of the 34 supported amshas.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_amsha_sanskrit_name(amsha_code: u16) -> *const std::ffi::c_char {
+    match Amsha::from_code(amsha_code) {
+        Some(amsha) => AMSHA_SANSKRIT_C_NAMES[amsha.index() as usize].as_ptr(),
+        None => ptr::null(),
+    }
+}
+
+/// Sanskrit amsha names as NUL-terminated C strings, in `ALL_AMSHAS` order
+/// (indexed by `Amsha::index`). Kept in sync with `Amsha::sanskrit_name` by
+/// `amsha_sanskrit_names_match_rust_vocabulary`.
+static AMSHA_SANSKRIT_C_NAMES: [&std::ffi::CStr; 34] = [
+    c"Rashi",
+    c"Hora",
+    c"Drekkana",
+    c"Chaturthamsha",
+    c"Panchamsha",
+    c"Shashthamsha",
+    c"Saptamsha",
+    c"Ashtamsha",
+    c"Navamsha",
+    c"Dashamsha",
+    c"Rudramsha",
+    c"Dwadashamsha",
+    c"Panchadashamsha",
+    c"Shodashamsha",
+    c"Ashtadashamsha",
+    c"Vimshamsha",
+    c"Ekavimshamsha",
+    c"Dwavimshamsha",
+    c"Chaturvimshamsha",
+    c"Panchavimshamsha",
+    c"Bhamsha",
+    c"Ashtavimshamsha",
+    c"Trimshamsha",
+    c"Shattrimshamsha",
+    c"Khavedamsha",
+    c"Akshavedamsha",
+    c"Ashtachatvarimsha",
+    c"Panchashatamsha",
+    c"Chatushpanchashamsha",
+    c"Shashtiamsha",
+    c"Dvasaptatiamsha",
+    c"Navamsha81",
+    c"Ashtottaramsha",
+    c"Dwadashashtottaramsha",
+];
+
 fn amsha_point_family_from_code(family: u32) -> Option<dhruv_search::AmshaPointFamily> {
     u8::try_from(family)
         .ok()
@@ -17741,6 +17795,20 @@ mod tests {
             assert_eq!(got.as_deref(), Some(expected.name()));
         }
         assert!(dhruv_upagraha_name(11).is_null());
+    }
+
+    #[test]
+    fn amsha_sanskrit_names_match_rust_vocabulary() {
+        // Keyed by D-number, not by index: a stale table entry would hand C
+        // the wrong name for a valid amsha rather than fail to resolve.
+        for expected in dhruv_vedic_base::ALL_AMSHAS {
+            let got = read_c_string(dhruv_amsha_sanskrit_name(expected.code()));
+            assert_eq!(got.as_deref(), Some(expected.sanskrit_name()));
+        }
+        // Codes that are not amshas resolve to null rather than a stray entry.
+        for code in [0u16, 13, 17, 100, 145, u16::MAX] {
+            assert!(dhruv_amsha_sanskrit_name(code).is_null());
+        }
     }
 
     #[test]

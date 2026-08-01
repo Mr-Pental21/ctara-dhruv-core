@@ -423,6 +423,14 @@ function amshaPointKey(family, index) {
   return addon.amshaPointKey(family, index);
 }
 
+/**
+ * Sanskrit display name for a D-number ('Navamsha' for 9), or null for a code
+ * outside the 34 supported amshas.
+ */
+function amshaSanskritName(amshaCode) {
+  return addon.amshaSanskritName(amshaCode);
+}
+
 function amshaLongitude(siderealLon, amshaCode, variationCode) {
   const r = addon.amshaLongitude(siderealLon, amshaCode, variationCode);
   checkStatus('amsha_longitude', r.status);
@@ -642,6 +650,7 @@ module.exports = {
   amshaPointCount,
   amshaPointName,
   amshaPointKey,
+  amshaSanskritName,
   amshaLongitude,
   amshaRashiInfo,
   amshaLongitudes,

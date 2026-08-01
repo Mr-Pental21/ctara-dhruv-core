@@ -210,6 +210,9 @@ types for Rust callers, including:
   not ordered house boundaries and there is no cusp-based bhava inside a
   varga). `AmshaPointFamily` and `ALL_AMSHA_POINT_FAMILIES` enumerate the
   families and their canonical order.
+  `Amsha::sanskrit_name()` gives the library's display name for a divisional
+  chart (`"Navamsha"`, `"Drekkana"`, ...), and `Amsha::name()` the prefixed
+  form (`"D9_Navamsha"`); both are reachable through the `Amsha` re-export.
 - full-kundali, shadbala, vimsopaka, and dasha result/config families
 - pure jyotish math helpers such as `calculate_ashtakavarga`,
   `calculate_bhava_bala`, `calculate_bav`, `calculate_sav`, and

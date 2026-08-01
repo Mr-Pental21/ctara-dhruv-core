@@ -203,6 +203,12 @@ func UpagrahaName(index uint32) string {
 	return cString((*C.char)(unsafe.Pointer(C.dhruv_upagraha_name(C.uint32_t(index)))))
 }
 
+// AmshaSanskritName returns the sanskrit display name for a D-number
+// ("Navamsha" for 9), or "" for a code outside the 34 supported amshas.
+func AmshaSanskritName(amshaCode uint16) string {
+	return cString((*C.char)(unsafe.Pointer(C.dhruv_amsha_sanskrit_name(C.uint16_t(amshaCode)))))
+}
+
 func TithiFromElongation(elongation float64) (TithiPosition, Status) {
 	var out C.DhruvTithiPosition
 	st := Status(C.dhruv_tithi_from_elongation(C.double(elongation), &out))
@@ -977,6 +983,7 @@ func AmshaChartForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoL
 	res := AmshaChart{
 		AmshaCode:                  uint16(out.amsha_code),
 		VariationCode:              uint8(out.variation_code),
+		SanskritName:               AmshaSanskritName(uint16(out.amsha_code)),
 		Lagna:                      goAmshaEntry(out.lagna, AmshaPointFamilyLagna, 0),
 		BhavaCuspsValid:            out.bhava_cusps_valid != 0,
 		RashiBhavaCuspsValid:       out.rashi_bhava_cusps_valid != 0,
@@ -1043,6 +1050,7 @@ func goAmshaSeriesChart(v C.DhruvAmshaSeriesChart) AmshaSeriesChart {
 	chart := AmshaSeriesChart{
 		AmshaCode:     uint16(v.amsha_code),
 		VariationCode: uint8(v.variation_code),
+		SanskritName:  AmshaSanskritName(uint16(v.amsha_code)),
 		Lagna:         goAmshaEntry(v.lagna, AmshaPointFamilyLagna, 0),
 		GrahasValid:   v.grahas_valid != 0,
 	}

@@ -244,6 +244,12 @@ Amsha:
 - `amsha-series`
 - `amsha-lagna-events`
 
+`--format tsv` on `amsha` and `amsha-variations` carries a trailing
+`sanskrit_name` column (`Navamsha` for `D9`), so a consumer can build a
+D-number to display-name table from the output instead of maintaining its own.
+It is appended last, leaving every pre-existing column position unchanged. The
+text format already spells the name inside the `D9_Navamsha` chart label.
+
 `amsha-series` samples slim varga charts (varga lagna always, the nine grahas
 with `--include-grahas`) at a fixed cadence from `--date` to `--to-date`,
 using the same grid semantics as the `graha-positions` series mode. The grid

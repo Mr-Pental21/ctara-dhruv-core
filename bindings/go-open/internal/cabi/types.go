@@ -1336,6 +1336,7 @@ type AmshaChartScope struct {
 type AmshaChart struct {
 	AmshaCode                  uint16
 	VariationCode              uint8
+	SanskritName               string
 	Grahas                     [GrahaCount]AmshaEntry
 	Lagna                      AmshaEntry
 	OuterPlanets               []AmshaEntry
@@ -1369,6 +1370,7 @@ type AmshaRequest struct {
 type AmshaSeriesChart struct {
 	AmshaCode     uint16
 	VariationCode uint8
+	SanskritName  string
 	Lagna         AmshaEntry
 	GrahasValid   bool
 	Grahas        [GrahaCount]AmshaEntry

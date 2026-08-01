@@ -387,6 +387,10 @@ apply to the graha. They also expose `lajjitadi`, `lajjitadi_states`, and
 - `amsha_point_count(family)` / `amsha_point_name(family, index)` /
   `amsha_point_key(family, index)` with the `AMSHA_POINT_FAMILY_*` constants,
   for enumerating a family without a chart in hand.
+- `amsha_sanskrit_name(amsha_code)` — the library's display name for a
+  D-number (`"Navamsha"` for `9`), or `None` for an unsupported code. Every
+  `AmshaChart` and `AmshaSeriesChart` also carries it as `sanskrit_name`, so a
+  consumer does not need its own D-number to display-name table.
 - `amsha_variations`
 - `amsha_variations_many`
 - `amsha_series(engine, eop, from_utc, to_utc, step_minutes, location,

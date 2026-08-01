@@ -4,6 +4,19 @@ import pytest
 from conftest import skip_no_kernels, skip_no_eop
 
 
+class TestAmshaSanskritName:
+    def test_known_codes(self):
+        from ctara_dhruv.amsha import amsha_sanskrit_name
+        assert amsha_sanskrit_name(1) == "Rashi"
+        assert amsha_sanskrit_name(9) == "Navamsha"
+        assert amsha_sanskrit_name(144) == "Dwadashashtottaramsha"
+
+    def test_unsupported_codes_return_none(self):
+        from ctara_dhruv.amsha import amsha_sanskrit_name
+        for code in (0, 13, 17, 145):
+            assert amsha_sanskrit_name(code) is None
+
+
 class TestAmshaLongitudePureMath:
     def test_d1_identity(self):
         """D1 (rashi chart) should return the same longitude."""

@@ -122,6 +122,17 @@ fn amsha_low_level_helpers_run() {
 }
 
 #[test]
+fn amsha_display_names_are_reachable_through_the_reexport() {
+    // Pins that `Amsha`'s naming vocabulary crosses the dhruv_rs boundary, not
+    // just the enum itself.
+    assert_eq!(Amsha::D9.sanskrit_name(), "Navamsha");
+    assert_eq!(Amsha::D9.name(), "D9_Navamsha");
+    for amsha in ALL_AMSHAS {
+        assert!(amsha.name().ends_with(amsha.sanskrit_name()));
+    }
+}
+
+#[test]
 fn amsha_variation_helpers_are_amsha_scoped() {
     let d2 = amsha_variations(Amsha::D2);
     assert_eq!(d2.len(), 4);

@@ -240,6 +240,11 @@ refute events.truncated
 - `amsha_series/2`
 - `amsha_lagna_events/2`
 
+Each chart map carries `"sanskrit_name"` — the library's display name for the
+amsha (`"Navamsha"`, `"Drekkana"`, ...) — alongside the code-derived
+`"amsha"` key (`"d9"`), so a consumer does not need its own D-number to
+display-name table. `amsha_series/2` charts carry it too.
+
 Every entry inside an amsha chart identifies itself. Each entry map carries
 `"name"` (a stable snake_case key such as `"sree_lagna"`, `"gulika"`, `"a1"`,
 `"bhava_3"`, `"surya"`), `"display_name"`, `"family"` (the section it belongs

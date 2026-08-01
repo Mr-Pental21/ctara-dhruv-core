@@ -94,9 +94,11 @@ defmodule CtaraDhruv.Jyotish do
   `:include_grahas` boolean (default `false`) that adds the nine graha varga
   entries per chart. At most 100,000 cells (points x unique requests). Returns
   `%{"points" => [%{"utc" => ..., "jd_utc" => ..., "charts" => [%{"amsha" =>
-  ..., "variation_code" => ..., "lagna" => ..., "grahas" => [...] | nil}]}]}`
-  with charts in request order and entries in the single-epoch `amsha/2`
-  entry shape.
+  ..., "sanskrit_name" => ..., "variation_code" => ..., "lagna" => ...,
+  "grahas" => [...] | nil}]}]}` with charts in request order and entries in
+  the single-epoch `amsha/2` entry shape. `"sanskrit_name"` is the library's
+  display name for the amsha (`"Navamsha"`) alongside the code-derived
+  `"amsha"` key (`"d9"`).
   """
   def amsha_series(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :amsha_series))
