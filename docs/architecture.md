@@ -63,10 +63,14 @@ tions     SPK/DAF        UTC/TAI/TT/TDB, precession,     pure Vedic
   downstream crates and wrappers import Vedic items through it.
 - **`dhruv_search`** — event and range searches (conjunctions, panchang
   events, gochar, stationary points, eclipses) driving the engine and Vedic
-  layers through root-finding and scanning strategies.
-- **`dhruv_vedic_ops`** — high-level Vedic operations composing engine,
-  search, and Vedic layers into complete results (kundali, dashas with
-  variations, balas, grahan products).
+  layers through root-finding and scanning strategies. Also the canonical
+  home for the composed date-driven workflows (kundali, amsha charts,
+  dashas with variations, balas, panchang).
+- **`dhruv_vedic_ops`** — the non-search operation surface: ayanamsha,
+  lunar-node, and tara operations, plus the crate-level time-conversion
+  policy. Its `jyotish`, `jyotish_types`, `dasha`, `panchang`, and
+  `panchang_types` modules are re-export shims over `dhruv_search`, which
+  owns those implementations.
 - **`dhruv_config`** — the layered configuration resolver (defaults →
   common section → operation section → explicit values) with provenance
   tracking, shared by every facade. See

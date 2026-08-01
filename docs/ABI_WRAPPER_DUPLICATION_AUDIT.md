@@ -57,6 +57,15 @@ wrapper). The combined `panchang_for_date` now takes a `PANCHANG_INCLUDE_*`
 mask that gates computation, so only selected elements (and their shared
 intermediates) are computed.
 
+Status note: the same crate-level duplication is now fully resolved. The
+`jyotish`, `jyotish_types`, and `dasha` modules of `dhruv_vedic_ops` were
+copies of the `dhruv_search` originals, created by the incomplete Phase 2 of
+the March 2026 crate reorganization (commit `c82a87e`), which added the copies
+without removing the originals. All three are now re-export shims over
+`dhruv_search`, matching the panchang precedent. `dhruv_search` is the single
+home for jyotish, amsha, and dasha orchestration; `dhruv_vedic_ops` owns only
+the ayanamsha/lunar-node/tara operations and the time-conversion policy.
+
 ### 2) Panchang low-level/composable APIs already exist (good)
 
 Already exposed in C ABI:
