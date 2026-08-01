@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 86`
+**ABI version:** `DHRUV_API_VERSION = 87`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -236,6 +236,15 @@ enum DhruvStatus {
 | `DHRUV_MAX_AMSHA_SERIES_CELLS` | 100000 | Max grid points x unique requests per `dhruv_amsha_series` call |
 | `DHRUV_MAX_PANCHANG_EVENTS` | 50000 | Hard ceiling on segments per `dhruv_panchang_events` call |
 | `DHRUV_MAX_AMSHA_LAGNA_SEGMENTS` | 50000 | Hard ceiling on segments per `dhruv_amsha_lagna_events` call |
+| `DHRUV_MAX_CHARAKARAKA_EVENTS` | 50000 | Hard ceiling on events per `dhruv_charakaraka_events` call |
+
+### Charakaraka Event Triggers
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `DHRUV_CHARAKARAKA_TRIGGER_DEGREE_CROSSING` | 0 | Pairwise effective-degree crossing (incl. Rahu sum crossings) |
+| `DHRUV_CHARAKARAKA_TRIGGER_RASHI_INGRESS` | 1 | A ranked body entered a new rashi |
+| `DHRUV_CHARAKARAKA_TRIGGER_SCHEME_MODE_CHANGE` | 2 | MixedParashara switched 8↔7 mode |
 
 ### Sentinel Values
 
@@ -1786,6 +1795,7 @@ typedef struct {
     uint8_t use_nutation;       // 0=false, 1=true
     int32_t precession_model;   // DHRUV_PRECESSION_MODEL_*
     int32_t reference_plane;    // DHRUV_REFERENCE_PLANE_*
+    int32_t node_mode;          // DHRUV_NODE_MODE_* (Rahu/Ketu; mean=0, else true node)
 } DhruvGrahaLongitudesConfig;
 ```
 
@@ -2353,6 +2363,97 @@ Semantics:
   `DHRUV_STATUS_INVALID_SEARCH_CONFIG` (12).
 - The returned handle must be freed with `dhruv_amsha_lagna_events_free`.
 
+### Charakaraka Ranking-Change Events
+
+```c
+typedef struct {
+    DhruvUtcTime           utc;
+    double                 jd_tdb;
+    uint8_t                trigger;            // DHRUV_CHARAKARAKA_TRIGGER_*
+    uint16_t               changed_roles_mask; // bit N = role code N (0-8)
+    DhruvCharakarakaResult before;
+    DhruvCharakarakaResult after;
+} DhruvCharakarakaChangeEvent;
+
+typedef void *DhruvCharakarakaEventsHandle;
+
+DhruvStatus dhruv_charakaraka_events(
+    const DhruvEngineHandle*     engine,
+    const DhruvEopHandle*        eop,
+    const DhruvUtcTime*          from_utc,
+    const DhruvUtcTime*          to_utc,
+    const DhruvSankrantiConfig*  sankranti_config, // nullable: defaults resolved
+    uint8_t                      scheme,           // DHRUV_CHARAKARAKA_SCHEME_*
+    uint32_t                     max_events,       // 0 = DHRUV_MAX_CHARAKARAKA_EVENTS
+    DhruvCharakarakaEventsHandle* out
+);
+DhruvStatus dhruv_charakaraka_events_count(DhruvCharakarakaEventsHandle handle, uint32_t *out);
+DhruvStatus dhruv_charakaraka_events_at(
+    DhruvCharakarakaEventsHandle handle,
+    uint32_t                     idx,
+    DhruvCharakarakaChangeEvent* out
+);
+DhruvStatus dhruv_charakaraka_events_meta(
+    DhruvCharakarakaEventsHandle handle,
+    uint8_t*      out_truncated,
+    uint8_t*      out_next_from_valid,
+    DhruvUtcTime* out_next_from_utc
+);
+void dhruv_charakaraka_events_free(DhruvCharakarakaEventsHandle handle);
+
+DhruvStatus dhruv_next_charakaraka_event(
+    const DhruvEngineHandle*     engine,
+    const DhruvEopHandle*        eop,
+    const DhruvUtcTime*          at_utc,
+    const DhruvSankrantiConfig*  sankranti_config,
+    uint8_t                      scheme,
+    uint8_t*                     out_found,
+    DhruvCharakarakaChangeEvent* out
+);
+DhruvStatus dhruv_prev_charakaraka_event(
+    const DhruvEngineHandle*     engine,
+    const DhruvEopHandle*        eop,
+    const DhruvUtcTime*          at_utc,
+    const DhruvSankrantiConfig*  sankranti_config,
+    uint8_t                      scheme,
+    uint8_t*                     out_found,
+    DhruvCharakarakaChangeEvent* out
+);
+```
+
+Semantics:
+
+- Events are the exact moments the chara-karaka ranking changes for the
+  scheme, ascending, actual changes only (before/after rankings evaluated
+  just around each root; simultaneous roots consolidate into one event).
+- `before`/`after` reuse the per-moment `DhruvCharakarakaResult` shape;
+  entry order is the documented ranking contract (effective degree desc,
+  then raw degrees-in-rashi desc, then graha index asc; Rahu's effective
+  degree is `30 - degrees_in_rashi`).
+- Rankings are sidereal per `sankranti_config`, including `node_mode` —
+  the same longitude computation as `dhruv_charakaraka_for_date`.
+- All four `DHRUV_CHARAKARAKA_SCHEME_*` values are supported; for
+  `MIXED_PARASHARA`, integer-degree bin boundaries emit
+  `DHRUV_CHARAKARAKA_TRIGGER_SCHEME_MODE_CHANGE` events whose
+  `before.used_eight_karakas != after.used_eight_karakas`.
+- `max_events` caps emitted events; `0` selects
+  `DHRUV_MAX_CHARAKARAKA_EVENTS` (50,000). On truncation `_meta` reports
+  the resume point (backed off ~8.6 s); the seam event is re-found by the
+  resumed sweep — deduplicate on the event time.
+- next/prev: `*out_found = 0` only at the ephemeris coverage edge.
+- The returned handle must be freed with `dhruv_charakaraka_events_free`.
+
+### Build Identity
+
+```c
+const char *dhruv_library_version(void);  // e.g. "0.1.0"
+const char *dhruv_build_git_hash(void);   // 40-hex commit, or "unknown"
+```
+
+Static NUL-terminated strings; do not free. Together with
+`dhruv_api_version()` these identify exactly which build produced a
+computation (precalc provenance).
+
 ---
 
 ## Function Summary
@@ -2731,6 +2832,20 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v87**: Charakaraka ranking-change events, node-mode plumbing, build
+identity. New handle-based family `dhruv_charakaraka_events`
+(+`_count`/`_at`/`_meta`/`_free`) and single-event
+`dhruv_next_charakaraka_event`/`dhruv_prev_charakaraka_event`, with
+`DhruvCharakarakaChangeEvent` (reusing `DhruvCharakarakaResult` for
+before/after, `changed_roles_mask` bit-per-role-code, and
+`DHRUV_CHARAKARAKA_TRIGGER_*` discriminators) and
+`DHRUV_MAX_CHARAKARAKA_EVENTS`. `DhruvGrahaLongitudesConfig` gained a
+trailing `node_mode` field (0 = mean node, any other value = true node;
+default 1) — jyotish graha-longitude paths previously pinned Rahu/Ketu to
+the true node regardless of config. New
+`dhruv_library_version()`/`dhruv_build_git_hash()` static strings for
+build provenance.
 
 **v84**: Rahu/Ketu across the search families plus sidereal echoes.
 `dhruv_conjunction_search_ex` and `dhruv_motion_search_ex` accept body

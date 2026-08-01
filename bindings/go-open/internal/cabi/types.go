@@ -15,8 +15,9 @@ const (
 )
 
 // Hard ceilings for the range-sweep operations. They mirror
-// DHRUV_MAX_AMSHA_SERIES_CELLS, DHRUV_MAX_PANCHANG_EVENTS, and
-// DHRUV_MAX_AMSHA_LAGNA_SEGMENTS from the C ABI.
+// DHRUV_MAX_AMSHA_SERIES_CELLS, DHRUV_MAX_PANCHANG_EVENTS,
+// DHRUV_MAX_AMSHA_LAGNA_SEGMENTS, and DHRUV_MAX_CHARAKARAKA_EVENTS from
+// the C ABI.
 const (
 	// MaxAmshaSeriesCells caps points * unique requests for AmshaSeries.
 	MaxAmshaSeriesCells = 100000
@@ -26,6 +27,9 @@ const (
 	// MaxAmshaLagnaSegments caps total segments across amshas for
 	// AmshaLagnaEvents (also selected by maxSegments == 0).
 	MaxAmshaLagnaSegments = 50000
+	// MaxCharakarakaEvents caps emitted ranking changes for
+	// CharakarakaEvents (also selected by maxEvents == 0).
+	MaxCharakarakaEvents = 50000
 )
 
 const (
@@ -45,6 +49,14 @@ const (
 	CharakarakaRoleGnati      uint8 = 6
 	CharakarakaRoleDara       uint8 = 7
 	CharakarakaRoleMatriPutra uint8 = 8
+)
+
+// CharakarakaTrigger* mirror DHRUV_CHARAKARAKA_TRIGGER_*: the cause of a
+// chara-karaka ranking change.
+const (
+	CharakarakaTriggerDegreeCrossing   uint8 = 0
+	CharakarakaTriggerRashiIngress     uint8 = 1
+	CharakarakaTriggerSchemeModeChange uint8 = 2
 )
 
 const (
@@ -767,6 +779,9 @@ type GrahaLongitudesConfig struct {
 	UseNutation     bool
 	PrecessionModel int32
 	ReferencePlane  int32
+	// NodeMode selects NodeModeMean or NodeModeTrue for the Rahu/Ketu
+	// longitudes; the default configuration uses NodeModeTrue.
+	NodeMode int32
 }
 
 type SankrantiEvent struct {
@@ -1431,6 +1446,35 @@ type AmshaLagnaEntry struct {
 // point.
 type AmshaLagnaEventsResult struct {
 	Entries   []AmshaLagnaEntry
+	Truncated bool
+	// NextFromUTC is the resume point when Truncated; nil otherwise.
+	NextFromUTC *UtcTime
+}
+
+// CharakarakaChangeEvent is one chara-karaka ranking change. Before/After
+// reuse the per-moment result shape; their entry order is the documented
+// ranking order (effective degree desc, then raw degrees-in-rashi desc,
+// then graha index asc). ChangedRoles lists the CharakarakaRole* codes
+// whose assigned graha changed (a role present on only one side counts).
+type CharakarakaChangeEvent struct {
+	UTC   UtcTime
+	JdTdb float64
+	// Trigger is a CharakarakaTrigger* code; TriggerName is its stable
+	// snake_case name ("degree_crossing", "rashi_ingress",
+	// "scheme_mode_change").
+	Trigger      uint8
+	TriggerName  string
+	ChangedRoles []uint8
+	Before       CharakarakaResult
+	After        CharakarakaResult
+}
+
+// CharakarakaEventsResult holds every ranking change in the swept range in
+// ascending time order. When Truncated, NextFromUTC is the resume point
+// (the seam event is re-found by the resumed sweep; deduplicate on the
+// event time).
+type CharakarakaEventsResult struct {
+	Events    []CharakarakaChangeEvent
 	Truncated bool
 	// NextFromUTC is the resume point when Truncated; nil otherwise.
 	NextFromUTC *UtcTime

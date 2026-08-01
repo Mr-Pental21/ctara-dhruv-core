@@ -1,13 +1,13 @@
 # dhruv_search C ABI Coverage
 
 Scope: crate-root runtime/query APIs re-exported by `dhruv_search`
-(74 functions; enumerated in `docs/SEARCH_RUNTIME_APIS.md`).
+(77 functions; enumerated in `docs/SEARCH_RUNTIME_APIS.md`).
 
 The search/event families are covered by unified operation entry points
 (`dhruv_*_search_ex` request structs mirroring the `dhruv_search`
 operations) rather than one export per crate-root function; per-moment
 panchang/jyotish helpers keep direct exports. Functional coverage is
-`74 / 74` when the gaps below are satisfied through other exports.
+`77 / 77` when the gaps below are satisfied through other exports.
 
 ## Not Wrapped Directly
 
@@ -73,6 +73,10 @@ Functional coverage notes:
   `_free`, and `dhruv_amsha_lagna_events` (handle-based, covering
   `amsha_lagna_events`) with `_entry_count`/`_entry_info`/`_segment_count`/
   `_segment_at`/`_meta`/`_free`
+- Charakaraka events: `dhruv_charakaraka_events` (handle-based, covering
+  `charakaraka_events`) with `_count`/`_at`/`_meta`/`_free`, plus
+  `dhruv_next_charakaraka_event`/`dhruv_prev_charakaraka_event` (covering
+  `next_charakaraka_event`/`prev_charakaraka_event`)
 
 ## Amsha Parity Status
 

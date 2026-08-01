@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 86
+const ExpectedAPIVersion = 87
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -15,12 +15,13 @@ const (
 )
 
 // Hard ceilings for the range-sweep operations (AmshaSeries, PanchangEvents,
-// AmshaLagnaEvents). PanchangEvents/AmshaLagnaEvents select their ceiling
-// when the caller passes a cap of 0.
+// AmshaLagnaEvents, CharakarakaEvents). The event sweeps select their
+// ceiling when the caller passes a cap of 0.
 const (
 	MaxAmshaSeriesCells   = cabi.MaxAmshaSeriesCells
 	MaxPanchangEvents     = cabi.MaxPanchangEvents
 	MaxAmshaLagnaSegments = cabi.MaxAmshaLagnaSegments
+	MaxCharakarakaEvents  = cabi.MaxCharakarakaEvents
 )
 
 const (
@@ -40,6 +41,13 @@ const (
 	CharakarakaRoleGnati      = cabi.CharakarakaRoleGnati
 	CharakarakaRoleDara       = cabi.CharakarakaRoleDara
 	CharakarakaRoleMatriPutra = cabi.CharakarakaRoleMatriPutra
+)
+
+// CharakarakaTrigger* identify the cause of a chara-karaka ranking change.
+const (
+	CharakarakaTriggerDegreeCrossing   = cabi.CharakarakaTriggerDegreeCrossing
+	CharakarakaTriggerRashiIngress     = cabi.CharakarakaTriggerRashiIngress
+	CharakarakaTriggerSchemeModeChange = cabi.CharakarakaTriggerSchemeModeChange
 )
 
 const (
@@ -412,6 +420,9 @@ type (
 	AmshaLagnaSegment      = cabi.AmshaLagnaSegment
 	AmshaLagnaEntry        = cabi.AmshaLagnaEntry
 	AmshaLagnaEventsResult = cabi.AmshaLagnaEventsResult
+
+	CharakarakaChangeEvent  = cabi.CharakarakaChangeEvent
+	CharakarakaEventsResult = cabi.CharakarakaEventsResult
 )
 
 type GocharEventWindow[T any] = cabi.GocharEventWindow[T]

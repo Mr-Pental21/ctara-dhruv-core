@@ -175,6 +175,19 @@ selected elements.
   `AmshaLagnaEventsResult` with one `AmshaLagnaEvents` entry per unique
   request and `AmshaLagnaSegment` items plus `truncated`/`next_from_utc`;
   cap `MAX_AMSHA_LAGNA_SEGMENTS` (50,000).
+- `charakaraka_events(engine, eop, from_utc, to_utc, aya_config, scheme,
+  max_events)` — the exact moments the chara-karaka ranking changes
+  (root-found ingresses, pairwise degree-in-rashi crossings including the
+  Rahu sum condition, and MixedParashara integer-bin mode flips). Returns
+  `CharakarakaEventsResult` with `CharakarakaChangeEvent` items (before/
+  after `CharakarakaResult` snapshots, `changed_roles`,
+  `CharakarakaEventTrigger`) plus `truncated`/`next_from_utc`; cap
+  `MAX_CHARAKARAKA_EVENTS` (50,000). Honors `aya_config.node_mode` on the
+  same longitude path as per-moment `charakaraka`. Companions
+  `next_charakaraka_event`/`prev_charakaraka_event` return the first/last
+  change around `at_utc`.
+- `build_version()` / `build_git_hash()` — library version and build-time
+  git hash for provenance (re-exported from `dhruv_build_info`).
 
 The pure boundary helper `next_amsha_boundary_longitude(sidereal_lon, amsha,
 variation)` lives in `dhruv_vedic_base::amsha` (re-exported from

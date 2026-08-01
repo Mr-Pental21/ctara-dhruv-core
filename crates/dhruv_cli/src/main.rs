@@ -2380,6 +2380,43 @@ struct CharakarakaArgs {
 }
 
 #[derive(clap::Args)]
+struct CharakarakaEventsArgs {
+    /// Mode: next, prev, or range
+    #[arg(long, value_parser = ["next", "prev", "range"], default_value = "range")]
+    mode: String,
+    /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    at: Option<String>,
+    /// UTC start datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: Option<String>,
+    /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: Option<String>,
+    /// Charakaraka scheme: eight, seven-no-pitri, seven-pk-merged-mk, mixed-parashara
+    #[arg(long, default_value = "mixed-parashara")]
+    scheme: String,
+    /// Maximum change events in range mode (0 = library ceiling of 50000)
+    #[arg(long, default_value = "0")]
+    max_events: u32,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct DashaArgs {
     /// Dasha system (vimshottari)
     #[arg(long, default_value = "vimshottari")]
@@ -3264,6 +3301,8 @@ enum Commands {
     Vimsopaka(VimsopakaArgs),
     /// Compute Chara Karaka assignments for a date
     Charakaraka(CharakarakaArgs),
+    /// Chara Karaka ranking-change events (`--mode next|prev|range`)
+    CharakarakaEvents(CharakarakaEventsArgs),
     /// Transform a sidereal longitude through amsha (divisional chart) mappings
     Amsha(AmshaArgs),
     /// List supported variation codes and names for one or more amshas
@@ -3289,6 +3328,8 @@ enum Commands {
     },
     /// Compute fixed star position (equatorial, ecliptic, or sidereal)
     TaraPosition(TaraPositionArgs),
+    /// Print library version and git build hash
+    BuildInfo,
 }
 
 fn aya_system_from_code(code: i32) -> Option<AyanamshaSystem> {
@@ -9164,6 +9205,110 @@ fn main() {
                 );
             }
         }
+        Commands::CharakarakaEvents(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let scheme = parse_charakaraka_scheme(&args.scheme);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let aya_config = SankrantiConfig::new(system, args.nutation);
+            match args.mode.as_str() {
+                "next" | "prev" => {
+                    let at = args.at.as_deref().unwrap_or_else(|| {
+                        eprintln!("--at is required when --mode {}", args.mode);
+                        std::process::exit(1);
+                    });
+                    let utc = parse_utc(at).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let found = if args.mode == "next" {
+                        dhruv_search::next_charakaraka_event(
+                            &engine,
+                            &eop_kernel,
+                            &utc,
+                            &aya_config,
+                            scheme,
+                        )
+                    } else {
+                        dhruv_search::prev_charakaraka_event(
+                            &engine,
+                            &eop_kernel,
+                            &utc,
+                            &aya_config,
+                            scheme,
+                        )
+                    }
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    });
+                    match found {
+                        Some(event) => {
+                            let label = if args.mode == "next" {
+                                "Next charakaraka event"
+                            } else {
+                                "Previous charakaraka event"
+                            };
+                            println!("{label} ({scheme:?}) from {at}:");
+                            print_charakaraka_event(&event);
+                        }
+                        None => println!("No charakaraka event found"),
+                    }
+                }
+                "range" => {
+                    let start = args.start.as_deref().unwrap_or_else(|| {
+                        eprintln!("--start is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let end = args.end.as_deref().unwrap_or_else(|| {
+                        eprintln!("--end is required when --mode range");
+                        std::process::exit(1);
+                    });
+                    let from_utc = parse_utc(start).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let to_utc = parse_utc(end).unwrap_or_else(|e| {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    });
+                    let result = dhruv_search::charakaraka_events(
+                        &engine,
+                        &eop_kernel,
+                        &from_utc,
+                        &to_utc,
+                        &aya_config,
+                        scheme,
+                        args.max_events,
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    });
+                    println!(
+                        "Charakaraka events {} -> {} ({:?}, {} events):",
+                        start,
+                        end,
+                        scheme,
+                        result.events.len()
+                    );
+                    for event in &result.events {
+                        print_charakaraka_event(event);
+                    }
+                    if result.truncated {
+                        print!("\nTruncated at event cap");
+                        if let Some(next) = result.next_from_utc {
+                            print!("; resume with --start {next}");
+                        }
+                        println!();
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid mode: {}", args.mode);
+                    std::process::exit(1);
+                }
+            }
+        }
         Commands::Vimsopaka(args) => {
             let system = require_aya_system(args.ayanamsha);
             let utc = parse_utc(&args.date).unwrap_or_else(|e| {
@@ -10360,6 +10505,10 @@ fn main() {
                 Err(e) => eprintln!("Sidereal error: {e}"),
             }
         }
+        Commands::BuildInfo => {
+            println!("version: {}", dhruv_build_info::version());
+            println!("git_hash: {}", dhruv_build_info::git_hash());
+        }
     }
 }
 
@@ -10521,6 +10670,50 @@ fn charakaraka_role_name(role: dhruv_vedic_base::CharakarakaRole) -> &'static st
         dhruv_vedic_base::CharakarakaRole::Gnati => "Gnati",
         dhruv_vedic_base::CharakarakaRole::Dara => "Dara",
         dhruv_vedic_base::CharakarakaRole::MatriPutra => "Matri/Putra",
+    }
+}
+
+fn charakaraka_trigger_name(trigger: dhruv_search::CharakarakaEventTrigger) -> &'static str {
+    match trigger {
+        dhruv_search::CharakarakaEventTrigger::DegreeCrossing => "degree_crossing",
+        dhruv_search::CharakarakaEventTrigger::RashiIngress => "rashi_ingress",
+        dhruv_search::CharakarakaEventTrigger::SchemeModeChange => "scheme_mode_change",
+    }
+}
+
+fn format_charakaraka_ranking(result: &dhruv_vedic_base::CharakarakaResult) -> String {
+    result
+        .entries
+        .iter()
+        .map(|e| format!("{}={}", charakaraka_role_name(e.role), e.graha.name()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn print_charakaraka_event(event: &dhruv_search::CharakarakaChangeEvent) {
+    println!(
+        "  {}  {}",
+        event.utc,
+        charakaraka_trigger_name(event.trigger)
+    );
+    let changed = if event.changed_roles.is_empty() {
+        "(none)".to_string()
+    } else {
+        event
+            .changed_roles
+            .iter()
+            .map(|r| charakaraka_role_name(*r))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    println!("    changed: {changed}");
+    println!("    after:   {}", format_charakaraka_ranking(&event.after));
+    if event.before.used_eight_karakas != event.after.used_eight_karakas {
+        println!(
+            "    mode:    {}-karaka -> {}-karaka",
+            if event.before.used_eight_karakas { 8 } else { 7 },
+            if event.after.used_eight_karakas { 8 } else { 7 }
+        );
     }
 }
 
@@ -13360,5 +13553,66 @@ mod tests {
         let requests = parse_amsha_specs(&args.amsha);
         assert_eq!(requests.len(), 2);
         assert_eq!(requests[1].amsha, dhruv_vedic_base::Amsha::D60);
+    }
+
+    #[test]
+    fn test_charakaraka_events_args_parse_range_defaults() {
+        let cli = Cli::try_parse_from([
+            "dhruv",
+            "charakaraka-events",
+            "--start",
+            "2024-01-01T00:00:00Z",
+            "--end",
+            "2024-01-03T00:00:00Z",
+            "--scheme",
+            "eight",
+            "--max-events",
+            "100",
+            "--eop",
+            "finals2000A.all",
+        ])
+        .expect("charakaraka-events should parse");
+        let Commands::CharakarakaEvents(args) = cli.command else {
+            panic!("expected charakaraka-events command");
+        };
+        assert_eq!(args.mode, "range");
+        assert_eq!(args.start.as_deref(), Some("2024-01-01T00:00:00Z"));
+        assert_eq!(args.end.as_deref(), Some("2024-01-03T00:00:00Z"));
+        assert_eq!(args.at, None);
+        assert_eq!(args.max_events, 100);
+        assert_eq!(args.ayanamsha, 0);
+        assert!(!args.nutation);
+        assert_eq!(
+            parse_charakaraka_scheme(&args.scheme),
+            dhruv_vedic_base::CharakarakaScheme::Eight
+        );
+    }
+
+    #[test]
+    fn test_charakaraka_events_args_parse_next_mode() {
+        let cli = Cli::try_parse_from([
+            "dhruv",
+            "charakaraka-events",
+            "--mode",
+            "next",
+            "--at",
+            "2024-01-01T00:00:00Z",
+            "--eop",
+            "finals2000A.all",
+        ])
+        .expect("charakaraka-events next should parse");
+        let Commands::CharakarakaEvents(args) = cli.command else {
+            panic!("expected charakaraka-events command");
+        };
+        assert_eq!(args.mode, "next");
+        assert_eq!(args.at.as_deref(), Some("2024-01-01T00:00:00Z"));
+        assert_eq!(args.scheme, "mixed-parashara");
+        assert_eq!(args.max_events, 0);
+    }
+
+    #[test]
+    fn test_build_info_args_parse() {
+        let cli = Cli::try_parse_from(["dhruv", "build-info"]).expect("build-info should parse");
+        assert!(matches!(cli.command, Commands::BuildInfo));
     }
 }

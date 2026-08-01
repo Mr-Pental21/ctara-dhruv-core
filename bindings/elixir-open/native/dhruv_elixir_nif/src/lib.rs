@@ -23,14 +23,15 @@ use dhruv_search::{
     NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL_CORE,
     PANCHANG_INCLUDE_LOCATION_INDEPENDENT, SankrantiConfig, StationaryConfig, TajakaReturnBasis,
     TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitBody,
-    TransitToNatalAspectEvent, amsha_lagna_events, ayanamsha, body_ecliptic_lon_lat, conjunction,
-    dasha_child_period_for_birth, dasha_child_period_with_inputs, dasha_children_for_birth,
-    dasha_children_with_inputs, dasha_complete_level_for_birth, dasha_complete_level_with_inputs,
-    dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs, dasha_level0_entity_for_birth,
-    dasha_level0_entity_with_inputs, dasha_level0_for_birth, dasha_level0_with_inputs,
-    dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at, full_kundali_for_date,
-    ghatika_from_sunrises, gochar_events, graha_longitudes, hora_from_sunrises, karana_at,
-    lunar_node, motion, nakshatra_at, panchang, panchang_events, panchang_include_bits,
+    TransitToNatalAspectEvent, amsha_lagna_events, ayanamsha, body_ecliptic_lon_lat,
+    charakaraka_events, conjunction, dasha_child_period_for_birth, dasha_child_period_with_inputs,
+    dasha_children_for_birth, dasha_children_with_inputs, dasha_complete_level_for_birth,
+    dasha_complete_level_with_inputs, dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs,
+    dasha_level0_entity_for_birth, dasha_level0_entity_with_inputs, dasha_level0_for_birth,
+    dasha_level0_with_inputs, dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at,
+    full_kundali_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes,
+    hora_from_sunrises, karana_at, lunar_node, motion, nakshatra_at, next_charakaraka_event,
+    panchang, panchang_events, panchang_include_bits, prev_charakaraka_event,
     set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at, vaar_from_sunrises,
     vedic_day_sunrises, yoga_at,
 };
@@ -332,6 +333,13 @@ struct SearchRequest {
     sankranti_config: Option<SankrantiConfigInput>,
     kundali_config: Option<FullKundaliConfigInput>,
     gochar_config: Option<GocharEventsConfigInput>,
+    charakaraka_config: Option<CharakarakaConfigInput>,
+    max_events: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CharakarakaConfigInput {
+    scheme: Option<EnumInput>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2527,6 +2535,46 @@ fn search_range_jd_tdb(engine: &Engine, request: &SearchRequest) -> Result<(f64,
     }
 }
 
+fn search_at_utc(engine: &Engine, request: &SearchRequest) -> Result<UtcTime, Value> {
+    match (&request.at_jd_tdb, &request.at_utc) {
+        (Some(jd), None) => Ok(UtcTime::from_jd_tdb(*jd, engine.lsk())),
+        (None, Some(utc)) => parse_utc(utc.clone()),
+        (Some(_), Some(_)) => Err(error_payload(
+            "invalid_request",
+            "provide only one of at_jd_tdb or at_utc",
+        )),
+        (None, None) => Err(error_payload(
+            "invalid_request",
+            "at_jd_tdb or at_utc is required",
+        )),
+    }
+}
+
+fn search_range_utc(engine: &Engine, request: &SearchRequest) -> Result<(UtcTime, UtcTime), Value> {
+    match (
+        &request.start_jd_tdb,
+        &request.end_jd_tdb,
+        &request.start_utc,
+        &request.end_utc,
+    ) {
+        (Some(start), Some(end), None, None) => Ok((
+            UtcTime::from_jd_tdb(*start, engine.lsk()),
+            UtcTime::from_jd_tdb(*end, engine.lsk()),
+        )),
+        (None, None, Some(start), Some(end)) => {
+            Ok((parse_utc(start.clone())?, parse_utc(end.clone())?))
+        }
+        (Some(_), Some(_), Some(_), Some(_)) => Err(error_payload(
+            "invalid_request",
+            "provide either start/end_jd_tdb or start/end_utc, not both",
+        )),
+        _ => Err(error_payload(
+            "invalid_request",
+            "start/end_jd_tdb or start/end_utc are required",
+        )),
+    }
+}
+
 fn parse_defaults_mode(input: Option<&EnumInput>) -> Result<DefaultsMode, Value> {
     match input {
         None => Ok(DefaultsMode::Recommended),
@@ -3389,6 +3437,49 @@ fn charakaraka_json(result: CharakarakaResult) -> Value {
             "degrees_in_rashi": entry.degrees_in_rashi,
             "effective_degrees_in_rashi": entry.effective_degrees_in_rashi
         })).collect::<Vec<_>>()
+    })
+}
+
+fn charakaraka_change_event_json(event: dhruv_search::CharakarakaChangeEvent) -> Value {
+    let ranking_before = event
+        .before
+        .entries
+        .iter()
+        .map(|entry| debug_name(entry.graha))
+        .collect::<Vec<_>>();
+    let ranking_after = event
+        .after
+        .entries
+        .iter()
+        .map(|entry| debug_name(entry.graha))
+        .collect::<Vec<_>>();
+    json!({
+        "at": utc_json(event.utc),
+        "jd_tdb": event.jd_tdb,
+        "trigger": debug_name(event.trigger),
+        "changed_roles": event
+            .changed_roles
+            .into_iter()
+            .map(debug_name)
+            .collect::<Vec<_>>(),
+        "ranking_before": ranking_before,
+        "ranking_after": ranking_after,
+        "used_eight_karakas_before": event.before.used_eight_karakas,
+        "used_eight_karakas_after": event.after.used_eight_karakas,
+        "before": charakaraka_json(event.before),
+        "after": charakaraka_json(event.after)
+    })
+}
+
+fn charakaraka_events_json(result: dhruv_search::CharakarakaEventsResult) -> Value {
+    json!({
+        "events": result
+            .events
+            .into_iter()
+            .map(charakaraka_change_event_json)
+            .collect::<Vec<_>>(),
+        "truncated": result.truncated,
+        "next_from_utc": result.next_from_utc.map(utc_json),
     })
 }
 
@@ -4680,6 +4771,51 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                     .map(gochar_events_json)
                     .map_err(|err| map_error("search_error", err))
             }
+            "charakaraka_events" => {
+                let eop = state.eop.as_ref().ok_or_else(|| {
+                    error_payload("missing_eop", "charakaraka_events requires loaded EOP data")
+                })?;
+                let scheme = parse_charakaraka_scheme(
+                    request
+                        .charakaraka_config
+                        .as_ref()
+                        .and_then(|config| config.scheme.as_ref()),
+                )?;
+                let sankranti_config =
+                    to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                match request.mode {
+                    EnumInput::Str(ref value) if value == "range" => {
+                        let (from_utc, to_utc) = search_range_utc(engine, &request)?;
+                        charakaraka_events(
+                            engine,
+                            eop,
+                            &from_utc,
+                            &to_utc,
+                            &sankranti_config,
+                            scheme,
+                            request.max_events.unwrap_or(0),
+                        )
+                        .map(charakaraka_events_json)
+                        .map_err(|err| map_error("search_error", err))
+                    }
+                    EnumInput::Str(ref value) if value == "prev" => {
+                        let at_utc = search_at_utc(engine, &request)?;
+                        prev_charakaraka_event(engine, eop, &at_utc, &sankranti_config, scheme)
+                            .map(|event| {
+                                json!({ "event": event.map(charakaraka_change_event_json) })
+                            })
+                            .map_err(|err| map_error("search_error", err))
+                    }
+                    _ => {
+                        let at_utc = search_at_utc(engine, &request)?;
+                        next_charakaraka_event(engine, eop, &at_utc, &sankranti_config, scheme)
+                            .map(|event| {
+                                json!({ "event": event.map(charakaraka_change_event_json) })
+                            })
+                            .map_err(|err| map_error("search_error", err))
+                    }
+                }
+            }
             _ => Err(error_payload("invalid_request", "unknown search operation")),
         }
     })
@@ -5755,6 +5891,10 @@ fn time_run<'a>(
 fn util_run<'a>(env: Env<'a>, request: Term<'a>) -> Result<Term<'a>, rustler::Error> {
     let raw = decode_term::<Value>(request)?;
     let response = match raw.get("op").and_then(Value::as_str).unwrap_or_default() {
+        "build_info" => Ok(json!({
+            "version": dhruv_build_info::version(),
+            "git_hash": dhruv_build_info::git_hash()
+        })),
         "cartesian_to_spherical" => {
             let input: CartesianInput =
                 serde_json::from_value(raw).map_err(|_| rustler::Error::BadArg)?;

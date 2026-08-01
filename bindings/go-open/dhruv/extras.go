@@ -305,6 +305,7 @@ func (e *Engine) SunBasedUpagrahas(jdTdb float64, ayanamshaSystem uint32, useNut
 		UseNutation:     useNutation,
 		PrecessionModel: PrecessionModelVondrak2011,
 		ReferencePlane:  -1,
+		NodeMode:        NodeModeTrue,
 	})
 	if err != nil {
 		return AllUpagrahas{}, err
@@ -466,4 +467,38 @@ func (e *Engine) AmshaSeries(ep *EOP, fromUTC, toUTC UtcTime, stepMinutes uint32
 func (e *Engine) AmshaLagnaEvents(ep *EOP, fromUTC, toUTC UtcTime, loc GeoLocation, sankrantiCfg SankrantiConfig, requests []AmshaRequest, maxSegments uint32) (AmshaLagnaEventsResult, error) {
 	out, st := cabi.AmshaLagnaEvents(e.h, ep.h, fromUTC, toUTC, loc, sankrantiCfg, requests, maxSegments)
 	return out, statusErr("amsha_lagna_events", st)
+}
+
+// CharakarakaEvents finds every chara-karaka ranking change in
+// [fromUTC, toUTC] for a scheme (CharakarakaScheme*), in ascending time
+// order. Rankings are sidereal per sankrantiCfg (including NodeMode — the
+// same longitude computation as CharakarakaForDate). maxEvents caps the
+// emitted events (0 selects MaxCharakarakaEvents). When the result is
+// Truncated, resume the sweep from *NextFromUTC; the seam event is
+// re-found by the resumed sweep, so deduplicate on the event time.
+func (e *Engine) CharakarakaEvents(ep *EOP, fromUTC, toUTC UtcTime, sankrantiCfg SankrantiConfig, scheme uint8, maxEvents uint32) (CharakarakaEventsResult, error) {
+	out, st := cabi.CharakarakaEvents(e.h, ep.h, fromUTC, toUTC, sankrantiCfg, scheme, maxEvents)
+	return out, statusErr("charakaraka_events", st)
+}
+
+// NextCharakarakaEvent finds the first chara-karaka ranking change strictly
+// after atUTC. It returns nil (with a nil error) when no change exists
+// before the ephemeris coverage edge.
+func (e *Engine) NextCharakarakaEvent(ep *EOP, atUTC UtcTime, sankrantiCfg SankrantiConfig, scheme uint8) (*CharakarakaChangeEvent, error) {
+	out, st := cabi.NextCharakarakaEvent(e.h, ep.h, atUTC, sankrantiCfg, scheme)
+	return out, statusErr("next_charakaraka_event", st)
+}
+
+// PrevCharakarakaEvent finds the last chara-karaka ranking change strictly
+// before atUTC. It returns nil (with a nil error) when no change exists
+// before the ephemeris coverage edge.
+func (e *Engine) PrevCharakarakaEvent(ep *EOP, atUTC UtcTime, sankrantiCfg SankrantiConfig, scheme uint8) (*CharakarakaChangeEvent, error) {
+	out, st := cabi.PrevCharakarakaEvent(e.h, ep.h, atUTC, sankrantiCfg, scheme)
+	return out, statusErr("prev_charakaraka_event", st)
+}
+
+// CharakarakaTriggerName resolves a CharakarakaTrigger* code to its stable
+// snake_case name ("" for unknown codes).
+func CharakarakaTriggerName(trigger uint8) string {
+	return cabi.CharakarakaTriggerName(trigger)
 }

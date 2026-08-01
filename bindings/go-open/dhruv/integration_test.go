@@ -1149,6 +1149,118 @@ func TestAmshaLagnaEventsD1Chaining(t *testing.T) {
 	}
 }
 
+func TestCharakarakaEventsSweep(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	from := UtcTime{Year: 2024, Month: 1, Day: 1}
+	to := UtcTime{Year: 2024, Month: 1, Day: 8}
+	sank := SankrantiConfigDefault()
+
+	res, err := eng.CharakarakaEvents(eop, from, to, sank, CharakarakaSchemeEight, 0)
+	if err != nil {
+		t.Fatalf("CharakarakaEvents: %v", err)
+	}
+	if len(res.Events) == 0 {
+		t.Fatalf("expected ranking changes over 7 days")
+	}
+	if res.Truncated || res.NextFromUTC != nil {
+		t.Fatalf("expected untruncated result: truncated=%v next=%v", res.Truncated, res.NextFromUTC)
+	}
+	for i, ev := range res.Events {
+		jd := utcJD(ev.UTC)
+		if jd < utcJD(from)-1e-5 || jd > utcJD(to)+1e-5 {
+			t.Fatalf("event %d outside swept range: %+v", i, ev.UTC)
+		}
+		if i > 0 && jd <= utcJD(res.Events[i-1].UTC) {
+			t.Fatalf("event %d not in ascending time order", i)
+		}
+		if want := CharakarakaTriggerName(ev.Trigger); want == "" || ev.TriggerName != want {
+			t.Fatalf("event %d trigger name mismatch: code=%d name=%q", i, ev.Trigger, ev.TriggerName)
+		}
+		if len(ev.ChangedRoles) == 0 {
+			t.Fatalf("event %d carries no changed roles", i)
+		}
+		if ev.Before.Count == 0 || ev.After.Count == 0 {
+			t.Fatalf("event %d has empty before/after rankings", i)
+		}
+		// Every reported changed role must map to a different graha across
+		// the boundary (or be present on only one side).
+		beforeRoles := map[uint8]uint8{}
+		for _, e := range ev.Before.Entries[:ev.Before.Count] {
+			beforeRoles[e.RoleCode] = e.GrahaIndex
+		}
+		afterRoles := map[uint8]uint8{}
+		for _, e := range ev.After.Entries[:ev.After.Count] {
+			afterRoles[e.RoleCode] = e.GrahaIndex
+		}
+		for _, role := range ev.ChangedRoles {
+			bg, bok := beforeRoles[role]
+			ag, aok := afterRoles[role]
+			if bok && aok && bg == ag {
+				t.Fatalf("event %d role %d flagged changed but graha unchanged (%d)", i, role, bg)
+			}
+			if !bok && !aok {
+				t.Fatalf("event %d role %d flagged changed but absent on both sides", i, role)
+			}
+		}
+	}
+
+	// Truncation honors maxEvents and yields a resume point.
+	if len(res.Events) > 3 {
+		trunc, err := eng.CharakarakaEvents(eop, from, to, sank, CharakarakaSchemeEight, 3)
+		if err != nil {
+			t.Fatalf("CharakarakaEvents truncated: %v", err)
+		}
+		if len(trunc.Events) != 3 || !trunc.Truncated || trunc.NextFromUTC == nil {
+			t.Fatalf("expected truncated result with resume point: events=%d truncated=%v next=%v",
+				len(trunc.Events), trunc.Truncated, trunc.NextFromUTC)
+		}
+	}
+
+	// Next/prev locate the sweep's boundary events.
+	next, err := eng.NextCharakarakaEvent(eop, from, sank, CharakarakaSchemeEight)
+	if err != nil {
+		t.Fatalf("NextCharakarakaEvent: %v", err)
+	}
+	if next == nil {
+		t.Fatalf("expected a next event after %+v", from)
+	}
+	if math.Abs(utcJD(next.UTC)-utcJD(res.Events[0].UTC)) > 1e-4 {
+		t.Fatalf("next event does not match first swept event: next=%+v first=%+v", next.UTC, res.Events[0].UTC)
+	}
+	prev, err := eng.PrevCharakarakaEvent(eop, to, sank, CharakarakaSchemeEight)
+	if err != nil {
+		t.Fatalf("PrevCharakarakaEvent: %v", err)
+	}
+	if prev == nil {
+		t.Fatalf("expected a previous event before %+v", to)
+	}
+	last := res.Events[len(res.Events)-1]
+	if math.Abs(utcJD(prev.UTC)-utcJD(last.UTC)) > 1e-4 {
+		t.Fatalf("prev event does not match last swept event: prev=%+v last=%+v", prev.UTC, last.UTC)
+	}
+
+	// Invalid schemes are rejected.
+	if _, err := eng.CharakarakaEvents(eop, from, to, sank, 99, 0); err == nil {
+		t.Fatalf("expected error for invalid scheme")
+	}
+}
+
+func TestBuildIdentity(t *testing.T) {
+	if LibraryVersion() == "" {
+		t.Fatalf("LibraryVersion is empty")
+	}
+	if BuildGitHash() == "" {
+		t.Fatalf("BuildGitHash is empty")
+	}
+}
+
+func TestGrahaLongitudesConfigDefaultNodeMode(t *testing.T) {
+	if cfg := GrahaLongitudesConfigDefault(); cfg.NodeMode != NodeModeTrue {
+		t.Fatalf("expected true-node graha longitudes default, got %d", cfg.NodeMode)
+	}
+}
+
 func TestAmshaSelectionFlowsThroughBalaWrappers(t *testing.T) {
 	spk, lskPath, eopPath, ok := kernelPaths(t)
 	if !ok {

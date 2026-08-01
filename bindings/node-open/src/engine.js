@@ -106,6 +106,17 @@ function apiVersion() {
   return addon.apiVersion();
 }
 
+// Semantic version of the linked dhruv library (a static string).
+function libraryVersion() {
+  return addon.libraryVersion();
+}
+
+// Short git hash the linked library was built from; 'unknown' when it was
+// built outside a git checkout.
+function buildGitHash() {
+  return addon.buildGitHash();
+}
+
 function verifyAbi() {
   const got = apiVersion();
   if (got !== EXPECTED_API_VERSION) {
@@ -135,6 +146,8 @@ module.exports = {
   EOP,
   LSK,
   apiVersion,
+  libraryVersion,
+  buildGitHash,
   verifyAbi,
   clearActiveConfig,
   queryOnce,

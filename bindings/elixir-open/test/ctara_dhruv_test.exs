@@ -113,6 +113,7 @@ defmodule CtaraDhruvTest do
           assert sampled_footprint.contains_pole in [nil, :north, :south]
           contact_kinds = Enum.map(eclipse.contact_footprints, & &1.contact)
           assert contact_kinds == [:c1, :c2, :greatest, :c3, :c4]
+
           greatest_contact =
             Enum.find(eclipse.contact_footprints, &(&1.contact == :greatest))
 
@@ -778,6 +779,78 @@ defmodule CtaraDhruvTest do
                    })
 
           assert message =~ "location required"
+        else
+          assert true
+        end
+    end
+  end
+
+  test "elixir build info reports library version and git hash" do
+    assert {:ok, %{version: version, git_hash: git_hash}} = Engine.build_info()
+    assert is_binary(version)
+    assert version != ""
+    assert is_binary(git_hash)
+  end
+
+  test "elixir search exposes charakaraka ranking-change events" do
+    case with_engine() do
+      :skip ->
+        assert true
+
+      {:ok, engine} ->
+        if File.exists?(@eop) do
+          assert {:ok, _} = Engine.load_eop(engine, @eop)
+
+          from_utc = %{year: 2015, month: 1, day: 15, hour: 0, minute: 0, second: 0.0}
+          to_utc = %{from_utc | day: 18}
+
+          assert {:ok, result} =
+                   Search.charakaraka_events(engine, %{
+                     mode: :range,
+                     start_utc: from_utc,
+                     end_utc: to_utc
+                   })
+
+          assert result.events != []
+          refute result.truncated
+          assert is_nil(result.next_from_utc)
+
+          [event | _] = result.events
+          assert event.trigger in ["degree_crossing", "rashi_ingress", "scheme_mode_change"]
+          assert is_float(event.jd_tdb)
+          assert event.changed_roles != []
+          assert length(event.ranking_before) == 8
+          assert length(event.ranking_after) == 8
+          assert event.used_eight_karakas_before
+          assert event.before.scheme == "eight"
+          assert length(event.before.entries) == 8
+          assert length(event.after.entries) == 8
+
+          # Chain invariant: each event's after-ranking is the next event's
+          # before-ranking.
+          result.events
+          |> Enum.chunk_every(2, 1, :discard)
+          |> Enum.each(fn [a, b] -> assert a.ranking_after == b.ranking_before end)
+
+          # Next/prev return the single nearest change around a moment; the
+          # scheme comes from :charakaraka_config.
+          at = %{from_utc | day: 16}
+
+          assert {:ok, %{event: next_event}} =
+                   Search.charakaraka_events(engine, %{mode: :next, at_utc: at})
+
+          assert {:ok, %{event: prev_event}} =
+                   Search.charakaraka_events(engine, %{
+                     mode: :prev,
+                     at_utc: at,
+                     charakaraka_config: %{scheme: :seven_no_pitri}
+                   })
+
+          refute is_nil(next_event)
+          refute is_nil(prev_event)
+          assert next_event.jd_tdb > prev_event.jd_tdb
+          assert length(prev_event.ranking_before) == 7
+          refute prev_event.used_eight_karakas_before
         else
           assert true
         end

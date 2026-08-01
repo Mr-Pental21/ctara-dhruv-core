@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=86`
+- ABI target: `DHRUV_API_VERSION=87`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -81,7 +81,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v84).
+symbols from `dhruv.h` (ABI v87).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -115,8 +115,11 @@ The public `dhruv` package includes wrappers for:
 - range-sweep APIs: `(*Engine).AmshaSeries` (fixed-cadence slim varga
   charts), `(*Engine).PanchangEvents` (exact panchang segments for all ten
   elements, with an optional observer location for vaar/hora/ghatika and
-  truncation/resume metadata), and
-  `(*Engine).AmshaLagnaEvents` (exact varga-lagna rashi transitions)
+  truncation/resume metadata),
+  `(*Engine).AmshaLagnaEvents` (exact varga-lagna rashi transitions), and
+  `(*Engine).CharakarakaEvents` (exact chara-karaka ranking changes, with
+  `NextCharakarakaEvent`/`PrevCharakarakaEvent` single-event lookups)
+- build identity helpers `LibraryVersion()` and `BuildGitHash()`
 - panchang/classifier/math helper APIs
 - graha longitude and jyotish date APIs
 - shadbala, vimsopaka, and avastha date APIs
@@ -191,7 +194,7 @@ per-element `*Valid` flags as the standalone call.
 
 ## Range Sweeps
 
-Three engine methods sweep a UTC range instead of a single epoch:
+Four engine methods sweep a UTC range instead of a single epoch:
 
 - `(*Engine).AmshaSeries(eop, fromUTC, toUTC, stepMinutes, loc, sankrantiCfg,
   requests, includeGrahas)` returns `[]AmshaSeriesPoint` on the same grid as
@@ -219,10 +222,31 @@ Three engine methods sweep a UTC range instead of a single epoch:
   `AmshaLagnaEntry` per unique request (duplicates collapsed) holding exact
   `AmshaLagnaSegment` rashi transitions. `maxSegments` caps total segments
   (0 selects `MaxAmshaLagnaSegments`, 50,000).
+- `(*Engine).CharakarakaEvents(eop, fromUTC, toUTC, sankrantiCfg, scheme,
+  maxEvents)` returns `CharakarakaEventsResult` with every chara-karaka
+  ranking change in the range, in ascending time order, for a
+  `CharakarakaScheme*` scheme. Each `CharakarakaChangeEvent` carries `UTC`,
+  `JdTdb`, a `CharakarakaTrigger*` code plus its snake_case `TriggerName`
+  (`degree_crossing`, `rashi_ingress`, `scheme_mode_change`), the
+  `ChangedRoles` role codes, and full `Before`/`After` `CharakarakaResult`
+  rankings. Rankings are sidereal per `sankrantiCfg` (including `NodeMode`),
+  matching `CharakarakaForDate`. `maxEvents` caps emitted events (0 selects
+  `MaxCharakarakaEvents`, 50,000). The single-event companions
+  `(*Engine).NextCharakarakaEvent(eop, atUTC, sankrantiCfg, scheme)` and
+  `(*Engine).PrevCharakarakaEvent(...)` return the first change strictly
+  after / last change strictly before `atUTC` as a `*CharakarakaChangeEvent`
+  (nil when none exists before the ephemeris coverage edge).
 
-The two event sweeps report truncation on the result: when `Truncated` is
-true, call again with `fromUTC = *NextFromUTC` and drop resumed events whose
-(kind, `Start`) you already collected.
+The event sweeps report truncation on the result: when `Truncated` is true,
+call again with `fromUTC = *NextFromUTC` and drop resumed duplicates — for
+panchang/amsha-lagna sweeps dedup on (kind, `Start`), for charakaraka sweeps
+dedup on the event time.
+
+## Build Identity
+
+Package-level `LibraryVersion()` and `BuildGitHash()` report the native
+library's semantic version and the git commit hash it was built from
+(`"unknown"` outside a git checkout).
 
 ## Time-Based Upagraha Config
 

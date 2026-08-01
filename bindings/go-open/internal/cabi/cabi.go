@@ -359,6 +359,7 @@ func cGrahaLongitudesConfig(cfg GrahaLongitudesConfig) C.DhruvGrahaLongitudesCon
 		use_nutation:     boolU8(cfg.UseNutation),
 		precession_model: C.int32_t(cfg.PrecessionModel),
 		reference_plane:  C.int32_t(cfg.ReferencePlane),
+		node_mode:        C.int32_t(cfg.NodeMode),
 	}
 }
 
@@ -370,6 +371,7 @@ func GrahaLongitudesConfigDefault() GrahaLongitudesConfig {
 		UseNutation:     cfg.use_nutation != 0,
 		PrecessionModel: int32(cfg.precession_model),
 		ReferencePlane:  int32(cfg.reference_plane),
+		NodeMode:        int32(cfg.node_mode),
 	}
 }
 
@@ -2589,22 +2591,7 @@ func CharakarakaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, ayanams
 		C.uint8_t(scheme),
 		&out,
 	))
-	var res CharakarakaResult
-	res.Scheme = uint8(out.scheme)
-	res.UsedEightKarakas = out.used_eight_karakas != 0
-	res.Count = uint8(out.count)
-	for i := 0; i < MaxCharakarakaEntries; i++ {
-		e := out.entries[i]
-		res.Entries[i] = CharakarakaEntry{
-			RoleCode:                uint8(e.role_code),
-			GrahaIndex:              uint8(e.graha_index),
-			Rank:                    uint8(e.rank),
-			LongitudeDeg:            float64(e.longitude_deg),
-			DegreesInRashi:          float64(e.degrees_in_rashi),
-			EffectiveDegreesInRashi: float64(e.effective_degrees_in_rashi),
-		}
-	}
-	return res, st
+	return goCharakarakaResult(out), st
 }
 
 func FullKundaliForDateSummary(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, bhavaCfg BhavaConfig, riseCfg RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (FullKundaliSummary, Status) {
@@ -2860,14 +2847,7 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 		res.Avastha = &v
 	}
 	if out.charakaraka_valid != 0 {
-		v := CharakarakaResult{Scheme: uint8(out.charakaraka.scheme), UsedEightKarakas: out.charakaraka.used_eight_karakas != 0, Count: uint8(out.charakaraka.count)}
-		for i := 0; i < MaxCharakarakaEntries; i++ {
-			e := out.charakaraka.entries[i]
-			v.Entries[i] = CharakarakaEntry{
-				RoleCode: uint8(e.role_code), GrahaIndex: uint8(e.graha_index), Rank: uint8(e.rank),
-				LongitudeDeg: float64(e.longitude_deg), DegreesInRashi: float64(e.degrees_in_rashi), EffectiveDegreesInRashi: float64(e.effective_degrees_in_rashi),
-			}
-		}
+		v := goCharakarakaResult(out.charakaraka)
 		res.Charakaraka = &v
 	}
 	if out.panchang_valid != 0 {

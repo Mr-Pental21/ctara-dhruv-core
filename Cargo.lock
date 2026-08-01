@@ -232,11 +232,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "dhruv_build_info"
+version = "0.1.0"
+
+[[package]]
 name = "dhruv_cli"
 version = "0.1.0"
 dependencies = [
  "clap",
  "criterion",
+ "dhruv_build_info",
  "dhruv_config",
  "dhruv_core",
  "dhruv_frames",
@@ -276,6 +281,7 @@ dependencies = [
 name = "dhruv_elixir_nif"
 version = "0.1.0"
 dependencies = [
+ "dhruv_build_info",
  "dhruv_config",
  "dhruv_core",
  "dhruv_frames",
@@ -293,6 +299,7 @@ name = "dhruv_ffi_c"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "dhruv_build_info",
  "dhruv_config",
  "dhruv_core",
  "dhruv_frames",
@@ -315,6 +322,7 @@ name = "dhruv_rs"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "dhruv_build_info",
  "dhruv_config",
  "dhruv_core",
  "dhruv_frames",

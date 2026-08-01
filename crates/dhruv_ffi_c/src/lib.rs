@@ -67,7 +67,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 86;
+pub const DHRUV_API_VERSION: u32 = 87;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -6517,6 +6517,7 @@ fn resolve_graha_longitudes_config_ptr(
         precession_model,
         reference_plane,
         include_outer_planets: true,
+        node_mode: config_node_mode_from_code(raw.node_mode),
     })
 }
 
@@ -15479,6 +15480,366 @@ pub unsafe extern "C" fn dhruv_charakaraka_for_date(
 }
 
 // ---------------------------------------------------------------------------
+// Charakaraka ranking-change events
+// ---------------------------------------------------------------------------
+
+/// Hard ceiling on events returned by one `dhruv_charakaraka_events` call.
+pub const DHRUV_MAX_CHARAKARAKA_EVENTS: u32 = dhruv_search::MAX_CHARAKARAKA_EVENTS;
+
+/// Charakaraka event trigger: pairwise effective-degree crossing.
+pub const DHRUV_CHARAKARAKA_TRIGGER_DEGREE_CROSSING: u8 = 0;
+/// Charakaraka event trigger: a ranked body entered a new rashi.
+pub const DHRUV_CHARAKARAKA_TRIGGER_RASHI_INGRESS: u8 = 1;
+/// Charakaraka event trigger: MixedParashara flipped 8↔7 mode.
+pub const DHRUV_CHARAKARAKA_TRIGGER_SCHEME_MODE_CHANGE: u8 = 2;
+
+/// Opaque handle to a charakaraka-events result.
+pub type DhruvCharakarakaEventsHandle = *mut std::ffi::c_void;
+
+/// One chara-karaka ranking change.
+///
+/// `before`/`after` reuse the per-moment result shape; their entry order
+/// is the documented ranking order (effective degree desc, then raw
+/// degrees-in-rashi desc, then graha index asc). `changed_roles_mask` has
+/// bit N set when the role with code N changed its assigned graha (a role
+/// present on only one side counts as changed).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DhruvCharakarakaChangeEvent {
+    /// UTC time of the change.
+    pub utc: DhruvUtcTime,
+    /// JD(TDB) of the change.
+    pub jd_tdb: f64,
+    /// `DHRUV_CHARAKARAKA_TRIGGER_*`.
+    pub trigger: u8,
+    /// Bitmask of changed role codes (bit N = role code N, 0-8).
+    pub changed_roles_mask: u16,
+    /// Ranking immediately before the change.
+    pub before: DhruvCharakarakaResult,
+    /// Ranking immediately after the change.
+    pub after: DhruvCharakarakaResult,
+}
+
+fn charakaraka_result_to_ffi(result: &dhruv_vedic_base::CharakarakaResult) -> DhruvCharakarakaResult {
+    let mut out = DhruvCharakarakaResult::zeroed();
+    out.scheme = result.scheme as u8;
+    out.used_eight_karakas = result.used_eight_karakas as u8;
+    let count = result.entries.len().min(DHRUV_MAX_CHARAKARAKA_ENTRIES);
+    out.count = count as u8;
+    for i in 0..count {
+        out.entries[i] = charakaraka_entry_to_ffi(&result.entries[i]);
+    }
+    out
+}
+
+fn charakaraka_change_event_to_ffi(
+    event: &dhruv_search::CharakarakaChangeEvent,
+) -> DhruvCharakarakaChangeEvent {
+    let mut mask: u16 = 0;
+    for role in &event.changed_roles {
+        mask |= 1u16 << role.code();
+    }
+    DhruvCharakarakaChangeEvent {
+        utc: utc_time_to_ffi(&event.utc),
+        jd_tdb: event.jd_tdb,
+        trigger: event.trigger.code(),
+        changed_roles_mask: mask,
+        before: charakaraka_result_to_ffi(&event.before),
+        after: charakaraka_result_to_ffi(&event.after),
+    }
+}
+
+/// Find every chara-karaka ranking change in `[from_utc, to_utc]`.
+///
+/// `scheme` takes the `DHRUV_CHARAKARAKA_SCHEME_*` codes (0-3).
+/// `max_events` caps the emitted events (`0` selects the hard ceiling
+/// `DHRUV_MAX_CHARAKARAKA_EVENTS`); when the cap is reached the result is
+/// marked truncated and carries a resume point (see
+/// `dhruv_charakaraka_events_meta`). Rankings are sidereal per
+/// `sankranti_config` (including `node_mode` — the same longitude
+/// computation as `dhruv_charakaraka_for_date`). On success `*out`
+/// receives a handle that must be freed with
+/// `dhruv_charakaraka_events_free`.
+///
+/// # Safety
+/// All pointers must be valid. `out` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_charakaraka_events(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    from_utc: *const DhruvUtcTime,
+    to_utc: *const DhruvUtcTime,
+    sankranti_config: *const DhruvSankrantiConfig,
+    scheme: u8,
+    max_events: u32,
+    out: *mut DhruvCharakarakaEventsHandle,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || from_utc.is_null() || to_utc.is_null() || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+    let scheme = match CharakarakaScheme::from_u8(scheme) {
+        Some(v) => v,
+        None => return DhruvStatus::InvalidSearchConfig,
+    };
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let from_time = ffi_to_utc_time(unsafe { &*from_utc });
+    let to_time = ffi_to_utc_time(unsafe { &*to_utc });
+    let aya_config = match resolve_sankranti_config_ptr(sankranti_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+
+    match dhruv_search::charakaraka_events(
+        engine,
+        eop,
+        &from_time,
+        &to_time,
+        &aya_config,
+        scheme,
+        max_events,
+    ) {
+        Ok(result) => {
+            let boxed = Box::new(result);
+            unsafe { *out = Box::into_raw(boxed) as DhruvCharakarakaEventsHandle };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Get the number of events in a charakaraka-events handle.
+///
+/// # Safety
+/// `handle` must be a valid charakaraka-events handle. `out` must be
+/// non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_charakaraka_events_count(
+    handle: DhruvCharakarakaEventsHandle,
+    out: *mut u32,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::CharakarakaEventsResult) };
+    unsafe { *out = result.events.len() as u32 };
+    DhruvStatus::Ok
+}
+
+/// Read one event from a charakaraka-events handle by index.
+///
+/// # Safety
+/// `handle` must be a valid charakaraka-events handle. `out` must be
+/// non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_charakaraka_events_at(
+    handle: DhruvCharakarakaEventsHandle,
+    idx: u32,
+    out: *mut DhruvCharakarakaChangeEvent,
+) -> DhruvStatus {
+    if handle.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::CharakarakaEventsResult) };
+    let event = match result.events.get(idx as usize) {
+        Some(value) => value,
+        None => return DhruvStatus::InvalidInput,
+    };
+    unsafe { *out = charakaraka_change_event_to_ffi(event) };
+    DhruvStatus::Ok
+}
+
+/// Read truncation metadata from a charakaraka-events handle.
+///
+/// `*out_truncated` is 1 when the event budget was exhausted before
+/// `to_utc`. `*out_next_from_valid` is 1 when `*out_next_from_utc` carries
+/// the resume point; re-invoke with `from_utc = next_from_utc` to continue
+/// (the seam event is re-found by the resumed sweep; deduplicate on the
+/// event time).
+///
+/// # Safety
+/// `handle` must be a valid charakaraka-events handle. All out pointers
+/// must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_charakaraka_events_meta(
+    handle: DhruvCharakarakaEventsHandle,
+    out_truncated: *mut u8,
+    out_next_from_valid: *mut u8,
+    out_next_from_utc: *mut DhruvUtcTime,
+) -> DhruvStatus {
+    if handle.is_null()
+        || out_truncated.is_null()
+        || out_next_from_valid.is_null()
+        || out_next_from_utc.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+    let result = unsafe { &*(handle as *const dhruv_search::CharakarakaEventsResult) };
+    unsafe {
+        *out_truncated = u8::from(result.truncated);
+        match result.next_from_utc.as_ref() {
+            Some(utc) => {
+                *out_next_from_valid = 1;
+                *out_next_from_utc = utc_time_to_ffi(utc);
+            }
+            None => {
+                *out_next_from_valid = 0;
+                *out_next_from_utc = zeroed_utc();
+            }
+        }
+    }
+    DhruvStatus::Ok
+}
+
+/// Free a charakaraka-events handle. Passing NULL is a no-op.
+///
+/// # Safety
+/// `handle` must come from `dhruv_charakaraka_events` or be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_charakaraka_events_free(handle: DhruvCharakarakaEventsHandle) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle as *mut dhruv_search::CharakarakaEventsResult) };
+    }
+}
+
+/// Find the first chara-karaka ranking change strictly after `at_utc`.
+///
+/// `*out_found` is 1 when `*out` carries an event, 0 when no event was
+/// found before the ephemeris coverage edge.
+///
+/// # Safety
+/// All pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_next_charakaraka_event(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    at_utc: *const DhruvUtcTime,
+    sankranti_config: *const DhruvSankrantiConfig,
+    scheme: u8,
+    out_found: *mut u8,
+    out: *mut DhruvCharakarakaChangeEvent,
+) -> DhruvStatus {
+    unsafe {
+        charakaraka_event_single(
+            engine,
+            eop,
+            at_utc,
+            sankranti_config,
+            scheme,
+            out_found,
+            out,
+            true,
+        )
+    }
+}
+
+/// Find the last chara-karaka ranking change strictly before `at_utc`.
+///
+/// `*out_found` is 1 when `*out` carries an event, 0 when no event was
+/// found before the ephemeris coverage edge.
+///
+/// # Safety
+/// All pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_prev_charakaraka_event(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    at_utc: *const DhruvUtcTime,
+    sankranti_config: *const DhruvSankrantiConfig,
+    scheme: u8,
+    out_found: *mut u8,
+    out: *mut DhruvCharakarakaChangeEvent,
+) -> DhruvStatus {
+    unsafe {
+        charakaraka_event_single(
+            engine,
+            eop,
+            at_utc,
+            sankranti_config,
+            scheme,
+            out_found,
+            out,
+            false,
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn charakaraka_event_single(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    at_utc: *const DhruvUtcTime,
+    sankranti_config: *const DhruvSankrantiConfig,
+    scheme: u8,
+    out_found: *mut u8,
+    out: *mut DhruvCharakarakaChangeEvent,
+    forward: bool,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || at_utc.is_null() || out_found.is_null() || out.is_null()
+    {
+        return DhruvStatus::NullPointer;
+    }
+    let scheme = match CharakarakaScheme::from_u8(scheme) {
+        Some(v) => v,
+        None => return DhruvStatus::InvalidSearchConfig,
+    };
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let at_time = ffi_to_utc_time(unsafe { &*at_utc });
+    let aya_config = match resolve_sankranti_config_ptr(sankranti_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let found = if forward {
+        dhruv_search::next_charakaraka_event(engine, eop, &at_time, &aya_config, scheme)
+    } else {
+        dhruv_search::prev_charakaraka_event(engine, eop, &at_time, &aya_config, scheme)
+    };
+    match found {
+        Ok(Some(event)) => {
+            unsafe {
+                *out_found = 1;
+                *out = charakaraka_change_event_to_ffi(&event);
+            }
+            DhruvStatus::Ok
+        }
+        Ok(None) => {
+            unsafe { *out_found = 0 };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Build identity
+// ---------------------------------------------------------------------------
+
+static LIBRARY_VERSION_CSTR: std::sync::LazyLock<std::ffi::CString> =
+    std::sync::LazyLock::new(|| {
+        std::ffi::CString::new(dhruv_build_info::VERSION).expect("version has no NUL")
+    });
+static BUILD_GIT_HASH_CSTR: std::sync::LazyLock<std::ffi::CString> =
+    std::sync::LazyLock::new(|| {
+        std::ffi::CString::new(dhruv_build_info::GIT_HASH).expect("git hash has no NUL")
+    });
+
+/// Library version string (static, NUL-terminated; do not free).
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_library_version() -> *const std::ffi::c_char {
+    LIBRARY_VERSION_CSTR.as_ptr()
+}
+
+/// Git commit hash of the source tree at build time (static,
+/// NUL-terminated; do not free). `"unknown"` when the library was built
+/// outside a git checkout.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_build_git_hash() -> *const std::ffi::c_char {
+    BUILD_GIT_HASH_CSTR.as_ptr()
+}
+
+// ---------------------------------------------------------------------------
 // Shadbala & Vimsopaka FFI functions (date-based)
 // ---------------------------------------------------------------------------
 
@@ -15949,6 +16310,9 @@ pub struct DhruvGrahaLongitudesConfig {
     pub precession_model: i32,
     /// `DhruvReferencePlane` or -1 for system default.
     pub reference_plane: i32,
+    /// Lunar-node model for Rahu/Ketu
+    /// (`DHRUV_NODE_MODE_MEAN` = mean node, any other value = true node).
+    pub node_mode: i32,
 }
 
 /// One moving osculating apogee result entry.
@@ -15998,6 +16362,7 @@ pub extern "C" fn dhruv_graha_longitudes_config_default() -> DhruvGrahaLongitude
         use_nutation: 0,
         precession_model: DHRUV_PRECESSION_MODEL_VONDRAK2011,
         reference_plane: -1,
+        node_mode: DHRUV_NODE_MODE_TRUE,
     }
 }
 

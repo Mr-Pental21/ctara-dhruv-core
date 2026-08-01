@@ -427,6 +427,50 @@ variation)` in `dhruv_vedic_base::amsha` returns the next longitude (as
 `sidereal_lon + delta`, `delta > 0`) at which the varga rashi changes — an
 exact division boundary, convenient for monotone trackers.
 
+`charakaraka_events` returns the exact moments the chara-karaka ranking
+changes over a range, per scheme (`Eight`, `SevenNoPitri`,
+`SevenPkMergedMk`, `MixedParashara`). Boundaries are root-found: rashi
+ingresses, pairwise degree-in-rashi crossings (Rahu counts reversed, so a
+Rahu crossing is the sum condition `d_Rahu + d_other = 30`), and — for
+`MixedParashara` — the integer-degree bin boundaries that flip the 8↔7
+mode (`SchemeModeChange` trigger, `used_eight_karakas` flips). Each
+`CharakarakaChangeEvent` carries `utc`/`jd_tdb`, a trigger, `before`/
+`after` rankings in the per-moment `CharakarakaResult` shape (the entry
+order is the documented contract: effective degree desc, then raw
+degrees-in-rashi desc, then graha index asc), and `changed_roles`. Only
+actual ranking changes are emitted; rankings honor
+`aya_config.node_mode` on the same longitude path as the per-moment op.
+`max_events` caps output (`0` = `MAX_CHARAKARAKA_EVENTS` = 50,000) with
+`truncated`/`next_from_utc` for resuming (the seam event is re-found —
+deduplicate on the event time). `next_charakaraka_event` /
+`prev_charakaraka_event` return the single neighboring change around
+`at_utc`.
+
+```rust
+use dhruv_rs::{charakaraka_events, CharakarakaEventTrigger};
+use dhruv_vedic_base::CharakarakaScheme;
+
+let result = charakaraka_events(
+    ctx.engine(),
+    &eop,
+    &from_utc,
+    &to_utc,
+    &SankrantiConfig::default_lahiri(),
+    CharakarakaScheme::Eight,
+    0, // library ceiling
+)?;
+for event in &result.events {
+    let atma_after = &event.after.entries[0];
+    println!(
+        "{:?} {:?}: AK -> {:?} (changed: {:?})",
+        event.utc, event.trigger, atma_after.graha, event.changed_roles
+    );
+}
+```
+
+`build_version()` and `build_git_hash()` identify the running build for
+precalc provenance (`git_hash` is `"unknown"` outside a git checkout).
+
 ## Equatorial Output on Graha Positions
 
 `GrahaPositionsConfig.include_equatorial` (default false) adds per-entry

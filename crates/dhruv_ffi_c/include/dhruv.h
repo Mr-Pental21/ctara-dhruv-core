@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       86
+#define DHRUV_API_VERSION       87
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -370,6 +370,7 @@ typedef int32_t DhruvStatus;
 #define DHRUV_MAX_AMSHA_SERIES_CELLS   100000
 #define DHRUV_MAX_PANCHANG_EVENTS       50000
 #define DHRUV_MAX_AMSHA_LAGNA_SEGMENTS  50000
+#define DHRUV_MAX_CHARAKARAKA_EVENTS    50000
 
 /* Charakaraka schemes */
 #define DHRUV_CHARAKARAKA_SCHEME_EIGHT             0
@@ -387,6 +388,11 @@ typedef int32_t DhruvStatus;
 #define DHRUV_CHARAKARAKA_ROLE_GNATI        6
 #define DHRUV_CHARAKARAKA_ROLE_DARA         7
 #define DHRUV_CHARAKARAKA_ROLE_MATRI_PUTRA  8
+
+/* Charakaraka ranking-change event triggers */
+#define DHRUV_CHARAKARAKA_TRIGGER_DEGREE_CROSSING    0
+#define DHRUV_CHARAKARAKA_TRIGGER_RASHI_INGRESS      1
+#define DHRUV_CHARAKARAKA_TRIGGER_SCHEME_MODE_CHANGE 2
 
 /* Tara output selectors */
 #define DHRUV_TARA_OUTPUT_EQUATORIAL 0
@@ -1552,6 +1558,9 @@ typedef struct {
     uint8_t use_nutation;
     int32_t precession_model;
     int32_t reference_plane;
+    /* Lunar-node model for Rahu/Ketu (DHRUV_NODE_MODE_MEAN = mean node,
+       any other value = true node). */
+    int32_t node_mode;
 } DhruvGrahaLongitudesConfig;
 
 typedef struct {
@@ -1693,6 +1702,20 @@ typedef struct {
     uint8_t              count;
     DhruvCharakarakaEntry entries[8];
 } DhruvCharakarakaResult;
+
+/* One chara-karaka ranking change. before/after reuse the per-moment
+   result shape; their entry order is the documented ranking order
+   (effective degree desc, then raw degrees-in-rashi desc, then graha
+   index asc). changed_roles_mask has bit N set when the role with code N
+   changed its assigned graha (a role present on only one side counts). */
+typedef struct {
+    DhruvUtcTime           utc;
+    double                 jd_tdb;
+    uint8_t                trigger;            /* DHRUV_CHARAKARAKA_TRIGGER_* */
+    uint16_t               changed_roles_mask; /* bit N = role code N (0-8) */
+    DhruvCharakarakaResult before;
+    DhruvCharakarakaResult after;
+} DhruvCharakarakaChangeEvent;
 
 /* --- Shadbala & Vimsopaka --- */
 
@@ -3253,6 +3276,67 @@ DhruvStatus dhruv_charakaraka_for_date(
     uint8_t use_nutation,
     uint8_t scheme,
     DhruvCharakarakaResult *out);
+
+/* --- Charakaraka ranking-change events ---
+   Finds every chara-karaka ranking change in [from_utc, to_utc] for a
+   scheme (DHRUV_CHARAKARAKA_SCHEME_*). Rankings are sidereal per
+   sankranti_config (including node_mode — the same longitude computation
+   as dhruv_charakaraka_for_date). max_events caps the emitted events
+   (0 selects the hard ceiling DHRUV_MAX_CHARAKARAKA_EVENTS). When
+   truncated, dhruv_charakaraka_events_meta yields the resume point; the
+   seam event is re-found by the resumed sweep (deduplicate on the event
+   time). The returned handle must be freed with
+   dhruv_charakaraka_events_free. */
+typedef void *DhruvCharakarakaEventsHandle;
+
+DhruvStatus dhruv_charakaraka_events(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *from_utc,
+    const DhruvUtcTime *to_utc,
+    const DhruvSankrantiConfig *sankranti_config,
+    uint8_t scheme,
+    uint32_t max_events,
+    DhruvCharakarakaEventsHandle *out);
+DhruvStatus dhruv_charakaraka_events_count(
+    DhruvCharakarakaEventsHandle handle,
+    uint32_t *out);
+DhruvStatus dhruv_charakaraka_events_at(
+    DhruvCharakarakaEventsHandle handle,
+    uint32_t idx,
+    DhruvCharakarakaChangeEvent *out);
+DhruvStatus dhruv_charakaraka_events_meta(
+    DhruvCharakarakaEventsHandle handle,
+    uint8_t *out_truncated,
+    uint8_t *out_next_from_valid,
+    DhruvUtcTime *out_next_from_utc);
+void dhruv_charakaraka_events_free(DhruvCharakarakaEventsHandle handle);
+
+/* First ranking change strictly after at_utc (*out_found = 1 when *out
+   carries an event; 0 when none found before the coverage edge). */
+DhruvStatus dhruv_next_charakaraka_event(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *at_utc,
+    const DhruvSankrantiConfig *sankranti_config,
+    uint8_t scheme,
+    uint8_t *out_found,
+    DhruvCharakarakaChangeEvent *out);
+/* Last ranking change strictly before at_utc. */
+DhruvStatus dhruv_prev_charakaraka_event(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *at_utc,
+    const DhruvSankrantiConfig *sankranti_config,
+    uint8_t scheme,
+    uint8_t *out_found,
+    DhruvCharakarakaChangeEvent *out);
+
+/* --- Build identity ---
+   Static NUL-terminated strings; do not free. dhruv_build_git_hash()
+   returns "unknown" when the library was built outside a git checkout. */
+const char *dhruv_library_version(void);
+const char *dhruv_build_git_hash(void);
 
 /* --- Shadbala --- */
 DhruvStatus dhruv_shadbala_for_date(

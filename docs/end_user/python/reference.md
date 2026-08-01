@@ -22,6 +22,10 @@ This page summarizes the public Python wrapper by module, using
   `MAX_AMSHA_LAGNA_SEGMENTS`
 - panchang range operation `panchang_events` plus the cap
   `MAX_PANCHANG_EVENTS`
+- charakaraka range operations `charakaraka_events`,
+  `next_charakaraka_event`, `prev_charakaraka_event` plus the cap
+  `MAX_CHARAKARAKA_EVENTS`
+- build identity: `library_version`, `build_git_hash`
 
 The fuller public surface is intentionally module-based.
 
@@ -53,6 +57,8 @@ The fuller public surface is intentionally module-based.
 - `lsk`
 - `eop`
 - `replace_spks`
+- `library_version()` / `build_git_hash()` — build identity strings for
+  provenance (`build_git_hash()` is `"unknown"` outside a git checkout)
 
 `Engine.replace_spks(spk_paths)` atomically replaces the active SPK set on a
 long-lived engine, and `Engine.list_spks()` returns active SPKs in query order.
@@ -330,6 +336,25 @@ point: call again with `from_utc=result.next_from` and deduplicate on
   mean/apparent sidereal time in degrees at the request instant).
 - `core_bindus`
 - `charakaraka_for_date`
+- `charakaraka_events(engine, eop, from_utc, to_utc, scheme=0,
+  sankranti_config=None, max_events=0)` — the exact moments the
+  chara-karaka ranking changes over the range, for any of the four
+  schemes. Returns a `CharakarakaEventsResult` (`events`, `truncated`,
+  `next_from`); each `CharakarakaChangeEvent` carries `utc`, `jd_tdb`,
+  `trigger`/`trigger_name` (`degree_crossing` — pairwise crossings
+  including Rahu's reversed-count sum condition, `rashi_ingress`, or
+  `scheme_mode_change` — the MixedParashara 8↔7 flip), `changed_roles`
+  (role codes), and `before`/`after` as per-moment `CharakarakaResult`
+  snapshots (entry order is the documented ranking contract: effective
+  degree desc, then raw degrees-in-rashi desc, then graha index asc).
+  Rankings are sidereal per `sankranti_config` and honor its `node_mode`
+  on the same longitude path as `charakaraka_for_date`. Only actual
+  ranking changes are emitted. `max_events` `0` selects
+  `MAX_CHARAKARAKA_EVENTS` (50,000); on truncation resume from
+  `next_from` and deduplicate on the event time.
+- `next_charakaraka_event(engine, eop, at_utc, scheme=0,
+  sankranti_config=None)` / `prev_charakaraka_event(...)` — the single
+  neighboring ranking change (or `None` at the ephemeris coverage edge).
 - `full_kundali_config_default`
 - `full_kundali`
 

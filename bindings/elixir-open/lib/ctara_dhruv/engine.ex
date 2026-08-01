@@ -44,4 +44,6 @@ defmodule CtaraDhruv.Engine do
 
   def reset_tara_catalog(%__MODULE__{} = engine),
     do: Native.call_engine_noarg(&Native.engine_reset_tara_catalog/1, engine)
+
+  def build_info, do: Native.call_util(&Native.util_run/1, %{op: :build_info})
 end

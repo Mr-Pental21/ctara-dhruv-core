@@ -426,6 +426,8 @@ bool ReadGrahaLongitudesConfig(napi_env env, napi_value obj, DhruvGrahaLongitude
     if (has && (!GetNamedProperty(env, obj, "precessionModel", &v) || !GetInt32(env, v, &out->precession_model))) return false;
     if (napi_has_named_property(env, obj, "referencePlane", &has) != napi_ok) return false;
     if (has && (!GetNamedProperty(env, obj, "referencePlane", &v) || !GetInt32(env, v, &out->reference_plane))) return false;
+    if (napi_has_named_property(env, obj, "nodeMode", &has) != napi_ok) return false;
+    if (has && (!GetNamedProperty(env, obj, "nodeMode", &v) || !GetInt32(env, v, &out->node_mode))) return false;
     return true;
 }
 
@@ -2016,6 +2018,35 @@ napi_value WriteCharakarakaResult(napi_env env, const DhruvCharakarakaResult& c)
     return obj;
 }
 
+napi_value WriteCharakarakaChangeEvent(napi_env env, const DhruvCharakarakaChangeEvent& ev) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "at", WriteUtcTime(env, ev.utc));
+    SetNamed(env, obj, "jdTdb", MakeDouble(env, ev.jd_tdb));
+    SetNamed(env, obj, "trigger", MakeUint32(env, ev.trigger));
+    const char* trigger_name = nullptr;
+    switch (ev.trigger) {
+        case DHRUV_CHARAKARAKA_TRIGGER_DEGREE_CROSSING: trigger_name = "degree_crossing"; break;
+        case DHRUV_CHARAKARAKA_TRIGGER_RASHI_INGRESS: trigger_name = "rashi_ingress"; break;
+        case DHRUV_CHARAKARAKA_TRIGGER_SCHEME_MODE_CHANGE: trigger_name = "scheme_mode_change"; break;
+        default: break;
+    }
+    SetNamed(env, obj, "triggerName", MakeString(env, trigger_name));
+    napi_value roles;
+    napi_create_array(env, &roles);
+    uint32_t role_count = 0;
+    for (uint32_t role = 0; role <= DHRUV_CHARAKARAKA_ROLE_MATRI_PUTRA; ++role) {
+        if ((ev.changed_roles_mask & (1u << role)) != 0) {
+            napi_set_element(env, roles, role_count, MakeUint32(env, role));
+            ++role_count;
+        }
+    }
+    SetNamed(env, obj, "changedRoles", roles);
+    SetNamed(env, obj, "before", WriteCharakarakaResult(env, ev.before));
+    SetNamed(env, obj, "after", WriteCharakarakaResult(env, ev.after));
+    return obj;
+}
+
 napi_value WriteSphutalResult(napi_env env, const DhruvSphutalResult& s) {
     napi_value obj;
     napi_create_object(env, &obj);
@@ -2949,6 +2980,16 @@ napi_value WriteNakshatra28Info(napi_env env, const DhruvNakshatra28Info& n) {
 napi_value ApiVersion(napi_env env, napi_callback_info info) {
     (void)info;
     return MakeUint32(env, dhruv_api_version());
+}
+
+napi_value LibraryVersion(napi_env env, napi_callback_info info) {
+    (void)info;
+    return MakeString(env, dhruv_library_version());
+}
+
+napi_value BuildGitHash(napi_env env, napi_callback_info info) {
+    (void)info;
+    return MakeString(env, dhruv_build_git_hash());
 }
 
 napi_value ConfigClearActive(napi_env env, napi_callback_info info) {
@@ -7569,6 +7610,149 @@ napi_value CharakarakaForDate(napi_env env, napi_callback_info info) {
     return out;
 }
 
+napi_value CharakarakaEvents(napi_env env, napi_callback_info info) {
+    size_t argc = 7;
+    napi_value args[7];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 7) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime from_utc{};
+    DhruvUtcTime to_utc{};
+    DhruvSankrantiConfig sank_cfg{};
+    uint32_t scheme = 0;
+    uint32_t max_events = 0;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) ||
+        !ReadUtcTime(env, args[2], &from_utc) || !ReadUtcTime(env, args[3], &to_utc) ||
+        !ReadSankrantiConfig(env, args[4], &sank_cfg) ||
+        !GetUint32(env, args[5], &scheme) || !GetUint32(env, args[6], &max_events)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvCharakarakaEventsHandle handle = nullptr;
+    int32_t status = dhruv_charakaraka_events(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &from_utc,
+        &to_utc,
+        &sank_cfg,
+        static_cast<uint8_t>(scheme),
+        max_events,
+        &handle);
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) return out;
+
+    uint32_t count = 0;
+    status = dhruv_charakaraka_events_count(handle, &count);
+    if (status != STATUS_OK) {
+        dhruv_charakaraka_events_free(handle);
+        return MakeStatusResult(env, status);
+    }
+    napi_value events;
+    napi_create_array_with_length(env, count, &events);
+    for (uint32_t i = 0; i < count; ++i) {
+        DhruvCharakarakaChangeEvent ev{};
+        status = dhruv_charakaraka_events_at(handle, i, &ev);
+        if (status != STATUS_OK) {
+            dhruv_charakaraka_events_free(handle);
+            return MakeStatusResult(env, status);
+        }
+        napi_set_element(env, events, i, WriteCharakarakaChangeEvent(env, ev));
+    }
+    uint8_t truncated = 0;
+    uint8_t next_valid = 0;
+    DhruvUtcTime next_from{};
+    status = dhruv_charakaraka_events_meta(handle, &truncated, &next_valid, &next_from);
+    dhruv_charakaraka_events_free(handle);
+    if (status != STATUS_OK) return MakeStatusResult(env, status);
+    napi_value result;
+    napi_create_object(env, &result);
+    SetNamed(env, result, "events", events);
+    SetNamed(env, result, "truncated", MakeBool(env, truncated != 0));
+    napi_value next_value;
+    if (next_valid != 0) {
+        next_value = WriteUtcTime(env, next_from);
+    } else {
+        napi_get_null(env, &next_value);
+    }
+    SetNamed(env, result, "nextFromUtc", next_value);
+    SetNamed(env, out, "result", result);
+    return out;
+}
+
+napi_value NextCharakarakaEvent(napi_env env, napi_callback_info info) {
+    size_t argc = 5;
+    napi_value args[5];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 5) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime at_utc{};
+    DhruvSankrantiConfig sank_cfg{};
+    uint32_t scheme = 0;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) ||
+        !ReadUtcTime(env, args[2], &at_utc) || !ReadSankrantiConfig(env, args[3], &sank_cfg) ||
+        !GetUint32(env, args[4], &scheme)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    uint8_t found = 0;
+    DhruvCharakarakaChangeEvent ev{};
+    int32_t status = dhruv_next_charakaraka_event(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &at_utc,
+        &sank_cfg,
+        static_cast<uint8_t>(scheme),
+        &found,
+        &ev);
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) return out;
+    napi_value ev_value;
+    if (found != 0) {
+        ev_value = WriteCharakarakaChangeEvent(env, ev);
+    } else {
+        napi_get_null(env, &ev_value);
+    }
+    SetNamed(env, out, "event", ev_value);
+    return out;
+}
+
+napi_value PrevCharakarakaEvent(napi_env env, napi_callback_info info) {
+    size_t argc = 5;
+    napi_value args[5];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 5) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime at_utc{};
+    DhruvSankrantiConfig sank_cfg{};
+    uint32_t scheme = 0;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) ||
+        !ReadUtcTime(env, args[2], &at_utc) || !ReadSankrantiConfig(env, args[3], &sank_cfg) ||
+        !GetUint32(env, args[4], &scheme)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    uint8_t found = 0;
+    DhruvCharakarakaChangeEvent ev{};
+    int32_t status = dhruv_prev_charakaraka_event(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &at_utc,
+        &sank_cfg,
+        static_cast<uint8_t>(scheme),
+        &found,
+        &ev);
+    napi_value out = MakeStatusResult(env, status);
+    if (status != STATUS_OK) return out;
+    napi_value ev_value;
+    if (found != 0) {
+        ev_value = WriteCharakarakaChangeEvent(env, ev);
+    } else {
+        napi_get_null(env, &ev_value);
+    }
+    SetNamed(env, out, "event", ev_value);
+    return out;
+}
+
 napi_value FullKundaliSummaryForDate(napi_env env, napi_callback_info info) {
     size_t argc = 6;
     napi_value args[6];
@@ -8827,6 +9011,8 @@ napi_value TaraGalacticAnticenterIcrs(napi_env env, napi_callback_info info) {
 napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
         {"apiVersion", nullptr, ApiVersion, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"libraryVersion", nullptr, LibraryVersion, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"buildGitHash", nullptr, BuildGitHash, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"configLoad", nullptr, ConfigLoad, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"configFree", nullptr, ConfigFree, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"configClearActive", nullptr, ConfigClearActive, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -9035,6 +9221,9 @@ napi_value Init(napi_env env, napi_value exports) {
         {"balasForDate", nullptr, BalasForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"avasthaForDate", nullptr, AvasthaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"charakarakaForDate", nullptr, CharakarakaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"charakarakaEvents", nullptr, CharakarakaEvents, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nextCharakarakaEvent", nullptr, NextCharakarakaEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"prevCharakarakaEvent", nullptr, PrevCharakarakaEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"fullKundaliSummaryForDate", nullptr, FullKundaliSummaryForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"fullKundaliConfigDefault", nullptr, FullKundaliConfigDefault, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"fullKundaliForDate", nullptr, FullKundaliForDate, nullptr, nullptr, nullptr, napi_default, nullptr},

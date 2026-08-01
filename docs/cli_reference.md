@@ -395,6 +395,41 @@ dhruv charakaraka --date 2024-03-20T12:00:00Z \
 | `--scheme` | `eight`, `seven-no-pitri`, `seven-pk-merged-mk`, `mixed-parashara` |
 | scheme aliases | `7-planet`, `parashari`, `jaimini`, `7-8-parashara` |
 
+### `charakaraka-events` — Chara karaka ranking-change events
+
+```
+dhruv charakaraka-events --start 2024-01-01T00:00:00Z --end 2024-02-01T00:00:00Z \
+  --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all \
+  --scheme eight
+
+dhruv charakaraka-events --mode next --at 2024-03-20T12:00:00Z \
+  --bsp de442s.bsp --lsk naif0012.tls --eop finals2000A.all
+```
+
+| Flag | Description |
+|---|---|
+| `--mode` | `next`, `prev`, or `range` (default `range`) |
+| `--at` | UTC datetime for next/prev mode |
+| `--start` / `--end` | UTC range datetimes for range mode |
+| `--scheme` | same values and aliases as `charakaraka` (default `mixed-parashara`) |
+| `--max-events` | range cap; `0` = the 50,000 library ceiling |
+
+Prints each ranking change with its UTC time, trigger (`degree_crossing`,
+`rashi_ingress`, or `scheme_mode_change`), the changed roles, the ranking
+after the change (`role=graha` in rank order), and — on mode changes — the
+8↔7 flip. Only actual ranking changes are emitted; rankings honor the
+sidereal flags and node model, matching `charakaraka` at any instant.
+Truncated range runs print a resume time for `--start`.
+
+### `build-info` — Build identity
+
+```
+dhruv build-info
+```
+
+Prints `version:` (library version) and `git_hash:` (build-time commit, or
+`unknown` outside a git checkout).
+
 ### `core-bindus` — 19 curated sensitive points
 
 ```

@@ -5363,3 +5363,177 @@ fn ffi_range_ops_reject_invalid_masks_and_empty_requests() {
     unsafe { dhruv_eop_free(eop_ptr) };
     unsafe { dhruv_engine_free(engine_ptr) };
 }
+
+#[test]
+fn ffi_charakaraka_events_smoke_and_truncation() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(v) => v,
+        None => return,
+    };
+    let from = DhruvUtcTime {
+        year: 2024,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
+    let to = DhruvUtcTime { day: 8, ..from };
+    let sankranti = dhruv_sankranti_config_default();
+
+    let mut handle: DhruvCharakarakaEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_charakaraka_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            &sankranti,
+            0u8 /* EIGHT */,
+            0,
+            &mut handle,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(!handle.is_null());
+
+    let mut count = 0u32;
+    let s = unsafe { dhruv_charakaraka_events_count(handle, &mut count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert!(count > 10, "a week of EIGHT should be dense, got {count}");
+
+    let mut prev_jd = 0.0f64;
+    for idx in 0..count {
+        let mut event: DhruvCharakarakaChangeEvent = unsafe { std::mem::zeroed() };
+        let s = unsafe { dhruv_charakaraka_events_at(handle, idx, &mut event) };
+        assert_eq!(s, DhruvStatus::Ok);
+        assert!(event.trigger <= DHRUV_CHARAKARAKA_TRIGGER_SCHEME_MODE_CHANGE);
+        assert!(event.changed_roles_mask != 0, "event {idx} changed nothing");
+        assert_eq!(event.before.count, 8);
+        assert_eq!(event.after.count, 8);
+        assert!(event.jd_tdb > prev_jd, "events must be ascending");
+        prev_jd = event.jd_tdb;
+    }
+
+    let mut oob: DhruvCharakarakaChangeEvent = unsafe { std::mem::zeroed() };
+    let s = unsafe { dhruv_charakaraka_events_at(handle, count, &mut oob) };
+    assert_eq!(s, DhruvStatus::InvalidInput);
+
+    let mut truncated = 1u8;
+    let mut next_valid = 1u8;
+    let mut next_utc = ZEROED_UTC;
+    let s = unsafe {
+        dhruv_charakaraka_events_meta(handle, &mut truncated, &mut next_valid, &mut next_utc)
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(truncated, 0);
+    assert_eq!(next_valid, 0);
+    unsafe { dhruv_charakaraka_events_free(handle) };
+
+    // Truncation: cap at 3 events.
+    let mut capped: DhruvCharakarakaEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_charakaraka_events(
+            engine_ptr,
+            eop_ptr,
+            &from,
+            &to,
+            &sankranti,
+            0u8 /* EIGHT */,
+            3,
+            &mut capped,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    let mut capped_count = 0u32;
+    let s = unsafe { dhruv_charakaraka_events_count(capped, &mut capped_count) };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(capped_count, 3);
+    let s = unsafe {
+        dhruv_charakaraka_events_meta(capped, &mut truncated, &mut next_valid, &mut next_utc)
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(truncated, 1);
+    assert_eq!(next_valid, 1);
+    assert_eq!(next_utc.year, 2024);
+    unsafe { dhruv_charakaraka_events_free(capped) };
+
+    // Invalid scheme code.
+    let mut bad: DhruvCharakarakaEventsHandle = ptr::null_mut();
+    let s = unsafe {
+        dhruv_charakaraka_events(engine_ptr, eop_ptr, &from, &to, &sankranti, 9, 0, &mut bad)
+    };
+    assert_eq!(s, DhruvStatus::InvalidSearchConfig);
+
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_next_prev_charakaraka_event() {
+    let (engine_ptr, eop_ptr) = match make_kundali_fixtures() {
+        Some(v) => v,
+        None => return,
+    };
+    let at = DhruvUtcTime {
+        year: 2024,
+        month: 6,
+        day: 15,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+    };
+    let sankranti = dhruv_sankranti_config_default();
+
+    let mut found = 0u8;
+    let mut event: DhruvCharakarakaChangeEvent = unsafe { std::mem::zeroed() };
+    let s = unsafe {
+        dhruv_next_charakaraka_event(
+            engine_ptr,
+            eop_ptr,
+            &at,
+            &sankranti,
+            3u8 /* MIXED_PARASHARA */,
+            &mut found,
+            &mut event,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(found, 1);
+    assert!(event.changed_roles_mask != 0);
+
+    let mut prev_found = 0u8;
+    let mut prev_event: DhruvCharakarakaChangeEvent = unsafe { std::mem::zeroed() };
+    let s = unsafe {
+        dhruv_prev_charakaraka_event(
+            engine_ptr,
+            eop_ptr,
+            &at,
+            &sankranti,
+            3u8 /* MIXED_PARASHARA */,
+            &mut prev_found,
+            &mut prev_event,
+        )
+    };
+    assert_eq!(s, DhruvStatus::Ok);
+    assert_eq!(prev_found, 1);
+    assert!(prev_event.jd_tdb < event.jd_tdb);
+
+    unsafe { dhruv_eop_free(eop_ptr) };
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
+fn ffi_build_identity_strings() {
+    let version = unsafe { std::ffi::CStr::from_ptr(dhruv_library_version()) };
+    let version = version.to_str().expect("utf8 version");
+    assert!(!version.is_empty());
+    assert!(version.split('.').count() >= 2, "version: {version}");
+
+    let hash = unsafe { std::ffi::CStr::from_ptr(dhruv_build_git_hash()) };
+    let hash = hash.to_str().expect("utf8 hash");
+    assert!(
+        hash == "unknown" || (hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit())),
+        "unexpected git hash: {hash}"
+    );
+}

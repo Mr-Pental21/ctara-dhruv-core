@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=86`
+- ABI target: `DHRUV_API_VERSION=87`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 - Primary distribution: npm package with bundled platform prebuilds from unified `vX.Y.Z` tags
@@ -94,6 +94,12 @@ Public modules included in this wrapper:
   `MAX_AMSHA_LAGNA_SEGMENTS`
 - jyotish/rashi/nakshatra helpers (`grahaLongitudes`, longitude classifiers, special lagnas, arudha/upagraha date APIs)
 - charakaraka date API (`charakarakaForDate`) with selectable schemes (`8`, `7-no-pitri`, `7-pk-merged-mk`, `mixed-parashara`)
+- charakaraka ranking-change events (`charakarakaEvents` over a UTC range plus
+  `nextCharakarakaEvent`/`prevCharakarakaEvent` point lookups), with the C ABI
+  cap exported as `MAX_CHARAKARAKA_EVENTS` and trigger codes as
+  `CHARAKARAKA_EVENT_TRIGGER`
+- build identity helpers (`libraryVersion`, `buildGitHash`) alongside
+  `apiVersion`
 - extras/composable APIs (panchang intermediates, sphuta/special-lagna scalar helpers, ashtakavarga, drishti, graha positions, bindus, amsha)
 - low-level graha relationship/combustion/dignity helpers in `extras`
 - shadbala/vimsopaka/avastha and full-kundali summary
@@ -109,7 +115,9 @@ The unified search APIs accept the lunar nodes as first-class bodies: pass
 `sankrantiSearch`. The sankranti, conjunction, and stationary configs carry a
 `nodeMode` field (`0` = mean node, `1` = true node; default `1`). Stationary
 search of Rahu/Ketu requires the true node (`nodeMode: 1`); with the mean node
-it fails with an invalid-query/config error.
+it fails with an invalid-query/config error. The optional `grahaLongitudes`/
+`movingOsculatingApogeesForDate` config object accepts the same `nodeMode`
+field for its Rahu/Ketu longitudes (default `1` = true node).
 
 `sankrantiSearch` requests take an optional `bodyCode` (default `0` = the Sun,
 the classical sankranti) to search rashi ingresses of any body, including
@@ -178,6 +186,28 @@ through `panchangIncludeMask` (`0` omits the section; it replaces the former
 `includePanchang`/`includeCalendar` booleans). The embedded
 `fullKundaliForDate(...).panchang` result uses the same per-element `*Valid`
 shape as `panchangComputeEx`.
+
+## Charakaraka Events
+
+`charakarakaEvents(engine, eop, fromUtc, toUtc, options)` finds every
+chara-karaka ranking change in `[fromUtc, toUtc]`. `options` accepts `scheme`
+(the `charakarakaForDate` codes or names, default `'eight'`),
+`sankrantiConfig` (the sidereal longitude policy, including `nodeMode`;
+library defaults when omitted), and `maxEvents` (`0` selects the
+`MAX_CHARAKARAKA_EVENTS` ceiling). The result is `{ events, truncated,
+nextFromUtc }`; on truncation resume from `nextFromUtc` and deduplicate on
+the event time. Each event carries:
+
+- `at` (UTC object) and `jdTdb`
+- `trigger`/`triggerName`: `CHARAKARAKA_EVENT_TRIGGER` code plus
+  `"degree_crossing"`, `"rashi_ingress"`, or `"scheme_mode_change"`
+- `changedRoles`: the `CHARAKARAKA_ROLE` codes whose assigned graha changed
+- `before`/`after`: full rankings in the `charakarakaForDate` result shape
+
+`nextCharakarakaEvent(engine, eop, atUtc, options)` and
+`prevCharakarakaEvent(engine, eop, atUtc, options)` return the first change
+strictly after / last change strictly before `atUtc` (same `options` without
+`maxEvents`), or `null` when none is found before the coverage edge.
 
 ## Time-Based Upagraha Config
 

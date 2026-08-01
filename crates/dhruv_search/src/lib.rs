@@ -9,6 +9,7 @@
 //! - Max-speed search (velocity extrema)
 
 pub mod amsha_events;
+pub mod charakaraka_events;
 pub mod conjunction;
 pub mod conjunction_types;
 pub mod dasha;
@@ -36,6 +37,10 @@ pub mod transit_body;
 pub use amsha_events::{
     AmshaLagnaEvents, AmshaLagnaEventsResult, AmshaLagnaSegment, MAX_AMSHA_LAGNA_SEGMENTS,
     amsha_lagna_events,
+};
+pub use charakaraka_events::{
+    CharakarakaChangeEvent, CharakarakaEventTrigger, CharakarakaEventsResult,
+    MAX_CHARAKARAKA_EVENTS, charakaraka_events, next_charakaraka_event, prev_charakaraka_event,
 };
 pub use conjunction::{
     body_ecliptic_lon_lat, body_lon_lat_on_plane, next_conjunction, prev_conjunction,

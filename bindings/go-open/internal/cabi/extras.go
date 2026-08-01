@@ -1345,6 +1345,134 @@ func AmshaLagnaEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime
 	return res, StatusOK
 }
 
+func goCharakarakaResult(v C.DhruvCharakarakaResult) CharakarakaResult {
+	var res CharakarakaResult
+	res.Scheme = uint8(v.scheme)
+	res.UsedEightKarakas = v.used_eight_karakas != 0
+	res.Count = uint8(v.count)
+	for i := 0; i < MaxCharakarakaEntries; i++ {
+		e := v.entries[i]
+		res.Entries[i] = CharakarakaEntry{
+			RoleCode:                uint8(e.role_code),
+			GrahaIndex:              uint8(e.graha_index),
+			Rank:                    uint8(e.rank),
+			LongitudeDeg:            float64(e.longitude_deg),
+			DegreesInRashi:          float64(e.degrees_in_rashi),
+			EffectiveDegreesInRashi: float64(e.effective_degrees_in_rashi),
+		}
+	}
+	return res
+}
+
+// CharakarakaTriggerName resolves a CharakarakaTrigger* code to its stable
+// snake_case name ("" for unknown codes).
+func CharakarakaTriggerName(trigger uint8) string {
+	switch trigger {
+	case CharakarakaTriggerDegreeCrossing:
+		return "degree_crossing"
+	case CharakarakaTriggerRashiIngress:
+		return "rashi_ingress"
+	case CharakarakaTriggerSchemeModeChange:
+		return "scheme_mode_change"
+	default:
+		return ""
+	}
+}
+
+func goCharakarakaChangeEvent(v C.DhruvCharakarakaChangeEvent) CharakarakaChangeEvent {
+	mask := uint16(v.changed_roles_mask)
+	var roles []uint8
+	for role := uint8(0); role < 16; role++ {
+		if mask&(1<<role) != 0 {
+			roles = append(roles, role)
+		}
+	}
+	return CharakarakaChangeEvent{
+		UTC:          goUTC(v.utc),
+		JdTdb:        float64(v.jd_tdb),
+		Trigger:      uint8(v.trigger),
+		TriggerName:  CharakarakaTriggerName(uint8(v.trigger)),
+		ChangedRoles: roles,
+		Before:       goCharakarakaResult(v.before),
+		After:        goCharakarakaResult(v.after),
+	}
+}
+
+func CharakarakaEvents(engine EngineHandle, eop EopHandle, fromUTC, toUTC UtcTime, sankrantiCfg SankrantiConfig, scheme uint8, maxEvents uint32) (CharakarakaEventsResult, Status) {
+	cfrom, cto := cUTC(fromUTC), cUTC(toUTC)
+	csank := cSankrantiConfig(sankrantiCfg)
+	var handle C.DhruvCharakarakaEventsHandle
+	st := Status(C.dhruv_charakaraka_events(
+		engine.ptr,
+		eop.ptr,
+		&cfrom,
+		&cto,
+		&csank,
+		C.uint8_t(scheme),
+		C.uint32_t(maxEvents),
+		&handle,
+	))
+	if st != StatusOK {
+		return CharakarakaEventsResult{}, st
+	}
+	defer C.dhruv_charakaraka_events_free(handle)
+
+	var count C.uint32_t
+	if st := Status(C.dhruv_charakaraka_events_count(handle, &count)); st != StatusOK {
+		return CharakarakaEventsResult{}, st
+	}
+	res := CharakarakaEventsResult{Events: make([]CharakarakaChangeEvent, int(count))}
+	for i := range res.Events {
+		var v C.DhruvCharakarakaChangeEvent
+		if st := Status(C.dhruv_charakaraka_events_at(handle, C.uint32_t(i), &v)); st != StatusOK {
+			return CharakarakaEventsResult{}, st
+		}
+		res.Events[i] = goCharakarakaChangeEvent(v)
+	}
+
+	var truncated, nextValid C.uint8_t
+	var nextUTC C.DhruvUtcTime
+	if st := Status(C.dhruv_charakaraka_events_meta(handle, &truncated, &nextValid, &nextUTC)); st != StatusOK {
+		return CharakarakaEventsResult{}, st
+	}
+	res.Truncated = truncated != 0
+	res.NextFromUTC = goOptionalUTC(nextValid != 0, nextUTC)
+	return res, StatusOK
+}
+
+func NextCharakarakaEvent(engine EngineHandle, eop EopHandle, atUTC UtcTime, sankrantiCfg SankrantiConfig, scheme uint8) (*CharakarakaChangeEvent, Status) {
+	return charakarakaEventSingle(engine, eop, atUTC, sankrantiCfg, scheme, true)
+}
+
+func PrevCharakarakaEvent(engine EngineHandle, eop EopHandle, atUTC UtcTime, sankrantiCfg SankrantiConfig, scheme uint8) (*CharakarakaChangeEvent, Status) {
+	return charakarakaEventSingle(engine, eop, atUTC, sankrantiCfg, scheme, false)
+}
+
+func charakarakaEventSingle(engine EngineHandle, eop EopHandle, atUTC UtcTime, sankrantiCfg SankrantiConfig, scheme uint8, forward bool) (*CharakarakaChangeEvent, Status) {
+	cat := cUTC(atUTC)
+	csank := cSankrantiConfig(sankrantiCfg)
+	var found C.uint8_t
+	var out C.DhruvCharakarakaChangeEvent
+	var st Status
+	if forward {
+		st = Status(C.dhruv_next_charakaraka_event(engine.ptr, eop.ptr, &cat, &csank, C.uint8_t(scheme), &found, &out))
+	} else {
+		st = Status(C.dhruv_prev_charakaraka_event(engine.ptr, eop.ptr, &cat, &csank, C.uint8_t(scheme), &found, &out))
+	}
+	if st != StatusOK || found == 0 {
+		return nil, st
+	}
+	ev := goCharakarakaChangeEvent(out)
+	return &ev, StatusOK
+}
+
+// LibraryVersion returns the native library's semantic version string.
+func LibraryVersion() string { return cString(C.dhruv_library_version()) }
+
+// BuildGitHash returns the git commit hash the native library was built
+// from ("unknown" when it was built outside a git checkout).
+func BuildGitHash() string { return cString(C.dhruv_build_git_hash()) }
+
 func AmshaVariationsMany(amshaCodes []uint16) ([]AmshaVariationCatalog, Status, error) {
 	var out C.DhruvAmshaVariationCatalogs
 	if len(amshaCodes) == 0 {

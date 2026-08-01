@@ -92,6 +92,9 @@ Outer grahas:
 Configuration and classifiers:
 
 - `config-show-effective`
+- `build-info` — prints the library version and the git commit hash the
+  binary was built from (`unknown` outside a git checkout), for recording
+  which build produced a computation
 - `rashi`
 - `nakshatra`
 - `rashi-tropical`
@@ -194,6 +197,7 @@ Jyotish and chart building:
 - `drishti`
 - `ashtakavarga`
 - `charakaraka`
+- `charakaraka-events`
 - `osculating-apogee`
 - `shadbala`
 - `bhavabala`
@@ -202,6 +206,26 @@ Jyotish and chart building:
 - `avastha`
 - `kundali`
 - `gochar-events`
+
+`charakaraka-events` finds the exact moments the chara-karaka ranking
+changes: rashi ingresses, pairwise degree-in-rashi crossings (Rahu counts
+reversed, so a Rahu crossing is the sum condition
+`d_Rahu + d_other = 30`), and — for the `mixed-parashara` scheme — the
+integer-degree bin boundaries that switch between the 8-karaka and
+7-merged modes (`scheme_mode_change` events, with the mode flip printed).
+Only actual ranking changes are emitted. `--mode` selects `range`
+(default, `--start`/`--end`) or `next`/`prev` (`--at`); `--scheme` takes
+the same values as `charakaraka` (default `mixed-parashara`);
+`--max-events` caps range output (0 = the 50,000 library ceiling) and a
+truncated run prints a resume time for `--start`:
+
+```bash
+dhruv charakaraka-events --start 2026-01-01T00:00:00Z --end 2026-02-01T00:00:00Z \
+  --scheme eight --ayanamsha 0 --eop kernels/data/finals2000A.all
+
+dhruv charakaraka-events --mode next --at 2026-04-17T13:25:39Z \
+  --scheme mixed-parashara --eop kernels/data/finals2000A.all
+```
 
 For `shadbala`, `vimsopaka`, `balas`, `avastha`, and `kundali`, use
 `--amsha D<n>[:variation]` to override per-amsha variation selection. When

@@ -2,6 +2,62 @@
 
 ## Unreleased
 
+- New range op `charakaraka_events`: the exact moments the chara-karaka
+  ranking changes over a UTC range, per scheme (all four
+  `CharakarakaScheme` values) and sidereal config, plus
+  `next_charakaraka_event` / `prev_charakaraka_event`. Boundaries are
+  root-found — rashi ingresses, pairwise degree-in-rashi crossings (with
+  Rahu's reversed count expressed as the sum condition
+  `d_Rahu + d_other = 30`, which a separation search cannot express), and,
+  for `MixedParashara`, the integer-degree bin boundaries that flip the
+  8↔7 mode (`scheme_mode_change` trigger with `used_eight_karakas`
+  before/after). Events carry before/after rankings in the per-moment
+  result shape, `changed_roles`, and a trigger discriminator; only actual
+  ranking changes are emitted, simultaneous roots consolidate into one
+  event, and range mode has the shared `max_events`/`truncated`/
+  `next_from_utc` continuation contract (50,000 ceiling). The ranking
+  order is now a documented contract: effective degree desc, then raw
+  degrees-in-rashi desc, then graha index asc. Purely additive.
+  - C ABI (v87): `dhruv_charakaraka_events` (+`_count`/`_at`/`_meta`/
+    `_free`, `DhruvCharakarakaEventsHandle`,
+    `DhruvCharakarakaChangeEvent` with `changed_roles_mask` bit-per-role,
+    `DHRUV_MAX_CHARAKARAKA_EVENTS`, `DHRUV_CHARAKARAKA_TRIGGER_*`) and
+    `dhruv_next_charakaraka_event` / `dhruv_prev_charakaraka_event`.
+  - Python (`charakaraka_events` / `next_charakaraka_event` /
+    `prev_charakaraka_event` in the kundali module), Go
+    (`(*Engine).CharakarakaEvents` / `NextCharakarakaEvent` /
+    `PrevCharakarakaEvent`) and Node (`charakarakaEvents` /
+    `nextCharakarakaEvent` / `prevCharakarakaEvent`) wrap the handles.
+  - Elixir `search_run` gains op `"charakaraka_events"` (semantic `mode`
+    next/prev/range, `charakaraka_config.scheme`, `max_events`,
+    `sankranti_config`); events echo `ranking_before`/`ranking_after`
+    graha lists plus full `before`/`after` snapshots.
+  - CLI: new `charakaraka-events` subcommand.
+
+- Jyotish graha-longitude paths now honor `node_mode`.
+  `GrahaLongitudesConfig` gains a `node_mode` field (default true node —
+  unchanged behavior unless a caller explicitly selects the mean node),
+  and the three previously hard-coded true-node call sites in
+  `dhruv_search::jyotish` use it. Per-moment `charakaraka_for_date` and
+  the new `charakaraka_events` therefore both honor
+  `sankranti_config.node_mode` and stay in parity for any setting —
+  previously the per-moment op accepted the field but silently ignored it
+  for Rahu/Ketu. Callers who explicitly passed `node_mode = mean` to
+  jyotish ops now get mean-node Rahu/Ketu as requested (fix). The C
+  `DhruvGrahaLongitudesConfig` gains a trailing `node_mode` field
+  (`DHRUV_NODE_MODE_*`; part of the v87 bump).
+
+- New build-identity API for precalc provenance: library version + git
+  build hash (internal crate `dhruv_build_info`; hash falls back to
+  `"unknown"` outside a git checkout).
+  - C ABI (v87): `dhruv_library_version()` / `dhruv_build_git_hash()`
+    (static NUL-terminated strings).
+  - Python (`library_version` / `build_git_hash`), Go
+    (`LibraryVersion()` / `BuildGitHash()`), Node (`libraryVersion()` /
+    `buildGitHash()`), Elixir `util_run` op `"build_info"`
+    (`%{"version", "git_hash"}`), CLI `build-info` subcommand, and
+    `dhruv_rs::build_version` / `build_git_hash`.
+
 - Exposed the library's own display vocabulary for divisional charts across
   every public surface. `Amsha::sanskrit_name()` ("Rashi", "Hora", "Drekkana",
   "Navamsha", ...) already existed in `dhruv_vedic_math` but never crossed the

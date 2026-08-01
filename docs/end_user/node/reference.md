@@ -503,6 +503,30 @@ Common config objects:
   first transition at or after `toUtc`. When truncated, resume from
   `nextFromUtc` and deduplicate merged segments on their `start`.
 
+- `charakarakaEvents(engine, eop, fromUtc, toUtc, options)` — the exact
+  moments the chara-karaka ranking changes over the range. `options`
+  takes `scheme` (same names/codes as `charakarakaForDate`),
+  `sankrantiConfig` (rankings are sidereal and honor `nodeMode`, the same
+  longitude path as `charakarakaForDate`), and `maxEvents` (`0` = the
+  `MAX_CHARAKARAKA_EVENTS` = 50,000 ceiling). Returns
+  `{ events, truncated, nextFromUtc }`; each event is
+  `{ at, jdTdb, trigger, triggerName, changedRoles, before, after }` where
+  `triggerName` is `'degree_crossing'` (pairwise crossings including
+  Rahu's reversed-count sum condition `d_Rahu + d_other = 30`),
+  `'rashi_ingress'`, or `'scheme_mode_change'` (the MixedParashara 8↔7
+  flip — compare `before.usedEightKarakas`/`after.usedEightKarakas`), and
+  `before`/`after` are in the `charakarakaForDate` result shape (entry
+  order is the documented ranking contract: effective degree desc, then
+  raw degrees-in-rashi desc, then graha index asc). Only actual ranking
+  changes are emitted; on truncation the seam event is re-found — dedupe
+  on `at`. Companions `nextCharakarakaEvent(engine, eop, atUtc, options)`
+  / `prevCharakarakaEvent(...)` return the single neighboring change (or
+  `null` at the ephemeris coverage edge).
+
+- `libraryVersion()` / `buildGitHash()` (from `engine.js`) — build
+  identity strings for provenance (`buildGitHash()` is `'unknown'`
+  outside a git checkout).
+
 Grahan results also carry apparent equatorial coordinates at greatest
 grahan: `moonRightAscensionDeg`/`moonDeclinationDeg` on chandra grahan
 results and `sunRightAscensionDeg`/`sunDeclinationDeg` on surya grahan

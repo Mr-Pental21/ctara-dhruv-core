@@ -38,7 +38,9 @@ from .types import (
     BhavaResult,
     BhinnaAshtakavarga,
     BindusResult,
+    CharakarakaChangeEvent,
     CharakarakaEntry,
+    CharakarakaEventsResult,
     CharakarakaResult,
     DashaPeriod,
     DashaSnapshot,
@@ -66,6 +68,18 @@ from .types import (
     VimsopakaEntry,
     VimsopakaResult,
 )
+
+
+# Hard ceilings matching the C ABI constants.
+# events per charakaraka_events call:
+MAX_CHARAKARAKA_EVENTS = 50000
+
+# Charakaraka ranking-change event trigger names by trigger code.
+CHARAKARAKA_TRIGGER_NAMES = {
+    0: "degree_crossing",
+    1: "rashi_ingress",
+    2: "scheme_mode_change",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -159,18 +173,21 @@ def _make_graha_longitudes_config(config):
         use_nutation = config.use_nutation
         precession_model = config.precession_model
         reference_plane = config.reference_plane
+        node_mode = getattr(config, "node_mode", 1)
     else:
         kind = config.get("kind", 0)
         ayanamsha_system = config.get("ayanamsha_system", 0)
         use_nutation = config.get("use_nutation", False)
         precession_model = config.get("precession_model", 3)
         reference_plane = config.get("reference_plane", -1)
+        node_mode = config.get("node_mode", 1)
     cfg = ffi.new("DhruvGrahaLongitudesConfig *")
     cfg.kind = kind
     cfg.ayanamsha_system = ayanamsha_system
     cfg.use_nutation = 1 if use_nutation else 0
     cfg.precession_model = precession_model
     cfg.reference_plane = reference_plane
+    cfg.node_mode = node_mode
     return cfg
 
 
@@ -823,6 +840,185 @@ def charakaraka_for_date(
         "charakaraka_for_date",
     )
     return _extract_charakaraka_result(out[0])
+
+
+def _extract_charakaraka_change_event(e):
+    return CharakarakaChangeEvent(
+        utc=_utc_from_ffi(e.utc),
+        jd_tdb=e.jd_tdb,
+        trigger=e.trigger,
+        trigger_name=CHARAKARAKA_TRIGGER_NAMES.get(e.trigger, "unknown"),
+        changed_roles=[n for n in range(9) if e.changed_roles_mask & (1 << n)],
+        before=_extract_charakaraka_result(e.before),
+        after=_extract_charakaraka_result(e.after),
+    )
+
+
+def charakaraka_events(
+    engine,
+    eop,
+    from_utc,
+    to_utc,
+    scheme=0,
+    sankranti_config=None,
+    max_events=0,
+):
+    """Find every chara-karaka ranking change in [from_utc, to_utc].
+
+    Rankings are sidereal per *sankranti_config* (including ``node_mode`` —
+    the same longitude computation as ``charakaraka_for_date``).
+
+    Args:
+        engine: Engine instance.
+        eop: EOP handle.
+        from_utc: Range start as (year, month, day[, hour, min, sec]) tuple.
+        to_utc: Range end tuple (must be after from_utc).
+        scheme: Charakaraka scheme code (0..3).
+        sankranti_config: Optional sankranti config dict.
+            Library default when ``None``.
+        max_events: Cap on emitted events; ``0`` selects the hard ceiling
+            ``MAX_CHARAKARAKA_EVENTS`` (50,000).
+
+    Returns:
+        ``CharakarakaEventsResult``. When ``truncated`` is True, resume by
+        calling again with ``from_utc=result.next_from``; the seam event is
+        re-found by the resumed sweep (deduplicate on the event time).
+    """
+    from_c = _make_utc(from_utc)
+    to_c = _make_utc(to_utc)
+    cfg = _make_sankranti_config(sankranti_config)
+
+    handle = ffi.new("DhruvCharakarakaEventsHandle *")
+    check(
+        lib.dhruv_charakaraka_events(
+            engine._ptr,
+            eop,
+            from_c,
+            to_c,
+            cfg,
+            scheme,
+            max_events,
+            handle,
+        ),
+        "charakaraka_events",
+    )
+    try:
+        h = handle[0]
+        count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_charakaraka_events_count(h, count),
+            "charakaraka_events_count",
+        )
+
+        events = []
+        event_c = ffi.new("DhruvCharakarakaChangeEvent *")
+        for i in range(count[0]):
+            check(
+                lib.dhruv_charakaraka_events_at(h, i, event_c),
+                "charakaraka_events_at",
+            )
+            events.append(_extract_charakaraka_change_event(event_c))
+
+        truncated = ffi.new("uint8_t *")
+        next_valid = ffi.new("uint8_t *")
+        next_from_c = ffi.new("DhruvUtcTime *")
+        check(
+            lib.dhruv_charakaraka_events_meta(h, truncated, next_valid, next_from_c),
+            "charakaraka_events_meta",
+        )
+        next_from = _utc_from_ffi(next_from_c[0]) if next_valid[0] else None
+
+        return CharakarakaEventsResult(
+            events=events,
+            truncated=bool(truncated[0]),
+            next_from=next_from,
+        )
+    finally:
+        lib.dhruv_charakaraka_events_free(handle[0])
+
+
+def next_charakaraka_event(
+    engine,
+    eop,
+    at_utc,
+    scheme=0,
+    sankranti_config=None,
+):
+    """Find the first chara-karaka ranking change strictly after *at_utc*.
+
+    Args:
+        engine: Engine instance.
+        eop: EOP handle.
+        at_utc: Query instant as (year, month, day[, hour, min, sec]) tuple.
+        scheme: Charakaraka scheme code (0..3).
+        sankranti_config: Optional sankranti config dict.
+            Library default when ``None``.
+
+    Returns:
+        ``CharakarakaChangeEvent``, or ``None`` when no event is found
+        before the coverage edge.
+    """
+    at_c = _make_utc(at_utc)
+    cfg = _make_sankranti_config(sankranti_config)
+    found = ffi.new("uint8_t *")
+    out = ffi.new("DhruvCharakarakaChangeEvent *")
+    check(
+        lib.dhruv_next_charakaraka_event(
+            engine._ptr,
+            eop,
+            at_c,
+            cfg,
+            scheme,
+            found,
+            out,
+        ),
+        "next_charakaraka_event",
+    )
+    if not found[0]:
+        return None
+    return _extract_charakaraka_change_event(out)
+
+
+def prev_charakaraka_event(
+    engine,
+    eop,
+    at_utc,
+    scheme=0,
+    sankranti_config=None,
+):
+    """Find the last chara-karaka ranking change strictly before *at_utc*.
+
+    Args:
+        engine: Engine instance.
+        eop: EOP handle.
+        at_utc: Query instant as (year, month, day[, hour, min, sec]) tuple.
+        scheme: Charakaraka scheme code (0..3).
+        sankranti_config: Optional sankranti config dict.
+            Library default when ``None``.
+
+    Returns:
+        ``CharakarakaChangeEvent``, or ``None`` when no event is found
+        before the coverage edge.
+    """
+    at_c = _make_utc(at_utc)
+    cfg = _make_sankranti_config(sankranti_config)
+    found = ffi.new("uint8_t *")
+    out = ffi.new("DhruvCharakarakaChangeEvent *")
+    check(
+        lib.dhruv_prev_charakaraka_event(
+            engine._ptr,
+            eop,
+            at_c,
+            cfg,
+            scheme,
+            found,
+            out,
+        ),
+        "prev_charakaraka_event",
+    )
+    if not found[0]:
+        return None
+    return _extract_charakaraka_change_event(out)
 
 
 def full_kundali(

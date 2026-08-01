@@ -162,6 +162,25 @@ class Engine:
 
 
 # ---------------------------------------------------------------------------
+# Build identity (process-wide, not engine-bound)
+# ---------------------------------------------------------------------------
+
+
+def library_version() -> str:
+    """Return the native library's semantic version string."""
+    return ffi.string(lib.dhruv_library_version()).decode("utf-8")
+
+
+def build_git_hash() -> str:
+    """Return the git hash the native library was built from.
+
+    Returns ``"unknown"`` when the library was built outside a git
+    checkout.
+    """
+    return ffi.string(lib.dhruv_build_git_hash()).decode("utf-8")
+
+
+# ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
 

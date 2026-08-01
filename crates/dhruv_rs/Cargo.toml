@@ -11,6 +11,7 @@ keywords = ["ephemeris", "astronomy", "jyotish", "vedic"]
 categories = ["science"]
 
 [dependencies]
+dhruv_build_info = { path = "../dhruv_build_info", version = "0.1.0" }
 dhruv_core       = { path = "../dhruv_core", version = "0.1.0" }
 dhruv_config     = { path = "../dhruv_config", version = "0.1.0" }
 dhruv_time       = { path = "../dhruv_time", version = "0.1.0" }

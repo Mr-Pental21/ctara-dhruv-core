@@ -1,4 +1,4 @@
-# Clean-Room: Range Event Sweeps (panchang_events, amsha_lagna_events, amsha_series)
+# Clean-Room: Range Event Sweeps (panchang_events, amsha_lagna_events, amsha_series, charakaraka_events)
 
 ## Overview
 
@@ -14,6 +14,10 @@ operations added to `dhruv_search`:
 - `amsha_series` — fixed-cadence sampled varga charts
   (`crates/dhruv_search/src/jyotish.rs`), grid semantics identical to
   `graha_positions_series`
+- `charakaraka_events` — chara-karaka ranking-change events over a range
+  (`crates/dhruv_search/src/charakaraka_events.rs`), over the existing
+  clean-room ranking function `charakarakas_from_longitudes`
+  (`clean_room_charakaraka.md`)
 
 ## Sources
 
@@ -112,6 +116,53 @@ A direct composition of the existing per-epoch context (ascendant + graha
 longitudes computed once per epoch) with the pure varga transform, on the
 same inclusive grid as `graha_positions_series`. No new mathematics.
 
+### charakaraka_events: lattice-crossing root families
+
+The chara-karaka ranking (`clean_room_charakaraka.md`) is a sort of the
+scheme's candidate bodies by effective degree-in-rashi (Rahu reversed:
+`30 − deg`), with documented tie-breaks. A sort order over continuous
+keys is piecewise constant in time, and — by the intermediate value
+theorem — can only change where two keys become equal or where a key is
+discontinuous. This derivation (ours; elementary real analysis over the
+existing ranking definition) yields four exhaustive root families, each a
+smooth scalar angle crossing a fixed lattice:
+
+| family | scalar | lattice | schemes |
+|---|---|---|---|
+| ingress | `L_b` (key discontinuity: degree reset) | 30 deg | all; body set of the scheme |
+| pair crossing | `L_i − L_j`, classical pairs | 30 deg | all |
+| Rahu sum | `L_Rahu + L_j` (reversal turns the difference tie into a sum) | 30 deg | schemes ranking Rahu |
+| integer bin | `L_b`, classical (mode predicate compares integer bins) | 1 deg, 30-deg multiples excluded | MixedParashara |
+
+The Rahu tie `30 − d_R = d_j` is exactly `d_R + d_j = 30`; its lattice
+form `(L_Rahu + L_j) mod 30 = 0` also admits the spurious both-at-zero
+root (effective 30 vs 0 — no tie), which the actual-change check below
+discards.
+
+The sweep samples all nine sidereal longitudes on a 0.25-day grid (the
+same longitude computation as the per-moment op, including the
+`node_mode` selection), unwraps each family's per-step delta by shortest
+path (|delta| ≤ ~4.2 deg ≪ 180), enumerates the lattice values crossed,
+and bisects each crossing with the config's iteration/convergence knobs.
+Candidate roots within ~1.7 s consolidate into one event; the full
+ranking is then evaluated at ±0.43 s probes around each candidate and an
+event is emitted only when the (role, graha) sequence or the mixed-mode
+flag actually changed. The consolidation window is kept at ≥ 2× the
+probe offset so neighboring events' probes cannot interleave — this
+preserves the `previous.after == next.before` chain invariant. Trigger
+labeling is semantic: a mixed-mode flip reports `scheme_mode_change`, else
+an ingress root in the cluster reports `rashi_ingress`, else
+`degree_crossing`.
+
+Documented floor: a double crossing entering and leaving a lattice cell
+entirely inside one grid step (slow-body station wobble ≲ 0.003 deg;
+true-node wobble ≲ 0.1 deg) is missed as a pair; chain consistency of the
+emitted stream is unaffected.
+
+Truncation follows the shared range-op contract (`0 → 50,000` ceiling,
+`truncated`, `next_from_utc` backed off ~8.6 s so the resumed sweep
+re-brackets the seam root; consumers deduplicate on the event time).
+
 ## Validation
 
 `crates/dhruv_search/tests/range_events.rs` (kernel-gated):
@@ -125,3 +176,19 @@ same inclusive grid as `graha_positions_series`. No new mathematics.
 - unit tests in `dhruv_vedic_math` property-check
   `next_amsha_boundary_longitude` across vargas (rashi differs just after,
   matches just before the returned boundary).
+
+`crates/dhruv_search/tests/charakaraka_events_test.rs` (kernel-gated):
+- brute-force cross-validation: 15-minute sampling of the per-moment
+  ranking over 40 days — every sampled change is bracketed by an event,
+  the event chain is gapless (`previous.after == next.before`), and event
+  snapshots equal the per-moment op at ±probe;
+- a Rahu-involved crossing satisfies the sum condition
+  `d_Rahu + d_other = 30` at the root;
+- an ingress-triggered event coincides with the sankranti op's Chandra
+  ingress;
+- MixedParashara mode toggles flip `used_eight_karakas` with 7↔8 entry
+  counts and agree with the per-moment op;
+- truncation + resume reconstructs the uncapped stream; next/prev match
+  the range edges; `node_mode` is honored (mean vs true diverge, and
+  mean-node snapshots agree with the per-moment op under the same
+  config).

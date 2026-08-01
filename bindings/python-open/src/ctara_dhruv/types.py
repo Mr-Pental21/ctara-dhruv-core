@@ -213,13 +213,18 @@ class UtcToTdbResult:
 
 @dataclass(frozen=True)
 class GrahaLongitudesConfig:
-    """Config for unified graha longitude computation."""
+    """Config for unified graha longitude computation.
+
+    ``node_mode``: lunar-node model for Rahu/Ketu (0 = mean node,
+    1 = true node; default 1).
+    """
 
     kind: int = 0
     ayanamsha_system: int = 0
     use_nutation: bool = False
     precession_model: int = 3
     reference_plane: int = -1
+    node_mode: int = 1
 
 
 @dataclass(frozen=True)
@@ -1579,6 +1584,44 @@ class CharakarakaResult:
     scheme: int
     used_eight_karakas: bool
     entries: list[CharakarakaEntry]
+
+
+@dataclass(frozen=True)
+class CharakarakaChangeEvent:
+    """One chara-karaka ranking change.
+
+    ``before``/``after`` reuse the per-moment result shape; their entry
+    order is the documented ranking order (effective degree desc, then raw
+    degrees-in-rashi desc, then graha index asc).
+
+    ``trigger``: trigger code (0 = degree crossing, 1 = rashi ingress,
+    2 = scheme mode change); ``trigger_name`` is its snake_case name.
+    ``changed_roles``: role codes (0-8) whose assigned graha changed (a
+    role present on only one side counts).
+    """
+
+    utc: UtcTime
+    jd_tdb: float
+    trigger: int
+    trigger_name: str
+    changed_roles: list[int]
+    before: CharakarakaResult
+    after: CharakarakaResult
+
+
+@dataclass(frozen=True)
+class CharakarakaEventsResult:
+    """Result of a charakaraka ranking-change events sweep.
+
+    ``events``: change events in ascending time order. ``truncated``: True
+    when the event cap was hit before covering the full range.
+    ``next_from``: resume point (only set when truncated) — re-issue the
+    call from here and deduplicate on the event time.
+    """
+
+    events: list[CharakarakaChangeEvent]
+    truncated: bool = False
+    next_from: Optional[UtcTime] = None
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ canonical C ABI (`dhruv_ffi_c`) via `cffi`.
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=86`
+- ABI target: `DHRUV_API_VERSION=87`
 - Package root: `bindings/python-open`
 - Runtime dependency: `cffi`
 - Primary distribution: PyPI wheels plus sdist from unified `vX.Y.Z` tags
@@ -188,6 +188,27 @@ Amsha range operations:
   transition segments per unique request, chaining `end == next.start`
   (total segments capped at `MAX_AMSHA_LAGNA_SEGMENTS` = 50,000; truncated
   results carry a `next_from` resume point).
+
+Charakaraka range operations:
+
+- `ctara_dhruv.kundali.charakaraka_events` — every chara-karaka
+  ranking-change event in a UTC range for a scheme, each carrying
+  `trigger`/`trigger_name`, `changed_roles`, and full `before`/`after`
+  rankings (capped at `MAX_CHARAKARAKA_EVENTS` = 50,000; truncated results
+  carry a `next_from` resume point).
+- `ctara_dhruv.kundali.next_charakaraka_event` /
+  `ctara_dhruv.kundali.prev_charakaraka_event` — first ranking change
+  strictly after / last strictly before a UTC instant (`None` when none is
+  found before the coverage edge).
+
+Build identity helpers (process-wide): `ctara_dhruv.library_version()` and
+`ctara_dhruv.build_git_hash()` return the native library's version string
+and build git hash (`"unknown"` outside a git checkout).
+
+`GrahaLongitudesConfig` (and the dict form accepted by
+`graha_longitudes`) now carries `node_mode` selecting the Rahu/Ketu node
+model (`0` = mean, `1` = true; default `1`), matching the sankranti-config
+field of the same name.
 
 Embedded amsha support:
 

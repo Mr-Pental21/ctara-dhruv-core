@@ -88,11 +88,13 @@ Range-sweep types and caps:
 - `PanchangEventsResult` (for `(*Engine).PanchangEvents`)
 - `AmshaLagnaSegment`, `AmshaLagnaEntry`, `AmshaLagnaEventsResult` (for
   `(*Engine).AmshaLagnaEvents`)
+- `CharakarakaChangeEvent`, `CharakarakaEventsResult` (for
+  `(*Engine).CharakarakaEvents`)
 - Hard ceilings: `MaxAmshaSeriesCells` (100,000 points times unique
   requests), `MaxPanchangEvents` (50,000 events), `MaxAmshaLagnaSegments`
-  (50,000 segments). The event sweeps select their ceiling when the caller
-  passes a cap of 0 and report overflow through `Truncated`/`NextFromUTC`
-  instead of failing.
+  (50,000 segments), `MaxCharakarakaEvents` (50,000 events). The event
+  sweeps select their ceiling when the caller passes a cap of 0 and report
+  overflow through `Truncated`/`NextFromUTC` instead of failing.
 
 ## Package-Level Function Inventory
 
@@ -468,6 +470,26 @@ Strength, dasha, amsha, and tara:
   `MaxAmshaLagnaSegments` = 50,000). When `Truncated` is true, resume from
   `*NextFromUTC` and drop resumed segments whose `Start` was already
   collected for the same entry.
+- `(*Engine).CharakarakaEvents(eop, fromUTC, toUTC, sankrantiCfg, scheme, maxEvents)`
+  The exact moments the chara-karaka ranking changes over `[fromUTC,
+  toUTC]` for a scheme (0-3, same codes as `CharakarakaForDate`), returned
+  as `CharakarakaEventsResult`. Each `CharakarakaChangeEvent` carries
+  `UTC`, `JdTdb`, `Trigger`/`TriggerName` (`degree_crossing` — pairwise
+  crossings including Rahu's reversed-count sum condition,
+  `rashi_ingress`, or `scheme_mode_change` — the MixedParashara 8↔7 flip),
+  `ChangedRoles` (role codes), and `Before`/`After` in the per-moment
+  `CharakarakaResult` shape (entry order: effective degree desc, then raw
+  degrees-in-rashi desc, then graha index asc — the documented contract).
+  Rankings are sidereal per `sankrantiCfg` and honor its `NodeMode` on
+  the same longitude path as `CharakarakaForDate`; only actual ranking
+  changes are emitted. `maxEvents` 0 selects `MaxCharakarakaEvents`
+  (50,000); when `Truncated`, resume from `*NextFromUTC` and deduplicate
+  on the event time.
+- `(*Engine).NextCharakarakaEvent(eop, atUTC, sankrantiCfg, scheme)` /
+  `(*Engine).PrevCharakarakaEvent(...)` — the single neighboring ranking
+  change (`nil, nil` at the ephemeris coverage edge).
+- `LibraryVersion()` / `BuildGitHash()` — build identity strings for
+  provenance (`BuildGitHash()` is `"unknown"` outside a git checkout).
 - `(*TaraCatalog).Compute`
 - `(*TaraCatalog).GalacticCenterEcliptic`
 - `TaraPropagatePosition`

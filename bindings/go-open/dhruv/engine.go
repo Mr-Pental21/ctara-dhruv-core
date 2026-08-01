@@ -34,6 +34,18 @@ func VerifyABI() error {
 	return nil
 }
 
+// LibraryVersion returns the loaded native library's semantic version
+// string (a static value; e.g. "1.2.3").
+func LibraryVersion() string {
+	return cabi.LibraryVersion()
+}
+
+// BuildGitHash returns the git commit hash the loaded native library was
+// built from ("unknown" when it was built outside a git checkout).
+func BuildGitHash() string {
+	return cabi.BuildGitHash()
+}
+
 func ConfigLoadOptionsDefault() ConfigLoadOptions {
 	return ConfigLoadOptions{
 		DefaultsMode: DefaultsModeRecommended,

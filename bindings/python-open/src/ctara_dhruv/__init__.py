@@ -22,9 +22,11 @@ from ctara_dhruv.engine import (
     Engine,
     LoadedSpkInfo,
     SpkReplaceReport,
+    build_git_hash,
     engine,
     eop,
     init,
+    library_version,
     lsk,
     replace_spks,
 )
@@ -134,7 +136,9 @@ from ctara_dhruv.types import (
     AmshaLagnaEntry,
     AmshaLagnaEventsResult,
     PanchangEventsResult,
+    CharakarakaChangeEvent,
     CharakarakaEntry,
+    CharakarakaEventsResult,
     CharakarakaResult,
     DashaPeriod,
     DashaSnapshot,
@@ -187,6 +191,14 @@ from ctara_dhruv.panchang import (
     panchang_events,
 )
 
+# Charakaraka range operations
+from ctara_dhruv.kundali import (
+    MAX_CHARAKARAKA_EVENTS,
+    charakaraka_events,
+    next_charakaraka_event,
+    prev_charakaraka_event,
+)
+
 # Dasha
 from ctara_dhruv.dasha import (
     DashaLevel,
@@ -206,6 +218,7 @@ from ctara_dhruv.search import gochar_events, gochar_events_config_default
 __all__ = [
     # Engine
     "Engine", "init", "engine", "lsk", "eop",
+    "library_version", "build_git_hash",
     # Enums
     "Body", "GocharTransitBody", "DhruvStatus", "AyanamshaSystem", "AyanamshaMode",
     "BhavaSystem", "Graha",
@@ -242,7 +255,8 @@ __all__ = [
     "StationaryEvent", "MaxSpeedEvent",
     "LunarPhaseEvent", "SankrantiEvent",
     "GrahaEntry", "GrahaPositions", "MovingOsculatingApogeeEntry", "MovingOsculatingApogees",
-    "CharakarakaEntry", "CharakarakaResult", "DashaPeriod",
+    "CharakarakaEntry", "CharakarakaResult",
+    "CharakarakaChangeEvent", "CharakarakaEventsResult", "DashaPeriod",
     "DashaSnapshot", "AmshaVariationCatalog", "AmshaVariationInfo",
     "AmshaSeriesChart", "AmshaSeriesPoint",
     "AmshaLagnaSegment", "AmshaLagnaEntry", "AmshaLagnaEventsResult",
@@ -260,7 +274,9 @@ __all__ = [
     "amsha_longitude", "amsha_longitudes", "amsha_rashi_info", "amsha_chart_for_date",
     "amsha_variations", "amsha_variations_many", "amsha_sanskrit_name",
     "amsha_series", "amsha_lagna_events", "panchang_events",
+    "charakaraka_events", "next_charakaraka_event", "prev_charakaraka_event",
     "MAX_AMSHA_SERIES_CELLS", "MAX_AMSHA_LAGNA_SEGMENTS", "MAX_PANCHANG_EVENTS",
+    "MAX_CHARAKARAKA_EVENTS",
     "TaraCatalog",
     "DashaLevel", "DashaHierarchy",
     "dasha_selection_config_default", "dasha_variation_config_default",

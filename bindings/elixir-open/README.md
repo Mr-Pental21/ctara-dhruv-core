@@ -98,6 +98,9 @@ IO.inspect(time_result.diagnostics)
 :ok = Engine.close(engine)
 ```
 
+`CtaraDhruv.Engine.build_info/0` reports the native library's build identity
+without needing an engine: `{:ok, %{version: "...", git_hash: "..."}}`.
+
 ## Sidereal Chart Output
 
 ## Runtime SPK Replacement
@@ -146,6 +149,28 @@ The core search operations share that transit-body surface:
   was crossed in retrograde motion; always false for the Sun). Sun events
   keep the legacy `:sun_sidereal_longitude_deg` /
   `:sun_tropical_longitude_deg` keys for compatibility.
+
+`Search.charakaraka_events/2` finds the exact moments the chara-karaka
+ranking changes. `mode: :range` sweeps a window (optional `:max_events`,
+`0` = 50,000 ceiling; resume from `next_from_utc` on truncation), while
+`mode: :next` / `:prev` return the single nearest change around `:at_utc`
+as `%{event: ... | nil}`. The scheme comes from `:charakaraka_config`
+(default `:eight`), the ayanamsha from `:sankranti_config`:
+
+```elixir
+{:ok, %{events: events}} =
+  Search.charakaraka_events(engine, %{
+    mode: :range,
+    start_utc: %{year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0},
+    end_utc: %{year: 2024, month: 1, day: 8, hour: 0, minute: 0, second: 0.0},
+    charakaraka_config: %{scheme: :eight}
+  })
+# Each event carries :at, :jd_tdb, :trigger ("degree_crossing" |
+# "rashi_ingress" | "scheme_mode_change"), :changed_roles,
+# :ranking_before / :ranking_after (graha names in rank order),
+# :used_eight_karakas_before / _after, and full :before / :after
+# charakaraka snapshots. Requires loaded EOP data.
+```
 
 The direct Vedic bhava surface is tropical unless you provide a
 `sankranti_config`. The Elixir wrapper now exposes convenience arities for that

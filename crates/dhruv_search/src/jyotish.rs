@@ -28,7 +28,7 @@ use dhruv_vedic_base::{
     ArudhaResult, AshtakavargaResult, AvasthaInputs, Bhava, BhavaBalaBirthPeriod, BhavaBalaInputs,
     BhavaBalaResult, BhavaConfig, BhavaResult, CharakarakaResult, CharakarakaScheme,
     DIG_BALA_BHAVA, Dignity, DrishtiEntry, Graha, GrahaAvasthas, GrahaDrishtiMatrix,
-    KalaBalaInputs, LajjitadiInputs, LunarNode, MrityubhagaSubject, NodeDignityPolicy, NodeMode,
+    KalaBalaInputs, LajjitadiInputs, LunarNode, MrityubhagaSubject, NodeDignityPolicy,
     SAPTA_GRAHAS, SayanadiInputs, SayanadiResult, SensitivePointDistances, ShadbalaInputs,
     TimeUpagrahaConfig, all_avasthas, all_combustion_status, all_shadbalas_from_inputs,
     all_sphutas, amsha_longitude, baladi_avastha, bhava_bala_entry, bhrigu_bindu,
@@ -490,7 +490,8 @@ impl JyotishContext {
                     aya_config.precession_model,
                     aya_config.reference_plane,
                 )
-                .with_outer_planets(false),
+                .with_outer_planets(false)
+                .with_node_mode(aya_config.node_mode),
             )?;
             self.graha_lons = Some(lons);
         }
@@ -1453,7 +1454,7 @@ fn graha_sidereal_longitudes_for_config(
         engine,
         LunarNode::Rahu,
         jd_tdb,
-        NodeMode::True,
+        config.node_mode,
         config.precession_model,
         config.reference_plane,
     )?;
@@ -1513,7 +1514,7 @@ fn graha_reference_plane_longitudes(
         engine,
         LunarNode::Rahu,
         jd_tdb,
-        NodeMode::True,
+        config.node_mode,
         config.precession_model,
         config.reference_plane,
     )?;
@@ -2067,7 +2068,7 @@ fn equatorial_epoch_data(
         engine,
         LunarNode::Rahu,
         ctx.jd_tdb,
-        NodeMode::True,
+        aya_config.node_mode,
         aya_config.precession_model,
         ReferencePlane::Ecliptic,
     )?;

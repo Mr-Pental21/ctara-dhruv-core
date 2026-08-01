@@ -22,6 +22,16 @@ const CHARAKARAKA_ROLE = Object.freeze({
   MATRI_PUTRA: 8,
 });
 
+const CHARAKARAKA_EVENT_TRIGGER = Object.freeze({
+  DEGREE_CROSSING: 0,
+  RASHI_INGRESS: 1,
+  SCHEME_MODE_CHANGE: 2,
+});
+
+// Hard ceiling on events per charakarakaEvents sweep
+// (DHRUV_MAX_CHARAKARAKA_EVENTS in the C ABI).
+const MAX_CHARAKARAKA_EVENTS = 50000;
+
 const GRAHA_LONGITUDE_KIND = Object.freeze({
   SIDEREAL: 0,
   TROPICAL: 1,
@@ -111,6 +121,73 @@ function charakarakaForDate(
   );
   checkStatus('charakaraka_for_date', r.status);
   return r.result;
+}
+
+function normalizeCharakarakaEventOptions(options) {
+  const opts = options === undefined || options === null ? {} : options;
+  return {
+    schemeCode: normalizeCharakarakaScheme(
+      opts.scheme === undefined ? CHARAKARAKA_SCHEME.EIGHT : opts.scheme,
+    ),
+    sankrantiConfig: opts.sankrantiConfig === undefined
+      ? addon.sankrantiConfigDefault()
+      : opts.sankrantiConfig,
+    maxEvents: opts.maxEvents === undefined ? 0 : opts.maxEvents,
+  };
+}
+
+// Every chara-karaka ranking change in [fromUtc, toUtc] for one scheme.
+// `options` accepts `scheme` (code or name, default 'eight'),
+// `sankrantiConfig` (sidereal longitude policy incl. `nodeMode`; library
+// default when omitted), and `maxEvents` (0 selects MAX_CHARAKARAKA_EVENTS).
+// Returns { events, truncated, nextFromUtc }; each event is { at, jdTdb,
+// trigger, triggerName, changedRoles, before, after } where `changedRoles`
+// lists CHARAKARAKA_ROLE codes and before/after have the same shape as
+// charakarakaForDate results. On truncation resume from `nextFromUtc` and
+// deduplicate on the event time.
+function charakarakaEvents(engine, eop, fromUtc, toUtc, options = undefined) {
+  const { schemeCode, sankrantiConfig, maxEvents } = normalizeCharakarakaEventOptions(options);
+  const r = addon.charakarakaEvents(
+    engine._handle,
+    eop._handle,
+    fromUtc,
+    toUtc,
+    sankrantiConfig,
+    schemeCode,
+    maxEvents,
+  );
+  checkStatus('charakaraka_events', r.status);
+  return r.result;
+}
+
+// First chara-karaka ranking change strictly after atUtc, or null when none
+// is found before the coverage edge. Same `options` as charakarakaEvents
+// (`maxEvents` is ignored).
+function nextCharakarakaEvent(engine, eop, atUtc, options = undefined) {
+  const { schemeCode, sankrantiConfig } = normalizeCharakarakaEventOptions(options);
+  const r = addon.nextCharakarakaEvent(
+    engine._handle,
+    eop._handle,
+    atUtc,
+    sankrantiConfig,
+    schemeCode,
+  );
+  checkStatus('next_charakaraka_event', r.status);
+  return r.event;
+}
+
+// Last chara-karaka ranking change strictly before atUtc, or null.
+function prevCharakarakaEvent(engine, eop, atUtc, options = undefined) {
+  const { schemeCode, sankrantiConfig } = normalizeCharakarakaEventOptions(options);
+  const r = addon.prevCharakarakaEvent(
+    engine._handle,
+    eop._handle,
+    atUtc,
+    sankrantiConfig,
+    schemeCode,
+  );
+  checkStatus('prev_charakaraka_event', r.status);
+  return r.event;
 }
 
 function rashiCount() {
@@ -239,8 +316,13 @@ module.exports = {
   arudhaPadasForDate,
   allUpagrahasForDate,
   charakarakaForDate,
+  charakarakaEvents,
+  nextCharakarakaEvent,
+  prevCharakarakaEvent,
   CHARAKARAKA_SCHEME,
   CHARAKARAKA_ROLE,
+  CHARAKARAKA_EVENT_TRIGGER,
+  MAX_CHARAKARAKA_EVENTS,
   rashiCount,
   nakshatraCount,
   rashiFromLongitude,

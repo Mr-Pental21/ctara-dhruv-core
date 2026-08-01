@@ -2,7 +2,7 @@
 
 This is the runtime/query surface of `dhruv_search` re-exported from `crates/dhruv_search/src/lib.rs`.
 
-Total runtime functions documented here: **74**.
+Total runtime functions documented here: **77**.
 
 Body arguments named `body`, `body1`, or `body2` in the conjunction,
 sankranti/ingress, and stationary/max-speed families are `TransitBody`
@@ -163,7 +163,7 @@ Mid-scan engine errors end next/prev scans with `Ok(None)`.
 | `panchang_for_date` | `engine`, `eop`, `utc`, `location: Option<&GeoLocation>`, `riseset_config`, `sankranti_config`, `include_mask: u32`, `known: &PanchangPrecomputed` | `Result<PanchangResult, SearchError>` | Combined panchang; `include_mask` gates which elements are computed, `location` required only for vaar/hora/ghatika, `known` reuses caller-cached calendar values inside their windows. |
 | `panchang_events` | `engine`, `eop`, `from_utc`, `to_utc`, `include_mask`, `location: Option<&GeoLocation>`, `riseset_config`, `sankranti_config`, `max_events` | `Result<PanchangEventsResult, SearchError>` | Exact element segments over a range (all ten elements; location required only for vaar/hora/ghatika); segments chain exactly; `max_events` 0 = 50,000 ceiling with `truncated`/`next_from_utc` resume. |
 
-## Jyotish Orchestration (13)
+## Jyotish Orchestration (15)
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
@@ -177,6 +177,8 @@ Mid-scan engine errors end next/prev scans with `Ok(None)`.
 | `graha_positions_series` | `engine`, `eop`, `from_utc`, `to_utc`, `step_minutes`, `location`, `bhava_config`, `aya_config`, `config` | `Result<GrahaPositionsSeries, SearchError>` | Fixed-cadence samples of `graha_positions` over a range (endpoints inclusive on the grid, max 10,000 points). |
 | `amsha_series` | `engine`, `eop`, `from_utc`, `to_utc`, `step_minutes`, `location`, `aya_config`, `amsha_requests`, `include_grahas` | `Result<AmshaSeries, SearchError>` | Fixed-cadence slim varga charts (grid semantics match `graha_positions_series`); varga lagna always, nine grahas optional; `points * unique_requests` capped at 100,000. |
 | `amsha_lagna_events` | `engine`, `eop`, `from_utc`, `to_utc`, `location`, `aya_config`, `amsha_requests`, `max_segments` | `Result<AmshaLagnaEventsResult, SearchError>` | Exact varga-lagna rashi segments via root-found division-boundary crossings (no sampling grid); one entry per unique request; `max_segments` 0 = 50,000 ceiling with `truncated`/`next_from_utc` resume. |
+| `charakaraka_events` | `engine`, `eop`, `from_utc`, `to_utc`, `aya_config`, `scheme`, `max_events` | `Result<CharakarakaEventsResult, SearchError>` | Chara-karaka ranking-change events (root-found ingresses, pair crossings incl. the Rahu sum condition, MixedParashara mode flips); only actual changes emitted; honors `node_mode`; `max_events` 0 = 50,000 ceiling with `truncated`/`next_from_utc` resume. |
+| `next_charakaraka_event` / `prev_charakaraka_event` | `engine`, `eop`, `at_utc`, `aya_config`, `scheme` | `Result<Option<CharakarakaChangeEvent>, SearchError>` | First ranking change strictly after / last strictly before `at_utc`. |
 | `ashtakavarga_for_date` | `engine`, `eop`, `utc`, `location`, `aya_config` | `Result<AshtakavargaResult, SearchError>` | Full ashtakavarga result. |
 | `core_bindus` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<BindusResult, SearchError>` | Curated bindu/sensitive points set. |
 | `drishti_for_date` | `engine`, `eop`, `utc`, `location`, `bhava_config`, `riseset_config`, `aya_config`, `config` | `Result<DrishtiResult, SearchError>` | Graha drishti matrix (+ optional projections). |

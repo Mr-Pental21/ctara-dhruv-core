@@ -404,6 +404,59 @@ Semantics: the first segment starts at `from_utc` (clipped); each segment's
 `end` is an exact root-found transition; the last segment's `end` is the
 first transition at or after `to_utc`.
 
+## Charakaraka Events (Implemented)
+
+Chara-karaka ranking-change events (`dhruv_search::charakaraka_events`,
+`next_charakaraka_event`, `prev_charakaraka_event`) via root-found lattice
+crossings — rashi ingresses, pairwise degree-in-rashi crossings (Rahu
+reversed: the sum condition `d_Rahu + d_other = 30`), and, for
+`MixedParashara`, integer-degree bin boundaries that flip the 8↔7 mode.
+Every candidate root is verified by evaluating the full ranking just
+before and after it; only actual changes are emitted, with simultaneous
+roots consolidated into one event.
+
+## Request
+
+- range: `from_utc: UtcTime`, `to_utc: UtcTime` (`to_utc > from_utc`);
+  next/prev: `at_utc: UtcTime`
+- `aya_config: SankrantiConfig` — rankings are sidereal (ayanamsha,
+  nutation, precession model, reference plane) and honor `node_mode`; the
+  longitude computation is exactly the per-moment `charakaraka_for_date`
+  path, so event snapshots agree with the per-moment op for the same
+  config
+- `scheme: CharakarakaScheme` (`Eight`, `SevenNoPitri`, `SevenPkMergedMk`,
+  `MixedParashara` — all four supported)
+- `max_events: u32` (`0` = ceiling `MAX_CHARAKARAKA_EVENTS` = 50,000;
+  range mode only)
+
+## Result
+
+`CharakarakaEventsResult` fields:
+- `events: Vec<CharakarakaChangeEvent>`, ascending. Each event carries:
+  - `utc: UtcTime`, `jd_tdb: f64`
+  - `trigger`: `DegreeCrossing` | `RashiIngress` | `SchemeModeChange`
+    (semantic labeling: a `used_eight_karakas` flip reports
+    `SchemeModeChange`; else an ingress root in the consolidated cluster
+    reports `RashiIngress`; else `DegreeCrossing`)
+  - `before`/`after`: the per-moment `CharakarakaResult` shape (scheme,
+    `used_eight_karakas`, ordered entries with role, graha, rank,
+    longitude, degrees-in-rashi and effective degrees) evaluated at
+    ±0.43 s probes around the root
+  - `changed_roles: Vec<CharakarakaRole>` — roles whose assigned graha
+    differs (a role present on only one side counts), sorted by role code
+- `truncated: bool`
+- `next_from_utc: Option<UtcTime>` (resume point, backed off ~8.6 s; the
+  seam event is re-found — dedup on the event time)
+
+Ranking-order contract (also binds `charakaraka_for_date`): entries are
+sorted by effective degree-in-rashi descending, then raw degrees-in-rashi
+descending, then graha index ascending. Rahu's effective degree is
+`30 − degrees_in_rashi`; all other bodies use their raw degrees-in-rashi.
+
+next/prev return the first event strictly after / last strictly before
+`at_utc` (`Option`; `None` only at the ephemeris coverage edge — ranking
+changes are Chandra-dominated and occur every few hours to days).
+
 ## Tara (Implemented)
 
 ## Request

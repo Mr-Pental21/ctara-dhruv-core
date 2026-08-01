@@ -9,6 +9,7 @@ rust-version.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+dhruv_build_info = { path = "../../../../crates/dhruv_build_info" }
 dhruv_config = { path = "../../../../crates/dhruv_config" }
 dhruv_core = { path = "../../../../crates/dhruv_core" }
 dhruv_frames = { path = "../../../../crates/dhruv_frames" }

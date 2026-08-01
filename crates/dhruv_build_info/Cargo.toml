@@ -1,0 +1,10 @@
+[package]
+name = "dhruv_build_info"
+description = "Build identity (library version and git hash) for dhruv surfaces"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

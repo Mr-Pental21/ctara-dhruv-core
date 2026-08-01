@@ -353,6 +353,7 @@ cache identity. See `docs/end_user/solar_eclipse_visibility.md`.
 - `lunar_phase/2`
 - `sankranti/2`
 - `motion/2`
+- `charakaraka_events/2`
 
 High-level search results carry structured UTC on the main event payloads.
 Conjunction, grahan, and motion results now include UTC alongside JD/TDB where
@@ -393,6 +394,33 @@ the Sun). Sun events keep the legacy `:sun_sidereal_longitude_deg` /
 `:sankranti_config` omits `:step_size_days` and `:body` is not the Sun, a
 per-body default scan step is applied automatically (for example 0.25 days
 for the Moon, 1.0 for the true node).
+
+`charakaraka_events/2` returns the exact moments the chara-karaka ranking
+changes. The request takes the semantic `:mode` (`"range"` with
+`:start_utc`/`:end_utc`, or `"next"`/`"prev"` with `:at_utc`),
+`:charakaraka_config` (`%{scheme: ...}` — the same four values
+full-kundali's `charakaraka_scheme` takes; default `:eight`), an optional
+`:sankranti_config` (rankings are sidereal and honor `:node_mode` on the
+same longitude path as the per-moment `Jyotish.charakaraka/2`, so event
+snapshots agree with it), and `:max_events` (range cap; `0` = the 50,000
+library ceiling). Range results are
+`%{events: [...], truncated: bool, next_from_utc: utc | nil}` (the seam
+event is re-found on resume — deduplicate on `:at`); next/prev return
+`%{event: event | nil}`. Each event carries `:at`, `:jd_tdb`, `:trigger`
+(`"degree_crossing"` — pairwise crossings including Rahu's reversed-count
+sum condition, `"rashi_ingress"`, or `"scheme_mode_change"` — the
+MixedParashara 8↔7 flip), `:changed_roles`,
+`:ranking_before`/`:ranking_after` (graha names in rank order:
+effective degree desc, then raw degrees-in-rashi desc, then graha index
+asc — the documented contract), `:used_eight_karakas_before`/`_after`,
+and full `:before`/`:after` per-moment-shaped snapshots (with each
+graha's degrees-in-rashi for display). Only actual ranking changes are
+emitted; simultaneous roots consolidate into one event.
+
+`CtaraDhruv.Engine.build_info/0` returns
+`%{version: ..., git_hash: ...}` — the library version and build-time
+commit hash (`"unknown"` outside a git checkout), for recording exactly
+which binary produced a stored computation.
 
 `CtaraDhruv.Dasha`:
 

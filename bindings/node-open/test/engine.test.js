@@ -10,9 +10,18 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
-  assert.equal(dhruv.EXPECTED_API_VERSION, 86);
+  assert.equal(dhruv.EXPECTED_API_VERSION, 87);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
+});
+
+test('build identity reports non-empty static strings', () => {
+  const version = dhruv.libraryVersion();
+  assert.equal(typeof version, 'string');
+  assert.ok(version.length > 0);
+  const hash = dhruv.buildGitHash();
+  assert.equal(typeof hash, 'string');
+  assert.ok(hash.length > 0);
 });
 
 test('amshaSanskritName resolves D-numbers and rejects unsupported codes', () => {
@@ -1022,6 +1031,7 @@ test('range operation cap constants match the C ABI', () => {
   assert.equal(dhruv.MAX_AMSHA_SERIES_CELLS, 100000);
   assert.equal(dhruv.MAX_PANCHANG_EVENTS, 50000);
   assert.equal(dhruv.MAX_AMSHA_LAGNA_SEGMENTS, 50000);
+  assert.equal(dhruv.MAX_CHARAKARAKA_EVENTS, 50000);
 });
 
 test('range operations: amshaSeries, panchangEvents, amshaLagnaEvents', { skip: !(hasKernels() && hasEop()) }, () => {
@@ -1199,6 +1209,72 @@ test('range operations: amshaSeries, panchangEvents, amshaLagnaEvents', { skip: 
   // amshaLagnaEvents rejections: empty request list, invalid amsha code.
   assert.throws(() => dhruv.amshaLagnaEvents(engine, eop, utc, lagnaTo, loc, []));
   assert.throws(() => dhruv.amshaLagnaEvents(engine, eop, utc, lagnaTo, loc, [65535]));
+
+  eop.close();
+  engine.close();
+});
+
+test('charakaraka ranking-change events', { skip: !(hasKernels() && hasEop()) }, () => {
+  const paths = kernelPaths();
+  const engine = dhruv.Engine.create({
+    spkPaths: [paths.spk],
+    lskPath: paths.lsk,
+    cacheCapacity: 64,
+    strictValidation: false,
+  });
+  const eop = dhruv.EOP.load(paths.eop);
+  const from = { year: 2025, month: 1, day: 15, hour: 0, minute: 0, second: 0 };
+  const to = { year: 2025, month: 1, day: 19, hour: 0, minute: 0, second: 0 };
+  const utcMs = (t) => Date.UTC(t.year, t.month - 1, t.day, t.hour, t.minute, 0) + t.second * 1000;
+
+  // --- Range sweep (scheme eight over a few days): non-empty, ascending,
+  // every event carries at least one changed role and per-moment rankings.
+  const sweep = dhruv.charakarakaEvents(engine, eop, from, to, { scheme: 'eight' });
+  assert.ok(sweep.events.length > 0, 'four days of eight-scheme changes');
+  assert.equal(sweep.truncated, false);
+  assert.equal(sweep.nextFromUtc, null);
+  for (const ev of sweep.events) {
+    assert.ok(utcMs(ev.at) >= utcMs(from) && utcMs(ev.at) <= utcMs(to));
+    assert.ok(Number.isFinite(ev.jdTdb));
+    assert.ok(ev.trigger >= 0 && ev.trigger <= 2);
+    assert.equal(typeof ev.triggerName, 'string');
+    assert.ok(Array.isArray(ev.changedRoles));
+    assert.ok(ev.changedRoles.length > 0, 'every event changes a role');
+    for (const role of ev.changedRoles) {
+      assert.ok(role >= dhruv.CHARAKARAKA_ROLE.ATMA && role <= dhruv.CHARAKARAKA_ROLE.MATRI_PUTRA);
+    }
+    // before/after reuse the charakarakaForDate result shape.
+    for (const side of [ev.before, ev.after]) {
+      assert.equal(side.scheme, dhruv.CHARAKARAKA_SCHEME.EIGHT);
+      assert.equal(side.count, 8);
+      assert.equal(side.entries.length, 8);
+      assert.ok(Number.isFinite(side.entries[0].effectiveDegreesInRashi));
+    }
+  }
+  for (let i = 0; i + 1 < sweep.events.length; i += 1) {
+    assert.ok(utcMs(sweep.events[i].at) < utcMs(sweep.events[i + 1].at), 'events ascend');
+  }
+
+  // --- Truncation: maxEvents caps the sweep and yields a resume point.
+  assert.ok(sweep.events.length > 3, 'enough events to exercise truncation');
+  const truncated = dhruv.charakarakaEvents(engine, eop, from, to, {
+    scheme: dhruv.CHARAKARAKA_SCHEME.EIGHT,
+    maxEvents: 3,
+  });
+  assert.equal(truncated.truncated, true);
+  assert.equal(truncated.events.length, 3);
+  assert.ok(truncated.nextFromUtc !== null);
+
+  // --- next/prev point lookups agree with the sweep edges (re-solved
+  // boundaries, so allow sub-second drift).
+  const next = dhruv.nextCharakarakaEvent(engine, eop, from, { scheme: 'eight' });
+  assert.ok(next !== null);
+  assert.ok(Math.abs(utcMs(next.at) - utcMs(sweep.events[0].at)) < 1500);
+  assert.ok(next.changedRoles.length > 0);
+  const prev = dhruv.prevCharakarakaEvent(engine, eop, to, { scheme: 'eight' });
+  assert.ok(prev !== null);
+  assert.ok(Math.abs(utcMs(prev.at) - utcMs(sweep.events[sweep.events.length - 1].at)) < 1500);
+  assert.ok(prev.changedRoles.length > 0);
 
   eop.close();
   engine.close();

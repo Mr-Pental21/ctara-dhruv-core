@@ -7,7 +7,8 @@ use dhruv_vedic_base::{
     AllGrahaAvasthas, AllSpecialLagnas, AllUpagrahas, Amsha, AshtakavargaResult, AyanamshaSystem,
     BasicStates, BhavaBalaResult, BhavaResult, CharakarakaResult, CharakarakaScheme, Dms,
     DrishtiEntry, Graha, GrahaDrishtiMatrix, KalaBalaBreakdown, Nakshatra, NodeDignityPolicy,
-    Rashi, SensitivePointDistances, ShadbalaBreakdown, SthanaBalaBreakdown, TimeUpagrahaConfig,
+    NodeMode, Rashi, SensitivePointDistances, ShadbalaBreakdown, SthanaBalaBreakdown,
+    TimeUpagrahaConfig,
 };
 
 /// Longitudes of all 9 grahas plus optional outer planets.
@@ -62,6 +63,8 @@ pub struct GrahaLongitudesConfig {
     pub precession_model: PrecessionModel,
     pub reference_plane: ReferencePlane,
     pub include_outer_planets: bool,
+    /// Lunar-node model used for Rahu/Ketu longitudes.
+    pub node_mode: NodeMode,
 }
 
 impl GrahaLongitudesConfig {
@@ -87,6 +90,7 @@ impl GrahaLongitudesConfig {
             precession_model,
             reference_plane,
             include_outer_planets: true,
+            node_mode: NodeMode::default(),
         }
     }
 
@@ -110,11 +114,17 @@ impl GrahaLongitudesConfig {
             precession_model,
             reference_plane,
             include_outer_planets: true,
+            node_mode: NodeMode::default(),
         }
     }
 
     pub fn with_outer_planets(mut self, include_outer_planets: bool) -> Self {
         self.include_outer_planets = include_outer_planets;
+        self
+    }
+
+    pub fn with_node_mode(mut self, node_mode: NodeMode) -> Self {
+        self.node_mode = node_mode;
         self
     }
 }
