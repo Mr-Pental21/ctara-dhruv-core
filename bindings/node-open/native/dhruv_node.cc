@@ -2136,16 +2136,39 @@ napi_value WriteAshtakavargaResult(napi_env env, const DhruvAshtakavargaResult& 
     return obj;
 }
 
-napi_value WriteAmshaEntry(napi_env env, const DhruvAmshaEntry& a) {
+// Writes an amsha entry together with its point identity. `family` is a
+// DHRUV_AMSHA_POINT_FAMILY_* code and `index` the entry's fixed position
+// inside that family, so callers never recover identity from array order.
+napi_value WriteAmshaEntry(napi_env env, const DhruvAmshaEntry& a,
+                           uint32_t family, uint32_t index) {
     napi_value obj;
     napi_create_object(env, &obj);
+    SetNamed(env, obj, "name", MakeString(env, dhruv_amsha_point_key(family, index)));
+    SetNamed(env, obj, "displayName",
+             MakeString(env, dhruv_amsha_point_name(family, index)));
+    SetNamed(env, obj, "family", MakeUint32(env, family));
+    SetNamed(env, obj, "pointIndex", MakeUint32(env, index));
     SetNamed(env, obj, "siderealLongitude", MakeDouble(env, a.sidereal_longitude));
     SetNamed(env, obj, "rashiIndex", MakeUint32(env, a.rashi_index));
     SetNamed(env, obj, "dmsDegrees", MakeUint32(env, a.dms_degrees));
     SetNamed(env, obj, "dmsMinutes", MakeUint32(env, a.dms_minutes));
     SetNamed(env, obj, "dmsSeconds", MakeDouble(env, a.dms_seconds));
     SetNamed(env, obj, "degreesInRashi", MakeDouble(env, a.degrees_in_rashi));
+    SetNamed(env, obj, "nakshatraIndex", MakeUint32(env, a.nakshatra_index));
+    SetNamed(env, obj, "pada", MakeUint32(env, a.pada));
+    SetNamed(env, obj, "rashiBhavaNumber", MakeUint32(env, a.rashi_bhava_number));
     return obj;
+}
+
+// Writes a whole point family as an array, tagging each entry with its index.
+napi_value WriteAmshaEntryArray(napi_env env, const DhruvAmshaEntry* entries,
+                                uint32_t count, uint32_t family) {
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    for (uint32_t i = 0; i < count; ++i) {
+        napi_set_element(env, arr, i, WriteAmshaEntry(env, entries[i], family, i));
+    }
+    return arr;
 }
 
 napi_value WriteAmshaChart(napi_env env, const DhruvAmshaChart& a) {
@@ -2153,13 +2176,11 @@ napi_value WriteAmshaChart(napi_env env, const DhruvAmshaChart& a) {
     napi_create_object(env, &obj);
     SetNamed(env, obj, "amshaCode", MakeUint32(env, a.amsha_code));
     SetNamed(env, obj, "variationCode", MakeUint32(env, a.variation_code));
-    napi_value grahas;
-    napi_create_array_with_length(env, DHRUV_GRAHA_COUNT, &grahas);
-    for (uint32_t i = 0; i < DHRUV_GRAHA_COUNT; ++i) {
-        napi_set_element(env, grahas, i, WriteAmshaEntry(env, a.grahas[i]));
-    }
-    SetNamed(env, obj, "grahas", grahas);
-    SetNamed(env, obj, "lagna", WriteAmshaEntry(env, a.lagna));
+    SetNamed(env, obj, "grahas",
+             WriteAmshaEntryArray(env, a.grahas, DHRUV_GRAHA_COUNT,
+                                  DHRUV_AMSHA_POINT_FAMILY_GRAHA));
+    SetNamed(env, obj, "lagna",
+             WriteAmshaEntry(env, a.lagna, DHRUV_AMSHA_POINT_FAMILY_LAGNA, 0));
     SetNamed(env, obj, "bhavaCuspsValid", MakeBool(env, a.bhava_cusps_valid != 0));
     SetNamed(env, obj, "rashiBhavaCuspsValid", MakeBool(env, a.rashi_bhava_cusps_valid != 0));
     SetNamed(env, obj, "arudhaPadasValid", MakeBool(env, a.arudha_padas_valid != 0));
@@ -2169,68 +2190,44 @@ napi_value WriteAmshaChart(napi_env env, const DhruvAmshaChart& a) {
     SetNamed(env, obj, "specialLagnasValid", MakeBool(env, a.special_lagnas_valid != 0));
     SetNamed(env, obj, "outerPlanetsValid", MakeBool(env, a.outer_planets_valid != 0));
     if (a.outer_planets_valid != 0) {
-        napi_value outer_planets;
-        napi_create_array_with_length(env, 3, &outer_planets);
-        for (uint32_t i = 0; i < 3; ++i) {
-            napi_set_element(env, outer_planets, i, WriteAmshaEntry(env, a.outer_planets[i]));
-        }
-        SetNamed(env, obj, "outerPlanets", outer_planets);
+        SetNamed(env, obj, "outerPlanets",
+                 WriteAmshaEntryArray(env, a.outer_planets, 3,
+                                      DHRUV_AMSHA_POINT_FAMILY_OUTER_PLANET));
     }
     if (a.bhava_cusps_valid != 0) {
-        napi_value bhava_cusps;
-        napi_create_array_with_length(env, 12, &bhava_cusps);
-        for (uint32_t i = 0; i < 12; ++i) {
-            napi_set_element(env, bhava_cusps, i, WriteAmshaEntry(env, a.bhava_cusps[i]));
-        }
-        SetNamed(env, obj, "bhavaCusps", bhava_cusps);
+        SetNamed(env, obj, "bhavaCusps",
+                 WriteAmshaEntryArray(env, a.bhava_cusps, 12,
+                                      DHRUV_AMSHA_POINT_FAMILY_BHAVA_CUSP));
     }
     if (a.rashi_bhava_cusps_valid != 0) {
-        napi_value rashi_bhava_cusps;
-        napi_create_array_with_length(env, 12, &rashi_bhava_cusps);
-        for (uint32_t i = 0; i < 12; ++i) {
-            napi_set_element(env, rashi_bhava_cusps, i, WriteAmshaEntry(env, a.rashi_bhava_cusps[i]));
-        }
-        SetNamed(env, obj, "rashiBhavaCusps", rashi_bhava_cusps);
+        SetNamed(env, obj, "rashiBhavaCusps",
+                 WriteAmshaEntryArray(env, a.rashi_bhava_cusps, 12,
+                                      DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP));
     }
     if (a.arudha_padas_valid != 0) {
-        napi_value arudha_padas;
-        napi_create_array_with_length(env, 12, &arudha_padas);
-        for (uint32_t i = 0; i < 12; ++i) {
-            napi_set_element(env, arudha_padas, i, WriteAmshaEntry(env, a.arudha_padas[i]));
-        }
-        SetNamed(env, obj, "arudhaPadas", arudha_padas);
+        SetNamed(env, obj, "arudhaPadas",
+                 WriteAmshaEntryArray(env, a.arudha_padas, 12,
+                                      DHRUV_AMSHA_POINT_FAMILY_ARUDHA_PADA));
     }
     if (a.rashi_bhava_arudha_padas_valid != 0) {
-        napi_value rashi_bhava_arudha_padas;
-        napi_create_array_with_length(env, 12, &rashi_bhava_arudha_padas);
-        for (uint32_t i = 0; i < 12; ++i) {
-            napi_set_element(env, rashi_bhava_arudha_padas, i, WriteAmshaEntry(env, a.rashi_bhava_arudha_padas[i]));
-        }
-        SetNamed(env, obj, "rashiBhavaArudhaPadas", rashi_bhava_arudha_padas);
+        SetNamed(env, obj, "rashiBhavaArudhaPadas",
+                 WriteAmshaEntryArray(env, a.rashi_bhava_arudha_padas, 12,
+                                      DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA));
     }
     if (a.upagrahas_valid != 0) {
-        napi_value upagrahas;
-        napi_create_array_with_length(env, 11, &upagrahas);
-        for (uint32_t i = 0; i < 11; ++i) {
-            napi_set_element(env, upagrahas, i, WriteAmshaEntry(env, a.upagrahas[i]));
-        }
-        SetNamed(env, obj, "upagrahas", upagrahas);
+        SetNamed(env, obj, "upagrahas",
+                 WriteAmshaEntryArray(env, a.upagrahas, 11,
+                                      DHRUV_AMSHA_POINT_FAMILY_UPAGRAHA));
     }
     if (a.sphutas_valid != 0) {
-        napi_value sphutas;
-        napi_create_array_with_length(env, 16, &sphutas);
-        for (uint32_t i = 0; i < 16; ++i) {
-            napi_set_element(env, sphutas, i, WriteAmshaEntry(env, a.sphutas[i]));
-        }
-        SetNamed(env, obj, "sphutas", sphutas);
+        SetNamed(env, obj, "sphutas",
+                 WriteAmshaEntryArray(env, a.sphutas, 16,
+                                      DHRUV_AMSHA_POINT_FAMILY_SPHUTA));
     }
     if (a.special_lagnas_valid != 0) {
-        napi_value special_lagnas;
-        napi_create_array_with_length(env, 8, &special_lagnas);
-        for (uint32_t i = 0; i < 8; ++i) {
-            napi_set_element(env, special_lagnas, i, WriteAmshaEntry(env, a.special_lagnas[i]));
-        }
-        SetNamed(env, obj, "specialLagnas", special_lagnas);
+        SetNamed(env, obj, "specialLagnas",
+                 WriteAmshaEntryArray(env, a.special_lagnas, 8,
+                                      DHRUV_AMSHA_POINT_FAMILY_SPECIAL_LAGNA));
     }
     return obj;
 }
@@ -2240,14 +2237,12 @@ napi_value WriteAmshaSeriesChart(napi_env env, const DhruvAmshaSeriesChart& c) {
     napi_create_object(env, &obj);
     SetNamed(env, obj, "amshaCode", MakeUint32(env, c.amsha_code));
     SetNamed(env, obj, "variationCode", MakeUint32(env, c.variation_code));
-    SetNamed(env, obj, "lagna", WriteAmshaEntry(env, c.lagna));
+    SetNamed(env, obj, "lagna",
+             WriteAmshaEntry(env, c.lagna, DHRUV_AMSHA_POINT_FAMILY_LAGNA, 0));
     if (c.grahas_valid != 0) {
-        napi_value grahas;
-        napi_create_array_with_length(env, DHRUV_GRAHA_COUNT, &grahas);
-        for (uint32_t i = 0; i < DHRUV_GRAHA_COUNT; ++i) {
-            napi_set_element(env, grahas, i, WriteAmshaEntry(env, c.grahas[i]));
-        }
-        SetNamed(env, obj, "grahas", grahas);
+        SetNamed(env, obj, "grahas",
+                 WriteAmshaEntryArray(env, c.grahas, DHRUV_GRAHA_COUNT,
+                                      DHRUV_AMSHA_POINT_FAMILY_GRAHA));
     } else {
         napi_value nullv;
         napi_get_null(env, &nullv);
@@ -6873,6 +6868,39 @@ napi_value CoreBindusForDate(napi_env env, napi_callback_info info) {
     return out;
 }
 
+napi_value AmshaPointCount(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    uint32_t family = 0;
+    if (argc < 1 || !GetUint32(env, args[0], &family)) return MakeUint32(env, 0);
+    return MakeUint32(env, dhruv_amsha_point_count(family));
+}
+
+napi_value AmshaPointName(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    uint32_t family = 0;
+    uint32_t index = 0;
+    if (argc < 2 || !GetUint32(env, args[0], &family) || !GetUint32(env, args[1], &index)) {
+        return MakeString(env, nullptr);
+    }
+    return MakeString(env, dhruv_amsha_point_name(family, index));
+}
+
+napi_value AmshaPointKey(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    uint32_t family = 0;
+    uint32_t index = 0;
+    if (argc < 2 || !GetUint32(env, args[0], &family) || !GetUint32(env, args[1], &index)) {
+        return MakeString(env, nullptr);
+    }
+    return MakeString(env, dhruv_amsha_point_key(family, index));
+}
+
 napi_value AmshaLongitude(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value args[3];
@@ -8971,6 +8999,9 @@ napi_value Init(napi_env env, napi_value exports) {
         {"grahaPositionsForDate", nullptr, GrahaPositionsForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"grahaPositionsSeriesForDate", nullptr, GrahaPositionsSeriesForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"coreBindusForDate", nullptr, CoreBindusForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"amshaPointCount", nullptr, AmshaPointCount, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"amshaPointName", nullptr, AmshaPointName, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"amshaPointKey", nullptr, AmshaPointKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaLongitude", nullptr, AmshaLongitude, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaRashiInfo", nullptr, AmshaRashiInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"amshaLongitudes", nullptr, AmshaLongitudes, nullptr, nullptr, nullptr, napi_default, nullptr},

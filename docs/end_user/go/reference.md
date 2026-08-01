@@ -432,6 +432,16 @@ Strength, dasha, amsha, and tara:
 - `(*Engine).AmshaChartForDate`
   Amsha chart `Grahas` stay length 9; `OuterPlanets` carries transformed
   Uranus, Neptune, and Pluto entries when the scope enables them.
+  Every `AmshaEntry` identifies itself: `Name` is a stable snake_case key
+  (`"sree_lagna"`, `"gulika"`, `"a1"`, `"bhava_3"`, `"surya"`),
+  `DisplayName` is the readable form, and `Family` / `PointIndex` address the
+  point. Entries also carry `NakshatraIndex`, `Pada`, and `RashiBhavaNumber`
+  (whole-sign bhava from the varga lagna; a varga transform is not monotonic,
+  so `BhavaCusps` are not ordered house boundaries and there is no cusp-based
+  bhava inside a varga). All chart sections stay slices in the canonical
+  order — prefer reading `Name` over the slice index.
+  `AmshaPointCount` / `AmshaPointName` / `AmshaPointKey` with the
+  `AmshaPointFamily*` constants enumerate a family without a chart in hand.
 - `(*Engine).AmshaSeries(eop, fromUTC, toUTC, stepMinutes, loc, sankrantiCfg, requests, includeGrahas)`
   Fixed-cadence slim varga charts, returned as `[]AmshaSeriesPoint`. Grid
   semantics match `GrahaPositionsSeriesForDate`: one point per `stepMinutes`

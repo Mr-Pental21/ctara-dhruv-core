@@ -29,6 +29,41 @@ MAX_AMSHA_SERIES_CELLS = 100000
 # total segments across all amshas per amsha_lagna_events call:
 MAX_AMSHA_LAGNA_SEGMENTS = 50000
 
+# Amsha point families. Each code names one AmshaChart section; a point's
+# identity is (family, index within that section).
+AMSHA_POINT_FAMILY_LAGNA = 0
+AMSHA_POINT_FAMILY_GRAHA = 1
+AMSHA_POINT_FAMILY_OUTER_PLANET = 2
+AMSHA_POINT_FAMILY_BHAVA_CUSP = 3
+AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP = 4
+AMSHA_POINT_FAMILY_ARUDHA_PADA = 5
+AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA = 6
+AMSHA_POINT_FAMILY_UPAGRAHA = 7
+AMSHA_POINT_FAMILY_SPHUTA = 8
+AMSHA_POINT_FAMILY_SPECIAL_LAGNA = 9
+AMSHA_POINT_FAMILY_COUNT = 10
+
+
+def amsha_point_count(family):
+    """Number of points in an amsha point family; 0 for an unknown family."""
+    return int(lib.dhruv_amsha_point_count(family))
+
+
+def amsha_point_name(family, index):
+    """Display name of the point at (family, index), or None if out of range."""
+    ptr = lib.dhruv_amsha_point_name(family, index)
+    if ptr == ffi.NULL:
+        return None
+    return ffi.string(ptr).decode("utf-8")
+
+
+def amsha_point_key(family, index):
+    """Stable snake_case key of the point at (family, index), or None."""
+    ptr = lib.dhruv_amsha_point_key(family, index)
+    if ptr == ffi.NULL:
+        return None
+    return ffi.string(ptr).decode("utf-8")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -88,7 +123,7 @@ def _make_riseset_config(riseset_config):
     return cfg
 
 
-def _extract_amsha_entry(e):
+def _extract_amsha_entry(e, family=AMSHA_POINT_FAMILY_LAGNA, point_index=0):
     return AmshaEntry(
         sidereal_longitude=e.sidereal_longitude,
         rashi_index=e.rashi_index,
@@ -96,7 +131,19 @@ def _extract_amsha_entry(e):
         dms_minutes=e.dms_minutes,
         dms_seconds=e.dms_seconds,
         degrees_in_rashi=e.degrees_in_rashi,
+        nakshatra_index=e.nakshatra_index,
+        pada=e.pada,
+        rashi_bhava_number=e.rashi_bhava_number,
+        family=family,
+        point_index=point_index,
+        name=amsha_point_key(family, point_index),
+        display_name=amsha_point_name(family, point_index),
     )
+
+
+def _extract_amsha_family(entries, family, count):
+    """Extract a whole point family, tagging each entry with its position."""
+    return [_extract_amsha_entry(entries[i], family, i) for i in range(count)]
 
 
 def _decode_c_string(buf):
@@ -297,41 +344,51 @@ def amsha_chart_for_date(
         "amsha_chart_for_date",
     )
 
-    grahas = [_extract_amsha_entry(out.grahas[i]) for i in range(9)]
+    grahas = _extract_amsha_family(out.grahas, AMSHA_POINT_FAMILY_GRAHA, 9)
     outer_planets = None
     if out.outer_planets_valid:
-        outer_planets = [_extract_amsha_entry(out.outer_planets[i]) for i in range(3)]
-    lagna = _extract_amsha_entry(out.lagna)
+        outer_planets = _extract_amsha_family(
+            out.outer_planets, AMSHA_POINT_FAMILY_OUTER_PLANET, 3
+        )
+    lagna = _extract_amsha_entry(out.lagna, AMSHA_POINT_FAMILY_LAGNA, 0)
 
     bhava_cusps = None
     if out.bhava_cusps_valid:
-        bhava_cusps = [_extract_amsha_entry(out.bhava_cusps[i]) for i in range(12)]
+        bhava_cusps = _extract_amsha_family(
+            out.bhava_cusps, AMSHA_POINT_FAMILY_BHAVA_CUSP, 12
+        )
 
     rashi_bhava_cusps = None
     if out.rashi_bhava_cusps_valid:
-        rashi_bhava_cusps = [_extract_amsha_entry(out.rashi_bhava_cusps[i]) for i in range(12)]
+        rashi_bhava_cusps = _extract_amsha_family(
+            out.rashi_bhava_cusps, AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP, 12
+        )
 
     arudha_padas = None
     if out.arudha_padas_valid:
-        arudha_padas = [_extract_amsha_entry(out.arudha_padas[i]) for i in range(12)]
+        arudha_padas = _extract_amsha_family(
+            out.arudha_padas, AMSHA_POINT_FAMILY_ARUDHA_PADA, 12
+        )
 
     rashi_bhava_arudha_padas = None
     if out.rashi_bhava_arudha_padas_valid:
-        rashi_bhava_arudha_padas = [
-            _extract_amsha_entry(out.rashi_bhava_arudha_padas[i]) for i in range(12)
-        ]
+        rashi_bhava_arudha_padas = _extract_amsha_family(
+            out.rashi_bhava_arudha_padas, AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA, 12
+        )
 
     upagrahas = None
     if out.upagrahas_valid:
-        upagrahas = [_extract_amsha_entry(out.upagrahas[i]) for i in range(11)]
+        upagrahas = _extract_amsha_family(out.upagrahas, AMSHA_POINT_FAMILY_UPAGRAHA, 11)
 
     sphutas = None
     if out.sphutas_valid:
-        sphutas = [_extract_amsha_entry(out.sphutas[i]) for i in range(16)]
+        sphutas = _extract_amsha_family(out.sphutas, AMSHA_POINT_FAMILY_SPHUTA, 16)
 
     special_lagnas = None
     if out.special_lagnas_valid:
-        special_lagnas = [_extract_amsha_entry(out.special_lagnas[i]) for i in range(8)]
+        special_lagnas = _extract_amsha_family(
+            out.special_lagnas, AMSHA_POINT_FAMILY_SPECIAL_LAGNA, 8
+        )
 
     return AmshaChart(
         amsha_code=out.amsha_code,

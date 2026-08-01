@@ -1190,10 +1190,21 @@ class BindusResult:
 class AmshaEntry:
     """Position in a divisional chart.
 
+    ``name`` / ``display_name``: identity of this point, resolved from the
+    entry's fixed position in its chart array. ``name`` is a stable
+    snake_case key (``"sree_lagna"``, ``"a1"``, ``"bhava_3"``, ``"surya"``);
+    ``display_name`` is the human-readable form.
+    ``family`` / ``point_index``: the ``DHRUV_AMSHA_POINT_FAMILY_*`` code and
+    the index inside that family, which together address the point.
     ``sidereal_longitude``: degrees [0, 360).
     ``rashi_index``: 0-based (0-11).
     ``dms_degrees`` / ``dms_minutes`` / ``dms_seconds``: DMS within rashi.
     ``degrees_in_rashi``: decimal degrees within rashi [0, 30).
+    ``nakshatra_index``: 0-based (0-26). ``pada``: 1-4.
+    ``rashi_bhava_number``: whole-sign bhava (1-12) from the varga lagna. A
+    varga transform is not monotonic, so the transformed cusps in
+    ``bhava_cusps`` are not ordered house boundaries and there is no
+    cusp-based bhava inside a varga.
     """
 
     sidereal_longitude: float
@@ -1202,6 +1213,13 @@ class AmshaEntry:
     dms_minutes: int
     dms_seconds: float
     degrees_in_rashi: float
+    nakshatra_index: int = 0
+    pada: int = 0
+    rashi_bhava_number: int = 0
+    family: int = 0
+    point_index: int = 0
+    name: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 @dataclass(frozen=True)

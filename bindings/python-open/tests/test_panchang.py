@@ -62,8 +62,8 @@ class TestAbiVersion:
         """Library and embedded header agree on ABI v84."""
         from ctara_dhruv._ffi import lib
         from ctara_dhruv._cdef import EXPECTED_API_VERSION
-        assert EXPECTED_API_VERSION == 84
-        assert lib.dhruv_api_version() == 84
+        assert EXPECTED_API_VERSION == 85
+        assert lib.dhruv_api_version() == 85
 
 
 @skip_no_kernels

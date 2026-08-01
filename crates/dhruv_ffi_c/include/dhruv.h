@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       84
+#define DHRUV_API_VERSION       85
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -1568,11 +1568,31 @@ typedef struct {
 
 /* --- Amsha (divisional chart) --- */
 
+/* Amsha point families. Each code names one DhruvAmshaChart array; a point's
+ * identity is (family, index into that array). Resolve it with
+ * dhruv_amsha_point_name() / dhruv_amsha_point_key(). Names are static and
+ * never vary by amsha, variation or date, which is why they are queried rather
+ * than repeated inside every DhruvAmshaEntry. */
+#define DHRUV_AMSHA_POINT_FAMILY_LAGNA                    0  /*  1 point,  lagna */
+#define DHRUV_AMSHA_POINT_FAMILY_GRAHA                    1  /*  9 points, grahas */
+#define DHRUV_AMSHA_POINT_FAMILY_OUTER_PLANET             2  /*  3 points, outer_planets */
+#define DHRUV_AMSHA_POINT_FAMILY_BHAVA_CUSP               3  /* 12 points, bhava_cusps */
+#define DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP         4  /* 12 points, rashi_bhava_cusps */
+#define DHRUV_AMSHA_POINT_FAMILY_ARUDHA_PADA              5  /* 12 points, arudha_padas */
+#define DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA  6  /* 12 points, rashi_bhava_arudha_padas */
+#define DHRUV_AMSHA_POINT_FAMILY_UPAGRAHA                 7  /* 11 points, upagrahas */
+#define DHRUV_AMSHA_POINT_FAMILY_SPHUTA                   8  /* 16 points, sphutas */
+#define DHRUV_AMSHA_POINT_FAMILY_SPECIAL_LAGNA            9  /*  8 points, special_lagnas */
+#define DHRUV_AMSHA_POINT_FAMILY_COUNT                   10
+
 typedef struct {
     double   sidereal_longitude;
     uint8_t  rashi_index;
     uint16_t dms_degrees;
     uint8_t  dms_minutes;
+    uint8_t  nakshatra_index;      /* 0-26 */
+    uint8_t  pada;                 /* 1-4 */
+    uint8_t  rashi_bhava_number;   /* 1-12, whole-sign from the varga lagna */
     double   dms_seconds;
     double   degrees_in_rashi;
 } DhruvAmshaEntry;
@@ -3087,6 +3107,13 @@ DhruvStatus dhruv_nakshatra_at(
     DhruvPanchangNakshatraInfo *out);
 
 /* --- Amsha (divisional chart) --- */
+/* Number of points in an amsha point family (0 for an unknown family). */
+uint32_t dhruv_amsha_point_count(uint32_t family);
+/* Display name / stable snake_case key of the point at (family, index).
+ * Both return NUL-terminated UTF-8 valid for the process lifetime, or NULL for
+ * an unknown family or out-of-range index. */
+const char *dhruv_amsha_point_name(uint32_t family, uint32_t index);
+const char *dhruv_amsha_point_key(uint32_t family, uint32_t index);
 DhruvStatus dhruv_amsha_longitude(
     double sidereal_lon,
     uint16_t amsha_code,

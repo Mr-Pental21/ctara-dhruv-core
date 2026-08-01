@@ -315,8 +315,20 @@ sweeps re-solve boundaries, so match starts with a small tolerance).
   - `amshaChartForDate`
   - `amshaSeries`
   - `amshaLagnaEvents`
+  - `amshaPointCount` / `amshaPointName` / `amshaPointKey`
+  - `AMSHA_POINT_FAMILY`
   - `MAX_AMSHA_SERIES_CELLS`
   - `MAX_AMSHA_LAGNA_SEGMENTS`
+
+  Every entry inside an amsha chart identifies itself: `name` is a stable
+  snake_case key (`'sree_lagna'`, `'gulika'`, `'a1'`, `'bhava_3'`,
+  `'surya'`), `displayName` is the readable form, and `family` / `pointIndex`
+  address the point. Entries also carry `nakshatraIndex`, `pada`, and
+  `rashiBhavaNumber` (whole-sign bhava from the varga lagna; a varga
+  transform is not monotonic, so `bhavaCusps` are not ordered house
+  boundaries and there is no cusp-based bhava inside a varga). All chart
+  sections stay **arrays** in the canonical order — prefer reading `name`
+  over the array index.
 - graha relationship, combustion, dignity, and classification helpers:
   - `horaLord`
   - `masaLord`

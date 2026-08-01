@@ -67,7 +67,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 84;
+pub const DHRUV_API_VERSION: u32 = 85;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -10668,13 +10668,31 @@ pub extern "C" fn dhruv_samvatsara_lord(samvatsara_index: u32) -> i32 {
 /// Return the name of a sphuta by index (0-15). Returns null for invalid index.
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_sphuta_name(index: u32) -> *const std::ffi::c_char {
-    let all = dhruv_vedic_base::sphuta::ALL_SPHUTAS;
-    if index >= all.len() as u32 {
-        return ptr::null();
+    match SPHUTA_C_NAMES.get(index as usize) {
+        Some(name) => name.as_ptr(),
+        None => ptr::null(),
     }
-    let name = all[index as usize].name();
-    name.as_ptr() as *const std::ffi::c_char
 }
+
+/// Sphuta names as NUL-terminated C strings, in `ALL_SPHUTAS` order.
+static SPHUTA_C_NAMES: [&std::ffi::CStr; 16] = [
+    c"Bhrigu Bindu",
+    c"Prana Sphuta",
+    c"Deha Sphuta",
+    c"Mrityu Sphuta",
+    c"Tithi Sphuta",
+    c"Yoga Sphuta",
+    c"Yoga Sphuta Normalized",
+    c"Rahu Tithi Sphuta",
+    c"Kshetra Sphuta",
+    c"Beeja Sphuta",
+    c"TriSphuta",
+    c"ChatusSphuta",
+    c"PanchaSphuta",
+    c"Sookshma TriSphuta",
+    c"Avayoga Sphuta",
+    c"Kunda",
+];
 
 /// C-compatible inputs for all_sphutas.
 #[repr(C)]
@@ -10862,12 +10880,25 @@ pub struct DhruvSpecialLagnas {
 /// Returns null for invalid indices (>= 8).
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_special_lagna_name(index: u32) -> *const std::ffi::c_char {
-    if index >= 8 {
-        return ptr::null();
+    match SPECIAL_LAGNA_C_NAMES.get(index as usize) {
+        Some(name) => name.as_ptr(),
+        None => ptr::null(),
     }
-    let name = dhruv_vedic_base::ALL_SPECIAL_LAGNAS[index as usize].name();
-    name.as_ptr().cast()
 }
+
+/// Special lagna names as NUL-terminated C strings, in `ALL_SPECIAL_LAGNAS`
+/// order. Index 5 is Sree Lagna and index 6 is Pranapada Lagna; see
+/// `docs/clean_room_special_lagnas.md`.
+static SPECIAL_LAGNA_C_NAMES: [&std::ffi::CStr; 8] = [
+    c"Bhava Lagna",
+    c"Hora Lagna",
+    c"Ghati Lagna",
+    c"Vighati Lagna",
+    c"Varnada Lagna",
+    c"Sree Lagna",
+    c"Pranapada Lagna",
+    c"Indu Lagna",
+];
 
 /// Compute a single special lagna: Bhava Lagna (pure math).
 #[unsafe(no_mangle)]
@@ -11009,12 +11040,27 @@ pub struct DhruvArudhaResult {
 /// Returns null for invalid indices (>= 12).
 #[unsafe(no_mangle)]
 pub extern "C" fn dhruv_arudha_pada_name(index: u32) -> *const std::ffi::c_char {
-    if index >= 12 {
-        return ptr::null();
+    match ARUDHA_PADA_C_NAMES.get(index as usize) {
+        Some(name) => name.as_ptr(),
+        None => ptr::null(),
     }
-    let name = dhruv_vedic_base::ALL_ARUDHA_PADAS[index as usize].name();
-    name.as_ptr().cast()
 }
+
+/// Arudha pada names as NUL-terminated C strings, in `ALL_ARUDHA_PADAS` order.
+static ARUDHA_PADA_C_NAMES: [&std::ffi::CStr; 12] = [
+    c"Arudha Lagna",
+    c"Dhana Pada",
+    c"Vikrama Pada",
+    c"Matri Pada",
+    c"Mantra Pada",
+    c"Roga Pada",
+    c"Dara Pada",
+    c"Mrityu Pada",
+    c"Pitri Pada",
+    c"Rajya Pada",
+    c"Labha Pada",
+    c"Upapada",
+];
 
 /// Compute a single arudha pada (pure math).
 ///
@@ -13246,7 +13292,139 @@ pub unsafe extern "C" fn dhruv_drishti(
 // Amsha (Divisional Chart) FFI types
 // ---------------------------------------------------------------------------
 
+/// Amsha point family: the varga ascendant (1 point).
+pub const DHRUV_AMSHA_POINT_FAMILY_LAGNA: u32 = 0;
+/// Amsha point family: the nine grahas (9 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_GRAHA: u32 = 1;
+/// Amsha point family: outer planets Uranus/Neptune/Pluto (3 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_OUTER_PLANET: u32 = 2;
+/// Amsha point family: bhava cusps (12 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_BHAVA_CUSP: u32 = 3;
+/// Amsha point family: rashi (whole-sign) bhava cusps (12 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP: u32 = 4;
+/// Amsha point family: arudha padas (12 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_ARUDHA_PADA: u32 = 5;
+/// Amsha point family: rashi-bhava arudha padas (12 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA: u32 = 6;
+/// Amsha point family: upagrahas (11 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_UPAGRAHA: u32 = 7;
+/// Amsha point family: sphutas (16 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_SPHUTA: u32 = 8;
+/// Amsha point family: special lagnas (8 points).
+pub const DHRUV_AMSHA_POINT_FAMILY_SPECIAL_LAGNA: u32 = 9;
+/// Number of amsha point families.
+pub const DHRUV_AMSHA_POINT_FAMILY_COUNT: u32 = 10;
+
+/// Number of points in an amsha point family.
+///
+/// Returns the length of the corresponding `DhruvAmshaChart` array, or `0` for
+/// an unknown family code.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_amsha_point_count(family: u32) -> u32 {
+    match amsha_point_family_from_code(family) {
+        Some(f) => f.len() as u32,
+        None => 0,
+    }
+}
+
+/// Display name of the point at `index` inside amsha point family `family`.
+///
+/// The (family, index) pair identifies a fixed position inside
+/// `DhruvAmshaChart` — for example family
+/// `DHRUV_AMSHA_POINT_FAMILY_SPECIAL_LAGNA` index `5` is the entry at
+/// `special_lagnas[5]`. Names are static and never vary by amsha, variation or
+/// date, which is why they are queried rather than repeated in every entry.
+///
+/// Returns a NUL-terminated UTF-8 string, or null for an unknown family or an
+/// out-of-range index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_amsha_point_name(family: u32, index: u32) -> *const std::ffi::c_char {
+    amsha_point_lookup(family, index, false)
+}
+
+/// Stable snake_case key of the point at `index` inside family `family`.
+///
+/// Same addressing as `dhruv_amsha_point_name`, but returns an identifier
+/// suitable as a map key or tag (for example `sree_lagna`, `artha_prahara`,
+/// `bhava_3`, `a1`, `surya`).
+///
+/// Returns a NUL-terminated UTF-8 string, or null for an unknown family or an
+/// out-of-range index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_amsha_point_key(family: u32, index: u32) -> *const std::ffi::c_char {
+    amsha_point_lookup(family, index, true)
+}
+
+fn amsha_point_family_from_code(family: u32) -> Option<dhruv_search::AmshaPointFamily> {
+    u8::try_from(family)
+        .ok()
+        .and_then(dhruv_search::AmshaPointFamily::from_code)
+}
+
+/// NUL-terminated names and keys for every amsha point, indexed by
+/// `[family code][point index]`.
+///
+/// Built once from the `dhruv_search` tables so the C ABI cannot drift from
+/// the Rust vocabulary. `CString` owns its buffer, so the pointers handed to C
+/// stay valid for the process lifetime.
+struct AmshaPointStrings {
+    names: Vec<Vec<std::ffi::CString>>,
+    keys: Vec<Vec<std::ffi::CString>>,
+}
+
+fn amsha_point_strings() -> &'static AmshaPointStrings {
+    static STRINGS: std::sync::OnceLock<AmshaPointStrings> = std::sync::OnceLock::new();
+    STRINGS.get_or_init(|| {
+        let mut names = Vec::with_capacity(DHRUV_AMSHA_POINT_FAMILY_COUNT as usize);
+        let mut keys = Vec::with_capacity(DHRUV_AMSHA_POINT_FAMILY_COUNT as usize);
+        // ALL_AMSHA_POINT_FAMILIES is in family-code order, so the outer index
+        // is the family code.
+        for family in dhruv_search::ALL_AMSHA_POINT_FAMILIES {
+            let mut family_names = Vec::with_capacity(family.len());
+            let mut family_keys = Vec::with_capacity(family.len());
+            for index in 0..family.len() as u8 {
+                let point = dhruv_search::AmshaPoint::new(family, index);
+                family_names.push(cstring_or_empty(point.name()));
+                family_keys.push(cstring_or_empty(point.key()));
+            }
+            names.push(family_names);
+            keys.push(family_keys);
+        }
+        AmshaPointStrings { names, keys }
+    })
+}
+
+fn cstring_or_empty(value: Option<&'static str>) -> std::ffi::CString {
+    value
+        .and_then(|s| std::ffi::CString::new(s).ok())
+        .unwrap_or_default()
+}
+
+fn amsha_point_lookup(family: u32, index: u32, want_key: bool) -> *const std::ffi::c_char {
+    let Some(f) = amsha_point_family_from_code(family) else {
+        return ptr::null();
+    };
+    let strings = amsha_point_strings();
+    let table = if want_key {
+        &strings.keys
+    } else {
+        &strings.names
+    };
+    match table
+        .get(f.code() as usize)
+        .and_then(|family| family.get(index as usize))
+    {
+        Some(value) => value.as_ptr(),
+        None => ptr::null(),
+    }
+}
+
 /// C-compatible amsha entry (position in a divisional chart).
+///
+/// The point's identity is its fixed position inside `DhruvAmshaChart`; use
+/// `dhruv_amsha_point_name` / `dhruv_amsha_point_key` with the containing
+/// array's `DHRUV_AMSHA_POINT_FAMILY_*` code and the entry's index to resolve
+/// it.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DhruvAmshaEntry {
@@ -13258,6 +13436,17 @@ pub struct DhruvAmshaEntry {
     pub dms_degrees: u16,
     /// Minutes component of DMS within rashi.
     pub dms_minutes: u8,
+    /// 0-based nakshatra index (0-26).
+    pub nakshatra_index: u8,
+    /// Nakshatra pada (1-4).
+    pub pada: u8,
+    /// Whole-sign bhava number (1-12) counted from the varga lagna's rashi.
+    ///
+    /// A varga transform is not monotonic, so the transformed cusps in
+    /// `bhava_cusps` do not form ordered house boundaries; there is no
+    /// cusp-based bhava inside a varga and this whole-sign number is the
+    /// defined one.
+    pub rashi_bhava_number: u8,
     /// Seconds component of DMS within rashi.
     pub dms_seconds: f64,
     /// Decimal degrees within rashi [0, 30).
@@ -13271,11 +13460,32 @@ impl DhruvAmshaEntry {
             rashi_index: 0,
             dms_degrees: 0,
             dms_minutes: 0,
+            nakshatra_index: 0,
+            pada: 0,
+            rashi_bhava_number: 0,
             dms_seconds: 0.0,
             degrees_in_rashi: 0.0,
         }
     }
 }
+
+// `nakshatra_index`, `pada` and `rashi_bhava_number` were added into the three
+// padding bytes that already sat between `dms_minutes` and the 8-aligned
+// `dms_seconds`. The struct size and every pre-existing field offset are
+// therefore unchanged; if that ever stops holding, this is a layout break for
+// every `DhruvAmshaChart` consumer and must be treated as such.
+const _: () = {
+    assert!(std::mem::size_of::<DhruvAmshaEntry>() == 32);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, sidereal_longitude) == 0);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, rashi_index) == 8);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, dms_degrees) == 10);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, dms_minutes) == 12);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, nakshatra_index) == 13);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, pada) == 14);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, rashi_bhava_number) == 15);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, dms_seconds) == 16);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, degrees_in_rashi) == 24);
+};
 
 /// C-compatible amsha chart scope flags.
 #[repr(C)]
@@ -13470,6 +13680,9 @@ fn amsha_entry_to_ffi(entry: &dhruv_search::AmshaEntry) -> DhruvAmshaEntry {
         rashi_index: entry.rashi_index,
         dms_degrees: entry.dms.degrees,
         dms_minutes: entry.dms.minutes,
+        nakshatra_index: entry.nakshatra_index,
+        pada: entry.pada,
+        rashi_bhava_number: entry.rashi_bhava_number,
         dms_seconds: entry.dms.seconds,
         degrees_in_rashi: entry.degrees_in_rashi,
     }
@@ -17411,6 +17624,123 @@ mod tests {
     fn status_maps_from_core_error() {
         let status = DhruvStatus::from(&EngineError::InvalidQuery("bad"));
         assert_eq!(status, DhruvStatus::InvalidQuery);
+    }
+
+    /// Read a `*const c_char` back as a Rust string, or `None` for null.
+    ///
+    /// Reading through `CStr` is the point: it walks to the NUL terminator, so
+    /// a name table that forgot one shows up here instead of as an
+    /// out-of-bounds read in a C caller.
+    fn read_c_string(ptr: *const std::ffi::c_char) -> Option<String> {
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: the accessors return pointers to static/OnceLock-owned
+        // NUL-terminated buffers valid for the process lifetime.
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(ptr) }
+                .to_str()
+                .expect("name is valid UTF-8")
+                .to_string(),
+        )
+    }
+
+    #[test]
+    fn amsha_point_accessors_match_the_rust_tables() {
+        for family in dhruv_search::ALL_AMSHA_POINT_FAMILIES {
+            let code = family.code() as u32;
+            assert_eq!(dhruv_amsha_point_count(code), family.len() as u32);
+
+            for index in 0..family.len() as u32 {
+                let point = dhruv_search::AmshaPoint::new(family, index as u8);
+                assert_eq!(
+                    read_c_string(dhruv_amsha_point_name(code, index)).as_deref(),
+                    point.name(),
+                    "name mismatch at family {code} index {index}"
+                );
+                assert_eq!(
+                    read_c_string(dhruv_amsha_point_key(code, index)).as_deref(),
+                    point.key(),
+                    "key mismatch at family {code} index {index}"
+                );
+            }
+
+            // One past the end and unknown families must return null, not a
+            // dangling or wrapped-around pointer.
+            let past_end = family.len() as u32;
+            assert!(dhruv_amsha_point_name(code, past_end).is_null());
+            assert!(dhruv_amsha_point_key(code, past_end).is_null());
+        }
+
+        assert_eq!(
+            DHRUV_AMSHA_POINT_FAMILY_COUNT as usize,
+            dhruv_search::ALL_AMSHA_POINT_FAMILIES.len()
+        );
+        assert_eq!(dhruv_amsha_point_count(DHRUV_AMSHA_POINT_FAMILY_COUNT), 0);
+        assert!(dhruv_amsha_point_name(DHRUV_AMSHA_POINT_FAMILY_COUNT, 0).is_null());
+        assert!(dhruv_amsha_point_key(DHRUV_AMSHA_POINT_FAMILY_COUNT, 0).is_null());
+    }
+
+    #[test]
+    fn amsha_point_family_codes_match_the_header_constants() {
+        use dhruv_search::AmshaPointFamily as F;
+        assert_eq!(F::Lagna.code() as u32, DHRUV_AMSHA_POINT_FAMILY_LAGNA);
+        assert_eq!(F::Graha.code() as u32, DHRUV_AMSHA_POINT_FAMILY_GRAHA);
+        assert_eq!(
+            F::OuterPlanet.code() as u32,
+            DHRUV_AMSHA_POINT_FAMILY_OUTER_PLANET
+        );
+        assert_eq!(
+            F::BhavaCusp.code() as u32,
+            DHRUV_AMSHA_POINT_FAMILY_BHAVA_CUSP
+        );
+        assert_eq!(
+            F::RashiBhavaCusp.code() as u32,
+            DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP
+        );
+        assert_eq!(
+            F::ArudhaPada.code() as u32,
+            DHRUV_AMSHA_POINT_FAMILY_ARUDHA_PADA
+        );
+        assert_eq!(
+            F::RashiBhavaArudhaPada.code() as u32,
+            DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA
+        );
+        assert_eq!(F::Upagraha.code() as u32, DHRUV_AMSHA_POINT_FAMILY_UPAGRAHA);
+        assert_eq!(F::Sphuta.code() as u32, DHRUV_AMSHA_POINT_FAMILY_SPHUTA);
+        assert_eq!(
+            F::SpecialLagna.code() as u32,
+            DHRUV_AMSHA_POINT_FAMILY_SPECIAL_LAGNA
+        );
+    }
+
+    #[test]
+    fn indexed_name_accessors_are_nul_terminated() {
+        // These return pointers into static tables; reading them through CStr
+        // would run off the end if any entry lost its terminator.
+        for (index, expected) in dhruv_vedic_base::ALL_SPECIAL_LAGNAS.iter().enumerate() {
+            let got = read_c_string(dhruv_special_lagna_name(index as u32));
+            assert_eq!(got.as_deref(), Some(expected.name()));
+        }
+        assert!(dhruv_special_lagna_name(8).is_null());
+
+        for (index, expected) in dhruv_vedic_base::ALL_ARUDHA_PADAS.iter().enumerate() {
+            let got = read_c_string(dhruv_arudha_pada_name(index as u32));
+            assert_eq!(got.as_deref(), Some(expected.name()));
+        }
+        assert!(dhruv_arudha_pada_name(12).is_null());
+
+        for (index, expected) in dhruv_vedic_base::ALL_SPHUTAS.iter().enumerate() {
+            let got = read_c_string(dhruv_sphuta_name(index as u32));
+            assert_eq!(got.as_deref(), Some(expected.name()));
+        }
+        assert!(dhruv_sphuta_name(16).is_null());
+
+        for (index, expected) in dhruv_vedic_base::ALL_UPAGRAHAS.iter().enumerate() {
+            let got = read_c_string(dhruv_upagraha_name(index as u32));
+            assert_eq!(got.as_deref(), Some(expected.name()));
+        }
+        assert!(dhruv_upagraha_name(11).is_null());
     }
 
     #[test]

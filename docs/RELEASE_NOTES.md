@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+- Amsha chart entries now carry their own identity. Each `AmshaEntry` gains a
+  `point` (`AmshaPoint { family, index }`) whose `name()`/`key()` resolve to
+  the library's existing vocabulary and to a stable snake_case identifier, so
+  consumers no longer have to recover a point's identity from its array
+  position. Entries also gain `nakshatra`, `nakshatra_index`, `pada`, and
+  `rashi_bhava_number` (whole-sign bhava from the varga lagna; a varga
+  transform is not monotonic, so there is deliberately no cusp-based
+  `bhava_number` inside a varga). **The sections stay arrays on every
+  surface** — the keys are purely additive.
+  - C ABI (v85): `DhruvAmshaEntry` gains `nakshatra_index`, `pada` and
+    `rashi_bhava_number` in the three padding bytes it already carried, so the
+    struct size and every pre-existing field offset are unchanged (pinned by a
+    compile-time layout assertion). Point names are *not* repeated per entry —
+    they are compile-time constants of (family, index) — and are queried
+    instead via new `dhruv_amsha_point_count` / `dhruv_amsha_point_name` /
+    `dhruv_amsha_point_key` with the `DHRUV_AMSHA_POINT_FAMILY_*` codes.
+  - Elixir/Node/Python/Go amsha entries carry `name` (stable key),
+    `display_name`, `family` and `point_index` alongside the new nakshatra and
+    bhava fields; Python, Go and Node also expose the point accessors
+    directly. The CLI now labels upagrahas, sphutas and special lagnas from
+    each entry's own identity instead of hand-maintained tables (output text
+    unchanged).
+  - New tests pin the emitted names against the order in which the *named*
+    source fields are flattened into the positional arrays, so a reorder fails
+    loudly instead of silently relabelling every downstream point.
+- Fixed `dhruv_special_lagna_name`, `dhruv_arudha_pada_name` and
+  `dhruv_sphuta_name` returning pointers to Rust string literals, which are not
+  NUL-terminated — C callers read past the end of the name. They now return
+  proper NUL-terminated C strings, matching `dhruv_rashi_name` and
+  `dhruv_upagraha_name`.
+- Clarified `docs/clean_room_special_lagnas.md`: its numbered sections group
+  the lagnas by derivation category and are not serialisation indices. The
+  canonical order (Sree at index 5, Pranapada at 6) is now stated explicitly
+  alongside them. No behavior change — the code was already correct and
+  self-consistent across `ALL_SPECIAL_LAGNAS`, `SpecialLagna::index()`,
+  `AllSpecialLagnas`, the wire arrays, `DhruvSpecialLagnas`, and
+  `dhruv_special_lagna_name`.
+
 - Generalized the sankranti search to any-body rashi-ingress search and
   added Rahu/Ketu to the conjunction and motion searches via the shared
   `TransitBody` selector (codes 10007/10008), across `dhruv_search`,

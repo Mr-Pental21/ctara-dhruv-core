@@ -2799,7 +2799,7 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 			chart := AmshaChart{
 				AmshaCode:                  uint16(out.amshas[i].amsha_code),
 				VariationCode:              uint8(out.amshas[i].variation_code),
-				Lagna:                      goAmshaEntry(out.amshas[i].lagna),
+				Lagna:                      goAmshaEntry(out.amshas[i].lagna, AmshaPointFamilyLagna, 0),
 				BhavaCuspsValid:            out.amshas[i].bhava_cusps_valid != 0,
 				RashiBhavaCuspsValid:       out.amshas[i].rashi_bhava_cusps_valid != 0,
 				ArudhaPadasValid:           out.amshas[i].arudha_padas_valid != 0,
@@ -2810,31 +2810,31 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 				OuterPlanetsValid:          out.amshas[i].outer_planets_valid != 0,
 			}
 			for j := 0; j < GrahaCount; j++ {
-				chart.Grahas[j] = goAmshaEntry(out.amshas[i].grahas[j])
+				chart.Grahas[j] = goAmshaEntry(out.amshas[i].grahas[j], AmshaPointFamilyGraha, uint32(j))
 			}
 			if chart.OuterPlanetsValid {
-				chart.OuterPlanets = goAmshaEntries(out.amshas[i].outer_planets[:])
+				chart.OuterPlanets = goAmshaEntries(out.amshas[i].outer_planets[:], AmshaPointFamilyOuterPlanet)
 			}
 			if chart.BhavaCuspsValid {
-				chart.BhavaCusps = goAmshaEntries(out.amshas[i].bhava_cusps[:])
+				chart.BhavaCusps = goAmshaEntries(out.amshas[i].bhava_cusps[:], AmshaPointFamilyBhavaCusp)
 			}
 			if chart.RashiBhavaCuspsValid {
-				chart.RashiBhavaCusps = goAmshaEntries(out.amshas[i].rashi_bhava_cusps[:])
+				chart.RashiBhavaCusps = goAmshaEntries(out.amshas[i].rashi_bhava_cusps[:], AmshaPointFamilyRashiBhavaCusp)
 			}
 			if chart.ArudhaPadasValid {
-				chart.ArudhaPadas = goAmshaEntries(out.amshas[i].arudha_padas[:])
+				chart.ArudhaPadas = goAmshaEntries(out.amshas[i].arudha_padas[:], AmshaPointFamilyArudhaPada)
 			}
 			if chart.RashiBhavaArudhaPadasValid {
-				chart.RashiBhavaArudhaPadas = goAmshaEntries(out.amshas[i].rashi_bhava_arudha_padas[:])
+				chart.RashiBhavaArudhaPadas = goAmshaEntries(out.amshas[i].rashi_bhava_arudha_padas[:], AmshaPointFamilyRashiBhavaArudhaPada)
 			}
 			if chart.UpagrahasValid {
-				chart.Upagrahas = goAmshaEntries(out.amshas[i].upagrahas[:])
+				chart.Upagrahas = goAmshaEntries(out.amshas[i].upagrahas[:], AmshaPointFamilyUpagraha)
 			}
 			if chart.SphutasValid {
-				chart.Sphutas = goAmshaEntries(out.amshas[i].sphutas[:])
+				chart.Sphutas = goAmshaEntries(out.amshas[i].sphutas[:], AmshaPointFamilySphuta)
 			}
 			if chart.SpecialLagnasValid {
-				chart.SpecialLagnas = goAmshaEntries(out.amshas[i].special_lagnas[:])
+				chart.SpecialLagnas = goAmshaEntries(out.amshas[i].special_lagnas[:], AmshaPointFamilySpecialLagna)
 			}
 			res.Amshas[i] = chart
 		}

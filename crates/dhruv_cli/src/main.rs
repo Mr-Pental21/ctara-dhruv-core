@@ -11689,26 +11689,15 @@ fn write_amsha_chart(
         }
     }
 
+    // Point labels below come from each entry's own identity rather than a
+    // table maintained here, so CLI output cannot drift from the wire order.
     if let Some(ref upagrahas) = chart.upagrahas {
-        let names = [
-            "Gulika",
-            "Maandi",
-            "Kaala",
-            "Mrityu",
-            "Artha Prahara",
-            "Yama Ghantaka",
-            "Dhooma",
-            "Vyatipata",
-            "Parivesha",
-            "Indra Chapa",
-            "Upaketu",
-        ];
         writeln!(w, "{base_indent}  Upagrahas:")?;
-        for (name, entry) in names.iter().zip(upagrahas.iter()) {
+        for entry in upagrahas.iter() {
             writeln!(
                 w,
                 "{base_indent}    {:<14} {}",
-                name,
+                entry.point.name().unwrap_or_default(),
                 format_rashi_dms(entry.sidereal_longitude)
             )?;
         }
@@ -11716,33 +11705,23 @@ fn write_amsha_chart(
 
     if let Some(ref sphutas) = chart.sphutas {
         writeln!(w, "{base_indent}  Sphutas:")?;
-        for (sphuta, entry) in dhruv_vedic_base::ALL_SPHUTAS.iter().zip(sphutas.iter()) {
+        for entry in sphutas.iter() {
             writeln!(
                 w,
                 "{base_indent}    {:<22} {}",
-                sphuta.name(),
+                entry.point.name().unwrap_or_default(),
                 format_rashi_dms(entry.sidereal_longitude)
             )?;
         }
     }
 
     if let Some(ref special_lagnas) = chart.special_lagnas {
-        let names = [
-            "Bhava Lagna",
-            "Hora Lagna",
-            "Ghati Lagna",
-            "Vighati Lagna",
-            "Varnada Lagna",
-            "Sree Lagna",
-            "Pranapada Lagna",
-            "Indu Lagna",
-        ];
         writeln!(w, "{base_indent}  Special Lagnas:")?;
-        for (name, entry) in names.iter().zip(special_lagnas.iter()) {
+        for entry in special_lagnas.iter() {
             writeln!(
                 w,
                 "{base_indent}    {:<16} {}",
-                name,
+                entry.point.name().unwrap_or_default(),
                 format_rashi_dms(entry.sidereal_longitude)
             )?;
         }

@@ -240,6 +240,25 @@ refute events.truncated
 - `amsha_series/2`
 - `amsha_lagna_events/2`
 
+Every entry inside an amsha chart identifies itself. Each entry map carries
+`"name"` (a stable snake_case key such as `"sree_lagna"`, `"gulika"`, `"a1"`,
+`"bhava_3"`, `"surya"`), `"display_name"`, `"family"` (the section it belongs
+to, e.g. `"special_lagnas"`) and `"point_index"` (its position in that
+section), alongside `"sidereal_longitude"`, `"rashi"`, `"rashi_index"`,
+`"degrees_in_rashi"`, `"dms"`, `"nakshatra"`, `"nakshatra_index"`, `"pada"`
+and `"rashi_bhava_number"`.
+
+`"rashi_bhava_number"` is the whole-sign bhava (1-12) counted from the varga
+lagna's rashi. A varga transform is not monotonic, so the entries in
+`"bhava_cusps"` are not ordered house boundaries and there is no cusp-based
+bhava inside a varga.
+
+The chart sections (`"grahas"`, `"outer_planets"`, `"bhava_cusps"`,
+`"rashi_bhava_cusps"`, `"arudha_padas"`, `"rashi_bhava_arudha_padas"`,
+`"upagrahas"`, `"sphutas"`, `"special_lagnas"`) are **lists**, in the
+canonical order documented in `docs/AMSHA_PARITY_CONTRACT.md`. Prefer reading
+`"name"` over the list index.
+
 - `CtaraDhruv.Jyotish.graha_positions_series/2` — fixed-cadence sampling
   of `graha_positions/2` via `:from_utc`, `:to_utc`, `:step_minutes`
   (endpoints inclusive on the grid, max 10,000 points); returns

@@ -1283,13 +1283,45 @@ type AshtakavargaResult struct {
 	SAV  SarvaAshtakavarga
 }
 
+// AmshaPointFamily codes. Each names one AmshaChart section; a point is
+// identified by its family and its index within that section. Resolve names
+// with AmshaPointName / AmshaPointKey.
+const (
+	AmshaPointFamilyLagna                = 0
+	AmshaPointFamilyGraha                = 1
+	AmshaPointFamilyOuterPlanet          = 2
+	AmshaPointFamilyBhavaCusp            = 3
+	AmshaPointFamilyRashiBhavaCusp       = 4
+	AmshaPointFamilyArudhaPada           = 5
+	AmshaPointFamilyRashiBhavaArudhaPada = 6
+	AmshaPointFamilyUpagraha             = 7
+	AmshaPointFamilySphuta               = 8
+	AmshaPointFamilySpecialLagna         = 9
+	AmshaPointFamilyCount                = 10
+)
+
 type AmshaEntry struct {
+	// Name is the stable snake_case key of this point (sree_lagna, a1,
+	// bhava_3, surya); DisplayName is the human-readable form. Family and
+	// PointIndex address the point and come from the entry's fixed position
+	// in its chart array.
+	Name              string
+	DisplayName       string
+	Family            uint32
+	PointIndex        uint32
 	SiderealLongitude float64
 	RashiIndex        uint8
 	DmsDegrees        uint16
 	DmsMinutes        uint8
 	DmsSeconds        float64
 	DegreesInRashi    float64
+	NakshatraIndex    uint8
+	Pada              uint8
+	// RashiBhavaNumber is the whole-sign bhava (1-12) counted from the varga
+	// lagna. A varga transform is not monotonic, so the transformed cusps in
+	// BhavaCusps are not ordered house boundaries and there is no cusp-based
+	// bhava inside a varga.
+	RashiBhavaNumber uint8
 }
 
 type AmshaChartScope struct {

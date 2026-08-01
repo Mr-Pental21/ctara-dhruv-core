@@ -901,21 +901,47 @@ func cAmshaScope(scope AmshaChartScope) C.DhruvAmshaChartScope {
 	}
 }
 
-func goAmshaEntry(v C.DhruvAmshaEntry) AmshaEntry {
+// AmshaPointCount returns the number of points in an amsha point family,
+// or 0 for an unknown family.
+func AmshaPointCount(family uint32) uint32 {
+	return uint32(C.dhruv_amsha_point_count(C.uint32_t(family)))
+}
+
+// AmshaPointName returns the display name of the point at family/index.
+func AmshaPointName(family, index uint32) string {
+	return cString(C.dhruv_amsha_point_name(C.uint32_t(family), C.uint32_t(index)))
+}
+
+// AmshaPointKey returns the stable snake_case key of the point at
+// family/index.
+func AmshaPointKey(family, index uint32) string {
+	return cString(C.dhruv_amsha_point_key(C.uint32_t(family), C.uint32_t(index)))
+}
+
+func goAmshaEntry(v C.DhruvAmshaEntry, family, index uint32) AmshaEntry {
 	return AmshaEntry{
+		Name:              AmshaPointKey(family, index),
+		DisplayName:       AmshaPointName(family, index),
+		Family:            family,
+		PointIndex:        index,
 		SiderealLongitude: float64(v.sidereal_longitude),
 		RashiIndex:        uint8(v.rashi_index),
 		DmsDegrees:        uint16(v.dms_degrees),
 		DmsMinutes:        uint8(v.dms_minutes),
 		DmsSeconds:        float64(v.dms_seconds),
 		DegreesInRashi:    float64(v.degrees_in_rashi),
+		NakshatraIndex:    uint8(v.nakshatra_index),
+		Pada:              uint8(v.pada),
+		RashiBhavaNumber:  uint8(v.rashi_bhava_number),
 	}
 }
 
-func goAmshaEntries(src []C.DhruvAmshaEntry) []AmshaEntry {
+// goAmshaEntries converts a whole point family, tagging each entry with its
+// fixed position.
+func goAmshaEntries(src []C.DhruvAmshaEntry, family uint32) []AmshaEntry {
 	out := make([]AmshaEntry, len(src))
 	for i := range src {
-		out[i] = goAmshaEntry(src[i])
+		out[i] = goAmshaEntry(src[i], family, uint32(i))
 	}
 	return out
 }
@@ -951,7 +977,7 @@ func AmshaChartForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoL
 	res := AmshaChart{
 		AmshaCode:                  uint16(out.amsha_code),
 		VariationCode:              uint8(out.variation_code),
-		Lagna:                      goAmshaEntry(out.lagna),
+		Lagna:                      goAmshaEntry(out.lagna, AmshaPointFamilyLagna, 0),
 		BhavaCuspsValid:            out.bhava_cusps_valid != 0,
 		RashiBhavaCuspsValid:       out.rashi_bhava_cusps_valid != 0,
 		ArudhaPadasValid:           out.arudha_padas_valid != 0,
@@ -962,31 +988,31 @@ func AmshaChartForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoL
 		OuterPlanetsValid:          out.outer_planets_valid != 0,
 	}
 	for i := 0; i < GrahaCount; i++ {
-		res.Grahas[i] = goAmshaEntry(out.grahas[i])
+		res.Grahas[i] = goAmshaEntry(out.grahas[i], AmshaPointFamilyGraha, uint32(i))
 	}
 	if res.OuterPlanetsValid {
-		res.OuterPlanets = goAmshaEntries(out.outer_planets[:])
+		res.OuterPlanets = goAmshaEntries(out.outer_planets[:], AmshaPointFamilyOuterPlanet)
 	}
 	if res.BhavaCuspsValid {
-		res.BhavaCusps = goAmshaEntries(out.bhava_cusps[:])
+		res.BhavaCusps = goAmshaEntries(out.bhava_cusps[:], AmshaPointFamilyBhavaCusp)
 	}
 	if res.RashiBhavaCuspsValid {
-		res.RashiBhavaCusps = goAmshaEntries(out.rashi_bhava_cusps[:])
+		res.RashiBhavaCusps = goAmshaEntries(out.rashi_bhava_cusps[:], AmshaPointFamilyRashiBhavaCusp)
 	}
 	if res.ArudhaPadasValid {
-		res.ArudhaPadas = goAmshaEntries(out.arudha_padas[:])
+		res.ArudhaPadas = goAmshaEntries(out.arudha_padas[:], AmshaPointFamilyArudhaPada)
 	}
 	if res.RashiBhavaArudhaPadasValid {
-		res.RashiBhavaArudhaPadas = goAmshaEntries(out.rashi_bhava_arudha_padas[:])
+		res.RashiBhavaArudhaPadas = goAmshaEntries(out.rashi_bhava_arudha_padas[:], AmshaPointFamilyRashiBhavaArudhaPada)
 	}
 	if res.UpagrahasValid {
-		res.Upagrahas = goAmshaEntries(out.upagrahas[:])
+		res.Upagrahas = goAmshaEntries(out.upagrahas[:], AmshaPointFamilyUpagraha)
 	}
 	if res.SphutasValid {
-		res.Sphutas = goAmshaEntries(out.sphutas[:])
+		res.Sphutas = goAmshaEntries(out.sphutas[:], AmshaPointFamilySphuta)
 	}
 	if res.SpecialLagnasValid {
-		res.SpecialLagnas = goAmshaEntries(out.special_lagnas[:])
+		res.SpecialLagnas = goAmshaEntries(out.special_lagnas[:], AmshaPointFamilySpecialLagna)
 	}
 	return res, st
 }
@@ -1017,11 +1043,11 @@ func goAmshaSeriesChart(v C.DhruvAmshaSeriesChart) AmshaSeriesChart {
 	chart := AmshaSeriesChart{
 		AmshaCode:     uint16(v.amsha_code),
 		VariationCode: uint8(v.variation_code),
-		Lagna:         goAmshaEntry(v.lagna),
+		Lagna:         goAmshaEntry(v.lagna, AmshaPointFamilyLagna, 0),
 		GrahasValid:   v.grahas_valid != 0,
 	}
 	for g := 0; g < GrahaCount; g++ {
-		chart.Grahas[g] = goAmshaEntry(v.grahas[g])
+		chart.Grahas[g] = goAmshaEntry(v.grahas[g], AmshaPointFamilyGraha, uint32(g))
 	}
 	return chart
 }

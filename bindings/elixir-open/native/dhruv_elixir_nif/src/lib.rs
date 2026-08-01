@@ -3627,6 +3627,13 @@ fn amsha_variation_catalog_json(amsha: Amsha) -> Value {
 
 fn amsha_entry_json(entry: dhruv_search::AmshaEntry) -> Value {
     json!({
+        // Point identity. `name` uses the same snake_case vocabulary as
+        // `graha_positions.grahas[].graha`; `family` + `point_index` make an
+        // entry self-describing once detached from its array.
+        "name": entry.point.key(),
+        "display_name": entry.point.name(),
+        "family": entry.point.family.key(),
+        "point_index": entry.point.index,
         "sidereal_longitude": entry.sidereal_longitude,
         "rashi": debug_name(entry.rashi),
         "rashi_index": entry.rashi_index,
@@ -3635,7 +3642,11 @@ fn amsha_entry_json(entry: dhruv_search::AmshaEntry) -> Value {
             "degrees": entry.dms.degrees,
             "minutes": entry.dms.minutes,
             "seconds": entry.dms.seconds
-        }
+        },
+        "nakshatra": debug_name(entry.nakshatra),
+        "nakshatra_index": entry.nakshatra_index,
+        "pada": entry.pada,
+        "rashi_bhava_number": entry.rashi_bhava_number
     })
 }
 

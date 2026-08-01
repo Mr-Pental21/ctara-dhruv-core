@@ -10,10 +10,23 @@ from ._ffi import ffi, lib
 from ._check import check
 from .dasha import DashaHierarchy, DashaLevel
 from .panchang import _panchang_result_from_c
+from .amsha import (
+    AMSHA_POINT_FAMILY_ARUDHA_PADA,
+    AMSHA_POINT_FAMILY_BHAVA_CUSP,
+    AMSHA_POINT_FAMILY_GRAHA,
+    AMSHA_POINT_FAMILY_LAGNA,
+    AMSHA_POINT_FAMILY_OUTER_PLANET,
+    AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA,
+    AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP,
+    AMSHA_POINT_FAMILY_SPECIAL_LAGNA,
+    AMSHA_POINT_FAMILY_SPHUTA,
+    AMSHA_POINT_FAMILY_UPAGRAHA,
+    _extract_amsha_entry,
+    _extract_amsha_family,
+)
 from .vedic import _make_time_upagraha_config
 from .types import (
     AmshaChart,
-    AmshaEntry,
     AshtakavargaResult,
     AllGrahaAvasthas,
     AllUpagrahas,
@@ -583,53 +596,50 @@ def _extract_drishti_entry(e):
     )
 
 
-def _extract_amsha_entry(e):
-    return AmshaEntry(
-        sidereal_longitude=e.sidereal_longitude,
-        rashi_index=e.rashi_index,
-        dms_degrees=e.dms_degrees,
-        dms_minutes=e.dms_minutes,
-        dms_seconds=e.dms_seconds,
-        degrees_in_rashi=e.degrees_in_rashi,
-    )
-
-
 def _extract_amsha_chart(c):
-    grahas = [_extract_amsha_entry(c.grahas[i]) for i in range(9)]
+    grahas = _extract_amsha_family(c.grahas, AMSHA_POINT_FAMILY_GRAHA, 9)
     outer_planets = None
     if c.outer_planets_valid:
-        outer_planets = [_extract_amsha_entry(c.outer_planets[i]) for i in range(3)]
-    lagna = _extract_amsha_entry(c.lagna)
+        outer_planets = _extract_amsha_family(
+            c.outer_planets, AMSHA_POINT_FAMILY_OUTER_PLANET, 3
+        )
+    lagna = _extract_amsha_entry(c.lagna, AMSHA_POINT_FAMILY_LAGNA, 0)
 
     bhava_cusps = None
     if c.bhava_cusps_valid:
-        bhava_cusps = [_extract_amsha_entry(c.bhava_cusps[i]) for i in range(12)]
+        bhava_cusps = _extract_amsha_family(c.bhava_cusps, AMSHA_POINT_FAMILY_BHAVA_CUSP, 12)
 
     rashi_bhava_cusps = None
     if c.rashi_bhava_cusps_valid:
-        rashi_bhava_cusps = [_extract_amsha_entry(c.rashi_bhava_cusps[i]) for i in range(12)]
+        rashi_bhava_cusps = _extract_amsha_family(
+            c.rashi_bhava_cusps, AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP, 12
+        )
 
     arudha_padas = None
     if c.arudha_padas_valid:
-        arudha_padas = [_extract_amsha_entry(c.arudha_padas[i]) for i in range(12)]
+        arudha_padas = _extract_amsha_family(
+            c.arudha_padas, AMSHA_POINT_FAMILY_ARUDHA_PADA, 12
+        )
 
     rashi_bhava_arudha_padas = None
     if c.rashi_bhava_arudha_padas_valid:
-        rashi_bhava_arudha_padas = [
-            _extract_amsha_entry(c.rashi_bhava_arudha_padas[i]) for i in range(12)
-        ]
+        rashi_bhava_arudha_padas = _extract_amsha_family(
+            c.rashi_bhava_arudha_padas, AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA, 12
+        )
 
     upagrahas = None
     if c.upagrahas_valid:
-        upagrahas = [_extract_amsha_entry(c.upagrahas[i]) for i in range(11)]
+        upagrahas = _extract_amsha_family(c.upagrahas, AMSHA_POINT_FAMILY_UPAGRAHA, 11)
 
     sphutas = None
     if c.sphutas_valid:
-        sphutas = [_extract_amsha_entry(c.sphutas[i]) for i in range(16)]
+        sphutas = _extract_amsha_family(c.sphutas, AMSHA_POINT_FAMILY_SPHUTA, 16)
 
     special_lagnas = None
     if c.special_lagnas_valid:
-        special_lagnas = [_extract_amsha_entry(c.special_lagnas[i]) for i in range(8)]
+        special_lagnas = _extract_amsha_family(
+            c.special_lagnas, AMSHA_POINT_FAMILY_SPECIAL_LAGNA, 8
+        )
 
     return AmshaChart(
         amsha_code=c.amsha_code,

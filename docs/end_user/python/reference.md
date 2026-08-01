@@ -375,6 +375,18 @@ apply to the graha. They also expose `lajjitadi`, `lajjitadi_states`, and
 - `amsha_chart_for_date`
   Amsha charts keep `grahas` as 9 entries and expose transformed
   `outer_planets` separately when the scope includes them.
+  Every `AmshaEntry` identifies itself: `name` is a stable snake_case key
+  (`"sree_lagna"`, `"gulika"`, `"a1"`, `"bhava_3"`, `"surya"`),
+  `display_name` is the readable form, and `family` / `point_index` address
+  the point. Entries also carry `nakshatra_index`, `pada`, and
+  `rashi_bhava_number` (whole-sign bhava from the varga lagna; a varga
+  transform is not monotonic, so `bhava_cusps` are not ordered house
+  boundaries and there is no cusp-based bhava inside a varga). All chart
+  sections are **lists** in the canonical order — prefer reading `name` over
+  the list index.
+- `amsha_point_count(family)` / `amsha_point_name(family, index)` /
+  `amsha_point_key(family, index)` with the `AMSHA_POINT_FAMILY_*` constants,
+  for enumerating a family without a chart in hand.
 - `amsha_variations`
 - `amsha_variations_many`
 - `amsha_series(engine, eop, from_utc, to_utc, step_minutes, location,

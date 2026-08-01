@@ -58,14 +58,15 @@ use crate::dasha::{
 };
 use crate::error::SearchError;
 use crate::jyotish_types::{
-    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, AmshaSeries,
-    AmshaSeriesChart, AmshaSeriesPoint, BalaBundleResult, BhavaResultSet, BindusConfig,
-    BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig, DrishtiResult,
-    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
-    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, GrahaPositionsPoint,
-    GrahaPositionsSeries, MAX_AMSHA_REQUESTS, MAX_AMSHA_SERIES_CELLS,
-    MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry, MovingOsculatingApogees,
-    ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
+    AmshaChart, AmshaChartScope, AmshaEntry, AmshaPoint, AmshaPointFamily, AmshaResult,
+    AmshaSelectionConfig, AmshaSeries, AmshaSeriesChart, AmshaSeriesPoint, BalaBundleResult,
+    BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime,
+    DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
+    GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
+    GrahaPositionsConfig, GrahaPositionsPoint, GrahaPositionsSeries, MAX_AMSHA_REQUESTS,
+    MAX_AMSHA_SERIES_CELLS, MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry,
+    MovingOsculatingApogees, ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry,
+    VimsopakaResult,
 };
 use crate::panchang::{
     hora_from_sunrises, masa_for_date_with_eop, panchang_for_date, varsha_for_date_with_eop,
@@ -1963,15 +1964,27 @@ pub fn amsha_series(
 
         let unique_charts: Vec<AmshaSeriesChart> = unique_requests
             .iter()
-            .map(|req| AmshaSeriesChart {
-                amsha: req.amsha,
-                variation_code: req.effective_variation(),
-                lagna: transform_to_amsha_entry(lagna_sid, req.amsha, req.variation),
-                grahas: graha_lons.map(|lons| {
-                    core::array::from_fn(|g| {
-                        transform_to_amsha_entry(lons[g], req.amsha, req.variation)
-                    })
-                }),
+            .map(|req| {
+                let varga_lagna_lon = amsha_longitude(lagna_sid, req.amsha, req.variation);
+                let lagna_rashi_index = rashi_from_longitude(varga_lagna_lon).rashi_index;
+                AmshaSeriesChart {
+                    amsha: req.amsha,
+                    variation_code: req.effective_variation(),
+                    lagna: make_amsha_entry(
+                        varga_lagna_lon,
+                        AmshaPoint::new(AmshaPointFamily::Lagna, 0),
+                        lagna_rashi_index,
+                    ),
+                    grahas: graha_lons.map(|lons| {
+                        transform_amsha_family(
+                            &lons,
+                            req.amsha,
+                            req.variation,
+                            AmshaPointFamily::Graha,
+                            lagna_rashi_index,
+                        )
+                    }),
+                }
             })
             .collect();
         let charts = positions.iter().map(|&p| unique_charts[p]).collect();
@@ -4444,21 +4457,60 @@ fn assemble_avastha_inputs(
 // ---------------------------------------------------------------------------
 
 /// Convert a sidereal longitude to an AmshaEntry.
-fn make_amsha_entry(sidereal_lon: f64) -> AmshaEntry {
+fn make_amsha_entry(sidereal_lon: f64, point: AmshaPoint, lagna_rashi_index: u8) -> AmshaEntry {
     let info = rashi_from_longitude(sidereal_lon);
+    let nak = nakshatra_from_longitude(sidereal_lon);
     AmshaEntry {
+        point,
         sidereal_longitude: sidereal_lon,
         rashi: info.rashi,
         rashi_index: info.rashi_index,
         dms: info.dms,
         degrees_in_rashi: info.degrees_in_rashi,
+        nakshatra: nak.nakshatra,
+        nakshatra_index: nak.nakshatra_index,
+        pada: nak.pada,
+        rashi_bhava_number: whole_sign_bhava_number(info.rashi_index, lagna_rashi_index),
     }
 }
 
+/// Whole-sign bhava (1-12) of `rashi_index` counted from `lagna_rashi_index`.
+fn whole_sign_bhava_number(rashi_index: u8, lagna_rashi_index: u8) -> u8 {
+    ((rashi_index + 12 - lagna_rashi_index) % 12) + 1
+}
+
 /// Transform a sidereal longitude through an amsha and return an AmshaEntry.
-fn transform_to_amsha_entry(sidereal_lon: f64, amsha: Amsha, variation: Option<u8>) -> AmshaEntry {
+fn transform_to_amsha_entry(
+    sidereal_lon: f64,
+    amsha: Amsha,
+    variation: Option<u8>,
+    point: AmshaPoint,
+    lagna_rashi_index: u8,
+) -> AmshaEntry {
     let amsha_lon = amsha_longitude(sidereal_lon, amsha, variation);
-    make_amsha_entry(amsha_lon)
+    make_amsha_entry(amsha_lon, point, lagna_rashi_index)
+}
+
+/// Transform a whole point family, tagging each entry with its fixed position.
+///
+/// This is the single place the positional contract for an amsha chart family
+/// is established: `lons[i]` becomes the entry for `AmshaPoint::new(family, i)`.
+fn transform_amsha_family<const N: usize>(
+    lons: &[f64; N],
+    amsha: Amsha,
+    variation: Option<u8>,
+    family: AmshaPointFamily,
+    lagna_rashi_index: u8,
+) -> [AmshaEntry; N] {
+    core::array::from_fn(|i| {
+        transform_to_amsha_entry(
+            lons[i],
+            amsha,
+            variation,
+            AmshaPoint::new(family, i as u8),
+            lagna_rashi_index,
+        )
+    })
 }
 
 /// Validate an AmshaRequest slice.
@@ -4581,112 +4633,153 @@ fn build_amsha_chart(
     let variation = req.variation;
     let effective_variation = req.effective_variation();
 
-    let mut grahas = [make_amsha_entry(0.0); 9];
-    if let Some(cached) = graha_cached {
-        for i in 0..9 {
-            grahas[i] = make_amsha_entry(cached.longitudes[i]);
-        }
-    } else {
-        for i in 0..9 {
-            grahas[i] = transform_to_amsha_entry(graha_lons[i], amsha, variation);
-        }
-    }
-
-    let outer_planets = if scope.include_outer_planets {
-        outer_planet_lons.map(|lons| {
-            let mut entries = [make_amsha_entry(0.0); 3];
-            for i in 0..3 {
-                entries[i] = transform_to_amsha_entry(lons[i], amsha, variation);
-            }
-            entries
-        })
-    } else {
-        None
+    // The varga lagna anchors every entry's whole-sign bhava, so it is built
+    // first.
+    let lagna = {
+        let lagna_lon = amsha_longitude(lagna_sid, amsha, variation);
+        let lagna_rashi = rashi_from_longitude(lagna_lon).rashi_index;
+        make_amsha_entry(
+            lagna_lon,
+            AmshaPoint::new(AmshaPointFamily::Lagna, 0),
+            lagna_rashi,
+        )
     };
+    let lagna_rashi_index = lagna.rashi_index;
 
-    let lagna = transform_to_amsha_entry(lagna_sid, amsha, variation);
-
-    let bhava_cusps = if scope.include_bhava_cusps {
-        bhava_cusps_sid.map(|cusps| {
-            let mut entries = [make_amsha_entry(0.0); 12];
-            for i in 0..12 {
-                entries[i] = transform_to_amsha_entry(cusps[i], amsha, variation);
-            }
-            entries
-        })
-    } else {
-        None
-    };
-    let rashi_bhava_cusps = if scope.include_bhava_cusps {
-        rashi_bhava_cusps_sid.map(|cusps| {
-            let mut entries = [make_amsha_entry(0.0); 12];
-            for i in 0..12 {
-                entries[i] = transform_to_amsha_entry(cusps[i], amsha, variation);
-            }
-            entries
-        })
-    } else {
-        None
+    let grahas: [AmshaEntry; 9] = match graha_cached {
+        Some(cached) => core::array::from_fn(|i| {
+            make_amsha_entry(
+                cached.longitudes[i],
+                AmshaPoint::new(AmshaPointFamily::Graha, i as u8),
+                lagna_rashi_index,
+            )
+        }),
+        None => transform_amsha_family(
+            graha_lons,
+            amsha,
+            variation,
+            AmshaPointFamily::Graha,
+            lagna_rashi_index,
+        ),
     };
 
-    let arudha_padas = if scope.include_arudha_padas {
-        arudha_lons.map(|lons| {
-            let mut entries = [make_amsha_entry(0.0); 12];
-            for i in 0..12 {
-                entries[i] = transform_to_amsha_entry(lons[i], amsha, variation);
-            }
-            entries
+    let outer_planets = scope
+        .include_outer_planets
+        .then(|| {
+            outer_planet_lons.map(|lons| {
+                transform_amsha_family(
+                    lons,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::OuterPlanet,
+                    lagna_rashi_index,
+                )
+            })
         })
-    } else {
-        None
-    };
-    let rashi_bhava_arudha_padas = if scope.include_arudha_padas {
-        rashi_bhava_arudha_lons.map(|lons| {
-            let mut entries = [make_amsha_entry(0.0); 12];
-            for i in 0..12 {
-                entries[i] = transform_to_amsha_entry(lons[i], amsha, variation);
-            }
-            entries
-        })
-    } else {
-        None
-    };
+        .flatten();
 
-    let upagrahas = if scope.include_upagrahas {
-        upagraha_lons.map(|lons| {
-            let mut entries = [make_amsha_entry(0.0); 11];
-            for i in 0..11 {
-                entries[i] = transform_to_amsha_entry(lons[i], amsha, variation);
-            }
-            entries
+    let bhava_cusps = scope
+        .include_bhava_cusps
+        .then(|| {
+            bhava_cusps_sid.map(|cusps| {
+                transform_amsha_family(
+                    cusps,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::BhavaCusp,
+                    lagna_rashi_index,
+                )
+            })
         })
-    } else {
-        None
-    };
+        .flatten();
+    let rashi_bhava_cusps = scope
+        .include_bhava_cusps
+        .then(|| {
+            rashi_bhava_cusps_sid.map(|cusps| {
+                transform_amsha_family(
+                    cusps,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::RashiBhavaCusp,
+                    lagna_rashi_index,
+                )
+            })
+        })
+        .flatten();
 
-    let sphutas = if scope.include_sphutas {
-        sphuta_lons.map(|lons| {
-            let mut entries = [make_amsha_entry(0.0); 16];
-            for i in 0..16 {
-                entries[i] = transform_to_amsha_entry(lons[i], amsha, variation);
-            }
-            entries
+    let arudha_padas = scope
+        .include_arudha_padas
+        .then(|| {
+            arudha_lons.map(|lons| {
+                transform_amsha_family(
+                    lons,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::ArudhaPada,
+                    lagna_rashi_index,
+                )
+            })
         })
-    } else {
-        None
-    };
+        .flatten();
+    let rashi_bhava_arudha_padas = scope
+        .include_arudha_padas
+        .then(|| {
+            rashi_bhava_arudha_lons.map(|lons| {
+                transform_amsha_family(
+                    lons,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::RashiBhavaArudhaPada,
+                    lagna_rashi_index,
+                )
+            })
+        })
+        .flatten();
 
-    let special_lagnas = if scope.include_special_lagnas {
-        special_lagna_lons.map(|lons| {
-            let mut entries = [make_amsha_entry(0.0); 8];
-            for i in 0..8 {
-                entries[i] = transform_to_amsha_entry(lons[i], amsha, variation);
-            }
-            entries
+    let upagrahas = scope
+        .include_upagrahas
+        .then(|| {
+            upagraha_lons.map(|lons| {
+                transform_amsha_family(
+                    lons,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::Upagraha,
+                    lagna_rashi_index,
+                )
+            })
         })
-    } else {
-        None
-    };
+        .flatten();
+
+    let sphutas = scope
+        .include_sphutas
+        .then(|| {
+            sphuta_lons.map(|lons| {
+                transform_amsha_family(
+                    lons,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::Sphuta,
+                    lagna_rashi_index,
+                )
+            })
+        })
+        .flatten();
+
+    let special_lagnas = scope
+        .include_special_lagnas
+        .then(|| {
+            special_lagna_lons.map(|lons| {
+                transform_amsha_family(
+                    lons,
+                    amsha,
+                    variation,
+                    AmshaPointFamily::SpecialLagna,
+                    lagna_rashi_index,
+                )
+            })
+        })
+        .flatten();
 
     AmshaChart {
         amsha,
@@ -5476,5 +5569,192 @@ mod tests {
         assert_eq!(rashi_bhava_number_from_lagna(lagna, 49.0), 1);
         assert_eq!(rashi_bhava_number_from_lagna(lagna, 78.0), 2);
         assert_eq!(rashi_bhava_number_from_lagna(lagna, 17.0), 12);
+    }
+
+    // -----------------------------------------------------------------------
+    // Amsha point identity: the emitted name at index i must match the value
+    // actually written to slot i.
+    //
+    // Tagging entries from the loop index in `build_amsha_chart` is
+    // tautological on its own, so these tests pin the other end: the order in
+    // which the *named* source fields are flattened into the positional
+    // arrays. A reorder of `all_special_lagna_lons` / `all_upagraha_lons`
+    // relabels every downstream tag, and must fail here rather than silently
+    // on the wire.
+    // -----------------------------------------------------------------------
+
+    /// Longitude carried by slot `i`, so a wrong slot is a wrong number.
+    fn sentinel(i: usize) -> f64 {
+        i as f64
+    }
+
+    #[test]
+    fn special_lagna_slots_match_emitted_point_names() {
+        // Each named field is stamped with the index it is expected to land in.
+        let lagnas = AllSpecialLagnas {
+            bhava_lagna: sentinel(0),
+            hora_lagna: sentinel(1),
+            ghati_lagna: sentinel(2),
+            vighati_lagna: sentinel(3),
+            varnada_lagna: sentinel(4),
+            sree_lagna: sentinel(5),
+            pranapada_lagna: sentinel(6),
+            indu_lagna: sentinel(7),
+        };
+        let expected_keys = [
+            "bhava_lagna",
+            "hora_lagna",
+            "ghati_lagna",
+            "vighati_lagna",
+            "varnada_lagna",
+            "sree_lagna",
+            "pranapada_lagna",
+            "indu_lagna",
+        ];
+
+        let lons = all_special_lagna_lons(&lagnas);
+        for (i, expected) in expected_keys.iter().enumerate() {
+            assert_eq!(
+                lons[i],
+                sentinel(i),
+                "special lagna slot {i} holds the wrong field"
+            );
+            let point = AmshaPoint::new(AmshaPointFamily::SpecialLagna, i as u8);
+            assert_eq!(point.key(), Some(*expected), "special lagna key at {i}");
+        }
+    }
+
+    #[test]
+    fn upagraha_slots_match_emitted_point_names() {
+        let upagrahas = AllUpagrahas {
+            gulika: sentinel(0),
+            maandi: sentinel(1),
+            kaala: sentinel(2),
+            mrityu: sentinel(3),
+            artha_prahara: sentinel(4),
+            yama_ghantaka: sentinel(5),
+            dhooma: sentinel(6),
+            vyatipata: sentinel(7),
+            parivesha: sentinel(8),
+            indra_chapa: sentinel(9),
+            upaketu: sentinel(10),
+        };
+        let expected_keys = [
+            "gulika",
+            "maandi",
+            "kaala",
+            "mrityu",
+            "artha_prahara",
+            "yama_ghantaka",
+            "dhooma",
+            "vyatipata",
+            "parivesha",
+            "indra_chapa",
+            "upaketu",
+        ];
+
+        let lons = all_upagraha_lons(&upagrahas);
+        for (i, expected) in expected_keys.iter().enumerate() {
+            assert_eq!(
+                lons[i],
+                sentinel(i),
+                "upagraha slot {i} holds the wrong field"
+            );
+            let point = AmshaPoint::new(AmshaPointFamily::Upagraha, i as u8);
+            assert_eq!(point.key(), Some(*expected), "upagraha key at {i}");
+        }
+    }
+
+    #[test]
+    fn point_names_track_their_source_tables() {
+        // These families are flattened straight out of the canonical tables,
+        // so the emitted name must be that table's own name at the same index.
+        for (i, graha) in dhruv_vedic_base::ALL_GRAHAS.iter().enumerate() {
+            let point = AmshaPoint::new(AmshaPointFamily::Graha, i as u8);
+            assert_eq!(point.name(), Some(graha.name()));
+        }
+        for (i, sphuta) in dhruv_vedic_base::ALL_SPHUTAS.iter().enumerate() {
+            let point = AmshaPoint::new(AmshaPointFamily::Sphuta, i as u8);
+            assert_eq!(point.name(), Some(sphuta.name()));
+        }
+        for (i, pada) in dhruv_vedic_base::ALL_ARUDHA_PADAS.iter().enumerate() {
+            let point = AmshaPoint::new(AmshaPointFamily::ArudhaPada, i as u8);
+            assert_eq!(point.name(), Some(pada.name()));
+            let rashi_bhava = AmshaPoint::new(AmshaPointFamily::RashiBhavaArudhaPada, i as u8);
+            assert_eq!(rashi_bhava.name(), Some(pada.name()));
+        }
+        for (i, upagraha) in dhruv_vedic_base::ALL_UPAGRAHAS.iter().enumerate() {
+            let point = AmshaPoint::new(AmshaPointFamily::Upagraha, i as u8);
+            assert_eq!(point.name(), Some(upagraha.name()));
+        }
+        for (i, lagna) in dhruv_vedic_base::ALL_SPECIAL_LAGNAS.iter().enumerate() {
+            let point = AmshaPoint::new(AmshaPointFamily::SpecialLagna, i as u8);
+            assert_eq!(point.name(), Some(lagna.name()));
+        }
+    }
+
+    #[test]
+    fn point_family_lengths_match_chart_array_lengths() {
+        // AmshaPointFamily::len() is what the C ABI reports through
+        // dhruv_amsha_point_count, so it must agree with the arrays that are
+        // actually emitted.
+        assert_eq!(AmshaPointFamily::Lagna.len(), 1);
+        assert_eq!(AmshaPointFamily::Graha.len(), 9);
+        assert_eq!(AmshaPointFamily::OuterPlanet.len(), 3);
+        assert_eq!(AmshaPointFamily::BhavaCusp.len(), 12);
+        assert_eq!(AmshaPointFamily::RashiBhavaCusp.len(), 12);
+        assert_eq!(AmshaPointFamily::ArudhaPada.len(), 12);
+        assert_eq!(AmshaPointFamily::RashiBhavaArudhaPada.len(), 12);
+        assert_eq!(AmshaPointFamily::Upagraha.len(), 11);
+        assert_eq!(
+            AmshaPointFamily::Sphuta.len(),
+            dhruv_vedic_base::ALL_SPHUTAS.len()
+        );
+        assert_eq!(
+            AmshaPointFamily::SpecialLagna.len(),
+            dhruv_vedic_base::ALL_SPECIAL_LAGNAS.len()
+        );
+    }
+
+    #[test]
+    fn every_point_resolves_and_keys_are_unique_within_a_family() {
+        for (code, family) in crate::jyotish_types::ALL_AMSHA_POINT_FAMILIES
+            .iter()
+            .enumerate()
+        {
+            // ALL_AMSHA_POINT_FAMILIES must stay in family-code order: the C
+            // ABI indexes its string table by the code.
+            assert_eq!(family.code() as usize, code);
+
+            let mut seen = std::collections::HashSet::new();
+            for index in 0..family.len() as u8 {
+                let point = AmshaPoint::new(*family, index);
+                assert!(point.is_valid());
+                let key = point.key().expect("key for valid point");
+                let name = point.name().expect("name for valid point");
+                assert!(!key.is_empty() && !name.is_empty());
+                assert!(
+                    key.bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
+                    "key {key} is not snake_case"
+                );
+                assert!(seen.insert(key), "duplicate key {key} in {}", family.key());
+            }
+            // One past the end must not resolve.
+            let past_end = AmshaPoint::new(*family, family.len() as u8);
+            assert!(!past_end.is_valid());
+            assert_eq!(past_end.key(), None);
+            assert_eq!(past_end.name(), None);
+        }
+    }
+
+    #[test]
+    fn whole_sign_bhava_counts_from_the_varga_lagna() {
+        // Lagna in rashi 4; same rashi is bhava 1, one before wraps to 12.
+        assert_eq!(whole_sign_bhava_number(4, 4), 1);
+        assert_eq!(whole_sign_bhava_number(5, 4), 2);
+        assert_eq!(whole_sign_bhava_number(3, 4), 12);
+        assert_eq!(whole_sign_bhava_number(0, 1), 12);
+        assert_eq!(whole_sign_bhava_number(11, 0), 12);
     }
 }

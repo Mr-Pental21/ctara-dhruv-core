@@ -27,8 +27,9 @@ Primary source files:
 
 Current ABI constants relevant to amsha:
 
-- `DHRUV_API_VERSION = 77`
+- `DHRUV_API_VERSION = 85`
 - `DHRUV_MAX_AMSHA_REQUESTS = 40`
+- `DHRUV_AMSHA_POINT_FAMILY_COUNT = 10`
 
 ## Canonical Concepts
 
@@ -81,18 +82,83 @@ Canonical result concepts:
 
 - `RashiInfo`
 - `AmshaEntry`
+- `AmshaPoint`
+- `AmshaPointFamily`
 - `AmshaChart`
 - `AmshaResult`
 
 Optional `AmshaChart` sections:
 
 - `bhava_cusps`
+- `rashi_bhava_cusps`
 - `arudha_padas`
+- `rashi_bhava_arudha_padas`
 - `upagrahas`
 - `sphutas`
 - `special_lagnas`
+- `outer_planets`
 
 Grahas and lagna are always present.
+
+### Point identity
+
+Every `AmshaChart` section is a positional array, and every position is a
+fixed, named point. `AmshaEntry` carries that identity as `point`
+(`AmshaPoint { family, index }`), so a consumer never has to recover it from
+array order.
+
+`AmshaPoint::name()` gives a display name drawn from the library's existing
+vocabulary (`Graha::name()`, `Upagraha::name()`, `Sphuta::name()`,
+`SpecialLagna::name()`, `ArudhaPada::name()`); `AmshaPoint::key()` gives a
+stable snake_case identifier.
+
+Canonical order per family — wrappers must not renumber these:
+
+| family | code | n | order |
+|---|---|---|---|
+| `Lagna` | 0 | 1 | the varga ascendant |
+| `Graha` | 1 | 9 | `Graha::index()`: surya, chandra, mangal, buddh, guru, shukra, shani, rahu, ketu |
+| `OuterPlanet` | 2 | 3 | uranus, neptune, pluto |
+| `BhavaCusp` | 3 | 12 | index `i` is Bhava `i + 1` |
+| `RashiBhavaCusp` | 4 | 12 | index `i` is Bhava `i + 1` |
+| `ArudhaPada` | 5 | 12 | `ALL_ARUDHA_PADAS`: a1 (AL) .. a12 (UL) |
+| `RashiBhavaArudhaPada` | 6 | 12 | `ALL_ARUDHA_PADAS` |
+| `Upagraha` | 7 | 11 | `ALL_UPAGRAHAS`: gulika, maandi, kaala, mrityu, artha_prahara, yama_ghantaka, dhooma, vyatipata, parivesha, indra_chapa, upaketu |
+| `Sphuta` | 8 | 16 | `ALL_SPHUTAS`, index 0 is bhrigu_bindu |
+| `SpecialLagna` | 9 | 8 | `ALL_SPECIAL_LAGNAS`: bhava, hora, ghati, vighati, varnada, **sree (5)**, **pranapada (6)**, indu |
+
+The special-lagna order is the one place where the presentation order in
+`docs/clean_room_special_lagnas.md` differs from the serialised order; that
+document is grouped by derivation category and its section numbers are not
+indices. `dhruv_vedic_base` is the authority.
+
+### Per-entry data
+
+Beyond `point`, every `AmshaEntry` carries `sidereal_longitude`, `rashi`,
+`rashi_index`, `dms`, `degrees_in_rashi`, `nakshatra`, `nakshatra_index`,
+`pada`, and `rashi_bhava_number`.
+
+`rashi_bhava_number` is the whole-sign bhava (1-12) counted from the varga
+lagna's rashi. There is deliberately no cusp-based `bhava_number` on an amsha
+entry: a varga transform is not monotonic, so the `bhava_cusps` section (D1
+cusps mapped through the varga) does not form ordered house boundaries and
+cannot define a cusp-based bhava inside a varga.
+
+### Emitted shape per surface
+
+The C ABI keeps `DhruvAmshaChart` a fixed-layout `#[repr(C)]` struct and does
+**not** repeat names inside `DhruvAmshaEntry`; a point's name is a compile-time
+constant of (family, index) and is queried instead:
+
+- `dhruv_amsha_point_count(family)`
+- `dhruv_amsha_point_name(family, index)`
+- `dhruv_amsha_point_key(family, index)`
+
+JSON-shaped and object-shaped wrapper surfaces (Elixir, Node, Python, Go) do
+carry the resolved identity on every entry, as additive fields — `name` (the
+stable key), `display_name`, `family`, `point_index`. **These sections remain
+arrays on every surface.** Converting them to maps is a breaking change and is
+out of contract.
 
 ## Canonical C ABI Surface
 
@@ -159,6 +225,11 @@ All wrappers must preserve these semantics.
 - Every returned `rashi_index` is in `0..=11`.
 - In `AmshaChart`, `grahas` always has length `9`.
 - In `AmshaChart`, `lagna` is always present.
+- Every entry's `point` matches its position in its section, per the family
+  table above.
+- Every returned `nakshatra_index` is in `0..=26`, `pada` in `1..=4`, and
+  `rashi_bhava_number` in `1..=12`.
+- Optional sections are arrays, never maps.
 
 ## Full-Kundali Dependency Contract
 
@@ -270,6 +341,11 @@ Use this checklist as the acceptance gate for any wrapper claiming amsha parity.
 - rejects unknown variation codes for the selected amsha
 - preserves the default variation behavior
 - preserves the optional-section scope behavior
+- preserves the canonical point order for every family
+- exposes point identity: resolved per entry on JSON/object surfaces, or via
+  the indexed accessors on the C ABI
+- keeps optional sections as arrays
+- exposes `nakshatra_index`, `pada`, and `rashi_bhava_number` per entry
 
 ### Per-wrapper checklist
 

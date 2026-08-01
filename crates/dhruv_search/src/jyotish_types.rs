@@ -367,9 +367,263 @@ pub struct DrishtiResult {
 /// Maximum number of amsha requests in a single batch.
 pub const MAX_AMSHA_REQUESTS: usize = 40;
 
+/// Which family a point inside an [`AmshaChart`] belongs to.
+///
+/// The discriminant is the stable family code used by the C ABI
+/// (`DHRUV_AMSHA_POINT_FAMILY_*`). Each family maps to one field of
+/// [`AmshaChart`], and a point's position inside that field is fixed — see
+/// [`AmshaPoint`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum AmshaPointFamily {
+    /// The varga ascendant. Single point.
+    Lagna = 0,
+    /// The nine grahas, in `Graha::index()` order.
+    Graha = 1,
+    /// Uranus, Neptune, Pluto.
+    OuterPlanet = 2,
+    /// Bhava cusps: index `i` is Bhava `i + 1`.
+    BhavaCusp = 3,
+    /// Rashi (whole-sign) bhava cusps: index `i` is Bhava `i + 1`.
+    RashiBhavaCusp = 4,
+    /// Arudha padas, in `ALL_ARUDHA_PADAS` order (A1 = AL .. A12 = UL).
+    ArudhaPada = 5,
+    /// Rashi-bhava arudha padas, in `ALL_ARUDHA_PADAS` order.
+    RashiBhavaArudhaPada = 6,
+    /// Upagrahas, in `ALL_UPAGRAHAS` order.
+    Upagraha = 7,
+    /// Sphutas, in `ALL_SPHUTAS` order.
+    Sphuta = 8,
+    /// Special lagnas, in `ALL_SPECIAL_LAGNAS` order.
+    SpecialLagna = 9,
+}
+
+/// All amsha point families, in family-code order.
+pub const ALL_AMSHA_POINT_FAMILIES: [AmshaPointFamily; 10] = [
+    AmshaPointFamily::Lagna,
+    AmshaPointFamily::Graha,
+    AmshaPointFamily::OuterPlanet,
+    AmshaPointFamily::BhavaCusp,
+    AmshaPointFamily::RashiBhavaCusp,
+    AmshaPointFamily::ArudhaPada,
+    AmshaPointFamily::RashiBhavaArudhaPada,
+    AmshaPointFamily::Upagraha,
+    AmshaPointFamily::Sphuta,
+    AmshaPointFamily::SpecialLagna,
+];
+
+impl AmshaPointFamily {
+    /// Stable family code (matches the `#[repr(u8)]` discriminant).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Family from its stable code, or `None` if unknown.
+    pub const fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Lagna),
+            1 => Some(Self::Graha),
+            2 => Some(Self::OuterPlanet),
+            3 => Some(Self::BhavaCusp),
+            4 => Some(Self::RashiBhavaCusp),
+            5 => Some(Self::ArudhaPada),
+            6 => Some(Self::RashiBhavaArudhaPada),
+            7 => Some(Self::Upagraha),
+            8 => Some(Self::Sphuta),
+            9 => Some(Self::SpecialLagna),
+            _ => None,
+        }
+    }
+
+    /// Number of points in this family.
+    pub const fn len(self) -> usize {
+        match self {
+            Self::Lagna => 1,
+            Self::Graha => 9,
+            Self::OuterPlanet => 3,
+            Self::BhavaCusp | Self::RashiBhavaCusp => 12,
+            Self::ArudhaPada | Self::RashiBhavaArudhaPada => 12,
+            Self::Upagraha => 11,
+            Self::Sphuta => 16,
+            Self::SpecialLagna => 8,
+        }
+    }
+
+    /// Always false; every family has at least one point.
+    pub const fn is_empty(self) -> bool {
+        false
+    }
+
+    /// Stable snake_case key, matching the [`AmshaChart`] field name.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Lagna => "lagna",
+            Self::Graha => "grahas",
+            Self::OuterPlanet => "outer_planets",
+            Self::BhavaCusp => "bhava_cusps",
+            Self::RashiBhavaCusp => "rashi_bhava_cusps",
+            Self::ArudhaPada => "arudha_padas",
+            Self::RashiBhavaArudhaPada => "rashi_bhava_arudha_padas",
+            Self::Upagraha => "upagrahas",
+            Self::Sphuta => "sphutas",
+            Self::SpecialLagna => "special_lagnas",
+        }
+    }
+}
+
+/// Names of the three outer planets, in `AmshaPointFamily::OuterPlanet` order.
+const OUTER_PLANET_NAMES: [&str; 3] = ["Uranus", "Neptune", "Pluto"];
+/// Stable keys of the three outer planets, in the same order.
+const OUTER_PLANET_KEYS: [&str; 3] = ["uranus", "neptune", "pluto"];
+
+/// Bhava display names, index `i` is Bhava `i + 1`.
+const BHAVA_NAMES: [&str; 12] = [
+    "Bhava 1", "Bhava 2", "Bhava 3", "Bhava 4", "Bhava 5", "Bhava 6", "Bhava 7", "Bhava 8",
+    "Bhava 9", "Bhava 10", "Bhava 11", "Bhava 12",
+];
+/// Bhava stable keys, index `i` is Bhava `i + 1`.
+const BHAVA_KEYS: [&str; 12] = [
+    "bhava_1", "bhava_2", "bhava_3", "bhava_4", "bhava_5", "bhava_6", "bhava_7", "bhava_8",
+    "bhava_9", "bhava_10", "bhava_11", "bhava_12",
+];
+
+/// Arudha pada stable keys, in `ALL_ARUDHA_PADAS` order.
+const ARUDHA_PADA_KEYS: [&str; 12] = [
+    "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12",
+];
+
+/// Upagraha stable keys, in `ALL_UPAGRAHAS` order.
+const UPAGRAHA_KEYS: [&str; 11] = [
+    "gulika",
+    "maandi",
+    "kaala",
+    "mrityu",
+    "artha_prahara",
+    "yama_ghantaka",
+    "dhooma",
+    "vyatipata",
+    "parivesha",
+    "indra_chapa",
+    "upaketu",
+];
+
+/// Sphuta stable keys, in `ALL_SPHUTAS` order.
+const SPHUTA_KEYS: [&str; 16] = [
+    "bhrigu_bindu",
+    "prana_sphuta",
+    "deha_sphuta",
+    "mrityu_sphuta",
+    "tithi_sphuta",
+    "yoga_sphuta",
+    "yoga_sphuta_normalized",
+    "rahu_tithi_sphuta",
+    "kshetra_sphuta",
+    "beeja_sphuta",
+    "tri_sphuta",
+    "chatus_sphuta",
+    "pancha_sphuta",
+    "sookshma_trisphuta",
+    "avayoga_sphuta",
+    "kunda",
+];
+
+/// Special lagna stable keys, in `ALL_SPECIAL_LAGNAS` order.
+const SPECIAL_LAGNA_KEYS: [&str; 8] = [
+    "bhava_lagna",
+    "hora_lagna",
+    "ghati_lagna",
+    "vighati_lagna",
+    "varnada_lagna",
+    "sree_lagna",
+    "pranapada_lagna",
+    "indu_lagna",
+];
+
+/// Graha stable keys, in `Graha::index()` order.
+const GRAHA_KEYS: [&str; 9] = [
+    "surya", "chandra", "mangal", "buddh", "guru", "shukra", "shani", "rahu", "ketu",
+];
+
+/// Identity of one point inside an [`AmshaChart`].
+///
+/// Every entry in an amsha chart carries its own identity, so callers never
+/// have to recover it from the entry's position in the array. The position is
+/// still fixed and stable — `AmshaPoint` makes it explicit rather than
+/// implicit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AmshaPoint {
+    /// Family this point belongs to.
+    pub family: AmshaPointFamily,
+    /// 0-based index within the family. Always 0 for
+    /// [`AmshaPointFamily::Lagna`].
+    pub index: u8,
+}
+
+impl AmshaPoint {
+    /// Build a point identity. `index` is not validated here; out-of-range
+    /// indices yield `None` from [`AmshaPoint::name`] and [`AmshaPoint::key`].
+    pub const fn new(family: AmshaPointFamily, index: u8) -> Self {
+        Self { family, index }
+    }
+
+    /// Whether `index` is inside the family's range.
+    pub const fn is_valid(self) -> bool {
+        (self.index as usize) < self.family.len()
+    }
+
+    /// Display name, drawn from the same vocabulary the rest of the library
+    /// uses (`Graha::name()`, `Upagraha::name()`, `Sphuta::name()`,
+    /// `SpecialLagna::name()`, `ArudhaPada::name()`).
+    ///
+    /// Returns `None` when `index` is outside the family's range.
+    pub fn name(self) -> Option<&'static str> {
+        let i = self.index as usize;
+        match self.family {
+            AmshaPointFamily::Lagna => (i == 0).then_some("Lagna"),
+            AmshaPointFamily::Graha => dhruv_vedic_base::ALL_GRAHAS.get(i).map(|g| g.name()),
+            AmshaPointFamily::OuterPlanet => OUTER_PLANET_NAMES.get(i).copied(),
+            AmshaPointFamily::BhavaCusp | AmshaPointFamily::RashiBhavaCusp => {
+                BHAVA_NAMES.get(i).copied()
+            }
+            AmshaPointFamily::ArudhaPada | AmshaPointFamily::RashiBhavaArudhaPada => {
+                dhruv_vedic_base::ALL_ARUDHA_PADAS.get(i).map(|p| p.name())
+            }
+            AmshaPointFamily::Upagraha => dhruv_vedic_base::ALL_UPAGRAHAS.get(i).map(|u| u.name()),
+            AmshaPointFamily::Sphuta => dhruv_vedic_base::ALL_SPHUTAS.get(i).map(|s| s.name()),
+            AmshaPointFamily::SpecialLagna => dhruv_vedic_base::ALL_SPECIAL_LAGNAS
+                .get(i)
+                .map(|l| l.name()),
+        }
+    }
+
+    /// Stable snake_case identifier, suitable as a map key or tag.
+    ///
+    /// Returns `None` when `index` is outside the family's range.
+    pub fn key(self) -> Option<&'static str> {
+        let i = self.index as usize;
+        match self.family {
+            AmshaPointFamily::Lagna => (i == 0).then_some("lagna"),
+            AmshaPointFamily::Graha => GRAHA_KEYS.get(i).copied(),
+            AmshaPointFamily::OuterPlanet => OUTER_PLANET_KEYS.get(i).copied(),
+            AmshaPointFamily::BhavaCusp | AmshaPointFamily::RashiBhavaCusp => {
+                BHAVA_KEYS.get(i).copied()
+            }
+            AmshaPointFamily::ArudhaPada | AmshaPointFamily::RashiBhavaArudhaPada => {
+                ARUDHA_PADA_KEYS.get(i).copied()
+            }
+            AmshaPointFamily::Upagraha => UPAGRAHA_KEYS.get(i).copied(),
+            AmshaPointFamily::Sphuta => SPHUTA_KEYS.get(i).copied(),
+            AmshaPointFamily::SpecialLagna => SPECIAL_LAGNA_KEYS.get(i).copied(),
+        }
+    }
+}
+
 /// Single entity's position in an amsha chart.
 #[derive(Debug, Clone, Copy)]
 pub struct AmshaEntry {
+    /// Which point this entry is. Mirrors the entry's fixed position in its
+    /// [`AmshaChart`] field.
+    pub point: AmshaPoint,
     /// Sidereal longitude in [0, 360).
     pub sidereal_longitude: f64,
     /// Rashi of the amsha position.
@@ -380,6 +634,19 @@ pub struct AmshaEntry {
     pub dms: Dms,
     /// Decimal degrees within rashi [0, 30).
     pub degrees_in_rashi: f64,
+    /// Nakshatra of the amsha position.
+    pub nakshatra: Nakshatra,
+    /// 0-based nakshatra index (0-26).
+    pub nakshatra_index: u8,
+    /// Nakshatra pada (1-4).
+    pub pada: u8,
+    /// Whole-sign bhava number (1-12) counted from the varga lagna's rashi.
+    ///
+    /// A varga transform is not monotonic, so the transformed D1 cusps in
+    /// `bhava_cusps` do not form ordered house boundaries — there is no
+    /// cusp-based bhava inside a varga. This whole-sign number is the defined
+    /// one.
+    pub rashi_bhava_number: u8,
 }
 
 /// Scope flags: which entity groups to include in amsha charts.

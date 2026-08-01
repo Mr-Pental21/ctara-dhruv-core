@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 84`
+**ABI version:** `DHRUV_API_VERSION = 85`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -2058,9 +2058,69 @@ DhruvStatus dhruv_amsha_chart_for_date(
 Compute one amsha chart for a date and location. `scope` controls optional
 sections inside the returned `DhruvAmshaChart`.
 
+#### Amsha point identity
+
+Every array inside `DhruvAmshaChart` is positional, and each position is a
+fixed, named point. A point is addressed by its **family** (which array) and
+its **index** within that array:
+
+```c
+#define DHRUV_AMSHA_POINT_FAMILY_LAGNA                    0  /*  1, lagna */
+#define DHRUV_AMSHA_POINT_FAMILY_GRAHA                    1  /*  9, grahas */
+#define DHRUV_AMSHA_POINT_FAMILY_OUTER_PLANET             2  /*  3, outer_planets */
+#define DHRUV_AMSHA_POINT_FAMILY_BHAVA_CUSP               3  /* 12, bhava_cusps */
+#define DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_CUSP         4  /* 12, rashi_bhava_cusps */
+#define DHRUV_AMSHA_POINT_FAMILY_ARUDHA_PADA              5  /* 12, arudha_padas */
+#define DHRUV_AMSHA_POINT_FAMILY_RASHI_BHAVA_ARUDHA_PADA  6  /* 12, rashi_bhava_arudha_padas */
+#define DHRUV_AMSHA_POINT_FAMILY_UPAGRAHA                 7  /* 11, upagrahas */
+#define DHRUV_AMSHA_POINT_FAMILY_SPHUTA                   8  /* 16, sphutas */
+#define DHRUV_AMSHA_POINT_FAMILY_SPECIAL_LAGNA            9  /*  8, special_lagnas */
+#define DHRUV_AMSHA_POINT_FAMILY_COUNT                   10
+
+uint32_t    dhruv_amsha_point_count(uint32_t family);
+const char *dhruv_amsha_point_name(uint32_t family, uint32_t index);
+const char *dhruv_amsha_point_key(uint32_t family, uint32_t index);
+```
+
+`dhruv_amsha_point_name` returns a display name ("Sree Lagna", "Gulika",
+"Bhava 3"); `dhruv_amsha_point_key` returns a stable snake_case identifier
+(`sree_lagna`, `gulika`, `bhava_3`, `a1`, `surya`). Both return
+NUL-terminated UTF-8 valid for the process lifetime, or `NULL` for an unknown
+family or an out-of-range index.
+
+Names are not repeated inside `DhruvAmshaEntry` because they are compile-time
+constants of (family, index) — they never vary by amsha, variation, date or
+location. Queried accessors keep `DhruvAmshaChart` at a fixed layout while
+still making the positional contract discoverable from C. JSON-shaped wrapper
+surfaces (Elixir, Node, Python, Go) do carry the resolved name on each entry.
+
+Canonical order per family:
+
+| family | order |
+|---|---|
+| `GRAHA` | Surya, Chandra, Mangal, Buddh, Guru, Shukra, Shani, Rahu, Ketu |
+| `OUTER_PLANET` | Uranus, Neptune, Pluto |
+| `BHAVA_CUSP`, `RASHI_BHAVA_CUSP` | index `i` is Bhava `i + 1` |
+| `ARUDHA_PADA`, `RASHI_BHAVA_ARUDHA_PADA` | `ALL_ARUDHA_PADAS` (A1 = AL .. A12 = UL) |
+| `UPAGRAHA` | Gulika, Maandi, Kaala, Mrityu, Artha Prahara, Yama Ghantaka, Dhooma, Vyatipata, Parivesha, Indra Chapa, Upaketu |
+| `SPHUTA` | `ALL_SPHUTAS`, index 0 is Bhrigu Bindu |
+| `SPECIAL_LAGNA` | Bhava, Hora, Ghati, Vighati, Varnada, **Sree (5)**, **Pranapada (6)**, Indu |
+
 Relevant config/result shapes:
 
 ```c
+struct DhruvAmshaEntry {
+    double   sidereal_longitude;
+    uint8_t  rashi_index;
+    uint16_t dms_degrees;
+    uint8_t  dms_minutes;
+    uint8_t  nakshatra_index;     // 0-26
+    uint8_t  pada;                // 1-4
+    uint8_t  rashi_bhava_number;  // 1-12, whole-sign from the varga lagna
+    double   dms_seconds;
+    double   degrees_in_rashi;
+};
+
 struct DhruvAmshaChartScope {
     uint8_t include_bhava_cusps;
     uint8_t include_arudha_padas;
@@ -2127,6 +2187,11 @@ Validation notes:
 - unknown `variation_code` for that amsha returns `DHRUV_STATUS_INVALID_SEARCH_CONFIG`
 - `variation_codes == NULL` in `dhruv_amsha_longitudes` means all requests use
   the default variation for each requested amsha
+- `DhruvAmshaEntry.rashi_bhava_number` is the whole-sign bhava counted from the
+  varga lagna's rashi. There is deliberately no cusp-based `bhava_number` on an
+  amsha entry: a varga transform is not monotonic, so the entries in
+  `bhava_cusps` (D1 cusps mapped through the varga) are not ordered house
+  boundaries and cannot define a cusp-based bhava inside a varga.
 
 Dependency notes for full-kundali amsha scope:
 

@@ -627,3 +627,164 @@ fn validation_unknown_amsha_code() {
     );
     assert!(result.is_err());
 }
+
+// ---------------------------------------------------------------------------
+// Point identity: the name emitted on an amsha entry must describe the value
+// that actually landed in that slot.
+//
+// D1's amsha transform is the identity, so a D1 chart's positional families
+// must equal the named top-level results point for point. That ties each
+// emitted name to a value computed through an entirely separate, *named* code
+// path, which a reorder inside the flattening helpers cannot fool.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn d1_amsha_entries_match_the_named_top_level_values() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+
+    let scope = AmshaChartScope {
+        include_special_lagnas: true,
+        include_upagrahas: true,
+        ..AmshaChartScope::default()
+    };
+    let requests = [AmshaRequest::new(Amsha::D1)];
+
+    let result = amsha_charts_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &requests,
+        &scope,
+    )
+    .expect("amsha_charts_for_date should succeed");
+    let chart = &result.charts[0];
+
+    let named_lagnas = dhruv_search::special_lagnas_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &rs_config,
+        &aya_config,
+    )
+    .expect("special_lagnas_for_date should succeed");
+    let named_upagrahas = dhruv_search::all_upagrahas_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &rs_config,
+        &aya_config,
+    )
+    .expect("all_upagrahas_for_date should succeed");
+
+    let special_lagnas = chart
+        .special_lagnas
+        .as_ref()
+        .expect("special lagnas requested");
+    for entry in special_lagnas.iter() {
+        let key = entry.point.key().expect("special lagna key");
+        let expected = match key {
+            "bhava_lagna" => named_lagnas.bhava_lagna,
+            "hora_lagna" => named_lagnas.hora_lagna,
+            "ghati_lagna" => named_lagnas.ghati_lagna,
+            "vighati_lagna" => named_lagnas.vighati_lagna,
+            "varnada_lagna" => named_lagnas.varnada_lagna,
+            "sree_lagna" => named_lagnas.sree_lagna,
+            "pranapada_lagna" => named_lagnas.pranapada_lagna,
+            "indu_lagna" => named_lagnas.indu_lagna,
+            other => panic!("unexpected special lagna key {other}"),
+        };
+        assert!(
+            (entry.sidereal_longitude - expected).abs() < 1e-9,
+            "{key} labels the wrong value: entry {} vs named {expected}",
+            entry.sidereal_longitude
+        );
+    }
+
+    let upagrahas = chart.upagrahas.as_ref().expect("upagrahas requested");
+    for entry in upagrahas.iter() {
+        let key = entry.point.key().expect("upagraha key");
+        let expected = match key {
+            "gulika" => named_upagrahas.gulika,
+            "maandi" => named_upagrahas.maandi,
+            "kaala" => named_upagrahas.kaala,
+            "mrityu" => named_upagrahas.mrityu,
+            "artha_prahara" => named_upagrahas.artha_prahara,
+            "yama_ghantaka" => named_upagrahas.yama_ghantaka,
+            "dhooma" => named_upagrahas.dhooma,
+            "vyatipata" => named_upagrahas.vyatipata,
+            "parivesha" => named_upagrahas.parivesha,
+            "indra_chapa" => named_upagrahas.indra_chapa,
+            "upaketu" => named_upagrahas.upaketu,
+            other => panic!("unexpected upagraha key {other}"),
+        };
+        assert!(
+            (entry.sidereal_longitude - expected).abs() < 1e-9,
+            "{key} labels the wrong value: entry {} vs named {expected}",
+            entry.sidereal_longitude
+        );
+    }
+
+    // Grahas are addressed by Graha::index(), so slot i must name that graha.
+    for (index, entry) in chart.grahas.iter().enumerate() {
+        assert_eq!(
+            entry.point.name(),
+            Some(dhruv_vedic_base::ALL_GRAHAS[index].name())
+        );
+    }
+}
+
+#[test]
+fn amsha_entries_carry_nakshatra_pada_and_whole_sign_bhava() {
+    let Some(engine) = load_engine() else { return };
+    let Some(eop) = load_eop() else { return };
+    let utc = utc_2024_jan_15();
+    let location = new_delhi();
+    let bhava_config = BhavaConfig::default();
+    let rs_config = RiseSetConfig::default();
+    let aya_config = default_aya_config();
+
+    let requests = [AmshaRequest::new(Amsha::D9)];
+    let scope = AmshaChartScope::default();
+
+    let result = amsha_charts_for_date(
+        &engine,
+        &eop,
+        &utc,
+        &location,
+        &bhava_config,
+        &rs_config,
+        &aya_config,
+        &requests,
+        &scope,
+    )
+    .expect("amsha_charts_for_date should succeed");
+    let chart = &result.charts[0];
+
+    // The lagna sits in its own first bhava by definition.
+    assert_eq!(chart.lagna.rashi_bhava_number, 1);
+
+    let lagna_rashi = chart.lagna.rashi_index;
+    for entry in &chart.grahas {
+        let nak = dhruv_vedic_base::nakshatra_from_longitude(entry.sidereal_longitude);
+        assert_eq!(entry.nakshatra_index, nak.nakshatra_index);
+        assert_eq!(entry.nakshatra, nak.nakshatra);
+        assert_eq!(entry.pada, nak.pada);
+        assert!((1..=4).contains(&entry.pada));
+
+        let expected_bhava = ((entry.rashi_index + 12 - lagna_rashi) % 12) + 1;
+        assert_eq!(entry.rashi_bhava_number, expected_bhava);
+        assert!((1..=12).contains(&entry.rashi_bhava_number));
+    }
+}

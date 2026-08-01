@@ -202,6 +202,14 @@ types for Rust callers, including:
   `amsha_charts_for_date`
   Amsha chart `grahas` stay length 9; transformed outer planet entries are
   returned in the sibling `outer_planets` section when enabled.
+  Every `AmshaEntry` carries a `point: AmshaPoint { family, index }` whose
+  `name()` and `key()` resolve its identity, so callers never index a section
+  to find out what a value is. Entries also carry `nakshatra`,
+  `nakshatra_index`, `pada`, and `rashi_bhava_number` (whole-sign bhava from
+  the varga lagna; a varga transform is not monotonic, so `bhava_cusps` are
+  not ordered house boundaries and there is no cusp-based bhava inside a
+  varga). `AmshaPointFamily` and `ALL_AMSHA_POINT_FAMILIES` enumerate the
+  families and their canonical order.
 - full-kundali, shadbala, vimsopaka, and dasha result/config families
 - pure jyotish math helpers such as `calculate_ashtakavarga`,
   `calculate_bhava_bala`, `calculate_bav`, `calculate_sav`, and

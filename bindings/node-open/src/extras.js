@@ -388,6 +388,41 @@ function coreBindusForDate(engine, eop, utc, location, bhavaConfig, riseSetConfi
   return r.result;
 }
 
+/**
+ * Amsha point families. Each code names one amsha chart section; a point is
+ * identified by its family and its index within that section. Every entry in
+ * an amsha chart already carries `name`, `displayName`, `family` and
+ * `pointIndex`, so these are only needed to enumerate a family up front.
+ */
+const AMSHA_POINT_FAMILY = Object.freeze({
+  LAGNA: 0,
+  GRAHA: 1,
+  OUTER_PLANET: 2,
+  BHAVA_CUSP: 3,
+  RASHI_BHAVA_CUSP: 4,
+  ARUDHA_PADA: 5,
+  RASHI_BHAVA_ARUDHA_PADA: 6,
+  UPAGRAHA: 7,
+  SPHUTA: 8,
+  SPECIAL_LAGNA: 9,
+  COUNT: 10,
+});
+
+/** Number of points in an amsha point family; 0 for an unknown family. */
+function amshaPointCount(family) {
+  return addon.amshaPointCount(family);
+}
+
+/** Display name of the point at (family, index), or null if out of range. */
+function amshaPointName(family, index) {
+  return addon.amshaPointName(family, index);
+}
+
+/** Stable snake_case key of the point at (family, index), or null. */
+function amshaPointKey(family, index) {
+  return addon.amshaPointKey(family, index);
+}
+
 function amshaLongitude(siderealLon, amshaCode, variationCode) {
   const r = addon.amshaLongitude(siderealLon, amshaCode, variationCode);
   checkStatus('amsha_longitude', r.status);
@@ -603,6 +638,10 @@ module.exports = {
   moonBeneficNature,
   grahaGender,
   coreBindusForDate,
+  AMSHA_POINT_FAMILY,
+  amshaPointCount,
+  amshaPointName,
+  amshaPointKey,
   amshaLongitude,
   amshaRashiInfo,
   amshaLongitudes,
