@@ -5,6 +5,35 @@
 8 special ascendant variants used in Vedic jyotish. All core formulas are
 pure arithmetic on sidereal longitudes and time offsets.
 
+## Section Numbering Is Presentational
+
+The numbered headings below group the lagnas by **derivation category**
+(time-based, composite, moon-based, wealth). Those numbers are a reading order
+for this document. They are **not** serialisation indices, and nothing should
+be implemented from them.
+
+The canonical order — the one used by `ALL_SPECIAL_LAGNAS`,
+`SpecialLagna::index()`, the `AllSpecialLagnas` field order, the
+`[f64; 8]` arrays on the wire, `DhruvSpecialLagnas`,
+`dhruv_special_lagna_name(index)`, and `NatalTargetKind::SpecialLagna`
+indices — is:
+
+| index | lagna | section below |
+|---|---|---|
+| 0 | Bhava Lagna | 1 |
+| 1 | Hora Lagna | 2 |
+| 2 | Ghati Lagna | 3 |
+| 3 | Vighati Lagna | 4 |
+| 4 | Varnada Lagna | 5 |
+| 5 | **Sree Lagna** | 7 |
+| 6 | **Pranapada Lagna** | 6 |
+| 7 | Indu Lagna | 8 |
+
+Sree and Pranapada are the two whose section number differs from their index:
+Pranapada appears in the Composite section because of its sign-type
+adjustment, while Sree has its own Moon-based section. `dhruv_vedic_base` is
+the authority for the order.
+
 ## Time-Based Lagnas
 
 These advance from the Sun's longitude at rates proportional to ghatikas
