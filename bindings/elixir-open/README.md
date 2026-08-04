@@ -150,6 +150,34 @@ The core search operations share that transit-body surface:
   keep the legacy `:sun_sidereal_longitude_deg` /
   `:sun_tropical_longitude_deg` keys for compatibility.
 
+`Search.fixed_longitude/2` finds when a moving body reaches a fixed
+sidereal longitude — one root-find instead of a windowed `gochar_events`
+sweep for transit-to-natal timeline search. `mode: :next` / `:prev` take
+`:at_utc` (or `:at_jd_tdb`); `mode: :range` takes `:start_utc` /
+`:end_utc`. `:body` is required (any body name or code, incl. `:rahu` /
+`:ketu`); `:target_longitude_deg` is the fixed sidereal target;
+`:target_angles_deg` is an optional offset list (added to the target mod
+360; omitted = conjunction only); `include_special_angles: true` also
+searches the body's classical special aspects (Mars 90/210, Jupiter
+120/240, Saturn 60/270) cast onto the target. The frame/ayanamsha come
+from `:sankranti_config`; `:config` may override `:step_size_days`,
+`:max_iterations`, `:convergence_days` (per-body default step otherwise):
+
+```elixir
+{:ok, %{events: event}} =
+  Search.fixed_longitude(engine, %{
+    mode: :next,
+    body: :saturn,
+    at_utc: %{year: 2026, month: 1, day: 1, hour: 0, minute: 0, second: 0.0},
+    target_longitude_deg: 195.5
+  })
+# event carries :utc, :jd_tdb, :body, :target_longitude_deg, :angle_deg,
+# :matched_longitude_deg, :sidereal_longitude_deg,
+# :tropical_longitude_deg, and :actual_separation_deg. Range mode
+# returns %{events: [...]} sorted by time then angle, with partial
+# results when the window crosses the ephemeris coverage edge.
+```
+
 `Search.charakaraka_events/2` finds the exact moments the chara-karaka
 ranking changes. `mode: :range` sweeps a window (optional `:max_events`,
 `0` = 50,000 ceiling; resume from `next_from_utc` on truncation), while

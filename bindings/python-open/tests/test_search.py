@@ -172,6 +172,61 @@ class TestSankranti:
 
 
 @skip_no_kernels
+class TestFixedLongitude:
+    def test_next_prev_round_trip(self, engine_handles):
+        """Sun reaching sidereal 30 deg; prev of just-after returns the same root."""
+        from ctara_dhruv.search import next_fixed_longitude, prev_fixed_longitude
+        evt = next_fixed_longitude(
+            engine_handles._ptr,
+            after_jd=UtcTime(2024, 1, 1, 0, 0, 0.0),
+            target_longitude_deg=30.0,
+        )
+        assert evt is not None
+        assert evt.body_code == 10
+        assert evt.angle_deg == 0.0
+        assert evt.matched_longitude_deg == 30.0
+        assert evt.actual_separation_deg < 1e-3
+        assert (evt.utc.year, evt.utc.month) == (2024, 5)
+
+        prev_evt = prev_fixed_longitude(
+            engine_handles._ptr,
+            before_jd=evt.jd_tdb + 0.5,
+            target_longitude_deg=30.0,
+        )
+        assert prev_evt is not None
+        assert abs(prev_evt.jd_tdb - evt.jd_tdb) < 1e-6
+
+    def test_range_multi_angle(self, engine_handles):
+        """One Sun lap x two offsets = two events, sorted by time."""
+        from ctara_dhruv.search import search_fixed_longitudes
+        events = search_fixed_longitudes(
+            engine_handles._ptr,
+            start_jd=UtcTime(2024, 1, 1, 0, 0, 0.0),
+            end_jd=UtcTime(2025, 1, 1, 0, 0, 0.0),
+            target_longitude_deg=100.0,
+            angles_deg=[0.0, 180.0],
+            max_results=1,
+        )
+        assert len(events) == 2
+        assert events[0].jd_tdb < events[1].jd_tdb
+        assert sorted(e.matched_longitude_deg for e in events) == [100.0, 280.0]
+
+    def test_special_angles_flag(self, engine_handles):
+        """Mars special aspects add the 150/270 deg offsets."""
+        from ctara_dhruv.search import search_fixed_longitudes
+        events = search_fixed_longitudes(
+            engine_handles._ptr,
+            start_jd=UtcTime(2024, 1, 1, 0, 0, 0.0),
+            end_jd=UtcTime(2026, 6, 1, 0, 0, 0.0),
+            target_longitude_deg=50.0,
+            include_special_angles=True,
+            body_code=499,
+        )
+        angles = sorted({e.angle_deg for e in events})
+        assert angles == [0.0, 150.0, 270.0]
+
+
+@skip_no_kernels
 class TestNodeAndAnyBodySearch:
     def test_moon_sankranti_range(self, engine_handles):
         """Moon rashi ingresses across Jan 2024 (any-body sankranti)."""

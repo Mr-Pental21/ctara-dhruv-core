@@ -97,6 +97,46 @@ fn sankranti_range_runs() {
 }
 
 #[test]
+fn fixed_longitude_next_and_range_run() {
+    let Some(ctx) = make_context() else {
+        return;
+    };
+
+    let req = FixedLongitudeRequest {
+        body: Body::Sun.into(),
+        target_longitude_deg: 30.0,
+        target_angles_deg: Vec::new(),
+        include_special_angles: false,
+        config: Some(SankrantiConfig::default_lahiri()),
+        query: FixedLongitudeRequestQuery::Next {
+            at: TimeInput::Utc(UtcDate::new(2024, 1, 1, 0, 0, 0.0)),
+        },
+    };
+    let out = fixed_longitude(&ctx, &req).expect("fixed_longitude op should run");
+    match out {
+        FixedLongitudeResult::Single(Some(ev)) => {
+            assert!((ev.matched_longitude_deg - 30.0).abs() < 1e-9);
+            assert!(ev.actual_separation_deg < 1e-3);
+        }
+        _ => panic!("expected a single fixed-longitude event"),
+    }
+
+    let range_req = FixedLongitudeRequest {
+        target_angles_deg: vec![0.0, 180.0],
+        query: FixedLongitudeRequestQuery::Range {
+            start: TimeInput::Utc(UtcDate::new(2024, 1, 1, 0, 0, 0.0)),
+            end: TimeInput::Utc(UtcDate::new(2025, 1, 1, 0, 0, 0.0)),
+        },
+        ..req
+    };
+    let out = fixed_longitude(&ctx, &range_req).expect("fixed_longitude range should run");
+    match out {
+        FixedLongitudeResult::Many(events) => assert_eq!(events.len(), 2),
+        _ => panic!("expected many fixed-longitude events"),
+    }
+}
+
+#[test]
 fn context_time_policy_roundtrip() {
     let Some(mut ctx) = make_context() else {
         return;

@@ -857,6 +857,76 @@ defmodule CtaraDhruvTest do
     end
   end
 
+  test "elixir search exposes fixed-longitude transit search" do
+    case with_engine() do
+      :skip ->
+        assert true
+
+      {:ok, engine} ->
+        at = %{year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0.0}
+
+        # Next: Sun reaching sidereal 30 deg (the Vrishabha cusp).
+        assert {:ok, %{events: event}} =
+                 Search.fixed_longitude(engine, %{
+                   mode: :next,
+                   body: :sun,
+                   at_utc: at,
+                   target_longitude_deg: 30.0
+                 })
+
+        refute is_nil(event)
+        assert event.body == :sun
+        assert event.angle_deg == 0.0
+        assert event.matched_longitude_deg == 30.0
+        assert abs(event.sidereal_longitude_deg - 30.0) < 1.0e-3
+        assert event.actual_separation_deg < 1.0e-3
+        assert event.utc.year == 2024 and event.utc.month == 5
+
+        # Prev round trip returns the same event.
+        assert {:ok, %{events: prev_event}} =
+                 Search.fixed_longitude(engine, %{
+                   mode: :prev,
+                   body: :sun,
+                   at_jd_tdb: event.jd_tdb + 0.5,
+                   target_longitude_deg: 30.0
+                 })
+
+        assert abs(prev_event.jd_tdb - event.jd_tdb) < 1.0e-6
+
+        # Range with an angle set: one Sun lap x 2 offsets = 2 events.
+        assert {:ok, %{events: events}} =
+                 Search.fixed_longitude(engine, %{
+                   mode: :range,
+                   body: :sun,
+                   start_utc: at,
+                   end_utc: %{at | year: 2025},
+                   target_longitude_deg: 100.0,
+                   target_angles_deg: [0.0, 180.0]
+                 })
+
+        assert length(events) == 2
+        assert Enum.map(events, & &1.matched_longitude_deg) |> Enum.sort() == [100.0, 280.0]
+
+        # Special-angle flag: Mars casts 4th/8th drishti onto the target.
+        assert {:ok, %{events: mars_events}} =
+                 Search.fixed_longitude(engine, %{
+                   mode: :range,
+                   body: :mars,
+                   start_utc: at,
+                   end_utc: %{at | year: 2026, month: 6},
+                   target_longitude_deg: 50.0,
+                   include_special_angles: true
+                 })
+
+        angles = mars_events |> Enum.map(& &1.angle_deg) |> Enum.uniq() |> Enum.sort()
+        assert angles == [0.0, 150.0, 270.0]
+
+        # Missing target is rejected.
+        assert {:error, %CtaraDhruv.Error{kind: :invalid_request}} =
+                 Search.fixed_longitude(engine, %{mode: :next, body: :sun, at_utc: at})
+    end
+  end
+
   test "elixir panchang daily reuses known calendar elements" do
     case with_engine() do
       :skip ->

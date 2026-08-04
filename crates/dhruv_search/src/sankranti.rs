@@ -75,7 +75,7 @@ pub(crate) fn transit_sidereal_longitude(
 
 /// Body's ecliptic tropical longitude at the event (existing sankranti
 /// semantics: always ecliptic-of-date with the default precession model).
-fn transit_tropical_longitude(
+pub(crate) fn transit_tropical_longitude(
     engine: &Engine,
     body: TransitBody,
     jd_tdb: f64,

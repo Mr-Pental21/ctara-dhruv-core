@@ -352,6 +352,7 @@ cache identity. See `docs/end_user/solar_eclipse_visibility.md`.
 - `grahan/2`
 - `lunar_phase/2`
 - `sankranti/2`
+- `fixed_longitude/2`
 - `motion/2`
 - `charakaraka_events/2`
 
@@ -394,6 +395,30 @@ the Sun). Sun events keep the legacy `:sun_sidereal_longitude_deg` /
 `:sankranti_config` omits `:step_size_days` and `:body` is not the Sun, a
 per-body default scan step is applied automatically (for example 0.25 days
 for the Moon, 1.0 for the true node).
+
+`fixed_longitude/2` finds when a moving body reaches a fixed sidereal
+longitude — the single root-find behind transit-to-natal timeline search
+(no windowed `gochar_events` sweeps needed). The request takes the
+semantic `:mode` (`"next"`/`"prev"` with `:at_utc` or `:at_jd_tdb`;
+`"range"` with `:start_utc`/`:end_utc` or the JD forms), a required
+`:body` (any body name or code, including `:rahu` / `:ketu`), a required
+`:target_longitude_deg` (sidereal, on the configured frame), an optional
+`:target_angles_deg` list (offsets added to the target mod 360; omitted =
+conjunction only), an optional `:include_special_angles` flag (also
+search the body's classical special-aspect angles — Mars 90/210, Jupiter
+120/240, Saturn 60/270 — applied so the moving body casts that aspect
+onto the target), an optional `:sankranti_config` (frame, ayanamsha,
+`:node_mode`), and an optional `:config` map whose `:step_size_days`,
+`:max_iterations`, and `:convergence_days` override the numerical knobs
+(without an explicit step the per-body default applies, as in
+`sankranti/2`). Next/prev return `%{events: event | nil}` (the earliest/
+latest event across the angle set); range returns `%{events: [...]}`
+sorted by time then angle. Each event carries `:utc`, `:jd_tdb`, `:body`,
+`:target_longitude_deg`, `:angle_deg`, `:matched_longitude_deg`
+(target + angle), `:sidereal_longitude_deg`, `:tropical_longitude_deg`,
+and `:actual_separation_deg`. Next/prev scans are bounded per body (a
+specific longitude can take most of a zodiac lap); a range crossing the
+loaded ephemeris coverage edge returns the events found up to the edge.
 
 `charakaraka_events/2` returns the exact moments the chara-karaka ranking
 changes. The request takes the semantic `:mode` (`"range"` with

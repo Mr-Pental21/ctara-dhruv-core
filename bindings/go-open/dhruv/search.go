@@ -11,8 +11,8 @@ func GrahanConfigEffective(cfg GrahanConfig) (GrahanConfig, error) {
 	effective, st := cabi.GrahanConfigEffective(cfg)
 	return effective, statusErr("grahan_config_effective", st)
 }
-func StationaryConfigDefault() StationaryConfig   { return cabi.StationaryConfigDefault() }
-func SankrantiConfigDefault() SankrantiConfig     { return cabi.SankrantiConfigDefault() }
+func StationaryConfigDefault() StationaryConfig     { return cabi.StationaryConfigDefault() }
+func SankrantiConfigDefault() SankrantiConfig       { return cabi.SankrantiConfigDefault() }
 func GocharEventsConfigDefault() GocharEventsConfig { return cabi.GocharEventsConfigDefault() }
 
 const (
@@ -82,6 +82,16 @@ func (e *Engine) SankrantiSearch(req SankrantiSearchRequest, pageSize ...uint32)
 		ev, found, events, st = cabi.SearchSankranti(e.h, req, capacity)
 	}
 	return ev, found, events, statusErr("sankranti_search_ex", st)
+}
+
+func (e *Engine) FixedLongitudeSearch(req FixedLongitudeRequest, pageSize ...uint32) (FixedLongitudeEvent, bool, []FixedLongitudeEvent, error) {
+	capacity := normalizeSearchPageSize(pageSize)
+	ev, found, events, st := cabi.SearchFixedLongitude(e.h, req, capacity)
+	for st == 0 && req.QueryMode == searchRangeMode && len(events) >= int(capacity) && capacity != ^uint32(0) {
+		capacity = nextSearchPageSize(capacity)
+		ev, found, events, st = cabi.SearchFixedLongitude(e.h, req, capacity)
+	}
+	return ev, found, events, statusErr("fixed_longitude_search", st)
 }
 
 func (e *Engine) GocharEvents(ep *EOP, req GocharEventsRequest) (GocharEventsResult, error) {

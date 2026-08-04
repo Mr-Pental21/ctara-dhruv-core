@@ -672,6 +672,28 @@ class SankrantiEvent:
     is_retrograde: bool = False
 
 
+@dataclass(frozen=True)
+class FixedLongitudeEvent:
+    """A moving body reaching a fixed sidereal longitude (+ angle offset).
+
+    ``target_longitude_deg``: base target, normalized to [0, 360).
+    ``angle_deg``: the matched offset, normalized to [0, 360).
+    ``matched_longitude_deg``: ``(target + angle) mod 360``.
+    ``actual_separation_deg``: residual at the refined root, degrees.
+    ``body_code``: the moving body (NAIF code, or 10007 Rahu / 10008 Ketu).
+    """
+
+    utc: UtcTime
+    jd_tdb: float
+    body_code: int
+    target_longitude_deg: float
+    angle_deg: float
+    matched_longitude_deg: float
+    sidereal_longitude_deg: float
+    tropical_longitude_deg: float
+    actual_separation_deg: float
+
+
 # ---------------------------------------------------------------------------
 # Pure-math Panchang classifiers
 # ---------------------------------------------------------------------------

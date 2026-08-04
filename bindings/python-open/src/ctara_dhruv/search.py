@@ -27,6 +27,7 @@ from .types import (
     MaxSpeedEvent,
     LunarPhaseEvent,
     SankrantiEvent,
+    FixedLongitudeEvent,
     MasaInfo,
     UtcTime,
     GeoLocation,
@@ -55,6 +56,10 @@ _JD_ABSENT = -1.0
 # Maximum angles per multi-angle conjunction sweep
 # (matches DHRUV_MAX_CONJUNCTION_TARGETS in the C ABI).
 MAX_CONJUNCTION_TARGETS = 16
+
+# Maximum angle offsets per fixed-longitude request
+# (matches DHRUV_MAX_FIXED_LONGITUDE_ANGLES in the C ABI).
+MAX_FIXED_LONGITUDE_ANGLES = 16
 
 
 # ---------------------------------------------------------------------------
@@ -1247,6 +1252,170 @@ def search_sankrantis(
         )
         count = int(out_count[0])
         return ([_sankranti_event(out_events[i]) for i in range(count)], count)
+
+    return _collect_full_range(fetch, max_results)
+
+
+# ---------------------------------------------------------------------------
+# Fixed-longitude search (dhruv_fixed_longitude_search, ABI v88)
+# ---------------------------------------------------------------------------
+
+_FIXED_LONGITUDE_NEXT = 0
+_FIXED_LONGITUDE_PREV = 1
+_FIXED_LONGITUDE_RANGE = 2
+
+
+def _fixed_longitude_event(e) -> FixedLongitudeEvent:
+    return FixedLongitudeEvent(
+        utc=_utc_from_c(e.utc),
+        jd_tdb=e.jd_tdb,
+        body_code=e.body_code,
+        target_longitude_deg=e.target_longitude_deg,
+        angle_deg=e.angle_deg,
+        matched_longitude_deg=e.matched_longitude_deg,
+        sidereal_longitude_deg=e.sidereal_longitude_deg,
+        tropical_longitude_deg=e.tropical_longitude_deg,
+        actual_separation_deg=e.actual_separation_deg,
+    )
+
+
+def _fixed_longitude_request(
+    query_mode: int,
+    target_longitude_deg: float,
+    angles_deg,
+    include_special_angles: bool,
+    config,
+    body_code: int,
+):
+    angles = [float(a) for a in (angles_deg or [])]
+    if len(angles) > MAX_FIXED_LONGITUDE_ANGLES:
+        raise ValueError(
+            f"at most {MAX_FIXED_LONGITUDE_ANGLES} angles are supported"
+        )
+    req = ffi.new("DhruvFixedLongitudeRequest *")
+    req.query_mode = query_mode
+    req.config = (
+        _coerce_sankranti_config(config)
+        if config is not None
+        else lib.dhruv_sankranti_config_default()
+    )
+    req.body_code = int(body_code)
+    req.target_longitude_deg = float(target_longitude_deg)
+    req.angle_count = len(angles)
+    for i, angle in enumerate(angles):
+        req.target_angles_deg[i] = angle
+    req.include_special_angles = 1 if include_special_angles else 0
+    return req
+
+
+def next_fixed_longitude(
+    engine,
+    after_jd,
+    target_longitude_deg: float,
+    angles_deg=None,
+    include_special_angles: bool = False,
+    config=None,
+    body_code: int = 0,
+) -> Optional[FixedLongitudeEvent]:
+    """Find when a moving body next reaches a fixed sidereal longitude.
+
+    *after_jd*: a ``UtcTime`` or JD(TDB) anchor. *angles_deg*: offsets added
+    to the target (mod 360); ``None``/empty = conjunction only.
+    *include_special_angles*: also search the body's classical
+    special-aspect angles (Mars 90/210, Jupiter 120/240, Saturn 60/270)
+    applied so the moving body casts that aspect onto the target.
+    *body_code*: 0 = Sun (default), otherwise any NAIF code or 10007
+    (Rahu) / 10008 (Ketu).
+    """
+    req = _fixed_longitude_request(
+        _FIXED_LONGITUDE_NEXT, target_longitude_deg, angles_deg,
+        include_special_angles, config, body_code,
+    )
+    _set_single_search_time(req, after_jd, arg_name="after_jd")
+    out_event = ffi.new("DhruvFixedLongitudeEvent *")
+    out_found = ffi.new("uint8_t *")
+    check(
+        lib.dhruv_fixed_longitude_search(
+            engine, req,
+            out_event, out_found,
+            ffi.NULL, 0, ffi.NULL,
+        ),
+        "fixed_longitude_search(next)",
+    )
+    if out_found[0] == 0:
+        return None
+    return _fixed_longitude_event(out_event[0])
+
+
+def prev_fixed_longitude(
+    engine,
+    before_jd,
+    target_longitude_deg: float,
+    angles_deg=None,
+    include_special_angles: bool = False,
+    config=None,
+    body_code: int = 0,
+) -> Optional[FixedLongitudeEvent]:
+    """Find when a moving body previously reached a fixed sidereal longitude.
+
+    See :func:`next_fixed_longitude` for the parameters.
+    """
+    req = _fixed_longitude_request(
+        _FIXED_LONGITUDE_PREV, target_longitude_deg, angles_deg,
+        include_special_angles, config, body_code,
+    )
+    _set_single_search_time(req, before_jd, arg_name="before_jd")
+    out_event = ffi.new("DhruvFixedLongitudeEvent *")
+    out_found = ffi.new("uint8_t *")
+    check(
+        lib.dhruv_fixed_longitude_search(
+            engine, req,
+            out_event, out_found,
+            ffi.NULL, 0, ffi.NULL,
+        ),
+        "fixed_longitude_search(prev)",
+    )
+    if out_found[0] == 0:
+        return None
+    return _fixed_longitude_event(out_event[0])
+
+
+def search_fixed_longitudes(
+    engine,
+    start_jd,
+    end_jd,
+    target_longitude_deg: float,
+    angles_deg=None,
+    include_special_angles: bool = False,
+    config=None,
+    body_code: int = 0,
+    max_results: int = 50,
+) -> list[FixedLongitudeEvent]:
+    """Find every fixed-longitude reach event in a UTC or JD(TDB) range.
+
+    See :func:`next_fixed_longitude` for the parameters. A range reaching
+    past the loaded ephemeris coverage returns the events found up to the
+    edge rather than raising.
+    """
+    req = _fixed_longitude_request(
+        _FIXED_LONGITUDE_RANGE, target_longitude_deg, angles_deg,
+        include_special_angles, config, body_code,
+    )
+    _set_range_search_time(req, start_jd, end_jd, start_name="start_jd", end_name="end_jd")
+
+    def fetch(capacity: int):
+        out_events = ffi.new("DhruvFixedLongitudeEvent[]", capacity)
+        out_count = ffi.new("uint32_t *")
+        check(
+            lib.dhruv_fixed_longitude_search(
+                engine, req,
+                ffi.NULL, ffi.NULL,
+                out_events, capacity, out_count,
+            ),
+            "fixed_longitude_search(range)",
+        )
+        count = int(out_count[0])
+        return ([_fixed_longitude_event(out_events[i]) for i in range(count)], count)
 
     return _collect_full_range(fetch, max_results)
 

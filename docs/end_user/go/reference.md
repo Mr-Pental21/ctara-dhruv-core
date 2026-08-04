@@ -511,6 +511,20 @@ Search:
 - `(*Engine).MotionSearch`
 - `(*Engine).LunarPhaseSearch`
 - `(*Engine).SankrantiSearch`
+- `(*Engine).FixedLongitudeSearch`
+
+`(*Engine).FixedLongitudeSearch(req FixedLongitudeRequest)` finds when a
+moving body reaches a fixed sidereal longitude. `QueryMode` 0=next,
+1=prev (both return the single event + found flag), 2=range (returns the
+event slice, auto-paged). The request carries `BodyCode` (0 = Sun, NAIF
+codes, 10007/10008 for Rahu/Ketu), `TargetLongitudeDeg`,
+`TargetAnglesDeg` (offsets added to the target mod 360; empty =
+conjunction only; at most 16), `IncludeSpecialAngles` (the body's
+classical special aspects — Mars 90/210, Jupiter 120/240, Saturn 60/270 —
+cast onto the target), and a `SankrantiConfig`. Events report the matched
+longitude (target + angle), sidereal + tropical longitudes, and the root
+residual. A range crossing the ephemeris coverage edge returns the
+events found up to the edge.
 
 ## Config Notes
 

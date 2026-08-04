@@ -10,7 +10,7 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
-  assert.equal(dhruv.EXPECTED_API_VERSION, 87);
+  assert.equal(dhruv.EXPECTED_API_VERSION, 88);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
 });
@@ -312,6 +312,36 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     4,
   );
   assert.equal(sank.found, true);
+
+  const fixedNext = dhruv.fixedLongitudeSearch(
+    engine,
+    {
+      queryMode: 0,
+      targetLongitudeDeg: 30,
+      atUtc: { year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
+    },
+    4,
+  );
+  assert.equal(fixedNext.found, true);
+  assert.equal(fixedNext.event.bodyCode, 10);
+  assert.equal(fixedNext.event.matchedLongitudeDeg, 30);
+  assert.ok(fixedNext.event.actualSeparationDeg < 1e-3);
+  assert.equal(fixedNext.event.utc.year, 2024);
+  assert.equal(fixedNext.event.utc.month, 5);
+
+  const fixedRange = dhruv.fixedLongitudeSearch(
+    engine,
+    {
+      queryMode: 2,
+      targetLongitudeDeg: 100,
+      targetAnglesDeg: [0, 180],
+      startUtc: { year: 2024, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
+      endUtc: { year: 2025, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
+    },
+    8,
+  );
+  assert.equal(fixedRange.events.length, 2);
+  assert.ok(fixedRange.events[0].jdTdb < fixedRange.events[1].jdTdb);
 
   const grahan = dhruv.grahanSearch(
     engine,

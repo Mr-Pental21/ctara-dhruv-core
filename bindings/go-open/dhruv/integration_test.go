@@ -717,6 +717,55 @@ func TestSankrantiSearchAnyBodyMoon(t *testing.T) {
 	}
 }
 
+func TestFixedLongitudeSearchNextAndRange(t *testing.T) {
+	eng, _ := newRangeOpsFixtures(t)
+
+	req := FixedLongitudeRequest{
+		QueryMode:          0,
+		AtUTC:              UtcTime{Year: 2024, Month: 1, Day: 1},
+		Config:             SankrantiConfigDefault(),
+		TargetLongitudeDeg: 30.0,
+	}
+	ev, found, _, err := eng.FixedLongitudeSearch(req)
+	if err != nil {
+		t.Fatalf("FixedLongitudeSearch next: %v", err)
+	}
+	if !found {
+		t.Fatal("expected a fixed-longitude event")
+	}
+	if ev.BodyCode != 10 {
+		t.Fatalf("body code: got %d want 10", ev.BodyCode)
+	}
+	if ev.MatchedLongitudeDeg != 30.0 {
+		t.Fatalf("matched longitude: got %f want 30", ev.MatchedLongitudeDeg)
+	}
+	if ev.ActualSeparationDeg > 1e-3 {
+		t.Fatalf("separation too large: %g", ev.ActualSeparationDeg)
+	}
+	if ev.UTC.Year != 2024 || ev.UTC.Month != 5 {
+		t.Fatalf("expected 2024-05 event, got %d-%d", ev.UTC.Year, ev.UTC.Month)
+	}
+
+	rangeReq := FixedLongitudeRequest{
+		QueryMode:          2,
+		StartUTC:           UtcTime{Year: 2024, Month: 1, Day: 1},
+		EndUTC:             UtcTime{Year: 2025, Month: 1, Day: 1},
+		Config:             SankrantiConfigDefault(),
+		TargetLongitudeDeg: 100.0,
+		TargetAnglesDeg:    []float64{0.0, 180.0},
+	}
+	_, _, events, err := eng.FixedLongitudeSearch(rangeReq)
+	if err != nil {
+		t.Fatalf("FixedLongitudeSearch range: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events (one lap x two angles), got %d", len(events))
+	}
+	if events[0].JdTdb >= events[1].JdTdb {
+		t.Fatal("range events must be sorted by time")
+	}
+}
+
 func TestConjunctionSearchSunRahuSiderealEcho(t *testing.T) {
 	eng, _ := newRangeOpsFixtures(t)
 

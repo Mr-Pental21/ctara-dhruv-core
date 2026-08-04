@@ -27,12 +27,13 @@ pub use date::UtcDate;
 pub use error::DhruvError;
 pub use ops::{
     AvasthaRequest, AvasthaResult, AvasthaTarget, AyanamshaRequest, AyanamshaRequestMode,
-    CharakarakaRequest, ConjunctionRequest, ConjunctionRequestQuery, FullKundaliRequest,
-    GocharEventsRequest, GrahanRequest, GrahanRequestQuery, LunarPhaseRequest,
-    LunarPhaseRequestQuery, MotionRequest, MotionRequestQuery, NodeRequest, PanchangRequest,
-    SankrantiRequest, SankrantiRequestQuery, TaraRequest, TimeInput, UpagrahaRequest, avastha_op,
-    ayanamsha_op, charakaraka, conjunction, full_kundali, gochar_events, grahan, lunar_node_op,
-    lunar_phase, motion, panchang_op, sankranti, tara_op, upagraha_op,
+    CharakarakaRequest, ConjunctionRequest, ConjunctionRequestQuery, FixedLongitudeRequest,
+    FixedLongitudeRequestQuery, FullKundaliRequest, GocharEventsRequest, GrahanRequest,
+    GrahanRequestQuery, LunarPhaseRequest, LunarPhaseRequestQuery, MotionRequest,
+    MotionRequestQuery, NodeRequest, PanchangRequest, SankrantiRequest, SankrantiRequestQuery,
+    TaraRequest, TimeInput, UpagrahaRequest, avastha_op, ayanamsha_op, charakaraka, conjunction,
+    fixed_longitude, full_kundali, gochar_events, grahan, lunar_node_op, lunar_phase, motion,
+    panchang_op, sankranti, tara_op, upagraha_op,
 };
 
 // Re-export core types so callers don't need to depend on dhruv_core directly.
@@ -41,6 +42,7 @@ pub use dhruv_core::{
 };
 
 // Re-export commonly used config/result types.
+pub use dhruv_build_info::{git_hash as build_git_hash, version as build_version};
 pub use dhruv_frames::{ReferencePlane, SphericalCoords, SphericalState};
 pub use dhruv_search::conjunction_types::{ConjunctionConfig, ConjunctionEvent};
 pub use dhruv_search::gochar_events_types::{
@@ -71,18 +73,16 @@ pub use dhruv_search::{
     MovingOsculatingApogeeEntry, MovingOsculatingApogees, PanchangEventsResult, ShadbalaEntry,
     ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult, amsha_lagna_events,
     amsha_series, avastha_for_date, avastha_for_graha, balas_for_date, bhavabala_for_bhava,
-    bhavabala_for_date, charakaraka_events, dasha_child_period_for_birth,
-    dasha_children_for_birth, dasha_complete_level_for_birth, dasha_hierarchy_for_birth,
-    dasha_level0_entity_for_birth, dasha_level0_for_birth, dasha_snapshot_at,
-    full_kundali_for_date, graha_positions, graha_positions_series, moving_osculating_apogees,
-    moving_osculating_apogees_for_date, next_charakaraka_event, panchang_events,
-    prev_charakaraka_event, shadbala_for_date, shadbala_for_graha, vimsopaka_for_date,
-    vimsopaka_for_graha,
+    bhavabala_for_date, charakaraka_events, dasha_child_period_for_birth, dasha_children_for_birth,
+    dasha_complete_level_for_birth, dasha_hierarchy_for_birth, dasha_level0_entity_for_birth,
+    dasha_level0_for_birth, dasha_snapshot_at, full_kundali_for_date, graha_positions,
+    graha_positions_series, moving_osculating_apogees, moving_osculating_apogees_for_date,
+    next_charakaraka_event, panchang_events, prev_charakaraka_event, shadbala_for_date,
+    shadbala_for_graha, vimsopaka_for_date, vimsopaka_for_graha,
 };
-pub use dhruv_build_info::{git_hash as build_git_hash, version as build_version};
 pub use dhruv_search::{
-    ConjunctionResult, GrahanKind, GrahanResult, LunarPhaseKind, LunarPhaseResult, MotionKind,
-    MotionResult, SankrantiResult, SankrantiTarget,
+    ConjunctionResult, FixedLongitudeEvent, FixedLongitudeResult, GrahanKind, GrahanResult,
+    LunarPhaseKind, LunarPhaseResult, MotionKind, MotionResult, SankrantiResult, SankrantiTarget,
 };
 pub use dhruv_search::{TRANSIT_CODE_KETU, TRANSIT_CODE_RAHU, TransitBody};
 pub use dhruv_tara::{

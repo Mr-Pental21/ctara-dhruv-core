@@ -986,16 +986,16 @@ func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
 		instantaneous[i] = float64(cfg.instantaneous_magnitude_levels[i])
 	}
 	return GrahanConfig{
-		IncludePenumbral:         cfg.include_penumbral != 0,
-		IncludePeakDetails:       cfg.include_peak_details != 0,
-		IncludePath:              cfg.include_path != 0,
-		PathStepMinutes:          uint32(cfg.path_step_minutes),
-		BoundaryStepDeg:          uint32(cfg.boundary_step_deg),
-		IncludeLocalGrid:         cfg.include_local_grid != 0,
-		LocalGridStepDeg:         float64(cfg.local_grid_step_deg),
-		IncludeIsolines:          cfg.include_isolines != 0,
-		DurationIsolineFractions: fractions,
-		MagnitudeIsolineLevels:   levels,
+		IncludePenumbral:             cfg.include_penumbral != 0,
+		IncludePeakDetails:           cfg.include_peak_details != 0,
+		IncludePath:                  cfg.include_path != 0,
+		PathStepMinutes:              uint32(cfg.path_step_minutes),
+		BoundaryStepDeg:              uint32(cfg.boundary_step_deg),
+		IncludeLocalGrid:             cfg.include_local_grid != 0,
+		LocalGridStepDeg:             float64(cfg.local_grid_step_deg),
+		IncludeIsolines:              cfg.include_isolines != 0,
+		DurationIsolineFractions:     fractions,
+		MagnitudeIsolineLevels:       levels,
 		IncludeCentralCorridor:       cfg.include_central_corridor != 0,
 		IncludeContactFootprints:     cfg.include_contact_footprints != 0,
 		IncludeUmbraFootprints:       cfg.include_umbra_footprints != 0,
@@ -1005,17 +1005,17 @@ func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
 
 func cGrahanConfig(cfg GrahanConfig) C.DhruvGrahanConfig {
 	out := C.DhruvGrahanConfig{
-		include_penumbral:        boolU8(cfg.IncludePenumbral),
-		include_peak_details:     boolU8(cfg.IncludePeakDetails),
-		include_path:             boolU8(cfg.IncludePath),
+		include_penumbral:          boolU8(cfg.IncludePenumbral),
+		include_peak_details:       boolU8(cfg.IncludePeakDetails),
+		include_path:               boolU8(cfg.IncludePath),
 		include_local_grid:         boolU8(cfg.IncludeLocalGrid),
 		include_isolines:           boolU8(cfg.IncludeIsolines),
 		include_central_corridor:   boolU8(cfg.IncludeCentralCorridor),
 		include_contact_footprints: boolU8(cfg.IncludeContactFootprints),
 		include_umbra_footprints:   boolU8(cfg.IncludeUmbraFootprints),
-		path_step_minutes:        C.uint32_t(cfg.PathStepMinutes),
-		boundary_step_deg:        C.uint32_t(cfg.BoundaryStepDeg),
-		local_grid_step_deg:      C.double(cfg.LocalGridStepDeg),
+		path_step_minutes:          C.uint32_t(cfg.PathStepMinutes),
+		boundary_step_deg:          C.uint32_t(cfg.BoundaryStepDeg),
+		local_grid_step_deg:        C.double(cfg.LocalGridStepDeg),
 	}
 	fractionCount := min(len(cfg.DurationIsolineFractions), 16)
 	for i := 0; i < fractionCount; i++ {
@@ -1063,7 +1063,7 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 		at_utc:       cUTC(req.AtUTC),
 		start_utc:    cUTC(req.StartUTC),
 		end_utc:      cUTC(req.EndUTC),
-		config: cGrahanConfig(req.Config),
+		config:       cGrahanConfig(req.Config),
 	}
 	if req.Location != nil {
 		creq.location_valid = 1
@@ -1523,6 +1523,53 @@ func SearchSankranti(engine EngineHandle, req SankrantiSearchRequest, capacity u
 		count = len(arr)
 	}
 	events := make([]SankrantiEvent, count)
+	for i := 0; i < count; i++ {
+		events[i] = conv(arr[i])
+	}
+	return conv(out), found != 0, events, st
+}
+
+func SearchFixedLongitude(engine EngineHandle, req FixedLongitudeRequest, capacity uint32) (FixedLongitudeEvent, bool, []FixedLongitudeEvent, Status) {
+	timeKind := resolveSearchTimeKind(req.QueryMode, req.TimeKind, req.AtUTC, req.StartUTC, req.EndUTC)
+	if len(req.TargetAnglesDeg) > MaxFixedLongitudeAngles {
+		return FixedLongitudeEvent{}, false, nil, StatusInvalidQuery
+	}
+	creq := C.DhruvFixedLongitudeRequest{
+		query_mode:             C.int32_t(req.QueryMode),
+		time_kind:              C.int32_t(timeKind),
+		at_jd_tdb:              C.double(req.AtJdTdb),
+		start_jd_tdb:           C.double(req.StartJdTdb),
+		end_jd_tdb:             C.double(req.EndJdTdb),
+		at_utc:                 cUTC(req.AtUTC),
+		start_utc:              cUTC(req.StartUTC),
+		end_utc:                cUTC(req.EndUTC),
+		config:                 cSankrantiConfig(req.Config),
+		body_code:              C.int32_t(req.BodyCode),
+		target_longitude_deg:   C.double(req.TargetLongitudeDeg),
+		angle_count:            C.uint32_t(len(req.TargetAnglesDeg)),
+		include_special_angles: boolU8(req.IncludeSpecialAngles),
+	}
+	for i, angle := range req.TargetAnglesDeg {
+		creq.target_angles_deg[i] = C.double(angle)
+	}
+	var out C.DhruvFixedLongitudeEvent
+	var found C.uint8_t
+	var outCount C.uint32_t
+	var arr []C.DhruvFixedLongitudeEvent
+	var ptr *C.DhruvFixedLongitudeEvent
+	if capacity > 0 {
+		arr = make([]C.DhruvFixedLongitudeEvent, capacity)
+		ptr = &arr[0]
+	}
+	st := Status(C.dhruv_fixed_longitude_search(engine.ptr, &creq, &out, &found, ptr, C.uint32_t(capacity), &outCount))
+	conv := func(v C.DhruvFixedLongitudeEvent) FixedLongitudeEvent {
+		return FixedLongitudeEvent{UTC: goUTC(v.utc), JdTdb: float64(v.jd_tdb), BodyCode: int32(v.body_code), TargetLongitudeDeg: float64(v.target_longitude_deg), AngleDeg: float64(v.angle_deg), MatchedLongitudeDeg: float64(v.matched_longitude_deg), SiderealLongitudeDeg: float64(v.sidereal_longitude_deg), TropicalLongitudeDeg: float64(v.tropical_longitude_deg), ActualSeparationDeg: float64(v.actual_separation_deg)}
+	}
+	count := int(outCount)
+	if count > len(arr) {
+		count = len(arr)
+	}
+	events := make([]FixedLongitudeEvent, count)
 	for i := 0; i < count; i++ {
 		events[i] = conv(arr[i])
 	}

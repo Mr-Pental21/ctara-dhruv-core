@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=87`
+- ABI target: `DHRUV_API_VERSION=88`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -105,7 +105,8 @@ The public `dhruv` package includes wrappers for:
 - time conversion and nutation
 - ayanamsha and lunar-node APIs
 - riseset/bhava APIs
-- unified search APIs (conjunction/grahan/motion/lunar phase/sankranti)
+- unified search APIs (conjunction/grahan/motion/lunar phase/sankranti/
+  fixed longitude)
   with structured UTC on the high-level time-bearing result objects alongside
   JD; conjunction, motion, and sankranti searches also accept Rahu/Ketu body
   codes (10007/10008), any-body sankranti tracking, multi-angle conjunction
@@ -149,6 +150,16 @@ Sankranti search generalizes to any-body rashi ingress through
 crossed in retrograde motion, so a rashi can be re-entered); the legacy
 `SunSiderealLongitudeDeg`/`SunTropicalLongitudeDeg` fields remain as aliases
 for the tracked body's longitudes.
+
+Fixed-longitude search (`(*Engine).FixedLongitudeSearch` with
+`FixedLongitudeRequest`) finds when a moving body reaches a fixed
+sidereal longitude, optionally offset by `TargetAnglesDeg` (offsets
+added to the target mod 360; at most `MaxFixedLongitudeAngles` = 16).
+`IncludeSpecialAngles` also searches the body's classical special-aspect
+angles (Mars 90/210, Jupiter 120/240, Saturn 60/270) applied so the
+moving body casts that aspect onto the target. The config is a
+`SankrantiConfig`; `BodyCode` 0 defaults to the Sun. A range crossing
+the ephemeris coverage edge returns the events found up to the edge.
 
 Conjunction search sweeps multiple separation angles in one call through
 `ConjunctionSearchRequest.TargetSeparationsDeg` (at most

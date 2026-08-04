@@ -5,7 +5,7 @@ canonical C ABI (`dhruv_ffi_c`) via `cffi`.
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=87`
+- ABI target: `DHRUV_API_VERSION=88`
 - Package root: `bindings/python-open`
 - Runtime dependency: `cffi`
 - Primary distribution: PyPI wheels plus sdist from unified `vX.Y.Z` tags
@@ -157,6 +157,18 @@ now carries `body_code`, `sidereal_longitude_deg`, `tropical_longitude_deg`,
 and `is_retrograde` (retrograde bodies re-entering a rashi); the legacy
 `sun_sidereal_longitude_deg` / `sun_tropical_longitude_deg` fields remain as
 aliases for the tracked body's longitudes.
+
+Fixed-longitude search (`next_fixed_longitude`, `prev_fixed_longitude`,
+`search_fixed_longitudes`) finds when a moving body reaches a fixed
+sidereal longitude (`target_longitude_deg`), optionally offset by
+`angles_deg` (offsets added to the target mod 360; at most
+`MAX_FIXED_LONGITUDE_ANGLES` = 16). `include_special_angles=True` also
+searches the body's classical special-aspect angles (Mars 90/210,
+Jupiter 120/240, Saturn 60/270) applied so the moving body casts that
+aspect onto the target. The config is the sankranti config (struct or
+dict); `body_code` defaults to the Sun. Range results are sorted by time
+then angle, and a range crossing the ephemeris coverage edge returns the
+events found up to the edge.
 
 Conjunction searches additionally accept `target_separations` (a list of up
 to `MAX_CONJUNCTION_TARGETS` = 16 target angles swept in one pass; events

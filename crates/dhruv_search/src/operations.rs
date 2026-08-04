@@ -26,12 +26,13 @@ use crate::lunar_phase_types::LunarPhaseEvent;
 use crate::sankranti_types::{SankrantiConfig, SankrantiEvent};
 use crate::stationary_types::{MaxSpeedEvent, StationaryConfig, StationaryEvent};
 use crate::{
-    next_amavasya, next_chandra_grahan, next_conjunction, next_ingress, next_max_speed,
-    next_purnima, next_specific_ingress, next_stationary, next_surya_grahan, panchang_for_date,
-    prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_ingress, prev_max_speed,
-    prev_purnima, prev_specific_ingress, prev_stationary, prev_surya_grahan, search_amavasyas,
-    search_chandra_grahan, search_conjunctions, search_ingresses, search_max_speed,
-    search_purnimas, search_stationary, search_surya_grahan,
+    next_amavasya, next_chandra_grahan, next_conjunction, next_fixed_longitude, next_ingress,
+    next_max_speed, next_purnima, next_specific_ingress, next_stationary, next_surya_grahan,
+    panchang_for_date, prev_amavasya, prev_chandra_grahan, prev_conjunction, prev_fixed_longitude,
+    prev_ingress, prev_max_speed, prev_purnima, prev_specific_ingress, prev_stationary,
+    prev_surya_grahan, search_amavasyas, search_chandra_grahan, search_conjunctions,
+    search_fixed_longitudes, search_ingresses, search_max_speed, search_purnimas,
+    search_stationary, search_surya_grahan,
 };
 
 /// High-level query mode used by operation requests.
@@ -877,6 +878,114 @@ pub fn sankranti(engine: &Engine, op: &SankrantiOperation) -> Result<SankrantiRe
     }
 }
 
+/// Fixed-longitude search query variant.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FixedLongitudeQuery {
+    /// Find next event after `at_jd_tdb`.
+    Next { at_jd_tdb: f64 },
+    /// Find previous event before `at_jd_tdb`.
+    Prev { at_jd_tdb: f64 },
+    /// Find all events in `[start_jd_tdb, end_jd_tdb]`.
+    Range { start_jd_tdb: f64, end_jd_tdb: f64 },
+}
+
+impl FixedLongitudeQuery {
+    /// Returns the mode represented by this query.
+    pub fn mode(self) -> QueryMode {
+        match self {
+            Self::Next { .. } => QueryMode::Next,
+            Self::Prev { .. } => QueryMode::Prev,
+            Self::Range { .. } => QueryMode::Range,
+        }
+    }
+}
+
+/// Canonical fixed-longitude operation request: when does a moving body
+/// reach a fixed sidereal longitude (plus an optional angle set).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FixedLongitudeOperation {
+    /// The moving body (plain body or Rahu/Ketu).
+    pub body: TransitBody,
+    /// Fixed target sidereal longitude on the configured frame, degrees.
+    pub target_longitude_deg: f64,
+    /// Angle offsets added to the target (mod 360); an event fires when
+    /// the body reaches each offset longitude. Empty = `[0.0]`
+    /// (conjunction only). Offsets are normalized to [0, 360).
+    pub target_angles_deg: Vec<f64>,
+    /// Additionally search the body's classical special-aspect angles
+    /// (Mars 90/210, Jupiter 120/240, Saturn 60/270) applied so the
+    /// MOVING body casts that aspect onto the target — i.e. offsets of
+    /// `360 − angle`. No-op for bodies without special aspects.
+    pub include_special_angles: bool,
+    /// Longitude model (frame, ayanamsha, node mode) and numerical
+    /// parameters (step / convergence / max iterations).
+    pub config: SankrantiConfig,
+    /// Query selector and time bounds.
+    pub query: FixedLongitudeQuery,
+}
+
+/// Canonical fixed-longitude operation response.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FixedLongitudeResult {
+    /// Result for next/prev requests.
+    Single(Option<crate::fixed_longitude::FixedLongitudeEvent>),
+    /// Result for range requests.
+    Many(Vec<crate::fixed_longitude::FixedLongitudeEvent>),
+}
+
+/// Execute a fixed-longitude operation request.
+pub fn fixed_longitude(
+    engine: &Engine,
+    op: &FixedLongitudeOperation,
+) -> Result<FixedLongitudeResult, SearchError> {
+    let mut angles: Vec<f64> = if op.target_angles_deg.is_empty() {
+        vec![0.0]
+    } else {
+        op.target_angles_deg.clone()
+    };
+    if op.include_special_angles
+        && let Some(body) = op.body.body()
+    {
+        for &special in crate::gochar_events::special_angles_for_body(body) {
+            angles.push((360.0 - special).rem_euclid(360.0));
+        }
+    }
+    match op.query {
+        FixedLongitudeQuery::Next { at_jd_tdb } => {
+            Ok(FixedLongitudeResult::Single(next_fixed_longitude(
+                engine,
+                op.body,
+                at_jd_tdb,
+                op.target_longitude_deg,
+                &angles,
+                &op.config,
+            )?))
+        }
+        FixedLongitudeQuery::Prev { at_jd_tdb } => {
+            Ok(FixedLongitudeResult::Single(prev_fixed_longitude(
+                engine,
+                op.body,
+                at_jd_tdb,
+                op.target_longitude_deg,
+                &angles,
+                &op.config,
+            )?))
+        }
+        FixedLongitudeQuery::Range {
+            start_jd_tdb,
+            end_jd_tdb,
+        } => Ok(FixedLongitudeResult::Many(search_fixed_longitudes(
+            engine,
+            op.body,
+            start_jd_tdb,
+            end_jd_tdb,
+            op.target_longitude_deg,
+            &angles,
+            &op.config,
+        )?)),
+    }
+}
+
 /// Include bit for Tithi in panchang operations.
 pub const PANCHANG_INCLUDE_TITHI: u32 = 1 << 0;
 /// Include bit for Karana in panchang operations.
@@ -1149,6 +1258,26 @@ mod tests {
         );
         assert_eq!(
             SankrantiQuery::Range {
+                start_jd_tdb: 0.0,
+                end_jd_tdb: 1.0
+            }
+            .mode(),
+            QueryMode::Range
+        );
+    }
+
+    #[test]
+    fn fixed_longitude_query_mode_is_stable() {
+        assert_eq!(
+            FixedLongitudeQuery::Next { at_jd_tdb: 0.0 }.mode(),
+            QueryMode::Next
+        );
+        assert_eq!(
+            FixedLongitudeQuery::Prev { at_jd_tdb: 0.0 }.mode(),
+            QueryMode::Prev
+        );
+        assert_eq!(
+            FixedLongitudeQuery::Range {
                 start_jd_tdb: 0.0,
                 end_jd_tdb: 1.0
             }

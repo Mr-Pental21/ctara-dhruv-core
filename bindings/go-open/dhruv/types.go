@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 87
+const ExpectedAPIVersion = 88
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -278,13 +278,13 @@ type (
 	ConjunctionSearchRequest = cabi.ConjunctionSearchRequest
 	ConjunctionEvent         = cabi.ConjunctionEvent
 
-	GrahanConfig         = cabi.GrahanConfig
-	GrahanSearchRequest  = cabi.GrahanSearchRequest
-	ChandraGrahanResult  = cabi.ChandraGrahanResult
-	SuryaGrahanResult    = cabi.SuryaGrahanResult
-	EclipseGeoPoint      = cabi.EclipseGeoPoint
-	SuryaGrahanPathPoint = cabi.SuryaGrahanPathPoint
-	SuryaGrahanFootprint = cabi.SuryaGrahanFootprint
+	GrahanConfig          = cabi.GrahanConfig
+	GrahanSearchRequest   = cabi.GrahanSearchRequest
+	ChandraGrahanResult   = cabi.ChandraGrahanResult
+	SuryaGrahanResult     = cabi.SuryaGrahanResult
+	EclipseGeoPoint       = cabi.EclipseGeoPoint
+	SuryaGrahanPathPoint  = cabi.SuryaGrahanPathPoint
+	SuryaGrahanFootprint  = cabi.SuryaGrahanFootprint
 	SuryaLocalGridSample  = cabi.SuryaLocalGridSample
 	SuryaIsolineRing      = cabi.SuryaIsolineRing
 	SuryaRingSetLevel     = cabi.SuryaRingSetLevel
@@ -301,6 +301,8 @@ type (
 	SankrantiConfig         = cabi.SankrantiConfig
 	SankrantiSearchRequest  = cabi.SankrantiSearchRequest
 	SankrantiEvent          = cabi.SankrantiEvent
+	FixedLongitudeRequest   = cabi.FixedLongitudeRequest
+	FixedLongitudeEvent     = cabi.FixedLongitudeEvent
 	LunarPhaseSearchRequest = cabi.LunarPhaseSearchRequest
 	LunarPhaseEvent         = cabi.LunarPhaseEvent
 

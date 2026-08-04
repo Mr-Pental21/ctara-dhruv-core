@@ -383,6 +383,34 @@ Sankranti commands accept `--body` (default `10` = Sun; NAIF codes plus
 Events report the body, sidereal and tropical longitudes, and a retrograde
 flag (true when the boundary was crossed in retrograde motion).
 
+- `fixed-longitude`
+
+`fixed-longitude` finds when a moving body reaches a fixed sidereal
+longitude — the root-find behind transit-to-natal timeline search.
+`--mode next|prev` takes `--date`; `--mode range` takes `--start`/`--end`.
+`--target-deg` is the fixed sidereal longitude; `--angles` is an optional
+comma-separated list of offsets added to the target (mod 360, default
+`0` = conjunction only); `--special-angles` additionally searches the
+body's classical special-aspect angles (Mars 90/210, Jupiter 120/240,
+Saturn 60/270) applied so the moving body casts that aspect onto the
+target. `--body` matches the sankranti commands (default `10` = Sun,
+NAIF codes plus 10007=Rahu / 10008=Ketu); `--step-days` overrides the
+per-body scan step. Each event reports the matched longitude
+(target + angle), sidereal and tropical longitudes, and the residual
+separation. A range crossing the loaded ephemeris coverage edge returns
+the events found up to the edge:
+
+```bash
+# When does Saturn next reach sidereal 195.5°?
+dhruv fixed-longitude --mode next --date 2026-01-01T00:00:00Z \
+  --body 699 --target-deg 195.5
+
+# Every Mars conjunction/opposition/special-aspect hit on a natal point
+dhruv fixed-longitude --mode range --start 2026-01-01T00:00:00Z \
+  --end 2027-01-01T00:00:00Z --body 499 --target-deg 50 \
+  --angles 0,180 --special-angles
+```
+
 - `motion`
 - `next-stationary`
 - `prev-stationary`

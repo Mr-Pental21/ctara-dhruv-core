@@ -702,17 +702,26 @@ impl Engine {
         // Convert JD TDB to TDB seconds past J2000.
         let epoch_tdb_s = dhruv_time::jd_to_tdb_seconds(query.epoch_tdb_jd);
 
+        // Coverage misses surface as the typed EpochOutOfRange variant so
+        // search scans can distinguish the ephemeris edge from real faults.
+        let map_resolve_err = |e: KernelError| match e {
+            KernelError::EpochOutOfRange { .. } => EngineError::EpochOutOfRange {
+                epoch_tdb_jd: query.epoch_tdb_jd,
+            },
+            other => EngineError::Internal(other.to_string()),
+        };
+
         // Resolve target to SSB across all loaded kernels.
         let target_ssb = self
             .resolve_to_ssb_across(spk_set, query.target.code(), epoch_tdb_s, ctx)
-            .map_err(|e| EngineError::Internal(e.to_string()))?;
+            .map_err(map_resolve_err)?;
 
         // Resolve observer to SSB across all loaded kernels.
         let observer_ssb = match query.observer {
             Observer::SolarSystemBarycenter => [0.0f64; 6],
             Observer::Body(body) => self
                 .resolve_to_ssb_across(spk_set, body.code(), epoch_tdb_s, ctx)
-                .map_err(|e| EngineError::Internal(e.to_string()))?,
+                .map_err(map_resolve_err)?,
         };
 
         // Subtract observer from target.

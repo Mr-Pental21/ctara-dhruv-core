@@ -228,6 +228,72 @@ above (`None` unless `sankranti_config` was set).
 `is_retrograde` (true when the boundary was crossed in retrograde motion —
 a re-entry into the preceding rashi; always false for the Sun).
 
+## Fixed Longitude (Implemented)
+
+When does a MOVING transit body next/previously reach a FIXED sidereal
+longitude, optionally offset by an angle set. This is the root-find
+behind gochar transit-to-natal aspect timing, promoted to a public op.
+
+## Request
+
+`FixedLongitudeOperation` fields:
+- `body: TransitBody` (any plain body or Rahu/Ketu; Earth rejected)
+- `target_longitude_deg: f64` (fixed sidereal longitude on the configured
+  frame; normalized to [0, 360))
+- `target_angles_deg: Vec<f64>` (offsets added to the target, mod 360;
+  an event fires when the body reaches each offset longitude; empty =
+  `[0.0]` i.e. conjunction only; offsets normalized to [0, 360) and
+  deduped)
+- `include_special_angles: bool` (additionally search the body's
+  classical special-aspect angles — Mars 90/210, Jupiter 120/240,
+  Saturn 60/270 — applied as offsets of `360 − angle` so the MOVING body
+  casts that aspect ONTO the target; matches the gochar
+  `TransitAspectOwner::GocharBody` convention `fixed = target − angle`.
+  Natal-owner special angles are expressible directly in
+  `target_angles_deg` as `+angle` offsets. No-op for bodies without
+  special aspects)
+- `config: SankrantiConfig` (longitude model: frame, ayanamsha,
+  `node_mode` for node bodies; numerical knobs:
+  step/convergence/max-iterations; `SankrantiConfig::for_body` picks the
+  per-body scan step)
+- `query: FixedLongitudeQuery`
+
+`FixedLongitudeQuery` variants:
+- `Next { at_jd_tdb }`
+- `Prev { at_jd_tdb }`
+- `Range { start_jd_tdb, end_jd_tdb }`
+
+## Result
+
+`FixedLongitudeResult` variants:
+- `Single(Option<FixedLongitudeEvent>)`
+- `Many(Vec<FixedLongitudeEvent>)`
+
+`FixedLongitudeEvent` fields: `utc`, `jd_tdb`, `body: TransitBody`,
+`target_longitude_deg` (echo, normalized), `angle_deg` (matched offset,
+[0, 360)), `matched_longitude_deg` (`(target + angle) mod 360`),
+`sidereal_longitude_deg`, `tropical_longitude_deg` (ecliptic-of-date,
+sankranti semantics), and `actual_separation_deg` (residual at the
+refined root).
+
+Range results are sorted by `(jd_tdb, angle_deg)`. With multiple angles,
+next/prev return the earliest/latest event across the angle set.
+
+## Scan Window
+
+- next/prev scans are bounded at `13 × body.ingress_max_scan_days()` —
+  reaching one specific longitude can take most of a full zodiac lap,
+  including retrograde loitering (same factor as the sankranti
+  specific-rashi search).
+- Hitting the ephemeris coverage edge mid-scan ends a next/prev scan
+  with `Single(None)`; a range crossing the coverage edge returns the
+  events found up to the edge (partial results) rather than erroring.
+- Roots are found by coarse scan + bisection on the wrapped residual;
+  a root is accepted only when the residual is within 1e-3 deg,
+  rejecting boundary false positives at the window clamp. An in-and-out
+  double crossing entirely inside one coarse step is below the scan's
+  resolution (same limitation as the gochar transit sweep).
+
 ## Ayanamsha (Implemented)
 
 ## Request

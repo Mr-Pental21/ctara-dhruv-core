@@ -538,10 +538,26 @@ families are required.
 - `prev_sankranti`
 - `specific_sankranti`
 - `search_sankrantis`
+- `next_fixed_longitude`
+- `prev_fixed_longitude`
+- `search_fixed_longitudes`
 
 Python range-search helpers auto-expand their internal buffers until the full
 result set is returned. `max_results` is only the initial internal chunk size,
 not a public truncation cap.
+
+The `*_fixed_longitude` helpers find when a moving body reaches a fixed
+sidereal longitude (`target_longitude_deg`), optionally offset by
+`angles_deg` (offsets added mod 360; `None` = conjunction only; at most
+16). `include_special_angles=True` also searches the body's classical
+special-aspect angles (Mars 90/210, Jupiter 120/240, Saturn 60/270)
+applied so the moving body casts that aspect onto the target;
+`body_code` 0 = Sun (default), NAIF codes, or 10007/10008 for
+Rahu/Ketu; `config` is a sankranti config. Results are
+`FixedLongitudeEvent` values carrying the matched longitude
+(target + angle), sidereal + tropical longitudes, and the root residual.
+A range crossing the ephemeris coverage edge returns the events found up
+to the edge.
 
 `tara`:
 

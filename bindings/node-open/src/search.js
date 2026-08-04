@@ -138,6 +138,25 @@ function sankrantiSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
   );
 }
 
+// Fixed-longitude transit search (ABI v88): when does a moving body reach
+// a fixed sidereal longitude (plus an optional angle set). `request`:
+// `queryMode` (0=next, 1=prev, 2=range), `targetLongitudeDeg`, optional
+// `targetAnglesDeg` (offsets added to the target, mod 360), optional
+// `includeSpecialAngles` (the body's classical special aspects cast onto
+// the target), optional `bodyCode` (0/absent = Sun, NAIF code, or
+// 10007/10008 for Rahu/Ketu), optional `config` (sankranti config shape),
+// and the usual atUtc/atJdTdb or startUtc/endUtc time inputs.
+function fixedLongitudeSearch(engine, request, capacity = DEFAULT_RANGE_CAPACITY) {
+  return searchResult(
+    'fixed_longitude_search',
+    addon.fixedLongitudeSearch,
+    engine,
+    request,
+    capacity,
+    formatSimpleSearch,
+  );
+}
+
 function normalizeGocharRequest(request) {
   const normalized = {
     ...request,
@@ -169,5 +188,6 @@ module.exports = {
   motionSearch,
   lunarPhaseSearch,
   sankrantiSearch,
+  fixedLongitudeSearch,
   gocharEvents,
 };

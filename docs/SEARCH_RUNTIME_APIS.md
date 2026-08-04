@@ -114,6 +114,23 @@ for per-body scan steps. Mid-scan engine errors end next/prev scans with
 | `next_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: next Sun entry into a chosen rashi. |
 | `prev_specific_sankranti` | `engine`, `utc`, `rashi`, `config` | `Result<Option<SankrantiEvent>, SearchError>` | Sun wrapper: previous Sun entry into a chosen rashi. |
 
+## Fixed-Longitude Search (3)
+
+When does a moving `TransitBody` reach a fixed sidereal longitude,
+optionally offset by an angle set (offsets added to the target mod 360;
+empty = conjunction only). Shares `SankrantiConfig`. next/prev scans are
+bounded at 13 × `ingress_max_scan_days`; mid-scan coverage-edge errors
+end next/prev with `Ok(None)` and range sweeps with partial results. The
+`dhruv_search::fixed_longitude` operation facade adds
+`include_special_angles` (the body's classical special aspects cast onto
+the target).
+
+| Function | Inputs | Output | What it does |
+|---|---|---|---|
+| `next_fixed_longitude` | `engine`, `body`, `at_jd_tdb`, `target_longitude_deg`, `angles_deg`, `config` | `Result<Option<FixedLongitudeEvent>, SearchError>` | Next reach of `target + angle` (mod 360); earliest across angles. |
+| `prev_fixed_longitude` | `engine`, `body`, `at_jd_tdb`, `target_longitude_deg`, `angles_deg`, `config` | `Result<Option<FixedLongitudeEvent>, SearchError>` | Previous reach; latest across angles. |
+| `search_fixed_longitudes` | `engine`, `body`, `start_jd_tdb`, `end_jd_tdb`, `target_longitude_deg`, `angles_deg`, `config` | `Result<Vec<FixedLongitudeEvent>, SearchError>` | Every reach event in the range, sorted by `(jd_tdb, angle_deg)`. |
+
 ## Stationary / Max-Speed (6)
 
 `StationaryConfig` adds `node_mode` (default true) and the

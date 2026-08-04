@@ -13,7 +13,8 @@ use dhruv_frames::{
 use dhruv_search::ConjunctionConfig;
 use dhruv_search::operations::{
     AyanamshaMode, AyanamshaOperation, ConjunctionOperation, ConjunctionQuery, ConjunctionResult,
-    GrahanKind, GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
+    FixedLongitudeOperation, FixedLongitudeQuery, FixedLongitudeResult, GrahanKind,
+    GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
     LunarPhaseQuery, LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult,
     NodeBackend, NodeOperation, PanchangOperation, PanchangResult, SankrantiOperation,
     SankrantiQuery, SankrantiResult, SankrantiTarget, TaraOperation, TaraOutputKind, TaraResult,
@@ -29,7 +30,7 @@ use dhruv_search::{
     dasha_complete_level_with_inputs, dasha_hierarchy_for_birth, dasha_hierarchy_with_inputs,
     dasha_level0_entity_for_birth, dasha_level0_entity_with_inputs, dasha_level0_for_birth,
     dasha_level0_with_inputs, dasha_snapshot_at, dasha_snapshot_with_inputs, elongation_at,
-    full_kundali_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes,
+    fixed_longitude, full_kundali_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes,
     hora_from_sunrises, karana_at, lunar_node, motion, nakshatra_at, next_charakaraka_event,
     panchang, panchang_events, panchang_include_bits, prev_charakaraka_event,
     set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at, vaar_from_sunrises,
@@ -335,6 +336,9 @@ struct SearchRequest {
     gochar_config: Option<GocharEventsConfigInput>,
     charakaraka_config: Option<CharakarakaConfigInput>,
     max_events: Option<u32>,
+    target_longitude_deg: Option<f64>,
+    target_angles_deg: Option<Vec<f64>>,
+    include_special_angles: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3220,6 +3224,31 @@ fn sankranti_event_json(event: dhruv_search::SankrantiEvent) -> Value {
     value
 }
 
+fn fixed_longitude_result_json(result: FixedLongitudeResult) -> Value {
+    match result {
+        FixedLongitudeResult::Single(event) => {
+            json!({ "events": event.map(fixed_longitude_event_json) })
+        }
+        FixedLongitudeResult::Many(events) => {
+            json!({ "events": events.into_iter().map(fixed_longitude_event_json).collect::<Vec<_>>() })
+        }
+    }
+}
+
+fn fixed_longitude_event_json(event: dhruv_search::FixedLongitudeEvent) -> Value {
+    json!({
+        "utc": utc_json(event.utc),
+        "jd_tdb": event.jd_tdb,
+        "body": debug_name(event.body),
+        "target_longitude_deg": event.target_longitude_deg,
+        "angle_deg": event.angle_deg,
+        "matched_longitude_deg": event.matched_longitude_deg,
+        "sidereal_longitude_deg": event.sidereal_longitude_deg,
+        "tropical_longitude_deg": event.tropical_longitude_deg,
+        "actual_separation_deg": event.actual_separation_deg
+    })
+}
+
 fn motion_result_json(result: MotionResult) -> Value {
     match result {
         MotionResult::StationarySingle(event) => {
@@ -4672,6 +4701,76 @@ fn handle_search(resource: &ResourceArc<EngineResource>, request: SearchRequest)
                 };
                 dhruv_search::sankranti(engine, &op)
                     .map(sankranti_result_json)
+                    .map_err(|err| map_error("search_error", err))
+            }
+            "fixed_longitude" => {
+                let query = match request.mode {
+                    EnumInput::Str(ref value) if value == "range" => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        FixedLongitudeQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
+                    EnumInput::Str(ref value) if value == "prev" => FixedLongitudeQuery::Prev {
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
+                    },
+                    EnumInput::Int(1) => FixedLongitudeQuery::Prev {
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
+                    },
+                    EnumInput::Int(2) => {
+                        let (start_jd_tdb, end_jd_tdb) = search_range_jd_tdb(engine, &request)?;
+                        FixedLongitudeQuery::Range {
+                            start_jd_tdb,
+                            end_jd_tdb,
+                        }
+                    }
+                    _ => FixedLongitudeQuery::Next {
+                        at_jd_tdb: search_at_jd_tdb(engine, &request)?,
+                    },
+                };
+                let body = parse_transit_body(
+                    request
+                        .body
+                        .as_ref()
+                        .ok_or_else(|| error_payload("invalid_request", "body is required"))?,
+                )?;
+                let target_longitude_deg = request.target_longitude_deg.ok_or_else(|| {
+                    error_payload("invalid_request", "target_longitude_deg is required")
+                })?;
+                let mut config = to_sankranti_config(state, request.sankranti_config.as_ref())?;
+                // Numerical overrides ride on the generic search config;
+                // without an explicit step the body's ingress step applies.
+                let mut step_given = request
+                    .sankranti_config
+                    .as_ref()
+                    .and_then(|input| input.step_size_days)
+                    .is_some();
+                if let Some(input) = request.config.as_ref() {
+                    if let Some(step) = input.step_size_days {
+                        config.step_size_days = step;
+                        step_given = true;
+                    }
+                    if let Some(max_iterations) = input.max_iterations {
+                        config.max_iterations = max_iterations;
+                    }
+                    if let Some(convergence) = input.convergence_days {
+                        config.convergence_days = convergence;
+                    }
+                }
+                if !step_given && body != TransitBody::Body(Body::Sun) {
+                    config.step_size_days = body.default_ingress_step_days();
+                }
+                let op = FixedLongitudeOperation {
+                    body,
+                    target_longitude_deg,
+                    target_angles_deg: request.target_angles_deg.clone().unwrap_or_default(),
+                    include_special_angles: request.include_special_angles.unwrap_or(false),
+                    config,
+                    query,
+                };
+                fixed_longitude(engine, &op)
+                    .map(fixed_longitude_result_json)
                     .map_err(|err| map_error("search_error", err))
             }
             "motion" => {

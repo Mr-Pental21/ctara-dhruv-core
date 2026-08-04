@@ -5,13 +5,13 @@
 
 use dhruv_search::{
     AmshaSelectionConfig, ConjunctionConfig, ConjunctionOperation, ConjunctionQuery,
-    ConjunctionResult, GocharEventsConfig, GocharEventsOperation, GocharEventsResult,
-    GocharTransitBody, GrahanConfig, GrahanKind, GrahanOperation, GrahanQuery, GrahanResult,
-    LunarPhaseKind, LunarPhaseOperation, LunarPhaseQuery, LunarPhaseResult, MotionKind,
-    MotionOperation, MotionQuery, MotionResult, NatalTargetLongitude, SankrantiConfig,
-    SankrantiOperation, SankrantiQuery, SankrantiResult, SankrantiTarget, StationaryConfig,
-    TransitBody, all_upagrahas_for_date_with_config, avastha_for_date, avastha_for_graha,
-    full_kundali_for_date,
+    ConjunctionResult, FixedLongitudeOperation, FixedLongitudeQuery, FixedLongitudeResult,
+    GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharTransitBody, GrahanConfig,
+    GrahanKind, GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
+    LunarPhaseQuery, LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult,
+    NatalTargetLongitude, SankrantiConfig, SankrantiOperation, SankrantiQuery, SankrantiResult,
+    SankrantiTarget, StationaryConfig, TransitBody, all_upagrahas_for_date_with_config,
+    avastha_for_date, avastha_for_graha, full_kundali_for_date,
 };
 use dhruv_search::{FullKundaliConfig, FullKundaliResult};
 use dhruv_tara::{EarthState, TaraCatalog, TaraConfig, TaraId};
@@ -393,6 +393,65 @@ pub fn sankranti(
         query,
     };
     Ok(dhruv_search::sankranti(eng, &op)?)
+}
+
+/// Query selector for fixed-longitude operations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FixedLongitudeRequestQuery {
+    /// Find next event after `at`.
+    Next { at: TimeInput },
+    /// Find previous event before `at`.
+    Prev { at: TimeInput },
+    /// Find all events in `[start, end]`.
+    Range { start: TimeInput, end: TimeInput },
+}
+
+/// Unified fixed-longitude request: when does a moving body reach a fixed
+/// sidereal longitude (plus an optional angle set).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FixedLongitudeRequest {
+    /// The moving body (plain body or Rahu/Ketu).
+    pub body: TransitBody,
+    /// Fixed target sidereal longitude on the configured frame, degrees.
+    pub target_longitude_deg: f64,
+    /// Angle offsets added to the target (mod 360); empty = conjunction
+    /// only.
+    pub target_angles_deg: Vec<f64>,
+    /// Additionally search the body's classical special-aspect angles so
+    /// the moving body casts that aspect onto the target.
+    pub include_special_angles: bool,
+    /// Longitude model + numerical parameters (context default when None).
+    pub config: Option<SankrantiConfig>,
+    pub query: FixedLongitudeRequestQuery,
+}
+
+/// Execute a unified fixed-longitude operation.
+pub fn fixed_longitude(
+    ctx: &DhruvContext,
+    request: &FixedLongitudeRequest,
+) -> Result<FixedLongitudeResult, DhruvError> {
+    let eng = ctx.engine();
+    let query = match request.query {
+        FixedLongitudeRequestQuery::Next { at } => FixedLongitudeQuery::Next {
+            at_jd_tdb: time_input_to_jd_tdb(ctx, at),
+        },
+        FixedLongitudeRequestQuery::Prev { at } => FixedLongitudeQuery::Prev {
+            at_jd_tdb: time_input_to_jd_tdb(ctx, at),
+        },
+        FixedLongitudeRequestQuery::Range { start, end } => FixedLongitudeQuery::Range {
+            start_jd_tdb: time_input_to_jd_tdb(ctx, start),
+            end_jd_tdb: time_input_to_jd_tdb(ctx, end),
+        },
+    };
+    let op = FixedLongitudeOperation {
+        body: request.body,
+        target_longitude_deg: request.target_longitude_deg,
+        target_angles_deg: request.target_angles_deg.clone(),
+        include_special_angles: request.include_special_angles,
+        config: resolve_sankranti_config(ctx, request.config)?,
+        query,
+    };
+    Ok(dhruv_search::fixed_longitude(eng, &op)?)
 }
 
 /// Ayanamsha request mode.

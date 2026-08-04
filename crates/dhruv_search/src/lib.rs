@@ -14,6 +14,7 @@ pub mod conjunction;
 pub mod conjunction_types;
 pub mod dasha;
 pub mod error;
+pub mod fixed_longitude;
 pub mod gochar_events;
 pub mod gochar_events_types;
 pub mod grahan;
@@ -59,6 +60,9 @@ pub use dhruv_vedic_base::{
     CharakarakaResult, CharakarakaRole, CharakarakaScheme,
 };
 pub use error::SearchError;
+pub use fixed_longitude::{
+    FixedLongitudeEvent, next_fixed_longitude, prev_fixed_longitude, search_fixed_longitudes,
+};
 pub use gochar_events::gochar_events;
 pub use gochar_events_types::{
     EventWindow, GOCHAR_TRANSIT_CODE_KETU, GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig,
@@ -107,7 +111,8 @@ pub use lunar_phase::{
 pub use lunar_phase_types::{LunarPhase, LunarPhaseEvent};
 pub use operations::{
     AyanamshaMode, AyanamshaOperation, ConjunctionOperation, ConjunctionQuery, ConjunctionResult,
-    GrahanKind, GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
+    FixedLongitudeOperation, FixedLongitudeQuery, FixedLongitudeResult, GrahanKind,
+    GrahanOperation, GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation,
     LunarPhaseQuery, LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult,
     NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR,
     PANCHANG_INCLUDE_ALL_CORE, PANCHANG_INCLUDE_AYANA, PANCHANG_INCLUDE_GHATIKA,
@@ -116,7 +121,7 @@ pub use operations::{
     PANCHANG_INCLUDE_TITHI, PANCHANG_INCLUDE_VAAR, PANCHANG_INCLUDE_VARSHA, PANCHANG_INCLUDE_YOGA,
     PanchangOperation, PanchangPrecomputed, PanchangResult, QueryMode, SankrantiOperation,
     SankrantiQuery, SankrantiResult, SankrantiTarget, TaraOperation, TaraOutputKind, TaraResult,
-    ayanamsha, conjunction, grahan, lunar_node, lunar_phase, motion, panchang,
+    ayanamsha, conjunction, fixed_longitude, grahan, lunar_node, lunar_phase, motion, panchang,
     panchang_include_bits, sankranti, tara,
 };
 

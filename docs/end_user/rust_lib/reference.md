@@ -60,6 +60,7 @@ Request-driven functions:
 - `motion`
 - `lunar_phase`
 - `sankranti`
+- `fixed_longitude`
 - `ayanamsha_op`
 - `lunar_node_op`
 - `panchang_op`
@@ -95,6 +96,18 @@ the relevant config's `node_mode`; default true/osculating).
   `sidereal_longitude_deg`/`rashi_index` echoes to events.
 - `LunarPhaseRequest` accepts an optional `sankranti_config` that adds
   Sun/Moon sidereal longitude and rashi-index echoes to each event.
+- `FixedLongitudeRequest` finds when the moving `body` reaches the fixed
+  sidereal `target_longitude_deg`, optionally offset by
+  `target_angles_deg` (offsets added mod 360; empty = conjunction only).
+  `include_special_angles` also searches the body's classical
+  special-aspect angles (Mars 90/210, Jupiter 120/240, Saturn 60/270)
+  applied so the moving body casts that aspect onto the target. The
+  optional `config` is a `SankrantiConfig` (context default when `None`).
+  `FixedLongitudeResult` mirrors `SankrantiResult`
+  (`Single(Option<FixedLongitudeEvent>)` / `Many(Vec<...>)`); events
+  carry the matched longitude, sidereal + tropical longitudes, and the
+  root residual. A range crossing the ephemeris coverage edge returns
+  partial results; next/prev scans are bounded per body.
 
 `ConjunctionConfig`, `StationaryConfig`, and `SankrantiConfig` each carry
 `node_mode: NodeMode` (also settable through layered config as

@@ -817,6 +817,56 @@ type SankrantiSearchRequest struct {
 	BodyCode int32
 }
 
+// MaxFixedLongitudeAngles mirrors DHRUV_MAX_FIXED_LONGITUDE_ANGLES.
+const MaxFixedLongitudeAngles = 16
+
+// FixedLongitudeRequest asks when a moving body reaches a fixed sidereal
+// longitude (plus an optional angle set). QueryMode 0=next, 1=prev,
+// 2=range.
+type FixedLongitudeRequest struct {
+	QueryMode  int32
+	TimeKind   int32
+	AtJdTdb    float64
+	StartJdTdb float64
+	EndJdTdb   float64
+	AtUTC      UtcTime
+	StartUTC   UtcTime
+	EndUTC     UtcTime
+	Config     SankrantiConfig
+	// BodyCode selects the moving body: 0 = Sun (default), otherwise a
+	// NAIF code or Rahu/Ketu (10007/10008).
+	BodyCode int32
+	// TargetLongitudeDeg is the fixed target sidereal longitude on the
+	// configured frame, degrees.
+	TargetLongitudeDeg float64
+	// TargetAnglesDeg holds offsets added to the target (mod 360); empty =
+	// conjunction only. At most MaxFixedLongitudeAngles entries.
+	TargetAnglesDeg []float64
+	// IncludeSpecialAngles also searches the body's classical
+	// special-aspect angles (Mars 90/210, Jupiter 120/240, Saturn 60/270)
+	// applied so the moving body casts that aspect onto the target.
+	IncludeSpecialAngles bool
+}
+
+// FixedLongitudeEvent reports a moving body reaching a fixed sidereal
+// longitude (+ angle offset).
+type FixedLongitudeEvent struct {
+	UTC   UtcTime
+	JdTdb float64
+	// BodyCode is the moving body: a NAIF code or Rahu/Ketu (10007/10008).
+	BodyCode int32
+	// TargetLongitudeDeg is the base target, normalized to [0, 360).
+	TargetLongitudeDeg float64
+	// AngleDeg is the matched offset, normalized to [0, 360).
+	AngleDeg float64
+	// MatchedLongitudeDeg is (target + angle) mod 360.
+	MatchedLongitudeDeg  float64
+	SiderealLongitudeDeg float64
+	TropicalLongitudeDeg float64
+	// ActualSeparationDeg is the |sidereal - matched| residual, degrees.
+	ActualSeparationDeg float64
+}
+
 type LunarPhaseSearchRequest struct {
 	PhaseKind  int32
 	QueryMode  int32

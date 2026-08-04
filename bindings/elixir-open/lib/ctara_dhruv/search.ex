@@ -15,6 +15,9 @@ defmodule CtaraDhruv.Search do
   def sankranti(engine, request),
     do: Native.call_engine(&Native.search_run/2, engine, Map.put(request, :op, :sankranti))
 
+  def fixed_longitude(engine, request),
+    do: Native.call_engine(&Native.search_run/2, engine, Map.put(request, :op, :fixed_longitude))
+
   def motion(engine, request),
     do: Native.call_engine(&Native.search_run/2, engine, Map.put(request, :op, :motion))
 

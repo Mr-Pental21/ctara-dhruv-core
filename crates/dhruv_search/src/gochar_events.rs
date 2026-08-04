@@ -8,6 +8,7 @@ use dhruv_vedic_base::{
 };
 
 use crate::conjunction::body_ecliptic_lon_lat;
+use crate::conjunction_types::SearchDirection;
 use crate::error::SearchError;
 use crate::gochar_events_types::{
     EventWindow, GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
@@ -17,15 +18,15 @@ use crate::gochar_events_types::{
 use crate::jyotish::full_kundali_for_date;
 use crate::panchang::{elongation_at, masa_for_date_with_eop};
 use crate::sankranti_types::SankrantiConfig;
-use crate::search_util::{normalize_to_pm180, utc_to_jd_tdb_with_eop};
+use crate::search_util::{
+    BACKWARD_EPSILON_DAYS, FORWARD_EPSILON_DAYS, find_fixed_longitude_event, find_periodic_return,
+    normalize_to_half_period, normalize_to_pm180, utc_to_jd_tdb_with_eop,
+};
 
-const FORWARD_EPSILON_DAYS: f64 = 1e-6;
-const BACKWARD_EPSILON_DAYS: f64 = 1e-6;
 const MONTHLY_SOLAR_MAX_SCAN_DAYS: f64 = 45.0;
 const YEARLY_SOLAR_MAX_SCAN_DAYS: f64 = 410.0;
 const MONTHLY_LUNAR_MAX_SCAN_DAYS: f64 = 40.0;
 const SAME_MASA_MAX_ATTEMPTS: usize = 18;
-const FIXED_LONGITUDE_EVENT_TOLERANCE_DEG: f64 = 1e-3;
 
 /// Compute grouped Tajaka, Tithi Pravesha, and gochara conjunction events.
 pub fn gochar_events(
@@ -579,111 +580,6 @@ fn find_tithi_pravesha_return(
     Ok(None)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn find_fixed_longitude_event(
-    start_jd: f64,
-    end_jd: f64,
-    target_deg: f64,
-    step_size_days: f64,
-    max_iterations: u32,
-    convergence_days: f64,
-    longitude_fn: &dyn Fn(f64) -> Result<f64, SearchError>,
-    period_deg: f64,
-    direction: SearchDirection,
-) -> Result<Option<f64>, SearchError> {
-    let step = match direction {
-        SearchDirection::Forward => step_size_days,
-        SearchDirection::Backward => -step_size_days,
-    };
-    let total_days = (end_jd - start_jd).abs();
-    let max_steps = (total_days / step_size_days).ceil() as usize + 1;
-    let candidate = find_periodic_return(
-        start_jd,
-        step,
-        max_steps,
-        max_iterations,
-        convergence_days,
-        period_deg,
-        &|jd| {
-            if matches!(direction, SearchDirection::Forward) && jd > end_jd + FORWARD_EPSILON_DAYS {
-                return Ok(1.0);
-            }
-            if matches!(direction, SearchDirection::Backward) && jd < end_jd - BACKWARD_EPSILON_DAYS
-            {
-                return Ok(1.0);
-            }
-            let longitude = longitude_fn(jd)?;
-            Ok(normalize_to_half_period(longitude - target_deg, period_deg))
-        },
-    )?;
-    let Some(event_jd) = candidate else {
-        return Ok(None);
-    };
-    let residual_deg =
-        normalize_to_half_period(longitude_fn(event_jd)? - target_deg, period_deg).abs();
-    if residual_deg <= FIXED_LONGITUDE_EVENT_TOLERANCE_DEG {
-        Ok(Some(event_jd))
-    } else {
-        Ok(None)
-    }
-}
-
-fn find_periodic_return(
-    jd_start: f64,
-    step: f64,
-    max_steps: usize,
-    max_iterations: u32,
-    convergence_days: f64,
-    period_deg: f64,
-    f: &dyn Fn(f64) -> Result<f64, SearchError>,
-) -> Result<Option<f64>, SearchError> {
-    let mut f_prev = f(jd_start)?;
-    let mut t_prev = jd_start;
-    for _ in 0..max_steps {
-        let t_curr = t_prev + step;
-        let f_curr = f(t_curr)?;
-        if is_periodic_crossing(f_prev, f_curr, period_deg) {
-            let (mut t_a, mut f_a, mut t_b) = if t_prev < t_curr {
-                (t_prev, f_prev, t_curr)
-            } else {
-                (t_curr, f_curr, t_prev)
-            };
-            for _ in 0..max_iterations {
-                let t_mid = 0.5 * (t_a + t_b);
-                let f_mid = f(t_mid)?;
-                if f_a * f_mid <= 0.0 {
-                    t_b = t_mid;
-                } else {
-                    t_a = t_mid;
-                    f_a = f_mid;
-                }
-                if (t_b - t_a).abs() < convergence_days {
-                    break;
-                }
-            }
-            return Ok(Some(0.5 * (t_a + t_b)));
-        }
-        t_prev = t_curr;
-        f_prev = f_curr;
-    }
-    Ok(None)
-}
-
-fn is_periodic_crossing(f_a: f64, f_b: f64, period_deg: f64) -> bool {
-    f_a * f_b < 0.0 && (f_a - f_b).abs() < period_deg * 0.75
-}
-
-fn normalize_to_half_period(deg: f64, period_deg: f64) -> f64 {
-    let mut d = deg % period_deg;
-    let half = period_deg / 2.0;
-    if d > half {
-        d -= period_deg;
-    } else if d <= -half {
-        d += period_deg;
-    }
-    d
-}
-
 fn tropical_solar_longitude(engine: &Engine, jd_tdb: f64) -> Result<f64, SearchError> {
     let (longitude_deg, _latitude_deg) = body_ecliptic_lon_lat(engine, Body::Sun, jd_tdb)?;
     Ok(longitude_deg)
@@ -756,12 +652,6 @@ fn transit_step_size_days(body: GocharTransitBody) -> f64 {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SearchDirection {
-    Forward,
-    Backward,
-}
-
 #[derive(Debug, Clone, Copy)]
 struct AspectSearchSpec {
     kind: TransitAspectKind,
@@ -830,37 +720,11 @@ fn natal_graha_body(target: &crate::gochar_events_types::NatalTargetLongitude) -
 /// Guru 5th/9th (120/240), Shani 3rd/10th (60/270). Matches the classical
 /// (BPHS) special aspects used by the virupa drishti engine
 /// (`dhruv_vedic_math::drishti::special_virupa`).
-fn special_angles_for_body(body: Body) -> &'static [f64] {
+pub(crate) fn special_angles_for_body(body: Body) -> &'static [f64] {
     match body {
         Body::Jupiter => &[120.0, 240.0],
         Body::Saturn => &[60.0, 270.0],
         Body::Mars => &[90.0, 210.0],
         _ => &[],
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{FIXED_LONGITUDE_EVENT_TOLERANCE_DEG, SearchDirection, find_fixed_longitude_event};
-
-    #[test]
-    fn fixed_longitude_search_rejects_boundary_false_positive() {
-        let result = find_fixed_longitude_event(
-            0.0,
-            1.0,
-            20.0,
-            2.0,
-            32,
-            1e-8,
-            &|jd| Ok(10.0 + jd),
-            360.0,
-            SearchDirection::Forward,
-        )
-        .expect("search should not error");
-
-        assert!(
-            result.is_none(),
-            "expected no event within tolerance {FIXED_LONGITUDE_EVENT_TOLERANCE_DEG}"
-        );
     }
 }

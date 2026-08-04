@@ -19,10 +19,11 @@ use dhruv_search::grahan_types::GrahanConfig;
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::stationary_types::StationaryConfig;
 use dhruv_search::{
-    ConjunctionOperation, ConjunctionQuery, ConjunctionResult, GrahanKind, GrahanOperation,
-    GrahanQuery, GrahanResult, LunarPhaseKind, LunarPhaseOperation, LunarPhaseQuery,
-    LunarPhaseResult, MotionKind, MotionOperation, MotionQuery, MotionResult, SankrantiOperation,
-    SankrantiQuery, SankrantiResult, SankrantiTarget,
+    ConjunctionOperation, ConjunctionQuery, ConjunctionResult, FixedLongitudeOperation,
+    FixedLongitudeQuery, FixedLongitudeResult, GrahanKind, GrahanOperation, GrahanQuery,
+    GrahanResult, LunarPhaseKind, LunarPhaseOperation, LunarPhaseQuery, LunarPhaseResult,
+    MotionKind, MotionOperation, MotionQuery, MotionResult, SankrantiOperation, SankrantiQuery,
+    SankrantiResult, SankrantiTarget,
 };
 use dhruv_tara::{EarthState, TaraAccuracy, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{
@@ -1793,6 +1794,49 @@ struct SankrantiOpArgs {
 }
 
 #[derive(clap::Args)]
+struct FixedLongitudeOpArgs {
+    /// Mode: next, prev, or range
+    #[arg(long, value_parser = ["next", "prev", "range"])]
+    mode: String,
+    /// UTC datetime for next/prev mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: Option<String>,
+    /// UTC start datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    start: Option<String>,
+    /// UTC end datetime for range mode (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    end: Option<String>,
+    /// Fixed target sidereal longitude in degrees
+    #[arg(long)]
+    target_deg: f64,
+    /// Comma-separated angle offsets in degrees added to the target
+    /// (default: 0 = conjunction only)
+    #[arg(long)]
+    angles: Option<String>,
+    /// Also search the body's classical special-aspect angles (Mars
+    /// 90/210, Jupiter 120/240, Saturn 60/270) cast onto the target
+    #[arg(long)]
+    special_angles: bool,
+    /// Transit body code (NAIF code, or 10007=Rahu, 10008=Ketu; default 10=Sun)
+    #[arg(long, default_value_t = 10)]
+    body: i32,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Coarse scan step in days (default: per-body ingress step)
+    #[arg(long)]
+    step_days: Option<f64>,
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
 struct SearchChandraGrahanArgs {
     #[arg(long)]
     start: String,
@@ -2902,6 +2946,9 @@ enum Commands {
     LunarPhase(LunarPhaseOpArgs),
     /// Unified sankranti operation (`--mode next|prev|range [--rashi 0..11]`)
     Sankranti(SankrantiOpArgs),
+    /// Find when a moving body reaches a fixed sidereal longitude
+    /// (plus an optional angle set)
+    FixedLongitude(FixedLongitudeOpArgs),
     /// Find next lunar eclipse
     NextChandraGrahan {
         #[arg(long)]
@@ -7170,6 +7217,114 @@ fn main() {
             }
         }
 
+        Commands::FixedLongitude(args) => {
+            let system = require_aya_system(args.ayanamsha);
+            let body = require_transit_body(args.body);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let mut config = SankrantiConfig::for_body(system, args.nutation, body);
+            if let Some(step) = args.step_days {
+                config.step_size_days = step;
+            }
+            let angles: Vec<f64> = match args.angles.as_deref() {
+                None => Vec::new(),
+                Some(list) => list
+                    .split(',')
+                    .map(|part| {
+                        part.trim().parse::<f64>().unwrap_or_else(|_| {
+                            eprintln!("Invalid --angles entry: {part}");
+                            std::process::exit(1);
+                        })
+                    })
+                    .collect(),
+            };
+            let parse_date_arg = |value: Option<&str>, flag: &str| {
+                let date = value.unwrap_or_else(|| {
+                    eprintln!("--{flag} is required when --mode {}", args.mode);
+                    std::process::exit(1);
+                });
+                parse_utc(date).unwrap_or_else(|e| {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                })
+            };
+            let query = match args.mode.as_str() {
+                "next" => {
+                    let utc = parse_date_arg(args.date.as_deref(), "date");
+                    FixedLongitudeQuery::Next {
+                        at_jd_tdb: utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy),
+                    }
+                }
+                "prev" => {
+                    let utc = parse_date_arg(args.date.as_deref(), "date");
+                    FixedLongitudeQuery::Prev {
+                        at_jd_tdb: utc_to_jd_tdb_with_policy(&utc, engine.lsk(), time_policy),
+                    }
+                }
+                "range" => {
+                    let utc_start = parse_date_arg(args.start.as_deref(), "start");
+                    let utc_end = parse_date_arg(args.end.as_deref(), "end");
+                    FixedLongitudeQuery::Range {
+                        start_jd_tdb: utc_to_jd_tdb_with_policy(
+                            &utc_start,
+                            engine.lsk(),
+                            time_policy,
+                        ),
+                        end_jd_tdb: utc_to_jd_tdb_with_policy(&utc_end, engine.lsk(), time_policy),
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid mode: {}", args.mode);
+                    std::process::exit(1);
+                }
+            };
+            let op = FixedLongitudeOperation {
+                body,
+                target_longitude_deg: args.target_deg,
+                target_angles_deg: angles,
+                include_special_angles: args.special_angles,
+                config,
+                query,
+            };
+            let print_event = |ev: &dhruv_search::FixedLongitudeEvent| {
+                println!(
+                    "  {} at {}  matched: {:.6}° (target {:.6}° + angle {:.6}°)",
+                    ev.body.name(),
+                    ev.utc,
+                    ev.matched_longitude_deg,
+                    ev.target_longitude_deg,
+                    ev.angle_deg
+                );
+                println!(
+                    "    sid: {:.6}°  trop: {:.6}°  separation: {:.2e}°",
+                    ev.sidereal_longitude_deg, ev.tropical_longitude_deg, ev.actual_separation_deg
+                );
+            };
+            match dhruv_search::fixed_longitude(&engine, &op) {
+                Ok(FixedLongitudeResult::Single(Some(ev))) => {
+                    let label = if args.mode == "prev" {
+                        "Previous fixed-longitude event:"
+                    } else {
+                        "Next fixed-longitude event:"
+                    };
+                    println!("{label}");
+                    print_event(&ev);
+                }
+                Ok(FixedLongitudeResult::Single(None)) => {
+                    println!("No fixed-longitude event found in scan window");
+                }
+                Ok(FixedLongitudeResult::Many(events)) => {
+                    println!("Found {} fixed-longitude events:", events.len());
+                    for ev in &events {
+                        print_event(ev);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         Commands::NextChandraGrahan { date, bsp, lsk } => {
             let utc = parse_utc(&date).unwrap_or_else(|e| {
                 eprintln!("{e}");
@@ -10711,7 +10866,11 @@ fn print_charakaraka_event(event: &dhruv_search::CharakarakaChangeEvent) {
     if event.before.used_eight_karakas != event.after.used_eight_karakas {
         println!(
             "    mode:    {}-karaka -> {}-karaka",
-            if event.before.used_eight_karakas { 8 } else { 7 },
+            if event.before.used_eight_karakas {
+                8
+            } else {
+                7
+            },
             if event.after.used_eight_karakas { 8 } else { 7 }
         );
     }
@@ -13608,6 +13767,37 @@ mod tests {
         assert_eq!(args.at.as_deref(), Some("2024-01-01T00:00:00Z"));
         assert_eq!(args.scheme, "mixed-parashara");
         assert_eq!(args.max_events, 0);
+    }
+
+    #[test]
+    fn test_fixed_longitude_args_parse() {
+        let cli = Cli::try_parse_from([
+            "dhruv",
+            "fixed-longitude",
+            "--mode",
+            "next",
+            "--date",
+            "2024-01-01T00:00:00Z",
+            "--target-deg",
+            "123.5",
+            "--angles",
+            "0,180",
+            "--special-angles",
+            "--body",
+            "499",
+        ])
+        .expect("fixed-longitude should parse");
+        let Commands::FixedLongitude(args) = cli.command else {
+            panic!("expected fixed-longitude command");
+        };
+        assert_eq!(args.mode, "next");
+        assert_eq!(args.date.as_deref(), Some("2024-01-01T00:00:00Z"));
+        assert_eq!(args.target_deg, 123.5);
+        assert_eq!(args.angles.as_deref(), Some("0,180"));
+        assert!(args.special_angles);
+        assert_eq!(args.body, 499);
+        assert_eq!(args.ayanamsha, 0);
+        assert_eq!(args.step_days, None);
     }
 
     #[test]

@@ -1,13 +1,13 @@
 # dhruv_search C ABI Coverage
 
 Scope: crate-root runtime/query APIs re-exported by `dhruv_search`
-(77 functions; enumerated in `docs/SEARCH_RUNTIME_APIS.md`).
+(80 functions; enumerated in `docs/SEARCH_RUNTIME_APIS.md`).
 
 The search/event families are covered by unified operation entry points
 (`dhruv_*_search_ex` request structs mirroring the `dhruv_search`
 operations) rather than one export per crate-root function; per-moment
 panchang/jyotish helpers keep direct exports. Functional coverage is
-`77 / 77` when the gaps below are satisfied through other exports.
+`80 / 80` when the gaps below are satisfied through other exports.
 
 ## Not Wrapped Directly
 
@@ -47,6 +47,12 @@ Functional coverage notes:
   or 10007/10008 — covers the generalized `next_ingress`, `prev_ingress`,
   `search_ingresses`, `next_specific_ingress`, `prev_specific_ingress` as
   well as the classical Sun wrappers) plus
+  `dhruv_sankranti_config_default`
+- Fixed-longitude search: `dhruv_fixed_longitude_search` (next/prev/range
+  with `body_code` incl. 10007/10008, up to
+  `DHRUV_MAX_FIXED_LONGITUDE_ANGLES` angle offsets, and
+  `include_special_angles`, covering `next_fixed_longitude`,
+  `prev_fixed_longitude`, `search_fixed_longitudes`); the config reuses
   `dhruv_sankranti_config_default`
 - Stationary/max-speed: `dhruv_motion_search_ex` (kind + next/prev/range
   with `body_code` incl. 10007/10008, `node_mode`, optional sidereal echo

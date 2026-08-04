@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=87`
+- ABI target: `DHRUV_API_VERSION=88`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 - Primary distribution: npm package with bundled platform prebuilds from unified `vX.Y.Z` tags
@@ -82,7 +82,7 @@ Public modules included in this wrapper:
 - runtime SPK replacement and listing through `engine.replaceSpks(...)` and
   `engine.listSpks()`
 - time conversions, nutation, ayanamsha, and lunar-node APIs
-- unified search APIs (conjunction/grahan/motion/lunar phase/sankranti/gochar events), including Rahu/Ketu bodies, any-body sankranti, multi-angle conjunction sweeps, and optional sidereal echoes (see "Search Notes")
+- unified search APIs (conjunction/grahan/motion/lunar phase/sankranti/fixed longitude/gochar events), including Rahu/Ketu bodies, any-body sankranti, multi-angle conjunction sweeps, and optional sidereal echoes (see "Search Notes")
 - panchang/date APIs (`compute_rise_set*`, `compute_all_events*`, `compute_bhavas*`, `lagna/mc/ramc`, `tithi`, `karana`, `yoga`, `nakshatra`, `vaar`, `hora`, `ghatika`, `masa`, `ayana`, `varsha`)
 - unified panchang selection (`panchangComputeEx` with a `PANCHANG_INCLUDE`
   bitmask and optional `location`; the same mask drives
@@ -125,6 +125,19 @@ retrograde re-ingresses. Events keep `sunSiderealLongitudeDeg`/
 `sunTropicalLongitudeDeg` as legacy aliases for the tracked body and add
 `bodyCode`, `siderealLongitudeDeg`, `tropicalLongitudeDeg`, and `isRetrograde`
 (`true` when the boundary was crossed in retrograde motion).
+
+`fixedLongitudeSearch(engine, request, capacity?)` finds when a moving body
+reaches a fixed sidereal longitude — the root-find behind transit-to-natal
+timeline search. `request.queryMode` is `0` (next), `1` (prev), or `2`
+(range); `targetLongitudeDeg` is required; optional `targetAnglesDeg`
+(offsets added to the target mod 360, at most 16; absent = conjunction
+only), `includeSpecialAngles` (the body's classical special aspects —
+Mars 90/210, Jupiter 120/240, Saturn 60/270 — cast onto the target),
+`bodyCode` (absent/`0` = Sun), and `config` (sankranti config object).
+Events carry `matchedLongitudeDeg` (target + angle), `angleDeg`,
+`siderealLongitudeDeg`, `tropicalLongitudeDeg`, and
+`actualSeparationDeg`; a range crossing the ephemeris coverage edge
+returns the events found up to the edge.
 
 `conjunctionSearch` requests accept an optional `targetSeparationsDeg` array
 (up to 16 angles) to sweep several separation angles in one range search;

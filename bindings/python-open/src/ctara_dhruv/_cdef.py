@@ -41,12 +41,13 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       87
+#define DHRUV_API_VERSION       88
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
 #define DHRUV_MAX_OSCULATING_APOGEE_REQUESTS 32
 #define DHRUV_MAX_CONJUNCTION_TARGETS 16
+#define DHRUV_MAX_FIXED_LONGITUDE_ANGLES 16
 #define DHRUV_AMSHA_VARIATION_NAME_CAPACITY 48
 #define DHRUV_AMSHA_VARIATION_LABEL_CAPACITY 64
 #define DHRUV_AMSHA_VARIATION_DESCRIPTION_CAPACITY 160
@@ -1043,6 +1044,43 @@ typedef struct {
      * 10007 (Rahu) / 10008 (Ketu). */
     int32_t body_code;
 } DhruvSankrantiSearchRequest;
+
+/* v88 fixed-longitude search: a moving body reaching a fixed sidereal
+ * longitude (+ angle offset). */
+typedef struct {
+    DhruvUtcTime utc;
+    double  jd_tdb;
+    int32_t body_code;              /* NAIF code, or 10007/10008 */
+    double  target_longitude_deg;   /* base target, [0, 360) */
+    double  angle_deg;              /* matched offset, [0, 360) */
+    double  matched_longitude_deg;  /* (target + angle) mod 360 */
+    double  sidereal_longitude_deg;
+    double  tropical_longitude_deg;
+    double  actual_separation_deg;  /* |sidereal - matched| residual */
+} DhruvFixedLongitudeEvent;
+
+typedef struct {
+    int32_t query_mode;             /* DHRUV_FIXED_LONGITUDE_QUERY_MODE_* */
+    int32_t time_kind;              /* DHRUV_SEARCH_TIME_* */
+    double  at_jd_tdb;
+    double  start_jd_tdb;
+    double  end_jd_tdb;
+    DhruvUtcTime at_utc;
+    DhruvUtcTime start_utc;
+    DhruvUtcTime end_utc;
+    DhruvSankrantiConfig config;
+    /* 0 = Sun (back-compat default), otherwise a NAIF code or
+     * 10007 (Rahu) / 10008 (Ketu). */
+    int32_t body_code;
+    double  target_longitude_deg;
+    /* Valid entries in target_angles_deg (0 = conjunction only). */
+    uint32_t angle_count;
+    double  target_angles_deg[DHRUV_MAX_FIXED_LONGITUDE_ANGLES];
+    /* Nonzero: also search the body's classical special-aspect angles
+     * (Mars 90/210, Jupiter 120/240, Saturn 60/270) applied so the
+     * moving body casts that aspect onto the target. */
+    uint8_t include_special_angles;
+} DhruvFixedLongitudeRequest;
 
 typedef struct {
     int32_t phase_kind;
@@ -2445,6 +2483,15 @@ DhruvStatus dhruv_sankranti_search_ex(
     DhruvSankrantiEvent *out_event,
     uint8_t *out_found,
     DhruvSankrantiEvent *out_events,
+    uint32_t out_capacity,
+    uint32_t *out_count);
+/* v88: unified fixed-longitude search. */
+DhruvStatus dhruv_fixed_longitude_search(
+    const DhruvEngineHandle *engine,
+    const DhruvFixedLongitudeRequest *request,
+    DhruvFixedLongitudeEvent *out_event,
+    uint8_t *out_found,
+    DhruvFixedLongitudeEvent *out_events,
     uint32_t out_capacity,
     uint32_t *out_count);
 /* --- Calendar --- */

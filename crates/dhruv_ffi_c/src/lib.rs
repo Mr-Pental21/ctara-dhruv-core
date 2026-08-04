@@ -13,7 +13,8 @@ use dhruv_core::{
 use dhruv_frames::PrecessionModel;
 use dhruv_search::{
     ChandraGrahan, ChandraGrahanType, ConjunctionConfig, ConjunctionEvent, ConjunctionOperation,
-    ConjunctionQuery, ConjunctionResult, EclipseGeoPoint, EventWindow, GOCHAR_TRANSIT_CODE_KETU,
+    ConjunctionQuery, ConjunctionResult, EclipseGeoPoint, EventWindow, FixedLongitudeEvent,
+    FixedLongitudeOperation, FixedLongitudeQuery, FixedLongitudeResult, GOCHAR_TRANSIT_CODE_KETU,
     GOCHAR_TRANSIT_CODE_RAHU, GocharEventsConfig, GocharEventsOperation, GocharEventsResult,
     GocharReference, GocharTransitBody, GrahaLongitudeKind, GrahaLongitudesConfig, GrahanConfig,
     LunarPhase, MaxSpeedEvent, MaxSpeedType, MotionKind, MotionOperation, MotionQuery,
@@ -67,7 +68,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 87;
+pub const DHRUV_API_VERSION: u32 = 88;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -6177,6 +6178,81 @@ pub struct DhruvSankrantiSearchRequest {
     pub body_code: i32,
 }
 
+/// Maximum angle offsets accepted by a fixed-longitude request.
+pub const DHRUV_MAX_FIXED_LONGITUDE_ANGLES: usize = 16;
+
+/// Fixed-longitude query mode: next event after the anchor time.
+pub const DHRUV_FIXED_LONGITUDE_QUERY_MODE_NEXT: i32 = 0;
+/// Fixed-longitude query mode: previous event before the anchor time.
+pub const DHRUV_FIXED_LONGITUDE_QUERY_MODE_PREV: i32 = 1;
+/// Fixed-longitude query mode: all events in a time range.
+pub const DHRUV_FIXED_LONGITUDE_QUERY_MODE_RANGE: i32 = 2;
+
+/// C-compatible fixed-longitude event: a moving body reaching a fixed
+/// sidereal longitude (+ angle offset).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvFixedLongitudeEvent {
+    pub utc: DhruvUtcTime,
+    /// Event time as Julian Date (TDB).
+    pub jd_tdb: f64,
+    /// Moving body code (NAIF, or 10007/10008 for Rahu/Ketu).
+    pub body_code: i32,
+    /// Base target sidereal longitude, normalized to [0, 360).
+    pub target_longitude_deg: f64,
+    /// Angle offset matched by this event, normalized to [0, 360).
+    pub angle_deg: f64,
+    /// The longitude actually reached: `(target + angle) mod 360`.
+    pub matched_longitude_deg: f64,
+    /// Body's sidereal longitude at the event (degrees).
+    pub sidereal_longitude_deg: f64,
+    /// Body's ecliptic tropical longitude at the event (degrees).
+    pub tropical_longitude_deg: f64,
+    /// Residual |sidereal - matched| at the refined root (degrees).
+    pub actual_separation_deg: f64,
+}
+
+/// C-compatible request for the unified fixed-longitude search.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvFixedLongitudeRequest {
+    /// Query mode selector (`DHRUV_FIXED_LONGITUDE_QUERY_MODE_*`).
+    pub query_mode: i32,
+    /// Time selector (`DHRUV_SEARCH_TIME_*`).
+    pub time_kind: i32,
+    /// Anchor time for next/prev modes (JD TDB).
+    pub at_jd_tdb: f64,
+    /// Start of range window for range mode (JD TDB).
+    pub start_jd_tdb: f64,
+    /// End of range window for range mode (JD TDB).
+    pub end_jd_tdb: f64,
+    /// Anchor time for next/prev modes (UTC).
+    pub at_utc: DhruvUtcTime,
+    /// Start of range window for range mode (UTC).
+    pub start_utc: DhruvUtcTime,
+    /// End of range window for range mode (UTC).
+    pub end_utc: DhruvUtcTime,
+    /// Longitude model + numerical parameters (shared with sankranti).
+    pub config: DhruvSankrantiConfig,
+    /// Moving body: 0 = Sun (back-compat default for zero-initialized
+    /// requests), otherwise a NAIF body code or 10007 (Rahu) / 10008
+    /// (Ketu); the node model is selected by `config.node_mode`.
+    pub body_code: i32,
+    /// Fixed target sidereal longitude on the configured frame, degrees.
+    pub target_longitude_deg: f64,
+    /// Number of valid entries in `target_angles_deg` (0 = conjunction
+    /// only).
+    pub angle_count: u32,
+    /// Angle offsets added to the target (mod 360); an event fires when
+    /// the body reaches each offset longitude.
+    pub target_angles_deg: [f64; DHRUV_MAX_FIXED_LONGITUDE_ANGLES],
+    /// When nonzero, additionally search the body's classical
+    /// special-aspect angles (Mars 90/210, Jupiter 120/240, Saturn
+    /// 60/270) applied so the moving body casts that aspect onto the
+    /// target.
+    pub include_special_angles: u8,
+}
+
 /// C-compatible Masa info.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -6462,6 +6538,20 @@ fn sankranti_event_to_ffi(event: &dhruv_search::SankrantiEvent) -> DhruvSankrant
         sidereal_longitude_deg: event.sidereal_longitude_deg,
         tropical_longitude_deg: event.tropical_longitude_deg,
         is_retrograde: u8::from(event.is_retrograde),
+    }
+}
+
+fn fixed_longitude_event_to_ffi(event: &FixedLongitudeEvent) -> DhruvFixedLongitudeEvent {
+    DhruvFixedLongitudeEvent {
+        utc: utc_time_to_ffi(&event.utc),
+        jd_tdb: event.jd_tdb,
+        body_code: event.body.code(),
+        target_longitude_deg: event.target_longitude_deg,
+        angle_deg: event.angle_deg,
+        matched_longitude_deg: event.matched_longitude_deg,
+        sidereal_longitude_deg: event.sidereal_longitude_deg,
+        tropical_longitude_deg: event.tropical_longitude_deg,
+        actual_separation_deg: event.actual_separation_deg,
     }
 }
 
@@ -6990,6 +7080,155 @@ pub unsafe extern "C" fn dhruv_sankranti_search_ex(
                 }
             }
             _ => DhruvStatus::InvalidQuery,
+        }
+    })
+}
+
+/// Unified fixed-longitude search entrypoint: when does a moving body
+/// reach a fixed sidereal longitude (plus an optional angle set).
+///
+/// Mode behavior:
+/// - `DHRUV_FIXED_LONGITUDE_QUERY_MODE_NEXT` /
+///   `DHRUV_FIXED_LONGITUDE_QUERY_MODE_PREV`: writes single-event result
+///   to `out_event` and found flag to `out_found`.
+/// - `DHRUV_FIXED_LONGITUDE_QUERY_MODE_RANGE`: writes events to
+///   `out_events[..max_count]` and actual count to `out_count`. A range
+///   reaching past the loaded ephemeris coverage returns the events found
+///   up to the edge.
+///
+/// Angle behavior: `angle_count = 0` searches the conjunction offset only;
+/// otherwise each of `target_angles_deg[..angle_count]` is added to the
+/// target (mod 360). `include_special_angles != 0` additionally searches
+/// the body's classical special-aspect angles applied so the moving body
+/// casts that aspect onto the target.
+///
+/// # Safety
+/// `engine` and `request` must be valid and non-null.
+/// Output pointers required depend on `query_mode`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_fixed_longitude_search(
+    engine: *const DhruvEngineHandle,
+    request: *const DhruvFixedLongitudeRequest,
+    out_event: *mut DhruvFixedLongitudeEvent,
+    out_found: *mut u8,
+    out_events: *mut DhruvFixedLongitudeEvent,
+    max_count: u32,
+    out_count: *mut u32,
+) -> DhruvStatus {
+    ffi_boundary(|| {
+        if engine.is_null() || request.is_null() {
+            return DhruvStatus::NullPointer;
+        }
+
+        let engine_ref = unsafe { &*engine };
+        let req = unsafe { &*request };
+        if let Err(status) = validate_search_time_kind(req.time_kind) {
+            return status;
+        }
+        let config = match sankranti_config_from_ffi(&req.config) {
+            Some(c) => c,
+            None => return DhruvStatus::InvalidQuery,
+        };
+        let body = if req.body_code == 0 {
+            TransitBody::Body(Body::Sun)
+        } else {
+            match TransitBody::from_code(req.body_code) {
+                Some(b) => b,
+                None => return DhruvStatus::InvalidQuery,
+            }
+        };
+        let angle_count = req.angle_count as usize;
+        if angle_count > DHRUV_MAX_FIXED_LONGITUDE_ANGLES {
+            return DhruvStatus::InvalidQuery;
+        }
+        let angles = req.target_angles_deg[..angle_count].to_vec();
+
+        let query = match req.query_mode {
+            DHRUV_FIXED_LONGITUDE_QUERY_MODE_NEXT => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match search_time_to_jd_tdb(engine_ref, req.time_kind, req.at_jd_tdb, req.at_utc) {
+                    Ok(at_jd_tdb) => FixedLongitudeQuery::Next { at_jd_tdb },
+                    Err(status) => return status,
+                }
+            }
+            DHRUV_FIXED_LONGITUDE_QUERY_MODE_PREV => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match search_time_to_jd_tdb(engine_ref, req.time_kind, req.at_jd_tdb, req.at_utc) {
+                    Ok(at_jd_tdb) => FixedLongitudeQuery::Prev { at_jd_tdb },
+                    Err(status) => return status,
+                }
+            }
+            DHRUV_FIXED_LONGITUDE_QUERY_MODE_RANGE => {
+                if out_events.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let start = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.start_jd_tdb,
+                    req.start_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                let end = match search_time_to_jd_tdb(
+                    engine_ref,
+                    req.time_kind,
+                    req.end_jd_tdb,
+                    req.end_utc,
+                ) {
+                    Ok(v) => v,
+                    Err(status) => return status,
+                };
+                FixedLongitudeQuery::Range {
+                    start_jd_tdb: start,
+                    end_jd_tdb: end,
+                }
+            }
+            _ => return DhruvStatus::InvalidQuery,
+        };
+
+        let op = FixedLongitudeOperation {
+            body,
+            target_longitude_deg: req.target_longitude_deg,
+            target_angles_deg: angles,
+            include_special_angles: req.include_special_angles != 0,
+            config,
+            query,
+        };
+
+        match dhruv_search::fixed_longitude(engine_ref, &op) {
+            Ok(FixedLongitudeResult::Single(found)) => {
+                if out_event.is_null() || out_found.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                match found {
+                    Some(event) => unsafe {
+                        *out_event = fixed_longitude_event_to_ffi(&event);
+                        *out_found = 1;
+                    },
+                    None => unsafe { *out_found = 0 },
+                }
+                DhruvStatus::Ok
+            }
+            Ok(FixedLongitudeResult::Many(events)) => {
+                if out_events.is_null() || out_count.is_null() {
+                    return DhruvStatus::NullPointer;
+                }
+                let count = events.len().min(max_count as usize);
+                let out_slice =
+                    unsafe { std::slice::from_raw_parts_mut(out_events, max_count as usize) };
+                for (i, event) in events.iter().take(count).enumerate() {
+                    out_slice[i] = fixed_longitude_event_to_ffi(event);
+                }
+                unsafe { *out_count = count as u32 };
+                DhruvStatus::Ok
+            }
+            Err(e) => DhruvStatus::from(&e),
         }
     })
 }
@@ -15520,7 +15759,9 @@ pub struct DhruvCharakarakaChangeEvent {
     pub after: DhruvCharakarakaResult,
 }
 
-fn charakaraka_result_to_ffi(result: &dhruv_vedic_base::CharakarakaResult) -> DhruvCharakarakaResult {
+fn charakaraka_result_to_ffi(
+    result: &dhruv_vedic_base::CharakarakaResult,
+) -> DhruvCharakarakaResult {
     let mut out = DhruvCharakarakaResult::zeroed();
     out.scheme = result.scheme as u8;
     out.used_eight_karakas = result.used_eight_karakas as u8;

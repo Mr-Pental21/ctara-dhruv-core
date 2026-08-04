@@ -174,6 +174,85 @@ fn ffi_sankranti_search_ex_default_config_works() {
 }
 
 #[test]
+fn ffi_fixed_longitude_search_next_and_range_work() {
+    let Some(engine_ptr) = make_engine() else {
+        return;
+    };
+
+    let mut request = DhruvFixedLongitudeRequest {
+        query_mode: DHRUV_FIXED_LONGITUDE_QUERY_MODE_NEXT,
+        time_kind: DHRUV_SEARCH_TIME_JD_TDB,
+        at_jd_tdb: calendar_to_jd(2024, 1, 1.0),
+        start_jd_tdb: 0.0,
+        end_jd_tdb: 0.0,
+        at_utc: ZEROED_UTC,
+        start_utc: ZEROED_UTC,
+        end_utc: ZEROED_UTC,
+        config: dhruv_sankranti_config_default(),
+        body_code: 0,
+        target_longitude_deg: 30.0,
+        angle_count: 0,
+        target_angles_deg: [0.0; DHRUV_MAX_FIXED_LONGITUDE_ANGLES],
+        include_special_angles: 0,
+    };
+    let mut event: DhruvFixedLongitudeEvent = unsafe { std::mem::zeroed() };
+    let mut found: u8 = 0;
+
+    // SAFETY: Valid pointers and request for this test scope.
+    let status = unsafe {
+        dhruv_fixed_longitude_search(
+            engine_ptr,
+            &request,
+            &mut event,
+            &mut found,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(found, 1);
+    assert_eq!(event.body_code, Body::Sun.code());
+    assert!(angular_separation_deg(event.matched_longitude_deg, 30.0) < 1e-9);
+    assert!(event.actual_separation_deg < 1e-3);
+    assert!(event.jd_tdb > request.at_jd_tdb);
+
+    // Range mode: one Sun lap with two angle offsets -> two events.
+    request.query_mode = DHRUV_FIXED_LONGITUDE_QUERY_MODE_RANGE;
+    request.start_jd_tdb = calendar_to_jd(2024, 1, 1.0);
+    request.end_jd_tdb = calendar_to_jd(2025, 1, 1.0);
+    request.target_longitude_deg = 100.0;
+    request.angle_count = 2;
+    request.target_angles_deg[0] = 0.0;
+    request.target_angles_deg[1] = 180.0;
+
+    let mut events: [DhruvFixedLongitudeEvent; 8] = unsafe { std::mem::zeroed() };
+    let mut count: u32 = 0;
+
+    // SAFETY: Valid pointers and request for this test scope.
+    let status = unsafe {
+        dhruv_fixed_longitude_search(
+            engine_ptr,
+            &request,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            events.as_mut_ptr(),
+            events.len() as u32,
+            &mut count,
+        )
+    };
+    assert_eq!(status, DhruvStatus::Ok);
+    assert_eq!(count, 2);
+    assert!(events[0].jd_tdb < events[1].jd_tdb);
+    for event in &events[..count as usize] {
+        assert!(event.actual_separation_deg < 1e-3);
+    }
+
+    // SAFETY: Pointer was returned by dhruv_engine_new.
+    unsafe { dhruv_engine_free(engine_ptr) };
+}
+
+#[test]
 fn ffi_conjunction_search_ex_default_config_works() {
     let Some(engine_ptr) = make_engine() else {
         return;
@@ -5389,7 +5468,7 @@ fn ffi_charakaraka_events_smoke_and_truncation() {
             &from,
             &to,
             &sankranti,
-            0u8 /* EIGHT */,
+            0u8, /* EIGHT */
             0,
             &mut handle,
         )
@@ -5439,7 +5518,7 @@ fn ffi_charakaraka_events_smoke_and_truncation() {
             &from,
             &to,
             &sankranti,
-            0u8 /* EIGHT */,
+            0u8, /* EIGHT */
             3,
             &mut capped,
         )
@@ -5489,13 +5568,8 @@ fn ffi_next_prev_charakaraka_event() {
     let mut event: DhruvCharakarakaChangeEvent = unsafe { std::mem::zeroed() };
     let s = unsafe {
         dhruv_next_charakaraka_event(
-            engine_ptr,
-            eop_ptr,
-            &at,
-            &sankranti,
-            3u8 /* MIXED_PARASHARA */,
-            &mut found,
-            &mut event,
+            engine_ptr, eop_ptr, &at, &sankranti, 3u8, /* MIXED_PARASHARA */
+            &mut found, &mut event,
         )
     };
     assert_eq!(s, DhruvStatus::Ok);
@@ -5510,7 +5584,7 @@ fn ffi_next_prev_charakaraka_event() {
             eop_ptr,
             &at,
             &sankranti,
-            3u8 /* MIXED_PARASHARA */,
+            3u8, /* MIXED_PARASHARA */
             &mut prev_found,
             &mut prev_event,
         )

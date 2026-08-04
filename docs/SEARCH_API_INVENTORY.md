@@ -142,6 +142,33 @@ still propagates errors. See `docs/clean_room_ingress.md`.
 `SankrantiConfig` carries `node_mode: NodeMode` (default true/osculating),
 used when the ingress body is Rahu/Ketu.
 
+## Fixed-Longitude Search APIs
+
+Source: `crates/dhruv_search/src/fixed_longitude.rs`
+
+When does a moving `TransitBody` reach a fixed sidereal longitude
+(optionally offset by an angle set). Shares the sankranti longitude model
+and numerical knobs (`SankrantiConfig`); angles are offsets added to the
+target (mod 360), empty = conjunction only. next/prev scans are bounded
+at 13 × `TransitBody::ingress_max_scan_days` (a specific longitude can
+take most of a zodiac lap); hitting the ephemeris coverage edge mid-scan
+ends next/prev with `Ok(None)` and range sweeps with the events found up
+to the edge. Earth is rejected.
+
+| Function | Inputs | Output | What it does |
+|---|---|---|---|
+| `next_fixed_longitude` | `engine`, `body: TransitBody`, `at_jd_tdb`, `target_longitude_deg`, `angles_deg: &[f64]`, `config` | `Result<Option<FixedLongitudeEvent>, SearchError>` | Next time `body` reaches `target + angle` (mod 360) for any angle in the set; earliest across angles wins. |
+| `prev_fixed_longitude` | `engine`, `body: TransitBody`, `at_jd_tdb`, `target_longitude_deg`, `angles_deg: &[f64]`, `config` | `Result<Option<FixedLongitudeEvent>, SearchError>` | Previous reach before the anchor; latest across angles wins. |
+| `search_fixed_longitudes` | `engine`, `body: TransitBody`, `start_jd_tdb`, `end_jd_tdb`, `target_longitude_deg`, `angles_deg: &[f64]`, `config` | `Result<Vec<FixedLongitudeEvent>, SearchError>` | Every reach event in the range, sorted by `(jd_tdb, angle_deg)`. |
+
+`FixedLongitudeEvent` carries `utc`, `jd_tdb`, `body`,
+`target_longitude_deg`, `angle_deg`, `matched_longitude_deg`,
+`sidereal_longitude_deg`, `tropical_longitude_deg`, and
+`actual_separation_deg`. The operation facade
+(`dhruv_search::fixed_longitude`) adds the `include_special_angles`
+expansion (the body's classical special aspects cast onto the target;
+see `docs/UNIFIED_OPERATIONS_SPEC.md`).
+
 ## Stationary and Max-Speed APIs
 
 Source: `crates/dhruv_search/src/stationary.rs`, `crates/dhruv_search/src/stationary_types.rs`

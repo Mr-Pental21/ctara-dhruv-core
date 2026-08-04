@@ -2509,6 +2509,21 @@ napi_value WriteSankrantiEvent(napi_env env, const DhruvSankrantiEvent& ev) {
     return obj;
 }
 
+napi_value WriteFixedLongitudeEvent(napi_env env, const DhruvFixedLongitudeEvent& ev) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "utc", WriteUtcTime(env, ev.utc));
+    SetNamed(env, obj, "jdTdb", MakeDouble(env, ev.jd_tdb));
+    SetNamed(env, obj, "bodyCode", MakeInt32(env, ev.body_code));
+    SetNamed(env, obj, "targetLongitudeDeg", MakeDouble(env, ev.target_longitude_deg));
+    SetNamed(env, obj, "angleDeg", MakeDouble(env, ev.angle_deg));
+    SetNamed(env, obj, "matchedLongitudeDeg", MakeDouble(env, ev.matched_longitude_deg));
+    SetNamed(env, obj, "siderealLongitudeDeg", MakeDouble(env, ev.sidereal_longitude_deg));
+    SetNamed(env, obj, "tropicalLongitudeDeg", MakeDouble(env, ev.tropical_longitude_deg));
+    SetNamed(env, obj, "actualSeparationDeg", MakeDouble(env, ev.actual_separation_deg));
+    return obj;
+}
+
 napi_value WriteStationaryEvent(napi_env env, const DhruvStationaryEvent& ev) {
     napi_value obj;
     napi_create_object(env, &obj);
@@ -5430,6 +5445,97 @@ napi_value SankrantiSearch(napi_env env, napi_callback_info info) {
         napi_create_array_with_length(env, out_count, &arr);
         for (uint32_t i = 0; i < out_count; ++i) {
             napi_set_element(env, arr, i, WriteSankrantiEvent(env, events[i]));
+        }
+        SetNamed(env, out, "events", arr);
+    }
+    return out;
+}
+
+napi_value FixedLongitudeSearch(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 3) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    void* ptr = nullptr;
+    if (!ReadExternalPtr(env, args[0], &ptr)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    DhruvFixedLongitudeRequest req{};
+    DhruvSankrantiConfig cfg = dhruv_sankranti_config_default();
+    napi_value v;
+    if (!GetNamedProperty(env, args[1], "queryMode", &v) || !GetInt32(env, v, &req.query_mode)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (!GetNamedProperty(env, args[1], "targetLongitudeDeg", &v) || !GetDouble(env, v, &req.target_longitude_deg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    bool has_body_code = false;
+    if (!GetOptionalNamedProperty(env, args[1], "bodyCode", &v, &has_body_code)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_body_code && !GetInt32(env, v, &req.body_code)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    bool has_angles = false;
+    if (!GetOptionalNamedProperty(env, args[1], "targetAnglesDeg", &v, &has_angles)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_angles) {
+        uint32_t len = 0;
+        if (napi_get_array_length(env, v, &len) != napi_ok || len > DHRUV_MAX_FIXED_LONGITUDE_ANGLES) {
+            return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        }
+        for (uint32_t i = 0; i < len; ++i) {
+            napi_value item;
+            if (napi_get_element(env, v, i, &item) != napi_ok ||
+                !GetDouble(env, item, &req.target_angles_deg[i])) {
+                return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            }
+        }
+        req.angle_count = len;
+    }
+    bool has_special = false;
+    if (!GetOptionalNamedProperty(env, args[1], "includeSpecialAngles", &v, &has_special)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_special) {
+        bool b = false;
+        if (!GetBool(env, v, &b)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        req.include_special_angles = b ? 1 : 0;
+    }
+    if (!ReadSearchTimeRequest(
+            env,
+            args[1],
+            req.query_mode,
+            &req.time_kind,
+            &req.at_jd_tdb,
+            &req.start_jd_tdb,
+            &req.end_jd_tdb,
+            &req.at_utc,
+            &req.start_utc,
+            &req.end_utc)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+
+    bool has_cfg = false;
+    napi_value cfg_obj;
+    if (!GetOptionalNamedProperty(env, args[1], "config", &cfg_obj, &has_cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    if (has_cfg && !ReadSankrantiConfig(env, cfg_obj, &cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    req.config = cfg;
+
+    uint32_t capacity = 0;
+    if (!GetUint32(env, args[2], &capacity)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+
+    DhruvFixedLongitudeEvent out_event{};
+    uint8_t found = 0;
+    uint32_t out_count = 0;
+    std::vector<DhruvFixedLongitudeEvent> events(capacity > 0 ? capacity : 1);
+    int32_t status = dhruv_fixed_longitude_search(
+        static_cast<const DhruvEngineHandle*>(ptr),
+        &req,
+        &out_event,
+        &found,
+        capacity > 0 ? events.data() : nullptr,
+        capacity,
+        &out_count);
+
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) {
+        SetNamed(env, out, "found", MakeBool(env, found != 0));
+        SetNamed(env, out, "count", MakeUint32(env, out_count));
+        if (found != 0) SetNamed(env, out, "event", WriteFixedLongitudeEvent(env, out_event));
+        napi_value arr;
+        napi_create_array_with_length(env, out_count, &arr);
+        for (uint32_t i = 0; i < out_count; ++i) {
+            napi_set_element(env, arr, i, WriteFixedLongitudeEvent(env, events[i]));
         }
         SetNamed(env, out, "events", arr);
     }
@@ -9132,6 +9238,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"motionSearch", nullptr, MotionSearch, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"lunarPhaseSearch", nullptr, LunarPhaseSearch, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sankrantiSearch", nullptr, SankrantiSearch, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"fixedLongitudeSearch", nullptr, FixedLongitudeSearch, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"tithiForDate", nullptr, TithiForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"karanaForDate", nullptr, KaranaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"yogaForDate", nullptr, YogaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},

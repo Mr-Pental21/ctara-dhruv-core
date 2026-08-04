@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 87`
+**ABI version:** `DHRUV_API_VERSION = 88`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -757,6 +757,39 @@ typedef struct {
      * otherwise a NAIF body code or 10007 (Rahu) / 10008 (Ketu). */
     int32_t              body_code;
 } DhruvSankrantiSearchRequest;
+```
+
+### DhruvFixedLongitudeRequest / DhruvFixedLongitudeEvent (v88)
+
+```c
+typedef struct {
+    DhruvUtcTime utc;
+    double  jd_tdb;
+    int32_t body_code;              // NAIF code, or 10007/10008
+    double  target_longitude_deg;   // base target, [0, 360)
+    double  angle_deg;              // matched offset, [0, 360)
+    double  matched_longitude_deg;  // (target + angle) mod 360
+    double  sidereal_longitude_deg;
+    double  tropical_longitude_deg;
+    double  actual_separation_deg;  // |sidereal - matched| residual
+} DhruvFixedLongitudeEvent;
+
+typedef struct {
+    int32_t query_mode;             // DHRUV_FIXED_LONGITUDE_QUERY_MODE_*
+    int32_t time_kind;              // DHRUV_SEARCH_TIME_*
+    double  at_jd_tdb;              // NEXT/PREV when time_kind=JD_TDB
+    double  start_jd_tdb;           // RANGE when time_kind=JD_TDB
+    double  end_jd_tdb;             // RANGE when time_kind=JD_TDB
+    DhruvUtcTime at_utc;            // NEXT/PREV when time_kind=UTC
+    DhruvUtcTime start_utc;         // RANGE when time_kind=UTC
+    DhruvUtcTime end_utc;           // RANGE when time_kind=UTC
+    DhruvSankrantiConfig config;    // frame/ayanamsha/node_mode + knobs
+    int32_t body_code;              // 0 = Sun default, NAIF, 10007/10008
+    double  target_longitude_deg;
+    uint32_t angle_count;           // valid target_angles_deg entries
+    double  target_angles_deg[DHRUV_MAX_FIXED_LONGITUDE_ANGLES];
+    uint8_t include_special_angles; // body's special aspects onto target
+} DhruvFixedLongitudeRequest;
 ```
 
 ### DhruvPanchangComputeRequest
@@ -1578,6 +1611,47 @@ Unified sankranti entrypoint:
   `sidereal_longitude_deg`/`tropical_longitude_deg` fields (the legacy
   `sun_*` fields alias the same values), and flag retrograde boundary
   crossings via `is_retrograde`.
+
+---
+
+### Fixed-Longitude Search (v88)
+
+```c
+#define DHRUV_MAX_FIXED_LONGITUDE_ANGLES        16
+#define DHRUV_FIXED_LONGITUDE_QUERY_MODE_NEXT   0
+#define DHRUV_FIXED_LONGITUDE_QUERY_MODE_PREV   1
+#define DHRUV_FIXED_LONGITUDE_QUERY_MODE_RANGE  2
+
+DhruvStatus dhruv_fixed_longitude_search(
+    const DhruvEngineHandle*               engine,
+    const DhruvFixedLongitudeRequest*      request,
+    DhruvFixedLongitudeEvent*              out_event,   // NEXT/PREV
+    uint8_t*                               out_found,   // NEXT/PREV
+    DhruvFixedLongitudeEvent*              out_events,  // RANGE
+    uint32_t                               max_count,   // RANGE
+    uint32_t*                              out_count    // RANGE
+);
+```
+
+When does a moving body reach a fixed sidereal longitude (plus an
+optional angle set):
+- `time_kind`/`query_mode` semantics match the other `*_search_ex`
+  entrypoints (NEXT/PREV write `out_event/out_found`; RANGE writes
+  `out_events/out_count`).
+- `body_code = 0` tracks the Sun (back-compat default for
+  zero-initialized requests); any other value is a NAIF body code or
+  10007 (Rahu) / 10008 (Ketu). `config.node_mode` selects the node model.
+- `angle_count = 0` searches the conjunction offset only; otherwise each
+  of `target_angles_deg[..angle_count]` is added to the target (mod 360)
+  and every offset longitude is searched. With multiple angles, NEXT/PREV
+  return the earliest/latest event across the set; RANGE results sort by
+  `(jd_tdb, angle_deg)`.
+- `include_special_angles != 0` additionally searches the body's
+  classical special-aspect angles (Mars 90/210, Jupiter 120/240, Saturn
+  60/270) applied so the moving body casts that aspect onto the target.
+- NEXT/PREV scans are bounded per body (13 x the ingress scan ceiling); a
+  RANGE reaching past the loaded ephemeris coverage returns the events
+  found up to the edge instead of erroring.
 
 ---
 
@@ -2832,6 +2906,20 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v88**: Fixed-longitude search + typed coverage-edge status. New
+`dhruv_fixed_longitude_search` (next/prev/range) with
+`DhruvFixedLongitudeRequest`/`DhruvFixedLongitudeEvent`,
+`DHRUV_FIXED_LONGITUDE_QUERY_MODE_*`, and
+`DHRUV_MAX_FIXED_LONGITUDE_ANGLES`: when does a moving body reach a
+fixed sidereal longitude, optionally offset by an angle set, with
+`include_special_angles` for the body's classical special aspects cast
+onto the target. Behavior fix: out-of-coverage ephemeris queries now
+return `DHRUV_STATUS_EPOCH_OUT_OF_RANGE` (6) where they previously
+returned `DHRUV_STATUS_INTERNAL` (255), and search scans/window sweeps
+near the kernel coverage edge end with "not found" / partial results
+instead of erroring (the long-documented contract, previously dead
+against real kernels).
 
 **v87**: Charakaraka ranking-change events, node-mode plumbing, build
 identity. New handle-based family `dhruv_charakaraka_events`

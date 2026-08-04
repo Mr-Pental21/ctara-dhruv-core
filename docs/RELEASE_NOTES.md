@@ -2,6 +2,58 @@
 
 ## Unreleased
 
+- New search op `fixed_longitude`: when does a MOVING transit body
+  next/previously reach a FIXED sidereal longitude, optionally offset by
+  an angle set. Promotes the root-find that already powered gochar
+  transit-to-natal aspect timing to a first-class op, so timeline
+  consumers no longer need windowed `gochar_events` sweeps. Any
+  `TransitBody` (plain bodies + Rahu/Ketu via `node_mode`); the longitude
+  model and numerical knobs are the existing `SankrantiConfig` (frame,
+  ayanamsha, step/convergence/max-iterations). `target_angles_deg` are
+  offsets added to the target (mod 360, empty = conjunction only);
+  `include_special_angles` additionally searches the body's classical
+  special-aspect angles (Mars 90/210, Jupiter 120/240, Saturn 60/270)
+  applied so the moving body casts that aspect onto the target. Events
+  carry `{utc, jd_tdb, body, target/angle/matched longitude, sidereal +
+  tropical longitude, actual_separation_deg}`. next/prev scans are
+  bounded per body at 13 x `ingress_max_scan_days` (a specific longitude
+  can take most of a zodiac lap, incl. retrograde loitering); range mode
+  returns partial results when the window crosses the ephemeris coverage
+  edge. Purely additive.
+  - Core: `dhruv_search::fixed_longitude` (`FixedLongitudeOperation` /
+    `FixedLongitudeQuery` / `FixedLongitudeResult`, plus split
+    `next_fixed_longitude` / `prev_fixed_longitude` /
+    `search_fixed_longitudes`); `dhruv_rs::fixed_longitude`
+    (`FixedLongitudeRequest`).
+  - C ABI (v88): `dhruv_fixed_longitude_search`
+    (`DhruvFixedLongitudeRequest` / `DhruvFixedLongitudeEvent`,
+    `DHRUV_FIXED_LONGITUDE_QUERY_MODE_*`,
+    `DHRUV_MAX_FIXED_LONGITUDE_ANGLES = 16`).
+  - Python (`next_fixed_longitude` / `prev_fixed_longitude` /
+    `search_fixed_longitudes` in the search module), Go
+    (`(*Engine).FixedLongitudeSearch`), Node (`fixedLongitudeSearch`).
+  - Elixir `search_run` gains op `"fixed_longitude"` (semantic `mode`
+    next/prev/range, `body`, `target_longitude_deg`, `target_angles_deg`,
+    `include_special_angles`, `sankranti_config` +
+    `config.step_size_days/max_iterations/convergence_days` overrides,
+    per-body default step) via `CtaraDhruv.Search.fixed_longitude/2`.
+  - CLI: new `fixed-longitude` subcommand.
+
+- Ephemeris coverage misses now surface as the typed
+  `EngineError::EpochOutOfRange` instead of `EngineError::Internal`
+  (fix). The variant existed but was never constructed, so every
+  coverage-edge tolerance in the search scans (sankranti, conjunction,
+  stationary, charakaraka events — and the whole `gochar_events` op) was
+  dead against real kernels: open-ended scans and window sweeps near the
+  kernel edge errored out instead of ending with "no event" / partial
+  results. With the fix, `gochar_events` windows overlapping the coverage
+  edge return the events found up to the edge, and the C ABI now actually
+  returns the long-documented `DHRUV_STATUS_EPOCH_OUT_OF_RANGE` (6) for
+  out-of-coverage queries where it previously returned
+  `DHRUV_STATUS_INTERNAL` (255). Range searches that require the full
+  window in coverage (e.g. sankranti range) still error, now with the
+  typed status.
+
 - New range op `charakaraka_events`: the exact moments the chara-karaka
   ranking changes over a UTC range, per scheme (all four
   `CharakarakaScheme` values) and sidereal config, plus

@@ -81,6 +81,7 @@ kinds carry `magnitudeRings`. See
 - `motionSearch`
 - `lunarPhaseSearch`
 - `sankrantiSearch`
+- `fixedLongitudeSearch`
 - `gocharEvents`
 
 For range searches (`queryMode: 2`), these functions auto-expand their
@@ -94,6 +95,21 @@ include UTC alongside JD/TDB; sankranti and lunar-phase results remain UTC-first
 The same request objects accept `atUtc` / `startUtc` / `endUtc` alongside
 `atJdTdb` / `startJdTdb` / `endJdTdb`, so UTC input stays on the main search
 functions instead of introducing `*UtcSearch` variants.
+
+`fixedLongitudeSearch(engine, request, capacity?)` finds when a moving
+body reaches a fixed sidereal longitude. The request takes `queryMode`
+(0=next, 1=prev, 2=range), `targetLongitudeDeg`, optional
+`targetAnglesDeg` (offsets added to the target mod 360; absent =
+conjunction only; at most 16), optional `includeSpecialAngles` (the
+body's classical special aspects — Mars 90/210, Jupiter 120/240, Saturn
+60/270 — cast onto the target), optional `bodyCode` (absent/0 = Sun,
+NAIF codes, 10007/10008 for Rahu/Ketu), optional `config` (sankranti
+config shape), and the usual time inputs. Next/prev return
+`{found, event}`; range returns `{events}` sorted by time then angle.
+Events report the matched longitude (target + angle), sidereal +
+tropical longitudes, and the root residual (`actualSeparationDeg`). A
+range crossing the ephemeris coverage edge returns the events found up
+to the edge.
 
 `gocharEvents(engine, eop, request)` returns grouped `yearlyTajaka`,
 `yearlyTithiPravesha`, `monthlyTajaka`, `monthlyTithiPravesha`, and
