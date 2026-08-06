@@ -58,6 +58,13 @@ the golden tests, with tolerances documented in the
 - CI never downloads kernels; kernel-dependent tests skip when files are
   absent. Anything that parses `.bsp`/`.tls`/EOP files lives in crate
   `tests/`, not unit tests.
-- When you see a "beyond LSK coverage" or stale-EOP warning downstream,
-  refresh `naif0012.tls` / the EOP files — thresholds are configurable
+- On a stale-EOP warning, refresh the EOP files; IERS publishes
+  `finals2000A.all` weekly, so age there really does mean stale.
+- The LSK warnings are different: they fire because the leap-second table
+  ends at the most recent insertion, which is 2017-01-01 in `naif0012.tls`.
+  No leap second has been announced since, and `naif0012.tls` is still
+  NAIF's current release — there is no newer file to fetch. The held
+  `DELTA_AT` stays correct until IERS announces one in Bulletin C, so treat
+  these as informational rather than as a prompt to re-download.
+- Both staleness thresholds are configurable
   (`--stale-lsk-threshold-days`, `--stale-eop-threshold-days`).

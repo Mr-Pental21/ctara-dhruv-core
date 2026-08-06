@@ -5,7 +5,13 @@ use crate::delta_t::{DeltaTModel, DeltaTSegment};
 /// Warning emitted when fallback logic is used.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TimeWarning {
-    /// UTC epoch is beyond LSK leap-second coverage; last value was frozen.
+    /// UTC epoch is past the LSK's last leap-second entry, so that entry's
+    /// `DELTA_AT` was held.
+    ///
+    /// Expected for any present-day epoch and not a sign of a stale kernel:
+    /// the leap-second table ends at the most recent insertion (2017-01-01
+    /// in `naif0012.tls`), and the held value stays correct until IERS
+    /// announces a new leap second in Bulletin C.
     LskFutureFrozen {
         utc_seconds: f64,
         last_entry_utc_seconds: f64,
@@ -68,7 +74,7 @@ impl std::fmt::Display for TimeWarning {
                 used_delta_at_seconds,
             } => write!(
                 f,
-                "UTC {utc_seconds:.3}s is beyond LSK coverage (last {last_entry_utc_seconds:.3}s); using frozen DELTA_AT={used_delta_at_seconds:.0}s. Update naif0012.tls."
+                "UTC {utc_seconds:.3}s is past the LSK's last leap second (at {last_entry_utc_seconds:.3}s); holding DELTA_AT={used_delta_at_seconds:.0}s, which stays correct until IERS announces a new leap second."
             ),
             Self::LskPreRangeFallback {
                 utc_seconds,

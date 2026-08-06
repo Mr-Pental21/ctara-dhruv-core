@@ -3743,7 +3743,9 @@ fn maybe_warn_stale_lsk(lsk: &LeapSecondKernel) {
     let age_days = now_jd_utc() - end_jd;
     if age_days > threshold_days && !CLI_WARNED_STALE_LSK.swap(true, Ordering::Relaxed) {
         eprintln!(
-            "Warning: LSK appears stale (coverage end {}, ~{:.1} days old, DELTA_AT={}s). Consider updating naif0012.tls.",
+            "Warning: LSK's last leap second is {} (~{:.1} days ago, DELTA_AT={}s). \
+             That is expected while IERS announces no new leap second; check Bulletin C \
+             before assuming the kernel is out of date.",
             jd_to_ymd_string(end_jd),
             age_days,
             delta_at

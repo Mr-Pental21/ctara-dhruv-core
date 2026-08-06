@@ -66,7 +66,7 @@ This page stays reference-oriented and should match the current CLI code in
 | `--no-freeze-future-dut1` | flag | Use configured DUT1 fallback beyond EOP instead of freezing DUT1 |
 | `--future-transition-years` | f64 | Blend window length from anchor TT-UTC to model fallback (`100.0` default) |
 | `--smh-future-family` | selector | Post-EOP asymptotic family when `--future-delta-t-transition bridge-modern-endpoint` is active (`addendum2020`, `c-20`, `c-17.52`, `c-15.32`, `stephenson1997`, `stephenson2016`) |
-| `--stale-lsk-threshold-days` | f64 | Warn if LSK coverage end is older than threshold |
+| `--stale-lsk-threshold-days` | f64 | Warn if the LSK's last leap second is older than threshold (informational — the table ends at the most recent insertion, so this is expected absent a new IERS leap second) |
 | `--stale-eop-threshold-days` | f64 | Warn if EOP coverage end is older than threshold |
 
 ---

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Reworded the LSK leap-second warnings, which told users to do something
+  impossible. Both the `TimeWarning::LskFutureFrozen` message and the CLI's
+  `--stale-lsk-threshold-days` warning ended with "update `naif0012.tls`",
+  implying the kernel was out of date. It is not: `naif0012.tls` is still
+  NAIF's current release, its table ends at 2017-01-01 because that is the
+  most recent leap second, and IERS has announced none since (Bulletin C 72,
+  July 2026). The held `DELTA_AT=37s` is correct, not a degraded fallback.
+  The messages now say so and point at Bulletin C instead of a re-download.
+  Text only — the warning variants, their fields, the C ABI
+  `DHRUV_TIME_WARNING_LSK_FUTURE_FROZEN` kind, and the Elixir
+  `lsk_future_frozen` payload are unchanged, as is the (correct) EOP
+  staleness advice.
 - Fix: `gochar_events` missed some Rahu/Ketu transit-to-natal contacts.
   It carried its own per-body coarse-scan step table that had drifted from
   `TransitBody::default_ingress_step_days`, sampling the nodes every 2 days
