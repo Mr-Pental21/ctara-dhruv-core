@@ -7,9 +7,8 @@ use std::path::Path;
 use dhruv_core::{Body, Engine, EngineConfig};
 use dhruv_search::sankranti_types::SankrantiConfig;
 use dhruv_search::{
-    CharakarakaChangeEvent, CharakarakaEventTrigger, SearchError, TransitBody,
-    charakaraka_events, charakaraka_for_date, next_charakaraka_event, next_ingress,
-    prev_charakaraka_event,
+    CharakarakaChangeEvent, CharakarakaEventTrigger, SearchError, TransitBody, charakaraka_events,
+    charakaraka_for_date, next_charakaraka_event, next_ingress, prev_charakaraka_event,
 };
 use dhruv_time::{EopKernel, UtcTime};
 use dhruv_vedic_base::{CharakarakaResult, CharakarakaScheme, Graha, NodeMode};
@@ -56,8 +55,8 @@ fn assert_snapshot_matches_per_moment(
     let probe = 5e-6;
     let before_utc = UtcTime::from_jd_tdb(event.jd_tdb - probe, engine.lsk());
     let after_utc = UtcTime::from_jd_tdb(event.jd_tdb + probe, engine.lsk());
-    let before = charakaraka_for_date(engine, eop, &before_utc, config, scheme)
-        .expect("per-moment before");
+    let before =
+        charakaraka_for_date(engine, eop, &before_utc, config, scheme).expect("per-moment before");
     let after =
         charakaraka_for_date(engine, eop, &after_utc, config, scheme).expect("per-moment after");
     assert_eq!(
@@ -88,8 +87,8 @@ fn eight_scheme_brute_force_cross_validation() {
     let from = UtcTime::new(2024, 1, 1, 0, 0, 0.0);
     let to = UtcTime::new(2024, 2, 10, 0, 0, 0.0);
 
-    let result = charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0)
-        .expect("range sweep");
+    let result =
+        charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0).expect("range sweep");
     assert!(!result.truncated);
     assert!(
         result.events.len() > 100,
@@ -174,9 +173,16 @@ fn rahu_sum_crossing_has_sum_thirty() {
     let from = UtcTime::new(2024, 3, 1, 0, 0, 0.0);
     let to = UtcTime::new(2024, 3, 15, 0, 0, 0.0);
 
-    let result =
-        charakaraka_events(&engine, &eop, &from, &to, &config, CharakarakaScheme::Eight, 0)
-            .expect("range sweep");
+    let result = charakaraka_events(
+        &engine,
+        &eop,
+        &from,
+        &to,
+        &config,
+        CharakarakaScheme::Eight,
+        0,
+    )
+    .expect("range sweep");
 
     let mut found = false;
     for event in &result.events {
@@ -229,9 +235,16 @@ fn chandra_ingress_event_matches_sankranti_op() {
     let from = UtcTime::new(2024, 5, 1, 0, 0, 0.0);
     let to = UtcTime::new(2024, 5, 6, 0, 0, 0.0);
 
-    let result =
-        charakaraka_events(&engine, &eop, &from, &to, &config, CharakarakaScheme::Eight, 0)
-            .expect("range sweep");
+    let result = charakaraka_events(
+        &engine,
+        &eop,
+        &from,
+        &to,
+        &config,
+        CharakarakaScheme::Eight,
+        0,
+    )
+    .expect("range sweep");
 
     // Find an ingress event where Chandra's rashi changed.
     let chandra_rashi = |result: &CharakarakaResult| -> u8 {
@@ -284,8 +297,8 @@ fn mixed_parashara_mode_toggles() {
     let from = UtcTime::new(2024, 1, 1, 0, 0, 0.0);
     let to = UtcTime::new(2024, 1, 8, 0, 0, 0.0);
 
-    let result = charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0)
-        .expect("range sweep");
+    let result =
+        charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0).expect("range sweep");
 
     let toggles: Vec<&CharakarakaChangeEvent> = result
         .events
@@ -302,8 +315,18 @@ fn mixed_parashara_mode_toggles() {
             "scheme_mode_change must flip used_eight_karakas"
         );
         // Entry counts flip between 7 and 8 with the mode.
-        assert_eq!(event.before.entries.len(), if event.before.used_eight_karakas { 8 } else { 7 });
-        assert_eq!(event.after.entries.len(), if event.after.used_eight_karakas { 8 } else { 7 });
+        assert_eq!(
+            event.before.entries.len(),
+            if event.before.used_eight_karakas {
+                8
+            } else {
+                7
+            }
+        );
+        assert_eq!(
+            event.after.entries.len(),
+            if event.after.used_eight_karakas { 8 } else { 7 }
+        );
     }
     // Non-toggle events must keep the mode.
     for event in &result.events {
@@ -337,8 +360,8 @@ fn continuation_resumes_without_loss() {
     let from = UtcTime::new(2024, 7, 1, 0, 0, 0.0);
     let to = UtcTime::new(2024, 7, 11, 0, 0, 0.0);
 
-    let full = charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0)
-        .expect("uncapped sweep");
+    let full =
+        charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0).expect("uncapped sweep");
     assert!(!full.truncated);
     assert!(full.events.len() > 20);
 
@@ -388,8 +411,8 @@ fn next_prev_match_range_edges() {
     let from = UtcTime::new(2024, 9, 1, 0, 0, 0.0);
     let to = UtcTime::new(2024, 9, 4, 0, 0, 0.0);
 
-    let range = charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0)
-        .expect("range sweep");
+    let range =
+        charakaraka_events(&engine, &eop, &from, &to, &config, scheme, 0).expect("range sweep");
     assert!(!range.events.is_empty());
 
     let next = next_charakaraka_event(&engine, &eop, &from, &config, scheme)
@@ -433,8 +456,8 @@ fn node_mode_honored_and_diverges() {
         assert_snapshot_matches_per_moment(&engine, &eop, &mean_config, scheme, event);
     }
 
-    let true_run = charakaraka_events(&engine, &eop, &from, &to, &aya(), scheme, 0)
-        .expect("true-node sweep");
+    let true_run =
+        charakaraka_events(&engine, &eop, &from, &to, &aya(), scheme, 0).expect("true-node sweep");
     let rahu_lon = |events: &[CharakarakaChangeEvent]| -> f64 {
         events[0]
             .after
@@ -471,15 +494,7 @@ fn validation_rejects_bad_input() {
 
     let mut bad = aya();
     bad.convergence_days = 0.0;
-    let err = charakaraka_events(
-        &engine,
-        &eop,
-        &to,
-        &from,
-        &bad,
-        CharakarakaScheme::Eight,
-        0,
-    )
-    .unwrap_err();
+    let err = charakaraka_events(&engine, &eop, &to, &from, &bad, CharakarakaScheme::Eight, 0)
+        .unwrap_err();
     assert!(matches!(err, SearchError::InvalidConfig(_)));
 }

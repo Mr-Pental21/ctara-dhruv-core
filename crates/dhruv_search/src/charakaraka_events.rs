@@ -174,9 +174,7 @@ impl Family {
         match self {
             Family::Ingress(b) | Family::Bin(b) => lons[b.index() as usize],
             Family::Cross(i, j) => lons[i.index() as usize] - lons[j.index() as usize],
-            Family::Sum(j) => {
-                lons[Graha::Rahu.index() as usize] + lons[j.index() as usize]
-            }
+            Family::Sum(j) => lons[Graha::Rahu.index() as usize] + lons[j.index() as usize],
         }
     }
 }
@@ -429,9 +427,7 @@ pub fn charakaraka_events(
     scheme: CharakarakaScheme,
     max_events: u32,
 ) -> Result<CharakarakaEventsResult, SearchError> {
-    aya_config
-        .validate()
-        .map_err(SearchError::InvalidConfig)?;
+    aya_config.validate().map_err(SearchError::InvalidConfig)?;
     let from_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), from_utc);
     let to_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), to_utc);
     if to_jd <= from_jd {
@@ -484,9 +480,7 @@ pub fn next_charakaraka_event(
     aya_config: &SankrantiConfig,
     scheme: CharakarakaScheme,
 ) -> Result<Option<CharakarakaChangeEvent>, SearchError> {
-    aya_config
-        .validate()
-        .map_err(SearchError::InvalidConfig)?;
+    aya_config.validate().map_err(SearchError::InvalidConfig)?;
     let at_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), at_utc);
     let lons_cfg = lons_config(aya_config);
     let families = families_for_scheme(scheme);
@@ -495,7 +489,12 @@ pub fn next_charakaraka_event(
     while chunk_start < at_jd + NEXT_PREV_MAX_SCAN_DAYS {
         let chunk_end = chunk_start + NEXT_PREV_CHUNK_DAYS;
         let roots = match collect_roots(
-            engine, &lons_cfg, &families, chunk_start, chunk_end, aya_config,
+            engine,
+            &lons_cfg,
+            &families,
+            chunk_start,
+            chunk_end,
+            aya_config,
         ) {
             Ok(roots) => roots,
             Err(err) if is_coverage_edge(&err) => return Ok(None),
@@ -528,9 +527,7 @@ pub fn prev_charakaraka_event(
     aya_config: &SankrantiConfig,
     scheme: CharakarakaScheme,
 ) -> Result<Option<CharakarakaChangeEvent>, SearchError> {
-    aya_config
-        .validate()
-        .map_err(SearchError::InvalidConfig)?;
+    aya_config.validate().map_err(SearchError::InvalidConfig)?;
     let at_jd = utc_to_jd_tdb_with_eop(engine, Some(eop), at_utc);
     let lons_cfg = lons_config(aya_config);
     let families = families_for_scheme(scheme);
@@ -539,7 +536,12 @@ pub fn prev_charakaraka_event(
     while chunk_end > at_jd - NEXT_PREV_MAX_SCAN_DAYS {
         let chunk_start = chunk_end - NEXT_PREV_CHUNK_DAYS;
         let roots = match collect_roots(
-            engine, &lons_cfg, &families, chunk_start, chunk_end, aya_config,
+            engine,
+            &lons_cfg,
+            &families,
+            chunk_start,
+            chunk_end,
+            aya_config,
         ) {
             Ok(roots) => roots,
             Err(err) if is_coverage_edge(&err) => return Ok(None),
@@ -679,10 +681,8 @@ mod tests {
         // Force an integer-degree tie (Chandra and Mangal both in bin 27).
         lons_eight[1] = 27.9;
         lons_eight[2] = 27.2;
-        let before =
-            charakarakas_from_longitudes(&lons_seven, CharakarakaScheme::MixedParashara);
-        let after =
-            charakarakas_from_longitudes(&lons_eight, CharakarakaScheme::MixedParashara);
+        let before = charakarakas_from_longitudes(&lons_seven, CharakarakaScheme::MixedParashara);
+        let after = charakarakas_from_longitudes(&lons_eight, CharakarakaScheme::MixedParashara);
         assert!(!before.used_eight_karakas);
         assert!(after.used_eight_karakas);
         let changed = changed_roles(&before, &after);
