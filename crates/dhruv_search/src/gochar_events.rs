@@ -352,7 +352,7 @@ fn collect_transit_events(
     let mut events = Vec::new();
 
     for &body in &op.transit_bodies {
-        let step_size_days = transit_step_size_days(body);
+        let step_size_days = body.default_ingress_step_days();
         for target in &op.natal_targets {
             for spec in aspect_specs_for_pair(body, target) {
                 let mut cursor = start_jd;
@@ -637,18 +637,6 @@ fn sidereal_transit_longitude(
             let ayanamsha_deg = sankranti_config.ayanamsha_deg_at_centuries(t);
             Ok((lon - ayanamsha_deg).rem_euclid(360.0))
         }
-    }
-}
-
-fn transit_step_size_days(body: GocharTransitBody) -> f64 {
-    match body {
-        GocharTransitBody::Body(Body::Moon) => 0.25,
-        GocharTransitBody::Body(Body::Mercury | Body::Venus) => 0.5,
-        GocharTransitBody::Body(Body::Sun | Body::Mars) => 1.0,
-        GocharTransitBody::Body(Body::Jupiter | Body::Saturn) => 2.0,
-        GocharTransitBody::Body(Body::Uranus | Body::Neptune | Body::Pluto) => 5.0,
-        GocharTransitBody::Rahu | GocharTransitBody::Ketu => 2.0,
-        GocharTransitBody::Body(_) => 1.0,
     }
 }
 

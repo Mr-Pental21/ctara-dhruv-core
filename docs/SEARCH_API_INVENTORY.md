@@ -46,7 +46,7 @@ and `TransitBody: From<Body>` so `Body::Sun.into()` works at call sites.
 | `TransitBody::name` | `self` | `&'static str` | Display name (`"Sun"`, `"Rahu"`, ...). |
 | `TransitBody::lunar_node` | `self` | `Option<LunarNode>` | The node for Rahu/Ketu variants, `None` for plain bodies. |
 | `TransitBody::body` | `self` | `Option<Body>` | The wrapped plain body, `None` for Rahu/Ketu. |
-| `TransitBody::default_ingress_step_days` | `self` | `f64` | Per-body coarse-scan step for rashi-ingress search (Moon 0.25, Mercury/Venus 0.5, Sun/Mars 1.0, Jupiter/Saturn 2.0, Uranus/Neptune/Pluto 5.0, Rahu/Ketu 1.0). |
+| `TransitBody::default_ingress_step_days` | `self` | `f64` | Per-body coarse-scan step shared by every longitude scan — rashi ingress, fixed-longitude, and gochar transit aspects (Moon 0.25, Mercury/Venus 0.5, Sun/Mars 1.0, Jupiter/Saturn 2.0, Uranus/Neptune/Pluto 5.0, Rahu/Ketu 1.0). The nodes are sampled finer than their mean motion implies because the true node stations roughly weekly. |
 | `TransitBody::ingress_max_scan_days` | `self` | `f64` | Scan ceiling for next/prev any-rashi ingress search (Moon 40, Sun 400, Mercury 500, Venus 700, Mars/Jupiter 1500, Saturn 2000, Uranus 4000, Neptune 7000, Pluto 13000, Rahu/Ketu 800). |
 
 ## Conjunction APIs

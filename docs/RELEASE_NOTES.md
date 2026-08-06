@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Fix: `gochar_events` missed some Rahu/Ketu transit-to-natal contacts.
+  It carried its own per-body coarse-scan step table that had drifted from
+  `TransitBody::default_ingress_step_days`, sampling the nodes every 2 days
+  where every other scan path uses 1. The true node stations roughly weekly,
+  and each direct excursion re-crosses longitudes it just passed, so a
+  contact near a station is a pair of crossings often less than two days
+  apart; a 2-day step can span the pair, see no sign change, and drop both.
+  Where the node reaches a natal longitude only via such an excursion, the
+  contact was reported as not happening at all. Measured against a
+  0.0625-day reference over 2020-2024, the 2-day step lost every contact
+  for ~0.8% of longitudes sampled near a node station (and ~4.6% of them
+  had some contact missing); the 1-day step loses none. The duplicate table
+  is gone — gochar now shares `TransitBody::default_ingress_step_days` with
+  the ingress and fixed-longitude scans, so the paths cannot disagree
+  again. Node scans cost ~1.9x more; on a 35-day window with Jupiter,
+  Saturn, Rahu and Ketu this is under 1 ms per `gochar_events` call. No API
+  change; affected node contacts now appear in results that previously
+  omitted them.
 - New search op `fixed_longitude`: when does a MOVING transit body
   next/previously reach a FIXED sidereal longitude, optionally offset by
   an angle set. Promotes the root-find that already powered gochar

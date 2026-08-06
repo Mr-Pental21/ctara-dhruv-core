@@ -90,13 +90,23 @@ impl TransitBody {
         }
     }
 
-    /// Default coarse-scan step for rashi-ingress search, in days.
+    /// Default coarse-scan step for longitude searches, in days.
     ///
     /// Chosen so a single step never spans more than a fraction of one
-    /// rashi (30 deg) at the body's fastest geocentric motion. Matches the
-    /// per-body steps used by gochar transit search, except the nodes use a
-    /// tighter 1-day step (the osculating node swings ~0.6 deg/day near
-    /// cusps).
+    /// rashi (30 deg) at the body's fastest geocentric motion. Shared by
+    /// every longitude scan — rashi ingress, fixed-longitude, and gochar
+    /// transit-to-natal aspects — so those paths cannot disagree about how
+    /// finely a body is sampled.
+    ///
+    /// The nodes get a step far tighter than their slow mean motion
+    /// (-0.053 deg/day) would suggest, because mean motion is the wrong
+    /// scale for them. The true node stations about weekly, and each
+    /// direct excursion re-crosses longitudes it just passed. Those paired
+    /// crossings are only found if a scan step lands between them: a step
+    /// spanning the whole excursion sees no sign change and silently drops
+    /// both. Measured against a 0.0625-day reference over 2020-2024, a
+    /// 2-day step loses every contact for ~0.8% of longitudes sampled near
+    /// a node station; a 1-day step loses none.
     pub const fn default_ingress_step_days(self) -> f64 {
         match self {
             Self::Body(Body::Moon) => 0.25,
@@ -104,7 +114,6 @@ impl TransitBody {
             Self::Body(Body::Sun | Body::Mars) => 1.0,
             Self::Body(Body::Jupiter | Body::Saturn) => 2.0,
             Self::Body(Body::Uranus | Body::Neptune | Body::Pluto) => 5.0,
-            // True node can swing ~0.6 deg/day either way near cusps.
             Self::Rahu | Self::Ketu => 1.0,
             Self::Body(_) => 1.0,
         }
@@ -194,6 +203,22 @@ mod tests {
         assert_eq!(TransitBody::Ketu.lunar_node(), Some(LunarNode::Ketu));
         assert_eq!(TransitBody::Body(Body::Sun).lunar_node(), None);
         assert_eq!(TransitBody::Rahu.body(), None);
+    }
+
+    /// The nodes crawl at -0.053 deg/day but station about weekly, so they
+    /// need a finer step than the outer planets they otherwise resemble in
+    /// speed. See `default_ingress_step_days` and the node scan-step
+    /// regression tests.
+    #[test]
+    fn nodes_step_finer_than_slow_planets() {
+        let node_step = TransitBody::Rahu.default_ingress_step_days();
+        assert_eq!(node_step, TransitBody::Ketu.default_ingress_step_days());
+        for body in [Body::Jupiter, Body::Saturn, Body::Uranus] {
+            assert!(
+                node_step < TransitBody::Body(body).default_ingress_step_days(),
+                "nodes must be sampled finer than {body:?}"
+            );
+        }
     }
 
     #[test]
