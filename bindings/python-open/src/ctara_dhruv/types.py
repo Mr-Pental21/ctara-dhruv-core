@@ -407,6 +407,26 @@ class ChandraGrahanResult:
     # (equinox of date, nutation applied).
     moon_right_ascension_deg: float = 0.0
     moon_declination_deg: float = 0.0
+    # Local circumstances for the requested observer location. ``None``
+    # throughout when no location was supplied. A lunar eclipse is seen at the
+    # same instants everywhere, so these describe how much of the event is
+    # above the observer's horizon; the contact times above do not vary.
+    local_visible: Optional[bool] = None
+    local_moon_altitude_deg: float = 0.0
+    local_moon_azimuth_deg: float = 0.0
+    local_p1_altitude_deg: float = 0.0
+    # ``None`` when the matching contact does not exist for this eclipse.
+    local_u1_altitude_deg: Optional[float] = None
+    local_u2_altitude_deg: Optional[float] = None
+    local_u3_altitude_deg: Optional[float] = None
+    local_u4_altitude_deg: Optional[float] = None
+    local_p4_altitude_deg: float = 0.0
+    # [P1, P4] clipped to the times the Moon is up; ``None`` when not visible.
+    local_visible_start_utc: Optional[UtcTime] = None
+    local_visible_start_jd: float = -1.0
+    local_visible_end_utc: Optional[UtcTime] = None
+    local_visible_end_jd: float = -1.0
+    local_visible_duration_seconds: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -585,6 +605,15 @@ class SuryaGrahanResult:
     local_sun_altitude_deg: float = 0.0
     local_sun_azimuth_deg: float = 0.0
     local_central_duration_seconds: float = 0.0
+    # [C1, C4] clipped to the times the Sun is up; ``None`` when not visible.
+    # Prefer these over ``local_c1_*``/``local_c4_*`` for user-facing local
+    # start/end times: those are pure geometric contacts and can fall while
+    # the Sun is below the horizon.
+    local_first_visible_contact_utc: Optional[UtcTime] = None
+    local_first_visible_contact_jd: float = -1.0
+    local_last_visible_contact_utc: Optional[UtcTime] = None
+    local_last_visible_contact_jd: float = -1.0
+    local_visible_duration_seconds: float = 0.0
     # Whether/how the central shadow reaches Earth: 0=none, 1=partial, 2=full.
     centrality: int = 0
     local_grid: tuple[SuryaLocalGridSample, ...] = ()

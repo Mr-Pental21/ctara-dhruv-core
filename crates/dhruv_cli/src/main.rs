@@ -11284,6 +11284,38 @@ fn print_chandra_grahan(label: &str, ev: &dhruv_search::grahan_types::ChandraGra
         "  Moon at greatest: RA {:.6}°  Dec {:+.6}°",
         ev.moon_right_ascension_deg, ev.moon_declination_deg
     );
+    if let Some(local) = &ev.local {
+        println!(
+            "  Local: visible={} moon altitude={:+.2}° azimuth={:.2}°",
+            local.visible, local.moon_altitude_deg, local.moon_azimuth_deg
+        );
+        let altitude = |value: Option<f64>| {
+            value
+                .map(|deg| format!("{deg:+.2}°"))
+                .unwrap_or_else(|| "-".to_string())
+        };
+        println!(
+            "  Local contact altitudes: P1 {:+.2}°  U1 {}  U2 {}  U3 {}  U4 {}  P4 {:+.2}°",
+            local.p1_altitude_deg,
+            altitude(local.u1_altitude_deg),
+            altitude(local.u2_altitude_deg),
+            altitude(local.u3_altitude_deg),
+            altitude(local.u4_altitude_deg),
+            local.p4_altitude_deg
+        );
+        println!(
+            "  Local visible window: {} -> {}  duration={:.1}s",
+            local
+                .visible_start_utc
+                .map(|utc| utc.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            local
+                .visible_end_utc
+                .map(|utc| utc.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            local.visible_duration_seconds
+        );
+    }
 }
 
 fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan) {
@@ -11403,6 +11435,18 @@ fn print_surya_grahan(label: &str, ev: &dhruv_search::grahan_types::SuryaGrahan)
             local.sun_altitude_deg,
             local.sun_azimuth_deg,
             local.central_duration_seconds
+        );
+        println!(
+            "  Local visible window: {} -> {}  duration={:.1}s",
+            local
+                .first_visible_contact_utc
+                .map(|utc| utc.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            local
+                .last_visible_contact_utc
+                .map(|utc| utc.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            local.visible_duration_seconds
         );
     }
 }

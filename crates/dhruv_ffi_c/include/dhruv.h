@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       88
+#define DHRUV_API_VERSION       89
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -786,6 +786,30 @@ typedef struct {
        (equinox of date, nutation applied). */
     double  moon_right_ascension_deg;
     double  moon_declination_deg;
+    /* Local circumstances for the request's location (v89). A lunar eclipse
+       is seen at the same instants everywhere, so these describe how much of
+       it is above the observer's horizon — the contact times above are not
+       location-dependent. Zeroed when local_valid is 0. */
+    uint8_t local_valid;
+    uint8_t local_visible;
+    double  local_moon_altitude_deg;
+    double  local_moon_azimuth_deg;
+    /* Moon's topocentric altitude at each contact, degrees. The umbral
+       entries are meaningful exactly when the matching contact is present
+       (u1_jd etc. not -1.0); they are 0.0 otherwise. */
+    double  local_p1_altitude_deg;
+    double  local_u1_altitude_deg;
+    double  local_u2_altitude_deg;
+    double  local_u3_altitude_deg;
+    double  local_u4_altitude_deg;
+    double  local_p4_altitude_deg;
+    /* [P1, P4] clipped to the times the Moon is up. -1.0 / zeroed when
+       local_visible is 0. */
+    double  local_visible_start_jd;
+    DhruvUtcTime local_visible_start_utc;
+    double  local_visible_end_jd;
+    DhruvUtcTime local_visible_end_utc;
+    double  local_visible_duration_seconds;
 } DhruvChandraGrahanResult;
 
 typedef struct {
@@ -939,6 +963,17 @@ typedef struct {
     double  local_sun_altitude_deg;
     double  local_sun_azimuth_deg;
     double  local_central_duration_seconds;
+    /* [C1, C4] clipped to the times the Sun is up (v89). -1.0 / zeroed when
+       local_visible is 0.
+
+       Prefer these over local_c1_jd / local_c4_jd when showing a user when
+       the eclipse starts and ends locally: the local_c* values are pure
+       geometric contacts and can fall while the Sun is below the horizon. */
+    double  local_first_visible_contact_jd;
+    DhruvUtcTime local_first_visible_contact_utc;
+    double  local_last_visible_contact_jd;
+    DhruvUtcTime local_last_visible_contact_utc;
+    double  local_visible_duration_seconds;
 } DhruvSuryaGrahanResult;
 
 /* --- Stationary / max-speed --- */

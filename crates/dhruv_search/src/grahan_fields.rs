@@ -35,8 +35,10 @@ use crate::grahan_types::{
 };
 
 /// Sun-up altitude threshold in degrees (standard refraction + semidiameter),
-/// identical to the convention used by `local` circumstances.
-const SUN_UP_ALTITUDE_DEG: f64 = -0.833;
+/// identical to the convention used by `local` circumstances — the same
+/// constant, so the grid, the point circumstances, and the lunar visibility
+/// window cannot drift apart.
+const SUN_UP_ALTITUDE_DEG: f64 = crate::grahan::BODY_UP_ALTITUDE_DEG;
 
 /// Scale that maps the Sun-up altitude margin (radians) into magnitude units
 /// for the visible-magnitude field, keeping the field continuous across the

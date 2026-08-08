@@ -799,6 +799,21 @@ typedef struct {
        (equinox of date, nutation applied). */
     double  moon_right_ascension_deg;
     double  moon_declination_deg;
+    uint8_t local_valid;
+    uint8_t local_visible;
+    double  local_moon_altitude_deg;
+    double  local_moon_azimuth_deg;
+    double  local_p1_altitude_deg;
+    double  local_u1_altitude_deg;
+    double  local_u2_altitude_deg;
+    double  local_u3_altitude_deg;
+    double  local_u4_altitude_deg;
+    double  local_p4_altitude_deg;
+    double  local_visible_start_jd;
+    DhruvUtcTime local_visible_start_utc;
+    double  local_visible_end_jd;
+    DhruvUtcTime local_visible_end_utc;
+    double  local_visible_duration_seconds;
 } DhruvChandraGrahanResult;
 
 typedef struct {
@@ -952,6 +967,11 @@ typedef struct {
     double  local_sun_altitude_deg;
     double  local_sun_azimuth_deg;
     double  local_central_duration_seconds;
+    double  local_first_visible_contact_jd;
+    DhruvUtcTime local_first_visible_contact_utc;
+    double  local_last_visible_contact_jd;
+    DhruvUtcTime local_last_visible_contact_utc;
+    double  local_visible_duration_seconds;
 } DhruvSuryaGrahanResult;
 
 /* --- Stationary / max-speed --- */

@@ -493,7 +493,29 @@ default sign-lord-based node dignity policy.
 - `search_lunar_eclipses`
 - `search_solar_eclipses`
 
-Solar eclipse calls accept an optional `GeoLocation`. The grahan config adds
+Both eclipse families accept an optional `GeoLocation`, which adds local
+circumstances to each result and changes nothing else; omit it and the
+`local_*` fields stay at their `None`/0 defaults.
+
+For lunar eclipses it does not move the contact times — a lunar eclipse is
+seen at the same instants everywhere it is above the horizon.
+`ChandraGrahanResult` instead reports `local_visible`,
+`local_moon_altitude_deg`/`local_moon_azimuth_deg` at greatest eclipse, the
+per-contact `local_p1_altitude_deg`, `local_u1_altitude_deg` ..
+`local_u4_altitude_deg` (`None` on a penumbral eclipse, matching the absent
+contacts), `local_p4_altitude_deg`, and the moonrise/moonset-clipped
+`local_visible_start_utc`/`_jd`, `local_visible_end_utc`/`_jd`, and
+`local_visible_duration_seconds`.
+
+`SuryaGrahanResult` adds the Sun-up-clipped
+`local_first_visible_contact_utc`/`_jd`,
+`local_last_visible_contact_utc`/`_jd`, and
+`local_visible_duration_seconds`. Show those as a location's eclipse start
+and end: `local_c1`..`local_c4` are pure geometric contacts and can fall
+while the Sun is below the horizon. Both families use the same horizon
+convention, an altitude above -0.833 degrees.
+
+The grahan config adds
 `include_path`, `path_step_minutes`, and `boundary_step_deg`; summary results
 include obscuration, gamma, Besselian elements, greatest location, generated
 sample counts, materialized `path` and `footprints` tuples, and complete local

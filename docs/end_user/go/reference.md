@@ -403,7 +403,26 @@ grahan: `ChandraGrahanResult.MoonRightAscensionDeg`/`MoonDeclinationDeg`
 and `SuryaGrahanResult.SunRightAscensionDeg`/`SunDeclinationDeg`
 (degrees, equinox of date, nutation applied).
 
-Solar `GrahanSearchRequest` may carry `Location`; `GrahanConfig` controls path
+`GrahanSearchRequest.Location` applies to both kinds. It adds local
+circumstances to each result and changes nothing else; leave it nil and
+`LocalValid` is false.
+
+For lunar grahan it does not move the contact times — a lunar eclipse is seen
+at the same instants everywhere it is above the horizon. `ChandraGrahanResult`
+instead reports `LocalVisible`, `LocalMoonAltitudeDeg`/`LocalMoonAzimuthDeg`
+at greatest eclipse, the per-contact `LocalP1AltitudeDeg`,
+`LocalU1AltitudeDeg` .. `LocalU4AltitudeDeg` (nil on a penumbral eclipse,
+matching the absent contacts), `LocalP4AltitudeDeg`, and the
+moonrise/moonset-clipped `LocalVisibleStartJd`/`UTC`,
+`LocalVisibleEndJd`/`UTC`, and `LocalVisibleDurationSeconds`.
+
+`SuryaGrahanResult` adds the Sun-up-clipped `LocalFirstVisibleContactJd`/`UTC`,
+`LocalLastVisibleContactJd`/`UTC`, and `LocalVisibleDurationSeconds`. Show
+those as a location's eclipse start and end: `LocalC1`..`LocalC4` are pure
+geometric contacts and can fall while the Sun is below the horizon. Both
+families use the same horizon convention, an altitude above -0.833 degrees.
+
+`GrahanConfig` controls path
 sampling. `SuryaGrahanResult` includes obscuration, gamma, Besselian elements,
 greatest location, `Path`, `Footprints`, and complete local circumstances.
 `GrahanConfig` additionally exposes `IncludeLocalGrid`/`LocalGridStepDeg`,

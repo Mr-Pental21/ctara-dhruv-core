@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 88`
+**ABI version:** `DHRUV_API_VERSION = 89`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -552,6 +552,32 @@ typedef struct {
     DhruvUtcTime p4_utc;
     double  moon_ecliptic_lat_deg;  // Moon lat at greatest grahan
     double  angular_separation_deg; // Separation at greatest grahan
+    double  moon_right_ascension_deg;
+    double  moon_declination_deg;
+    // Local circumstances for request->location (v89). Zeroed when
+    // local_valid is 0. A lunar eclipse is seen at the same instants
+    // everywhere, so these describe how much of it is above the observer's
+    // horizon; the contact times above do not vary with location.
+    uint8_t local_valid;
+    uint8_t local_visible;
+    double  local_moon_altitude_deg;  // At greatest eclipse
+    double  local_moon_azimuth_deg;   // At greatest eclipse, east of north
+    // Moon's topocentric altitude at each contact. The umbral entries are
+    // meaningful exactly when the matching contact exists (u1_jd etc. not
+    // -1.0); they are 0.0 otherwise.
+    double  local_p1_altitude_deg;
+    double  local_u1_altitude_deg;
+    double  local_u2_altitude_deg;
+    double  local_u3_altitude_deg;
+    double  local_u4_altitude_deg;
+    double  local_p4_altitude_deg;
+    // [P1, P4] clipped to the times the Moon is up (altitude above -0.833
+    // deg). -1.0 / zeroed when local_visible is 0.
+    double  local_visible_start_jd;
+    DhruvUtcTime local_visible_start_utc;
+    double  local_visible_end_jd;
+    DhruvUtcTime local_visible_end_utc;
+    double  local_visible_duration_seconds;
 } DhruvChandraGrahanResult;
 ```
 
@@ -612,6 +638,25 @@ visibility region (closed along the terminator arc where truncated), not
 the raw cone-ellipsoid intersection. Consumers may unwrap antimeridian
 crossings for display but must not synthesize a chord between otherwise
 open branches.
+
+ABI v89 appends the Sun-up-clipped observable window to the
+local-circumstance fields:
+
+```c
+    double  local_first_visible_contact_jd;   // -1.0 when not visible
+    DhruvUtcTime local_first_visible_contact_utc;
+    double  local_last_visible_contact_jd;    // -1.0 when not visible
+    DhruvUtcTime local_last_visible_contact_utc;
+    double  local_visible_duration_seconds;   // 0 when not visible
+```
+
+These are `[local_c1_jd, local_c4_jd]` intersected with the times the Sun is
+above -0.833 degrees (standard refraction plus semidiameter), the same
+convention as `DhruvSuryaLocalGridSample`. Show these — not `local_c1_*` /
+`local_c4_*` — as a location's eclipse start and end: the `local_c*` values
+are pure geometric contacts and can fall while the Sun is below the horizon,
+in which case they are not observable. `local_visible` is now derived from
+this window, so the flag and the timings cannot disagree.
 
 ### DhruvStationaryConfig
 
@@ -2906,6 +2951,28 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v89**: Lunar local circumstances + solar visible window. The `location`
+on `DhruvGrahanSearchRequest` now applies to `DHRUV_GRAHAN_KIND_CHANDRA`
+as well, where it previously had no effect: `DhruvChandraGrahanResult`
+gains `local_valid`, `local_visible`, `local_moon_altitude_deg` /
+`local_moon_azimuth_deg` at greatest eclipse, per-contact
+`local_p1_altitude_deg` .. `local_p4_altitude_deg`, and the
+moonrise/moonset-clipped `local_visible_start_*` /
+`local_visible_end_*` / `local_visible_duration_seconds`. A lunar
+eclipse's contact instants are the same worldwide, so these describe
+visibility only — the contact times do not vary with location.
+`DhruvSuryaGrahanResult` gains the Sun-up-clipped
+`local_first_visible_contact_*` / `local_last_visible_contact_*` /
+`local_visible_duration_seconds`, which are what a user-facing local
+start/end should show; the existing `local_c1_jd` .. `local_c4_jd`
+remain pure geometric contacts and can fall below the horizon.
+Behavior fix: chandra contact times previously used an inverted limb
+sign at every call site, which swapped U1 with U2 and U3 with U4 and
+placed P1/P4 at full penumbral immersion instead of first/last contact
+(~65 min error). Greatest eclipse is now the moment of minimum
+shadow-axis separation rather than exact opposition, matching the
+published convention (~3 min shift).
 
 **v88**: Fixed-longitude search + typed coverage-edge status. New
 `dhruv_fixed_longitude_search` (next/prev/range) with

@@ -186,6 +186,14 @@ def _conjunction_event(e) -> ConjunctionEvent:
 
 
 def _chandra_grahan(r) -> ChandraGrahanResult:
+    local_valid = bool(r.local_valid)
+
+    def _contact_altitude(contact_jd, altitude_deg):
+        """Altitude at a contact that may not exist for this eclipse."""
+        if not local_valid or contact_jd == _JD_ABSENT:
+            return None
+        return altitude_deg
+
     return ChandraGrahanResult(
         grahan_type=r.grahan_type,
         magnitude=r.magnitude,
@@ -208,6 +216,22 @@ def _chandra_grahan(r) -> ChandraGrahanResult:
         angular_separation_deg=r.angular_separation_deg,
         moon_right_ascension_deg=r.moon_right_ascension_deg,
         moon_declination_deg=r.moon_declination_deg,
+        local_visible=bool(r.local_visible) if local_valid else None,
+        local_moon_altitude_deg=r.local_moon_altitude_deg,
+        local_moon_azimuth_deg=r.local_moon_azimuth_deg,
+        local_p1_altitude_deg=r.local_p1_altitude_deg,
+        local_u1_altitude_deg=_contact_altitude(r.u1_jd, r.local_u1_altitude_deg),
+        local_u2_altitude_deg=_contact_altitude(r.u2_jd, r.local_u2_altitude_deg),
+        local_u3_altitude_deg=_contact_altitude(r.u3_jd, r.local_u3_altitude_deg),
+        local_u4_altitude_deg=_contact_altitude(r.u4_jd, r.local_u4_altitude_deg),
+        local_p4_altitude_deg=r.local_p4_altitude_deg,
+        local_visible_start_utc=(None if r.local_visible_start_jd == _JD_ABSENT
+                                 else _utc_from_c(r.local_visible_start_utc)),
+        local_visible_start_jd=r.local_visible_start_jd,
+        local_visible_end_utc=(None if r.local_visible_end_jd == _JD_ABSENT
+                               else _utc_from_c(r.local_visible_end_utc)),
+        local_visible_end_jd=r.local_visible_end_jd,
+        local_visible_duration_seconds=r.local_visible_duration_seconds,
     )
 
 
@@ -456,6 +480,13 @@ def _surya_grahan(r) -> SuryaGrahanResult:
         local_sun_altitude_deg=r.local_sun_altitude_deg,
         local_sun_azimuth_deg=r.local_sun_azimuth_deg,
         local_central_duration_seconds=r.local_central_duration_seconds,
+        local_first_visible_contact_utc=(None if r.local_first_visible_contact_jd == _JD_ABSENT
+                                         else _utc_from_c(r.local_first_visible_contact_utc)),
+        local_first_visible_contact_jd=r.local_first_visible_contact_jd,
+        local_last_visible_contact_utc=(None if r.local_last_visible_contact_jd == _JD_ABSENT
+                                        else _utc_from_c(r.local_last_visible_contact_utc)),
+        local_last_visible_contact_jd=r.local_last_visible_contact_jd,
+        local_visible_duration_seconds=r.local_visible_duration_seconds,
         centrality=int(r.centrality),
         local_grid=tuple(local_grid),
         isolines=isolines,

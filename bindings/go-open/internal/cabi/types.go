@@ -541,6 +541,27 @@ type ChandraGrahanResult struct {
 	// (equinox of date, nutation applied).
 	MoonRightAscensionDeg float64
 	MoonDeclinationDeg    float64
+	// Local circumstances for the requested observer location, present only
+	// when LocalValid is true. A lunar eclipse is seen at the same instants
+	// everywhere, so these describe how much of the event is above the
+	// observer's horizon; the contact times above do not vary by location.
+	LocalValid           bool
+	LocalVisible         bool
+	LocalMoonAltitudeDeg float64
+	LocalMoonAzimuthDeg  float64
+	LocalP1AltitudeDeg   float64
+	// Nil when the matching contact does not exist for this eclipse.
+	LocalU1AltitudeDeg *float64
+	LocalU2AltitudeDeg *float64
+	LocalU3AltitudeDeg *float64
+	LocalU4AltitudeDeg *float64
+	LocalP4AltitudeDeg float64
+	// [P1, P4] clipped to the times the Moon is up; nil/-1 when not visible.
+	LocalVisibleStartJd          float64
+	LocalVisibleStartUTC         *UtcTime
+	LocalVisibleEndJd            float64
+	LocalVisibleEndUTC           *UtcTime
+	LocalVisibleDurationSeconds  float64
 }
 
 type EclipseGeoPoint struct {
@@ -691,6 +712,15 @@ type SuryaGrahanResult struct {
 	LocalSunAltitudeDeg         float64
 	LocalSunAzimuthDeg          float64
 	LocalCentralDurationSeconds float64
+	// [C1, C4] clipped to the times the Sun is up; nil/-1 when not visible.
+	// Prefer these over LocalC1*/LocalC4* for user-facing local start/end
+	// times: those are pure geometric contacts and can fall while the Sun is
+	// below the horizon.
+	LocalFirstVisibleContactJd  float64
+	LocalFirstVisibleContactUTC *UtcTime
+	LocalLastVisibleContactJd   float64
+	LocalLastVisibleContactUTC  *UtcTime
+	LocalVisibleDurationSeconds float64
 	// Whether/how the central shadow reaches Earth: 0=none, 1=partial, 2=full.
 	Centrality int32
 	LocalGrid  []SuryaLocalGridSample

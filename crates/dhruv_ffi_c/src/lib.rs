@@ -68,7 +68,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 88;
+pub const DHRUV_API_VERSION: u32 = 89;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -3953,6 +3953,32 @@ pub struct DhruvChandraGrahanResult {
     pub moon_right_ascension_deg: f64,
     /// Moon's apparent geocentric declination at greatest grahan, in degrees.
     pub moon_declination_deg: f64,
+    /// Whether local circumstances are present (a location was supplied).
+    /// When 0, every `local_*` field below is zeroed and must be ignored.
+    pub local_valid: u8,
+    /// Whether any part of the eclipse occurs with the Moon above the
+    /// observer's horizon.
+    pub local_visible: u8,
+    /// Moon's topocentric altitude and azimuth at greatest eclipse, degrees.
+    pub local_moon_altitude_deg: f64,
+    pub local_moon_azimuth_deg: f64,
+    /// Moon's topocentric altitude at each contact, in degrees. The umbral
+    /// entries are meaningful exactly when the matching contact is present —
+    /// that is, when `u1_jd` and friends are not -1.0; they are 0.0 otherwise.
+    pub local_p1_altitude_deg: f64,
+    pub local_u1_altitude_deg: f64,
+    pub local_u2_altitude_deg: f64,
+    pub local_u3_altitude_deg: f64,
+    pub local_u4_altitude_deg: f64,
+    pub local_p4_altitude_deg: f64,
+    /// Observable window: the [P1, P4] span clipped to the times the Moon is
+    /// up. -1.0 / zeroed when `local_visible` is 0.
+    pub local_visible_start_jd: f64,
+    pub local_visible_start_utc: DhruvUtcTime,
+    pub local_visible_end_jd: f64,
+    pub local_visible_end_utc: DhruvUtcTime,
+    /// Above-horizon measure of [P1, P4] in seconds; 0 when not visible.
+    pub local_visible_duration_seconds: f64,
 }
 
 impl From<&ChandraGrahan> for DhruvChandraGrahanResult {
@@ -3991,6 +4017,32 @@ impl From<&ChandraGrahan> for DhruvChandraGrahanResult {
             angular_separation_deg: e.angular_separation_deg,
             moon_right_ascension_deg: e.moon_right_ascension_deg,
             moon_declination_deg: e.moon_declination_deg,
+            local_valid: u8::from(e.local.is_some()),
+            local_visible: u8::from(e.local.is_some_and(|l| l.visible)),
+            local_moon_altitude_deg: e.local.map(|l| l.moon_altitude_deg).unwrap_or(0.0),
+            local_moon_azimuth_deg: e.local.map(|l| l.moon_azimuth_deg).unwrap_or(0.0),
+            local_p1_altitude_deg: e.local.map(|l| l.p1_altitude_deg).unwrap_or(0.0),
+            local_u1_altitude_deg: e.local.and_then(|l| l.u1_altitude_deg).unwrap_or(0.0),
+            local_u2_altitude_deg: e.local.and_then(|l| l.u2_altitude_deg).unwrap_or(0.0),
+            local_u3_altitude_deg: e.local.and_then(|l| l.u3_altitude_deg).unwrap_or(0.0),
+            local_u4_altitude_deg: e.local.and_then(|l| l.u4_altitude_deg).unwrap_or(0.0),
+            local_p4_altitude_deg: e.local.map(|l| l.p4_altitude_deg).unwrap_or(0.0),
+            local_visible_start_jd: option_jd(e.local.and_then(|l| l.visible_start_jd)),
+            local_visible_start_utc: e
+                .local
+                .and_then(|l| l.visible_start_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_visible_end_jd: option_jd(e.local.and_then(|l| l.visible_end_jd)),
+            local_visible_end_utc: e
+                .local
+                .and_then(|l| l.visible_end_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_visible_duration_seconds: e
+                .local
+                .map(|l| l.visible_duration_seconds)
+                .unwrap_or(0.0),
         }
     }
 }
@@ -4412,6 +4464,18 @@ pub struct DhruvSuryaGrahanResult {
     pub local_sun_altitude_deg: f64,
     pub local_sun_azimuth_deg: f64,
     pub local_central_duration_seconds: f64,
+    /// Observable window: the [C1, C4] span clipped to the times the Sun is
+    /// up. -1.0 / zeroed when `local_visible` is 0.
+    ///
+    /// Prefer these over `local_c1_jd` / `local_c4_jd` when showing a user
+    /// when the eclipse starts and ends locally: the `local_c*` values are
+    /// pure geometric contacts and can fall below the horizon.
+    pub local_first_visible_contact_jd: f64,
+    pub local_first_visible_contact_utc: DhruvUtcTime,
+    pub local_last_visible_contact_jd: f64,
+    pub local_last_visible_contact_utc: DhruvUtcTime,
+    /// Sun-up measure of [C1, C4] in seconds; 0 when not visible.
+    pub local_visible_duration_seconds: f64,
 }
 
 impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
@@ -4555,6 +4619,33 @@ impl From<&SuryaGrahan> for DhruvSuryaGrahanResult {
                 .local
                 .as_ref()
                 .map(|local| local.central_duration_seconds)
+                .unwrap_or(0.0),
+            local_first_visible_contact_jd: option_jd(
+                e.local
+                    .as_ref()
+                    .and_then(|local| local.first_visible_contact_jd),
+            ),
+            local_first_visible_contact_utc: e
+                .local
+                .as_ref()
+                .and_then(|local| local.first_visible_contact_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_last_visible_contact_jd: option_jd(
+                e.local
+                    .as_ref()
+                    .and_then(|local| local.last_visible_contact_jd),
+            ),
+            local_last_visible_contact_utc: e
+                .local
+                .as_ref()
+                .and_then(|local| local.last_visible_contact_utc)
+                .map(|utc| utc_time_to_ffi(&utc))
+                .unwrap_or(ZEROED_UTC),
+            local_visible_duration_seconds: e
+                .local
+                .as_ref()
+                .map(|local| local.visible_duration_seconds)
                 .unwrap_or(0.0),
         }
     }
@@ -5055,7 +5146,7 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match next_chandra_grahan(engine_ref, at, &rust_config) {
+                match next_chandra_grahan(engine_ref, None, at, location, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_chandra_single = DhruvChandraGrahanResult::from(&grahan);
@@ -5083,7 +5174,7 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match prev_chandra_grahan(engine_ref, at, &rust_config) {
+                match prev_chandra_grahan(engine_ref, None, at, location, &rust_config) {
                     Ok(Some(grahan)) => {
                         unsafe {
                             *out_chandra_single = DhruvChandraGrahanResult::from(&grahan);
@@ -5120,7 +5211,7 @@ pub unsafe extern "C" fn dhruv_grahan_search_ex(
                     Ok(v) => v,
                     Err(status) => return status,
                 };
-                match search_chandra_grahan(engine_ref, start, end, &rust_config) {
+                match search_chandra_grahan(engine_ref, None, start, end, location, &rust_config) {
                     Ok(results) => {
                         let count = results.len().min(max_count as usize);
                         let out_slice = unsafe {

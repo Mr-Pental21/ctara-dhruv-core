@@ -35,9 +35,9 @@ from the lunar-node model per the search config's `node_mode`;
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `next_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Next lunar eclipse after `jd_tdb`. |
-| `prev_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Previous lunar eclipse before `jd_tdb`. |
-| `search_chandra_grahan` | `engine`, `jd_start`, `jd_end`, `config` | `Result<Vec<ChandraGrahan>, SearchError>` | All lunar eclipses in range. |
+| `next_chandra_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Next lunar eclipse after `jd_tdb` and optional local circumstances. |
+| `prev_chandra_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Previous lunar eclipse before `jd_tdb`. |
+| `search_chandra_grahan` | `engine`, `eop`, `jd_start`, `jd_end`, `location`, `config` | `Result<Vec<ChandraGrahan>, SearchError>` | All lunar eclipses in range. |
 | `besselian_elements_at` | `engine`, `eop`, `jd_tdb` | `Result<BesselianElements, SearchError>` | Instantaneous ephemeris-derived shadow elements. |
 | `next_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Next geographic solar eclipse and optional local circumstances. |
 | `prev_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Previous geographic solar eclipse. |

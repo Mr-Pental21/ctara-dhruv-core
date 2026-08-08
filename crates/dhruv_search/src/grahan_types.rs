@@ -422,6 +422,76 @@ pub struct SuryaGrahanLocalCircumstances {
     pub sun_altitude_deg: f64,
     pub sun_azimuth_deg: f64,
     pub central_duration_seconds: f64,
+    /// First observable moment of the eclipse: the `[c1, c4]` span clipped to
+    /// the times when the Sun is up (altitude above -0.833 degrees, standard
+    /// refraction plus semidiameter). Equals `c1` when the Sun is already up
+    /// at first contact, and the moment of sunrise when the eclipse begins
+    /// below the horizon. `None` when `visible` is false.
+    ///
+    /// Unlike `c1`, this is safe to show a user directly: `c1` is the pure
+    /// geometric contact and can fall while the Sun is below the horizon.
+    pub first_visible_contact_jd: Option<f64>,
+    pub first_visible_contact_utc: Option<UtcTime>,
+    /// Last observable moment, the Sun-up-clipped counterpart of `c4`.
+    /// `None` when `visible` is false.
+    pub last_visible_contact_jd: Option<f64>,
+    pub last_visible_contact_utc: Option<UtcTime>,
+    /// Measure of times in `[c1, c4]` with a partial phase in progress and
+    /// the Sun risen, summed across split intervals. Zero when not visible.
+    /// This is the same quantity `SuryaLocalGridSample::visible_duration_seconds`
+    /// reports for grid samples.
+    pub visible_duration_seconds: f64,
+}
+
+/// Location-specific lunar-eclipse circumstances.
+///
+/// A lunar eclipse is an event on the Moon itself, so its contact instants
+/// (`p1`, `u1`..`u4`, `p4` on [`ChandraGrahan`]) are the same for every
+/// observer on Earth. What varies with location is whether the Moon is above
+/// the horizon at those instants, so this struct reports the Moon's altitude
+/// at each contact plus the portion of the eclipse that is actually above the
+/// horizon — it does not re-derive the contact times.
+///
+/// The horizon convention matches the solar path: the Moon counts as up when
+/// its topocentric center altitude exceeds -0.833 degrees (standard
+/// refraction plus semidiameter).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChandraGrahanLocalCircumstances {
+    pub location: GeoLocation,
+    /// Whether any part of the eclipse (penumbral phase included) occurs
+    /// while the Moon is above the horizon here.
+    pub visible: bool,
+    /// Moon's topocentric altitude at greatest eclipse, in degrees. Negative
+    /// when the Moon is below the horizon at that moment.
+    pub moon_altitude_deg: f64,
+    /// Moon's topocentric azimuth at greatest eclipse, degrees east of north.
+    pub moon_azimuth_deg: f64,
+    /// Moon's topocentric altitude at P1, in degrees.
+    pub p1_altitude_deg: f64,
+    /// Moon's topocentric altitude at U1. `None` when U1 does not exist
+    /// (penumbral-only eclipse), matching `ChandraGrahan::u1_jd`.
+    pub u1_altitude_deg: Option<f64>,
+    /// Moon's topocentric altitude at U2. `None` unless the eclipse is total.
+    pub u2_altitude_deg: Option<f64>,
+    /// Moon's topocentric altitude at U3. `None` unless the eclipse is total.
+    pub u3_altitude_deg: Option<f64>,
+    /// Moon's topocentric altitude at U4. `None` for penumbral-only.
+    pub u4_altitude_deg: Option<f64>,
+    /// Moon's topocentric altitude at P4, in degrees.
+    pub p4_altitude_deg: f64,
+    /// First moment of the eclipse observable from here: `p1` clipped to the
+    /// times the Moon is up. Equals `p1` when the Moon has already risen,
+    /// and the moment of moonrise when the eclipse begins below the horizon.
+    /// `None` when `visible` is false.
+    pub visible_start_jd: Option<f64>,
+    pub visible_start_utc: Option<UtcTime>,
+    /// Last observable moment, the moonset-clipped counterpart of `p4`.
+    /// `None` when `visible` is false.
+    pub visible_end_jd: Option<f64>,
+    pub visible_end_utc: Option<UtcTime>,
+    /// Measure of times in `[p1, p4]` with the Moon above the horizon, summed
+    /// across split intervals. Zero when not visible.
+    pub visible_duration_seconds: f64,
 }
 
 /// Chandra grahan (lunar eclipse) type classification.
@@ -482,6 +552,10 @@ pub struct ChandraGrahan {
     pub moon_right_ascension_deg: f64,
     /// Moon's apparent geocentric declination at greatest grahan, in degrees.
     pub moon_declination_deg: f64,
+    /// Optional circumstances for the request's geographic location. `None`
+    /// when no observer location was supplied. The contact times above are
+    /// unaffected by it — they are the same worldwide.
+    pub local: Option<ChandraGrahanLocalCircumstances>,
 }
 
 /// Surya grahan (solar eclipse) type classification (geocentric).

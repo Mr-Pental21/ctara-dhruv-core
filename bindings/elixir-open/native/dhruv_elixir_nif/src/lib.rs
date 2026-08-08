@@ -3062,7 +3062,21 @@ fn chandra_grahan_json(event: dhruv_search::ChandraGrahan) -> Value {
         "moon_ecliptic_lat_deg": event.moon_ecliptic_lat_deg,
         "angular_separation_deg": event.angular_separation_deg,
         "moon_right_ascension_deg": event.moon_right_ascension_deg,
-        "moon_declination_deg": event.moon_declination_deg
+        "moon_declination_deg": event.moon_declination_deg,
+        "local": event.local.map(|l| json!({
+            "location": {"latitude_deg": l.location.latitude_deg, "longitude_deg": l.location.longitude_deg, "altitude_m": l.location.altitude_m},
+            "visible": l.visible,
+            "moon_altitude_deg": l.moon_altitude_deg, "moon_azimuth_deg": l.moon_azimuth_deg,
+            "p1_altitude_deg": l.p1_altitude_deg,
+            "u1_altitude_deg": l.u1_altitude_deg,
+            "u2_altitude_deg": l.u2_altitude_deg,
+            "u3_altitude_deg": l.u3_altitude_deg,
+            "u4_altitude_deg": l.u4_altitude_deg,
+            "p4_altitude_deg": l.p4_altitude_deg,
+            "visible_start_utc": l.visible_start_utc.map(utc_json), "visible_start_jd": l.visible_start_jd,
+            "visible_end_utc": l.visible_end_utc.map(utc_json), "visible_end_jd": l.visible_end_jd,
+            "visible_duration_seconds": l.visible_duration_seconds
+        }))
     })
 }
 
@@ -3142,7 +3156,12 @@ fn surya_grahan_json(event: dhruv_search::SuryaGrahan) -> Value {
             "c4_utc": l.c4_utc.map(utc_json), "c4_jd": l.c4_jd,
             "magnitude": l.magnitude, "obscuration": l.obscuration,
             "sun_altitude_deg": l.sun_altitude_deg, "sun_azimuth_deg": l.sun_azimuth_deg,
-            "central_duration_seconds": l.central_duration_seconds
+            "central_duration_seconds": l.central_duration_seconds,
+            "first_visible_contact_utc": l.first_visible_contact_utc.map(utc_json),
+            "first_visible_contact_jd": l.first_visible_contact_jd,
+            "last_visible_contact_utc": l.last_visible_contact_utc.map(utc_json),
+            "last_visible_contact_jd": l.last_visible_contact_jd,
+            "visible_duration_seconds": l.visible_duration_seconds
         })),
         "centrality": match event.centrality {
             dhruv_search::SuryaCentrality::Full => "full",

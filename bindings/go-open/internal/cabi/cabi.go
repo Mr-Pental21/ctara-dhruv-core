@@ -1085,6 +1085,14 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 	}
 	st := Status(C.dhruv_grahan_search_ex(engine.ptr, &creq, &outC, &outS, &found, cptr, sptr, C.uint32_t(capacity), &outCount))
 	toC := func(v C.DhruvChandraGrahanResult) ChandraGrahanResult {
+		// A contact altitude is meaningful exactly when that contact exists.
+		contactAltitude := func(contactJd float64, altitude C.double) *float64 {
+			if v.local_valid == 0 || contactJd == -1.0 {
+				return nil
+			}
+			value := float64(altitude)
+			return &value
+		}
 		return ChandraGrahanResult{
 			GrahanType:            int32(v.grahan_type),
 			Magnitude:             float64(v.magnitude),
@@ -1107,6 +1115,21 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			AngularSeparationDeg:  float64(v.angular_separation_deg),
 			MoonRightAscensionDeg: float64(v.moon_right_ascension_deg),
 			MoonDeclinationDeg:    float64(v.moon_declination_deg),
+			LocalValid:            v.local_valid != 0,
+			LocalVisible:          v.local_visible != 0,
+			LocalMoonAltitudeDeg:  float64(v.local_moon_altitude_deg),
+			LocalMoonAzimuthDeg:   float64(v.local_moon_azimuth_deg),
+			LocalP1AltitudeDeg:    float64(v.local_p1_altitude_deg),
+			LocalU1AltitudeDeg:    contactAltitude(float64(v.u1_jd), v.local_u1_altitude_deg),
+			LocalU2AltitudeDeg:    contactAltitude(float64(v.u2_jd), v.local_u2_altitude_deg),
+			LocalU3AltitudeDeg:    contactAltitude(float64(v.u3_jd), v.local_u3_altitude_deg),
+			LocalU4AltitudeDeg:    contactAltitude(float64(v.u4_jd), v.local_u4_altitude_deg),
+			LocalP4AltitudeDeg:    float64(v.local_p4_altitude_deg),
+			LocalVisibleStartJd:   float64(v.local_visible_start_jd),
+			LocalVisibleStartUTC:  goOptionalUTC(float64(v.local_visible_start_jd) != -1.0, v.local_visible_start_utc),
+			LocalVisibleEndJd:     float64(v.local_visible_end_jd),
+			LocalVisibleEndUTC:    goOptionalUTC(float64(v.local_visible_end_jd) != -1.0, v.local_visible_end_utc),
+			LocalVisibleDurationSeconds: float64(v.local_visible_duration_seconds),
 		}
 	}
 	toS := func(v C.DhruvSuryaGrahanResult) SuryaGrahanResult {
@@ -1359,6 +1382,11 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			LocalMagnitude: float64(v.local_magnitude), LocalObscuration: float64(v.local_obscuration),
 			LocalSunAltitudeDeg: float64(v.local_sun_altitude_deg), LocalSunAzimuthDeg: float64(v.local_sun_azimuth_deg),
 			LocalCentralDurationSeconds: float64(v.local_central_duration_seconds),
+			LocalFirstVisibleContactJd:  float64(v.local_first_visible_contact_jd),
+			LocalFirstVisibleContactUTC: goOptionalUTC(float64(v.local_first_visible_contact_jd) != -1.0, v.local_first_visible_contact_utc),
+			LocalLastVisibleContactJd:   float64(v.local_last_visible_contact_jd),
+			LocalLastVisibleContactUTC:  goOptionalUTC(float64(v.local_last_visible_contact_jd) != -1.0, v.local_last_visible_contact_utc),
+			LocalVisibleDurationSeconds: float64(v.local_visible_duration_seconds),
 			Centrality:                  int32(v.centrality),
 			LocalGrid:                   localGrid,
 			Isolines:                    isolines,

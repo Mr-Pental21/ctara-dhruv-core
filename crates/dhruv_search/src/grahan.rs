@@ -32,8 +32,9 @@ use crate::conjunction_types::ConjunctionConfig;
 use crate::error::SearchError;
 use crate::grahan_fields::{CorridorTrack, central_corridor, grid_and_isolines};
 use crate::grahan_types::{
-    BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GeoLocation,
-    GrahanConfig, SuryaCentrality, SuryaContactFootprint, SuryaContactKind, SuryaGrahan,
+    BesselianElements, ChandraGrahan, ChandraGrahanLocalCircumstances, ChandraGrahanType,
+    EclipseGeoPoint, GeoLocation, GrahanConfig, SuryaCentrality, SuryaContactFootprint,
+    SuryaContactKind, SuryaGrahan,
     SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
     SuryaUmbraFootprint,
 };
@@ -61,6 +62,14 @@ pub(crate) const MOON_RADIUS_KM: f64 = 1737.4;
 /// Published in Meeus, "Astronomical Algorithms", Ch. 54.
 const DANJON_ENLARGEMENT: f64 = 1.02;
 
+/// `limb_sign` for an exterior contact: the Moon's limb nearest the shadow
+/// axis touches the boundary, so the two disks are externally tangent.
+const EXTERIOR_LIMB: f64 = -1.0;
+
+/// `limb_sign` for an interior contact: the Moon's limb farthest from the
+/// shadow axis touches the boundary, so the Moon is wholly inside it.
+const INTERIOR_LIMB: f64 = 1.0;
+
 /// Ecliptic latitude threshold for grahan candidacy (degrees).
 /// Generous threshold; exact geometry filters afterward.
 const GRAHAN_LAT_THRESHOLD_DEG: f64 = 2.0;
@@ -74,6 +83,21 @@ const CONTACT_CONVERGENCE_DAYS: f64 = 1e-8;
 
 /// Maximum bisection iterations for contact times.
 const CONTACT_MAX_ITER: u32 = 50;
+
+/// Altitude in degrees above which a body counts as risen, covering standard
+/// atmospheric refraction at the horizon plus the body's semidiameter.
+///
+/// Applied to the Sun for solar-eclipse visibility and to the Moon for lunar
+/// -eclipse visibility so the two surfaces agree on where the horizon is.
+/// Both are evaluated topocentrically, so lunar parallax is already carried
+/// by the position vector rather than the threshold.
+pub(crate) const BODY_UP_ALTITUDE_DEG: f64 = -0.833;
+
+/// Scan step for locating horizon crossings inside an eclipse window, in
+/// days. A body crosses the horizon at most twice within an eclipse of a few
+/// hours, so a coarse scan brackets every crossing and bisection then
+/// resolves each one to `CONTACT_CONVERGENCE_DAYS`.
+const VISIBILITY_SCAN_STEP_DAYS: f64 = 5.0 / 1440.0;
 
 // ---------------------------------------------------------------------------
 // Internal geometry helpers
@@ -875,6 +899,69 @@ where
     Ok((before, after))
 }
 
+/// Sub-intervals of `[start, end]` on which `margin` is positive, with every
+/// crossing refined by bisection.
+///
+/// An interval that is already open at `start` (or still open at `end`) is
+/// clamped to the window rather than extrapolated, which is what makes this
+/// usable for "clip the eclipse to the times the body is up": the result is
+/// the observable portion of the window and nothing outside it.
+fn positive_intervals<F>(
+    start: f64,
+    end: f64,
+    step_days: f64,
+    margin: F,
+) -> Result<Vec<(f64, f64)>, SearchError>
+where
+    F: Fn(f64) -> Result<f64, SearchError> + Copy,
+{
+    let mut intervals = Vec::new();
+    if end <= start {
+        return Ok(intervals);
+    }
+    let mut previous_t = start;
+    let mut previous_f = margin(start)?;
+    let mut open = (previous_f > 0.0).then_some(start);
+    let mut t = (start + step_days).min(end);
+    loop {
+        let value = margin(t)?;
+        if previous_f <= 0.0 && value > 0.0 {
+            open = Some(root_bisection(previous_t, t, margin)?.unwrap_or(t));
+        } else if previous_f > 0.0
+            && value <= 0.0
+            && let Some(begin) = open.take()
+        {
+            intervals.push((begin, root_bisection(previous_t, t, margin)?.unwrap_or(t)));
+        }
+        if t >= end {
+            break;
+        }
+        previous_t = t;
+        previous_f = value;
+        t = (t + step_days).min(end);
+    }
+    if let Some(begin) = open {
+        intervals.push((begin, end));
+    }
+    Ok(intervals)
+}
+
+/// Total length of a set of intervals, in seconds.
+///
+/// The empty case is returned explicitly because Rust's float `Sum` uses
+/// `-0.0` as its identity, which would otherwise reach consumers (and JSON)
+/// as a negative zero duration.
+fn interval_seconds(intervals: &[(f64, f64)]) -> f64 {
+    if intervals.is_empty() {
+        return 0.0;
+    }
+    intervals
+        .iter()
+        .map(|(start, end)| end - start)
+        .sum::<f64>()
+        * 86_400.0
+}
+
 #[derive(Debug, Clone, Copy)]
 struct LocalDiskGeometry {
     separation_rad: f64,
@@ -882,6 +969,30 @@ struct LocalDiskGeometry {
     moon_radius_rad: f64,
     sun_altitude_deg: f64,
     sun_azimuth_deg: f64,
+}
+
+/// Horizon coordinates (altitude, azimuth) in degrees for a unit topocentric
+/// direction expressed in true equatorial-of-date axes. Azimuth is measured
+/// east of north.
+///
+/// Shared by the solar and lunar local-circumstance paths so both report
+/// altitudes on exactly the same convention.
+pub(crate) fn horizon_altaz_deg(
+    direction_eq: [f64; 3],
+    gast: f64,
+    location: &GeoLocation,
+) -> (f64, f64) {
+    let ecef = rotate_z(direction_eq, -gast);
+    let lat = location.latitude_rad();
+    let lon = location.longitude_rad();
+    let east = -lon.sin() * ecef[0] + lon.cos() * ecef[1];
+    let north =
+        -lat.sin() * lon.cos() * ecef[0] - lat.sin() * lon.sin() * ecef[1] + lat.cos() * ecef[2];
+    let up = lat.cos() * lon.cos() * ecef[0] + lat.cos() * lon.sin() * ecef[1] + lat.sin() * ecef[2];
+    (
+        up.clamp(-1.0, 1.0).asin().to_degrees(),
+        east.atan2(north).to_degrees().rem_euclid(360.0),
+    )
 }
 
 fn local_disk_geometry(
@@ -901,21 +1012,13 @@ fn local_disk_geometry(
     let sun_u = unit(sun_topo);
     let moon_u = unit(moon_topo);
     let separation_rad = dot(sun_u, moon_u).clamp(-1.0, 1.0).acos();
-    let sun_ecef = rotate_z(sun_u, -gast);
-    let lat = location.latitude_rad();
-    let lon = location.longitude_rad();
-    let east = -lon.sin() * sun_ecef[0] + lon.cos() * sun_ecef[1];
-    let north = -lat.sin() * lon.cos() * sun_ecef[0] - lat.sin() * lon.sin() * sun_ecef[1]
-        + lat.cos() * sun_ecef[2];
-    let up = lat.cos() * lon.cos() * sun_ecef[0]
-        + lat.cos() * lon.sin() * sun_ecef[1]
-        + lat.sin() * sun_ecef[2];
+    let (sun_altitude_deg, sun_azimuth_deg) = horizon_altaz_deg(sun_u, gast, location);
     Ok(LocalDiskGeometry {
         separation_rad,
         sun_radius_rad: (SUN_RADIUS_KM / sun_distance).asin(),
         moon_radius_rad: (MOON_RADIUS_KM / moon_distance).asin(),
-        sun_altitude_deg: up.clamp(-1.0, 1.0).asin().to_degrees(),
-        sun_azimuth_deg: east.atan2(north).to_degrees().rem_euclid(360.0),
+        sun_altitude_deg,
+        sun_azimuth_deg,
     })
 }
 
@@ -1000,18 +1103,27 @@ fn local_circumstances(
     } else {
         (None, None)
     };
+    // Observable window: the [C1, C4] span clipped to the times the Sun is
+    // up. `visible` is derived from it rather than sampled separately, so the
+    // flag and the reported timings can never disagree.
     let visibility_start = c1.unwrap_or(maximum_jd - 0.2);
     let visibility_end = c4.unwrap_or(maximum_jd + 0.2);
-    let mut visible = false;
-    let mut sample_jd = visibility_start;
-    while sample_jd <= visibility_end + 1.0 / 2880.0 {
-        let sample = local_disk_geometry(engine, eop, sample_jd, &location)?;
-        if local_type(sample).is_some() && sample.sun_altitude_deg > -0.833 {
-            visible = true;
-            break;
-        }
-        sample_jd += 2.0 / 1440.0;
-    }
+    let visible_intervals = positive_intervals(
+        visibility_start,
+        visibility_end,
+        VISIBILITY_SCAN_STEP_DAYS,
+        |jd| {
+            let g = local_disk_geometry(engine, eop, jd, &location)?;
+            // Positive only while a partial phase is in progress *and* the
+            // Sun is risen; the tighter of the two margins governs. Same
+            // field as the local grid's visibility margin.
+            Ok((g.sun_radius_rad + g.moon_radius_rad - g.separation_rad)
+                .min((g.sun_altitude_deg - BODY_UP_ALTITUDE_DEG).to_radians()))
+        },
+    )?;
+    let visible = !visible_intervals.is_empty();
+    let first_visible_contact_jd = visible_intervals.first().map(|(start, _)| *start);
+    let last_visible_contact_jd = visible_intervals.last().map(|(_, end)| *end);
     Ok(SuryaGrahanLocalCircumstances {
         location,
         visible,
@@ -1050,6 +1162,13 @@ fn local_circumstances(
             (Some(start), Some(end)) => (end - start) * 86_400.0,
             _ => 0.0,
         },
+        first_visible_contact_jd,
+        first_visible_contact_utc: first_visible_contact_jd
+            .map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
+        last_visible_contact_jd,
+        last_visible_contact_utc: last_visible_contact_jd
+            .map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
+        visible_duration_seconds: interval_seconds(&visible_intervals),
     })
 }
 
@@ -1067,24 +1186,29 @@ fn validate_surya_inputs(
             "boundary_step_deg must be between 1 and 15",
         ));
     }
-    if let Some(location) = location {
-        if !location.latitude_deg.is_finite() || !(-90.0..=90.0).contains(&location.latitude_deg) {
-            return Err(SearchError::InvalidConfig(
-                "location latitude must be finite and between -90 and 90",
-            ));
-        }
-        if !location.longitude_deg.is_finite()
-            || !(-180.0..=180.0).contains(&location.longitude_deg)
-        {
-            return Err(SearchError::InvalidConfig(
-                "location longitude must be finite and between -180 and 180",
-            ));
-        }
-        if !location.altitude_m.is_finite() {
-            return Err(SearchError::InvalidConfig(
-                "location altitude must be finite",
-            ));
-        }
+    validate_observer_location(location)
+}
+
+/// Reject an observer location that is not a usable point on the ellipsoid.
+/// `None` is always valid: it means no local circumstances were requested.
+fn validate_observer_location(location: Option<GeoLocation>) -> Result<(), SearchError> {
+    let Some(location) = location else {
+        return Ok(());
+    };
+    if !location.latitude_deg.is_finite() || !(-90.0..=90.0).contains(&location.latitude_deg) {
+        return Err(SearchError::InvalidConfig(
+            "location latitude must be finite and between -90 and 90",
+        ));
+    }
+    if !location.longitude_deg.is_finite() || !(-180.0..=180.0).contains(&location.longitude_deg) {
+        return Err(SearchError::InvalidConfig(
+            "location longitude must be finite and between -180 and 180",
+        ));
+    }
+    if !location.altitude_m.is_finite() {
+        return Err(SearchError::InvalidConfig(
+            "location altitude must be finite",
+        ));
     }
     Ok(())
 }
@@ -1265,7 +1389,17 @@ fn classify_chandra(
 /// Find a contact time by bisecting when Moon's limb crosses a shadow boundary.
 ///
 /// `boundary_radius_deg` is the shadow radius (umbral or penumbral).
-/// `limb_sign`: -1.0 for near limb (inner), +1.0 for far limb (outer).
+///
+/// `limb_sign` selects which limb of the Moon touches that boundary, through
+/// `f(t) = offset + limb_sign * moon_radius - boundary_radius`, where `offset`
+/// is the shadow-axis-to-Moon-center distance:
+/// - `-1.0` — the limb nearest the axis, so the disks are externally tangent
+///   (`offset = boundary + moon_radius`). This is an *exterior* contact:
+///   P1, U1, U4, P4.
+/// - `+1.0` — the limb farthest from the axis, so the Moon is entirely inside
+///   (`offset = boundary - moon_radius`). This is an *interior* contact:
+///   U2 and U3, the bounds of totality.
+///
 /// Searches between `t_a` and `t_b`.
 fn find_chandra_contact(
     engine: &Engine,
@@ -1307,24 +1441,108 @@ fn find_chandra_contact(
     Ok(0.5 * (ta + tb))
 }
 
+/// Moon's topocentric horizon coordinates (altitude, azimuth) in degrees.
+///
+/// Topocentric, so the Moon's large diurnal parallax (up to ~1 degree) is
+/// already accounted for — an altitude computed geocentrically would be wrong
+/// by about that much near the horizon, which is precisely where the
+/// visible/not-visible decision is made.
+fn moon_horizon_altaz_deg(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    jd_tdb: f64,
+    location: &GeoLocation,
+) -> Result<(f64, f64), SearchError> {
+    let (_, moon) = sun_moon_true_vectors(engine, jd_tdb)?;
+    let gast = gast_rad_for(engine, eop, jd_tdb);
+    let observer_eq = rotate_z(geodetic_to_ecef(location), gast);
+    Ok(horizon_altaz_deg(
+        unit(sub(moon, observer_eq)),
+        gast,
+        location,
+    ))
+}
+
+/// Local circumstances of a lunar eclipse for one observer.
+///
+/// A lunar eclipse happens on the Moon, so its contact instants are identical
+/// for every observer; this only decides how much of the event is above the
+/// observer's horizon. The contact times on `grahan` are read, never
+/// recomputed.
+fn chandra_local_circumstances(
+    engine: &Engine,
+    eop: Option<&EopKernel>,
+    location: GeoLocation,
+    grahan: &ChandraGrahan,
+) -> Result<ChandraGrahanLocalCircumstances, SearchError> {
+    let altitude_at = |jd: f64| -> Result<f64, SearchError> {
+        Ok(moon_horizon_altaz_deg(engine, eop, jd, &location)?.0)
+    };
+    let altitude_at_optional = |jd: Option<f64>| -> Result<Option<f64>, SearchError> {
+        jd.map(altitude_at).transpose()
+    };
+
+    let (moon_altitude_deg, moon_azimuth_deg) =
+        moon_horizon_altaz_deg(engine, eop, grahan.greatest_grahan_jd, &location)?;
+
+    // Moon-up portion of the full penumbral span. Split intervals are kept
+    // separate for the duration sum; the reported window is their outer
+    // envelope, which is what an observer would call "start" and "end".
+    let visible_intervals = positive_intervals(
+        grahan.p1_jd,
+        grahan.p4_jd,
+        VISIBILITY_SCAN_STEP_DAYS,
+        |jd| Ok(altitude_at(jd)? - BODY_UP_ALTITUDE_DEG),
+    )?;
+    let visible_start_jd = visible_intervals.first().map(|(start, _)| *start);
+    let visible_end_jd = visible_intervals.last().map(|(_, end)| *end);
+
+    Ok(ChandraGrahanLocalCircumstances {
+        location,
+        visible: !visible_intervals.is_empty(),
+        moon_altitude_deg,
+        moon_azimuth_deg,
+        p1_altitude_deg: altitude_at(grahan.p1_jd)?,
+        u1_altitude_deg: altitude_at_optional(grahan.u1_jd)?,
+        u2_altitude_deg: altitude_at_optional(grahan.u2_jd)?,
+        u3_altitude_deg: altitude_at_optional(grahan.u3_jd)?,
+        u4_altitude_deg: altitude_at_optional(grahan.u4_jd)?,
+        p4_altitude_deg: altitude_at(grahan.p4_jd)?,
+        visible_start_jd,
+        visible_start_utc: visible_start_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
+        visible_end_jd,
+        visible_end_utc: visible_end_jd.map(|jd| UtcTime::from_jd_tdb(jd, engine.lsk())),
+        visible_duration_seconds: interval_seconds(&visible_intervals),
+    })
+}
+
 /// Compute a single chandra grahan from a full moon event.
 fn compute_chandra_grahan(
     engine: &Engine,
+    eop: Option<&EopKernel>,
     full_moon_jd: f64,
+    location: Option<GeoLocation>,
     config: &GrahanConfig,
 ) -> Result<Option<ChandraGrahan>, SearchError> {
-    // Get Moon's ecliptic latitude at full moon
-    let (_, moon_lat, moon_dist) = moon_ecliptic(engine, full_moon_jd)?;
-
-    // Quick filter
-    if moon_lat.abs() > GRAHAN_LAT_THRESHOLD_DEG {
+    // Quick filter on the Moon's ecliptic latitude at opposition.
+    let (_, opposition_lat, _) = moon_ecliptic(engine, full_moon_jd)?;
+    if opposition_lat.abs() > GRAHAN_LAT_THRESHOLD_DEG {
         return Ok(None);
     }
 
-    let sun_dist = sun_distance(engine, full_moon_jd)?;
+    // Greatest eclipse is the moment the Moon's center passes closest to the
+    // shadow axis, which is a few minutes away from exact opposition because
+    // the Moon is moving in latitude as well as longitude. Every quantity
+    // below is evaluated there, matching the published convention.
+    let greatest_jd = minimize_scalar(full_moon_jd - 0.25, full_moon_jd + 0.25, |jd| {
+        moon_shadow_offset_deg(engine, jd)
+    })?;
+
+    let (_, moon_lat, moon_dist) = moon_ecliptic(engine, greatest_jd)?;
+    let sun_dist = sun_distance(engine, greatest_jd)?;
     let (penumbral_radius, umbral_radius) = shadow_radii_deg(sun_dist, moon_dist);
     let moon_radius = moon_angular_radius_deg(moon_dist);
-    let shadow_offset = moon_shadow_offset_deg(engine, full_moon_jd)?;
+    let shadow_offset = moon_shadow_offset_deg(engine, greatest_jd)?;
 
     let grahan_type =
         match classify_chandra(shadow_offset, moon_radius, umbral_radius, penumbral_radius) {
@@ -1344,75 +1562,75 @@ fn compute_chandra_grahan(
     // Contact times — search window: ~6 hours around greatest grahan
     let half_window = 0.25; // 6 hours in days
 
-    // P1: near limb enters penumbra (outer limb, going in)
+    // P1/P4: the Moon's leading and trailing limb touch the penumbra from
+    // outside, so both are exterior contacts.
     let p1_jd = find_chandra_contact(
         engine,
-        full_moon_jd - half_window,
-        full_moon_jd,
+        greatest_jd - half_window,
+        greatest_jd,
         penumbral_radius,
-        1.0, // far limb crosses penumbra boundary
+        EXTERIOR_LIMB,
     )?;
-
-    // P4: far limb exits penumbra
     let p4_jd = find_chandra_contact(
         engine,
-        full_moon_jd,
-        full_moon_jd + half_window,
+        greatest_jd,
+        greatest_jd + half_window,
         penumbral_radius,
-        1.0,
+        EXTERIOR_LIMB,
     )?;
 
-    // U1/U4: umbral contacts (only if partial or total)
+    // U1/U4: first and last umbral touch — exterior contacts on the umbra.
     let (u1_jd, u4_jd) = if grahan_type != ChandraGrahanType::Penumbral {
         let u1 = find_chandra_contact(
             engine,
-            full_moon_jd - half_window,
-            full_moon_jd,
+            greatest_jd - half_window,
+            greatest_jd,
             umbral_radius,
-            1.0,
+            EXTERIOR_LIMB,
         )?;
         let u4 = find_chandra_contact(
             engine,
-            full_moon_jd,
-            full_moon_jd + half_window,
+            greatest_jd,
+            greatest_jd + half_window,
             umbral_radius,
-            1.0,
+            EXTERIOR_LIMB,
         )?;
         (Some(u1), Some(u4))
     } else {
         (None, None)
     };
 
-    // U2/U3: totality contacts (only if total)
+    // U2/U3: totality bounds — the Moon is wholly inside the umbra, so these
+    // are interior contacts.
     let (u2_jd, u3_jd) = if grahan_type == ChandraGrahanType::Total {
         let u2 = find_chandra_contact(
             engine,
-            full_moon_jd - half_window,
-            full_moon_jd,
+            greatest_jd - half_window,
+            greatest_jd,
             umbral_radius,
-            -1.0, // near limb crosses umbra boundary
+            INTERIOR_LIMB,
         )?;
         let u3 = find_chandra_contact(
             engine,
-            full_moon_jd,
-            full_moon_jd + half_window,
+            greatest_jd,
+            greatest_jd + half_window,
             umbral_radius,
-            -1.0,
+            INTERIOR_LIMB,
         )?;
         (Some(u2), Some(u3))
     } else {
         (None, None)
     };
 
-    let angular_sep = sun_moon_angular_separation(engine, full_moon_jd)?;
-    let (moon_ra, moon_dec) = apparent_equatorial_deg(engine, Body::Moon, full_moon_jd)?;
+    let angular_sep = sun_moon_angular_separation(engine, greatest_jd)?;
+    let (moon_ra, moon_dec) = apparent_equatorial_deg(engine, Body::Moon, greatest_jd)?;
 
-    Ok(Some(ChandraGrahan {
+    let mut grahan = ChandraGrahan {
         grahan_type,
         magnitude: umbral_magnitude,
         penumbral_magnitude,
-        greatest_grahan_jd: full_moon_jd,
-        greatest_grahan_utc: UtcTime::from_jd_tdb(full_moon_jd, engine.lsk()),
+        greatest_grahan_jd: greatest_jd,
+        greatest_grahan_utc: UtcTime::from_jd_tdb(greatest_jd, engine.lsk()),
         p1_jd,
         p1_utc: UtcTime::from_jd_tdb(p1_jd, engine.lsk()),
         u1_jd,
@@ -1429,15 +1647,28 @@ fn compute_chandra_grahan(
         angular_separation_deg: angular_sep,
         moon_right_ascension_deg: moon_ra,
         moon_declination_deg: moon_dec,
-    }))
+        local: None,
+    };
+    if let Some(point) = location {
+        grahan.local = Some(chandra_local_circumstances(engine, eop, point, &grahan)?);
+    }
+    Ok(Some(grahan))
 }
 
 /// Find the next chandra grahan (lunar eclipse) after `jd_tdb`.
+///
+/// `location` is optional. When supplied, the result carries `local`
+/// circumstances for that observer; the contact times are unaffected, since a
+/// lunar eclipse is seen at the same instants everywhere it is above the
+/// horizon.
 pub fn next_chandra_grahan(
     engine: &Engine,
+    eop: Option<&EopKernel>,
     jd_tdb: f64,
+    location: Option<GeoLocation>,
     config: &GrahanConfig,
 ) -> Result<Option<ChandraGrahan>, SearchError> {
+    validate_observer_location(location)?;
     let moon_config = ConjunctionConfig::opposition(MOON_STEP_DAYS);
     let mut search_jd = jd_tdb;
 
@@ -1454,7 +1685,7 @@ pub fn next_chandra_grahan(
             return Ok(None);
         };
 
-        if let Some(grahan) = compute_chandra_grahan(engine, fm.jd_tdb, config)? {
+        if let Some(grahan) = compute_chandra_grahan(engine, eop, fm.jd_tdb, location, config)? {
             return Ok(Some(grahan));
         }
 
@@ -1466,11 +1697,16 @@ pub fn next_chandra_grahan(
 }
 
 /// Find the previous chandra grahan (lunar eclipse) before `jd_tdb`.
+///
+/// `location` is optional; see [`next_chandra_grahan`].
 pub fn prev_chandra_grahan(
     engine: &Engine,
+    eop: Option<&EopKernel>,
     jd_tdb: f64,
+    location: Option<GeoLocation>,
     config: &GrahanConfig,
 ) -> Result<Option<ChandraGrahan>, SearchError> {
+    validate_observer_location(location)?;
     let moon_config = ConjunctionConfig::opposition(MOON_STEP_DAYS);
     let mut search_jd = jd_tdb;
 
@@ -1486,7 +1722,7 @@ pub fn prev_chandra_grahan(
             return Ok(None);
         };
 
-        if let Some(grahan) = compute_chandra_grahan(engine, fm.jd_tdb, config)? {
+        if let Some(grahan) = compute_chandra_grahan(engine, eop, fm.jd_tdb, location, config)? {
             return Ok(Some(grahan));
         }
 
@@ -1497,12 +1733,17 @@ pub fn prev_chandra_grahan(
 }
 
 /// Search for all chandra grahan in a time range.
+///
+/// `location` is optional; see [`next_chandra_grahan`].
 pub fn search_chandra_grahan(
     engine: &Engine,
+    eop: Option<&EopKernel>,
     jd_start: f64,
     jd_end: f64,
+    location: Option<GeoLocation>,
     config: &GrahanConfig,
 ) -> Result<Vec<ChandraGrahan>, SearchError> {
+    validate_observer_location(location)?;
     if jd_end <= jd_start {
         return Err(SearchError::InvalidConfig("jd_end must be after jd_start"));
     }
@@ -1519,7 +1760,7 @@ pub fn search_chandra_grahan(
 
     let mut results = Vec::new();
     for fm in &full_moons {
-        if let Some(grahan) = compute_chandra_grahan(engine, fm.jd_tdb, config)? {
+        if let Some(grahan) = compute_chandra_grahan(engine, eop, fm.jd_tdb, location, config)? {
             results.push(grahan);
         }
     }

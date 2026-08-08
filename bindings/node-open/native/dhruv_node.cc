@@ -2585,6 +2585,28 @@ napi_value WriteChandraGrahanResult(napi_env env, const DhruvChandraGrahanResult
     SetNamed(env, obj, "angularSeparationDeg", MakeDouble(env, g.angular_separation_deg));
     SetNamed(env, obj, "moonRightAscensionDeg", MakeDouble(env, g.moon_right_ascension_deg));
     SetNamed(env, obj, "moonDeclinationDeg", MakeDouble(env, g.moon_declination_deg));
+    if (g.local_valid != 0) {
+        napi_value local;
+        napi_create_object(env, &local);
+        SetNamed(env, local, "visible", MakeBool(env, g.local_visible != 0));
+        SetNamed(env, local, "moonAltitudeDeg", MakeDouble(env, g.local_moon_altitude_deg));
+        SetNamed(env, local, "moonAzimuthDeg", MakeDouble(env, g.local_moon_azimuth_deg));
+        SetNamed(env, local, "p1AltitudeDeg", MakeDouble(env, g.local_p1_altitude_deg));
+        // A contact altitude exists exactly when that contact does.
+        SetNamed(env, local, "u1AltitudeDeg", g.u1_jd == DHRUV_JD_ABSENT ? nullv : MakeDouble(env, g.local_u1_altitude_deg));
+        SetNamed(env, local, "u2AltitudeDeg", g.u2_jd == DHRUV_JD_ABSENT ? nullv : MakeDouble(env, g.local_u2_altitude_deg));
+        SetNamed(env, local, "u3AltitudeDeg", g.u3_jd == DHRUV_JD_ABSENT ? nullv : MakeDouble(env, g.local_u3_altitude_deg));
+        SetNamed(env, local, "u4AltitudeDeg", g.u4_jd == DHRUV_JD_ABSENT ? nullv : MakeDouble(env, g.local_u4_altitude_deg));
+        SetNamed(env, local, "p4AltitudeDeg", MakeDouble(env, g.local_p4_altitude_deg));
+        SetNamed(env, local, "visibleStartUtc", g.local_visible_start_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_visible_start_utc));
+        SetNamed(env, local, "visibleStartJd", MakeDouble(env, g.local_visible_start_jd));
+        SetNamed(env, local, "visibleEndUtc", g.local_visible_end_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_visible_end_utc));
+        SetNamed(env, local, "visibleEndJd", MakeDouble(env, g.local_visible_end_jd));
+        SetNamed(env, local, "visibleDurationSeconds", MakeDouble(env, g.local_visible_duration_seconds));
+        SetNamed(env, obj, "local", local);
+    } else {
+        SetNamed(env, obj, "local", nullv);
+    }
     return obj;
 }
 
@@ -2894,6 +2916,11 @@ napi_value WriteSuryaGrahanResult(napi_env env, const DhruvSuryaGrahanResult& g)
         SetNamed(env, local, "sunAltitudeDeg", MakeDouble(env, g.local_sun_altitude_deg));
         SetNamed(env, local, "sunAzimuthDeg", MakeDouble(env, g.local_sun_azimuth_deg));
         SetNamed(env, local, "centralDurationSeconds", MakeDouble(env, g.local_central_duration_seconds));
+        SetNamed(env, local, "firstVisibleContactUtc", g.local_first_visible_contact_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_first_visible_contact_utc));
+        SetNamed(env, local, "firstVisibleContactJd", MakeDouble(env, g.local_first_visible_contact_jd));
+        SetNamed(env, local, "lastVisibleContactUtc", g.local_last_visible_contact_jd == DHRUV_JD_ABSENT ? nullv : WriteUtcTime(env, g.local_last_visible_contact_utc));
+        SetNamed(env, local, "lastVisibleContactJd", MakeDouble(env, g.local_last_visible_contact_jd));
+        SetNamed(env, local, "visibleDurationSeconds", MakeDouble(env, g.local_visible_duration_seconds));
         SetNamed(env, obj, "local", local);
     } else {
         SetNamed(env, obj, "local", nullv);

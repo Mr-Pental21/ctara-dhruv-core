@@ -260,8 +260,10 @@ pub struct GrahanOperation {
     pub kind: GrahanKind,
     /// Search configuration.
     pub config: GrahanConfig,
-    /// Optional observer location for local solar-eclipse circumstances.
-    /// Ignored for lunar eclipses.
+    /// Optional observer location for local circumstances. Applies to both
+    /// families: for surya it drives the topocentric contact times, for
+    /// chandra it drives the Moon's altitude at each contact and the
+    /// above-horizon portion of the event.
     pub location: Option<GrahanGeoLocation>,
     /// Query selector and time bounds.
     pub query: GrahanQuery,
@@ -288,10 +290,10 @@ pub fn grahan(
 ) -> Result<GrahanResult, SearchError> {
     match (op.kind, op.query) {
         (GrahanKind::Chandra, GrahanQuery::Next { at_jd_tdb }) => Ok(GrahanResult::ChandraSingle(
-            next_chandra_grahan(engine, at_jd_tdb, &op.config)?.map(Box::new),
+            next_chandra_grahan(engine, eop, at_jd_tdb, op.location, &op.config)?.map(Box::new),
         )),
         (GrahanKind::Chandra, GrahanQuery::Prev { at_jd_tdb }) => Ok(GrahanResult::ChandraSingle(
-            prev_chandra_grahan(engine, at_jd_tdb, &op.config)?.map(Box::new),
+            prev_chandra_grahan(engine, eop, at_jd_tdb, op.location, &op.config)?.map(Box::new),
         )),
         (
             GrahanKind::Chandra,
@@ -307,8 +309,10 @@ pub fn grahan(
             }
             Ok(GrahanResult::ChandraMany(search_chandra_grahan(
                 engine,
+                eop,
                 start_jd_tdb,
                 end_jd_tdb,
+                op.location,
                 &op.config,
             )?))
         }

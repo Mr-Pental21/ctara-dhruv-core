@@ -517,6 +517,26 @@ grahan: `ChandraGrahan.moon_right_ascension_deg`/`moon_declination_deg`
 and `SuryaGrahan.sun_right_ascension_deg`/`sun_declination_deg`
 (degrees, true equator/equinox of date, IAU 2000B nutation applied).
 
+`GrahanOperation.location` is optional and applies to both kinds. It adds a
+`local` value to each result and changes nothing else; leave it `None` and
+`local` is `None`.
+
+`ChandraGrahan.local` is a `ChandraGrahanLocalCircumstances`. A lunar eclipse
+is seen at the same instants everywhere it is above the horizon, so the
+contact times do not vary with location; this reports `visible`,
+`moon_altitude_deg`/`moon_azimuth_deg` at greatest eclipse, per-contact
+`p1_altitude_deg`, `u1_altitude_deg` .. `u4_altitude_deg` (`None` on a
+penumbral eclipse, matching the `None` contacts), `p4_altitude_deg`, and the
+moonrise/moonset-clipped `visible_start_jd`/`_utc`, `visible_end_jd`/`_utc`,
+and `visible_duration_seconds`.
+
+`SuryaGrahanLocalCircumstances` adds the Sun-up-clipped
+`first_visible_contact_jd`/`_utc`, `last_visible_contact_jd`/`_utc`, and
+`visible_duration_seconds`. Show those as a location's eclipse start and end:
+`c1`..`c4` are pure geometric contacts and can fall while the Sun is below the
+horizon. Both families use the same horizon convention, an altitude above
+-0.833 degrees, evaluated topocentrically.
+
 For low-level engine, time, frame, and extension-trait surfaces that are not
 explicitly re-exported here, depend on the source crates directly:
 

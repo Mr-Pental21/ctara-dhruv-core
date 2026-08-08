@@ -349,6 +349,16 @@ bodies). Each printed event reports the target angle it matched.
 - `prev-surya-grahan`
 - `search-surya-grahan`
 
+`--lat`, `--lon`, `--alt` apply to `--kind chandra` as well. For a lunar
+eclipse they do not move the contact times — the eclipse is seen at the same
+instants everywhere it is above the horizon — and instead print a `Local:`
+line with the Moon's altitude and azimuth at greatest eclipse, a
+`Local contact altitudes:` line for P1/U1/U2/U3/U4/P4, and a
+`Local visible window:` line giving the event clipped to the times the Moon is
+up. `--kind surya` prints the same visible-window line, clipped to the times
+the Sun is up; prefer it over the geometric C1/C4 contacts when reporting when
+an eclipse starts and ends at a place.
+
 The unified `grahan --kind surya` command accepts `--include-path`,
 `--path-step-minutes`, `--boundary-step-deg`, `--lat`, `--lon`, `--alt`, and
 optional `--eop`, plus the field products: `--include-local-grid`,

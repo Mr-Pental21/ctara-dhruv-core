@@ -75,8 +75,9 @@ pub use grahan::{
     prev_surya_grahan, search_chandra_grahan, search_surya_grahan,
 };
 pub use grahan_types::{
-    BesselianElements, ChandraGrahan, ChandraGrahanType, EclipseGeoPoint, GeoLocation,
-    GrahanConfig, PoleSide, SuryaCentralCorridor, SuryaCentrality, SuryaContactFootprint,
+    BesselianElements, ChandraGrahan, ChandraGrahanLocalCircumstances, ChandraGrahanType,
+    EclipseGeoPoint, GeoLocation, GrahanConfig, PoleSide, SuryaCentralCorridor,
+    SuryaCentrality, SuryaContactFootprint,
     SuryaContactKind, SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahan,
     SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
     SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline,

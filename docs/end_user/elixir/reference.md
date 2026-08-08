@@ -324,7 +324,44 @@ grahan: `moon_right_ascension_deg`/`moon_declination_deg` on chandra
 grahan results and `sun_right_ascension_deg`/`sun_declination_deg` on
 surya grahan results (degrees, equinox of date, nutation applied).
 
-Solar grahan requests also accept `location` and `config.include_path`,
+Grahan requests of either kind accept an optional `location`, which adds a
+`local` block to each result and changes nothing else. Omit it and `local` is
+`nil`, which is what a cached global catalogue should do.
+
+For **chandra** grahan, `location` does not move the contact times — a lunar
+eclipse is seen at the same instants everywhere it is above the horizon. The
+`local` block instead reports where the Moon is in the observer's sky and how
+much of the event they can actually see:
+
+```elixir
+%{
+  location: %{latitude_deg: ..., longitude_deg: ..., altitude_m: ...},
+  visible: true,
+  moon_altitude_deg: ..., moon_azimuth_deg: ...,   # at greatest eclipse
+  p1_altitude_deg: ..., u1_altitude_deg: ..., u2_altitude_deg: ...,
+  u3_altitude_deg: ..., u4_altitude_deg: ..., p4_altitude_deg: ...,
+  visible_start_utc: %{...}, visible_start_jd: ...,
+  visible_end_utc: %{...}, visible_end_jd: ...,
+  visible_duration_seconds: ...
+}
+```
+
+`visible_start`/`visible_end` are `[p1, p4]` clipped to the times the Moon is
+up, so they hold the moment of moonrise or moonset when the Moon crosses the
+horizon mid-eclipse. They are `nil` (and `visible` is `false`) when the whole
+eclipse happens below the horizon. The `u1`..`u4` altitudes are `nil` for a
+penumbral eclipse, matching the `nil` contact times. The horizon convention is
+an altitude above -0.833 degrees (standard refraction plus semidiameter),
+evaluated topocentrically so the Moon's parallax is included.
+
+For **surya** grahan, `local` carries the same idea alongside the topocentric
+contacts: `first_visible_contact_utc`/`_jd`,
+`last_visible_contact_utc`/`_jd`, and `visible_duration_seconds` are
+`[c1, c4]` clipped to the times the Sun is up. Show those as a location's
+eclipse start and end — `c1`..`c4` are pure geometric contacts and can fall
+while the Sun is below the horizon, in which case they are not observable.
+
+Solar grahan requests also accept `config.include_path`,
 `path_step_minutes`, and `boundary_step_deg`. Results include Besselian
 elements, greatest location, map path/footprint samples, and local visibility
 circumstances. The config additionally accepts `include_local_grid` /

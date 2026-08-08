@@ -95,9 +95,9 @@ Source: `crates/dhruv_search/src/grahan.rs`, `crates/dhruv_search/src/grahan_typ
 
 | Function | Inputs | Output | What it does |
 |---|---|---|---|
-| `next_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Next lunar eclipse candidate after `jd_tdb`, classified + contacts. |
-| `prev_chandra_grahan` | `engine`, `jd_tdb`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Previous lunar eclipse before `jd_tdb`. |
-| `search_chandra_grahan` | `engine`, `jd_start`, `jd_end`, `config` | `Result<Vec<ChandraGrahan>, SearchError>` | All lunar eclipses in range. |
+| `next_chandra_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Next lunar eclipse candidate after `jd_tdb`, classified + contacts + optional local circumstances. |
+| `prev_chandra_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<ChandraGrahan>, SearchError>` | Previous lunar eclipse before `jd_tdb`. |
+| `search_chandra_grahan` | `engine`, `eop`, `jd_start`, `jd_end`, `location`, `config` | `Result<Vec<ChandraGrahan>, SearchError>` | All lunar eclipses in range. |
 | `besselian_elements_at` | `engine`, `eop`, `jd_tdb` | `Result<BesselianElements, SearchError>` | Ephemeris-derived instantaneous solar-shadow elements. |
 | `next_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Next solar eclipse with optional geographic path and local circumstances. |
 | `prev_surya_grahan` | `engine`, `eop`, `jd_tdb`, `location`, `config` | `Result<Option<SuryaGrahan>, SearchError>` | Previous solar eclipse with optional geographic products. |

@@ -65,7 +65,25 @@ all-or-nothing and list output preserves active query order.
 - `conjunctionSearch`
 - `grahanSearch`
 
-Solar grahan requests may include `location` and path sampling config. Solar
+Grahan requests of either kind may include `location`, which adds a `local`
+object to each result and changes nothing else; omit it and `local` is `null`.
+
+For lunar grahan, `location` does not move the contact times — a lunar eclipse
+is seen at the same instants everywhere it is above the horizon. `local`
+instead reports `visible`, `moonAltitudeDeg`/`moonAzimuthDeg` at greatest
+eclipse, the per-contact `p1AltitudeDeg`, `u1AltitudeDeg` .. `u4AltitudeDeg`
+(`null` on a penumbral eclipse, matching the `null` contacts),
+`p4AltitudeDeg`, and the moonrise/moonset-clipped `visibleStartUtc`/`Jd`,
+`visibleEndUtc`/`Jd`, and `visibleDurationSeconds` (`null`/0 when the eclipse
+is entirely below the horizon).
+
+Solar `local` adds the Sun-up-clipped `firstVisibleContactUtc`/`Jd`,
+`lastVisibleContactUtc`/`Jd`, and `visibleDurationSeconds`. Show those as a
+location's eclipse start and end: `c1`..`c4` are pure geometric contacts and
+can fall while the Sun is below the horizon. Both families use the same
+horizon convention, an altitude above -0.833 degrees.
+
+Solar grahan requests may also include path sampling config. Solar
 results include obscuration, gamma, Besselian elements, greatest location,
 materialized `path` and `footprints` arrays, and complete local circumstances.
 The config additionally accepts `includeLocalGrid`/`localGridStepDeg`,
