@@ -68,7 +68,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 89;
+pub const DHRUV_API_VERSION: u32 = 90;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -3706,6 +3706,14 @@ pub struct DhruvGrahanConfig {
     pub instantaneous_magnitude_levels: [f64; DHRUV_GRAHAN_MAX_ISOLINE_LEVELS],
     /// Number of valid entries in `instantaneous_magnitude_levels`.
     pub instantaneous_magnitude_level_count: u32,
+    /// Footprint-ring sampling cadence in minutes (v90). 0 follows
+    /// `path_step_minutes`; 1..=30 samples the penumbral footprint rings on
+    /// their own, typically coarser, cadence while the path keeps its own.
+    pub footprint_step_minutes: u32,
+    /// Ring simplification tolerance in degrees of arc (v90). 0 emits
+    /// exact contour vertices; positive values run a Douglas-Peucker pass
+    /// over every emitted boundary ring. Clamped to [0, 5].
+    pub ring_simplify_tolerance_deg: f64,
 }
 
 /// Surya centrality: the central shadow never reaches Earth.
@@ -3820,6 +3828,7 @@ fn grahan_config_from_ffi(cfg: &DhruvGrahanConfig) -> GrahanConfig {
         include_peak_details: cfg.include_peak_details != 0,
         include_path: cfg.include_path != 0,
         path_step_minutes: cfg.path_step_minutes,
+        footprint_step_minutes: cfg.footprint_step_minutes,
         boundary_step_deg: cfg.boundary_step_deg,
         include_local_grid: cfg.include_local_grid != 0,
         local_grid_step_deg: cfg.local_grid_step_deg,
@@ -3839,6 +3848,7 @@ fn grahan_config_from_ffi(cfg: &DhruvGrahanConfig) -> GrahanConfig {
             &cfg.instantaneous_magnitude_levels,
             cfg.instantaneous_magnitude_level_count,
         ),
+        ring_simplify_tolerance_deg: cfg.ring_simplify_tolerance_deg,
     }
 }
 
@@ -3882,6 +3892,8 @@ fn grahan_config_to_ffi(cfg: &GrahanConfig) -> DhruvGrahanConfig {
         magnitude_isoline_level_count: magnitude_count as u32,
         instantaneous_magnitude_levels,
         instantaneous_magnitude_level_count: instantaneous_count as u32,
+        footprint_step_minutes: cfg.footprint_step_minutes,
+        ring_simplify_tolerance_deg: cfg.ring_simplify_tolerance_deg,
     }
 }
 
@@ -19788,7 +19800,10 @@ mod tests {
         assert_eq!(cfg.include_peak_details, 1);
         assert_eq!(cfg.include_path, 0);
         assert_eq!(cfg.path_step_minutes, 1);
+        // 0 = follow path_step_minutes, the byte-compatible default.
+        assert_eq!(cfg.footprint_step_minutes, 0);
         assert_eq!(cfg.boundary_step_deg, 2);
+        assert_eq!(cfg.ring_simplify_tolerance_deg, 0.0);
     }
 
     #[test]

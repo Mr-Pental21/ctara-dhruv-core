@@ -360,7 +360,9 @@ the Sun is up; prefer it over the geometric C1/C4 contacts when reporting when
 an eclipse starts and ends at a place.
 
 The unified `grahan --kind surya` command accepts `--include-path`,
-`--path-step-minutes`, `--boundary-step-deg`, `--lat`, `--lon`, `--alt`, and
+`--path-step-minutes`, `--footprint-step-minutes` (0 = follow the path
+cadence), `--ring-simplify-tolerance-deg` (0 = exact rings),
+`--boundary-step-deg`, `--lat`, `--lon`, `--alt`, and
 optional `--eop`, plus the field products: `--include-local-grid`,
 `--local-grid-step-deg`, `--include-isolines`,
 `--duration-isoline-fractions`, `--magnitude-isoline-levels` (comma

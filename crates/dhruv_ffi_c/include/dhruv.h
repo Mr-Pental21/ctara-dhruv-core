@@ -23,7 +23,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       89
+#define DHRUV_API_VERSION       90
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -745,6 +745,14 @@ typedef struct {
     /* Instantaneous iso-magnitude contour levels for footprints. */
     double instantaneous_magnitude_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
     uint32_t instantaneous_magnitude_level_count;
+    /* Footprint-ring sampling cadence in minutes (v90). 0 follows
+       path_step_minutes; 1..=30 samples the penumbral footprint rings on
+       their own, typically coarser, cadence while the path keeps its own. */
+    uint32_t footprint_step_minutes;
+    /* Ring simplification tolerance in degrees of arc (v90). 0 emits exact
+       contour vertices; positive values run a Douglas-Peucker pass over
+       every emitted boundary ring. Clamped to [0, 5]. */
+    double ring_simplify_tolerance_deg;
 } DhruvGrahanConfig;
 
 typedef struct {

@@ -488,7 +488,11 @@ type GrahanConfig struct {
 	IncludePeakDetails bool
 	IncludePath        bool
 	PathStepMinutes    uint32
-	BoundaryStepDeg    uint32
+	// Footprint-ring cadence in minutes (v90). 0 follows PathStepMinutes.
+	FootprintStepMinutes uint32
+	BoundaryStepDeg      uint32
+	// Ring simplification tolerance in degrees of arc (v90). 0 = exact.
+	RingSimplifyToleranceDeg float64
 	// Surya field products (grid/isolines/corridor).
 	IncludeLocalGrid         bool
 	LocalGridStepDeg         float64

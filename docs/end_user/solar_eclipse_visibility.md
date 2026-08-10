@@ -13,6 +13,20 @@ may include:
   circumstances;
 - `config.include_path`: generate map products;
 - `config.path_step_minutes`: central-path cadence from 1 through 30 minutes;
+- `config.footprint_step_minutes`: separate cadence for the per-step
+  penumbral footprint rings, 1 through 30 minutes; `0` (the default)
+  follows `path_step_minutes`. A footprint is a full-globe contour and
+  dominates the cost of a sampling step, so consumers that only need the
+  center line at fine cadence (a moving-shade animation) can sample
+  footprints every 5-10 minutes for a proportional compute and payload
+  cut. Umbra footprints follow the path cadence;
+- `config.ring_simplify_tolerance_deg`: lossy decimation of every emitted
+  boundary ring (footprints, contact and umbra footprints, magnitude
+  rings, isolines, corridor) by spherical Douglas-Peucker with the given
+  maximum deviation in degrees of arc. `0` (the default) emits exact
+  contour vertices; `0.05`-`0.1` typically drops 60-85% of vertices with
+  no visible change at world zoom. Rings stay closed, pole tagging is
+  preserved, and retained vertices are original contour vertices;
 - `config.boundary_step_deg`: maximum base shadow-boundary sampling from 1
   through 15 degrees. Dhruv adds adaptive samples near tangent regions when
   needed to keep the ground ring continuous;
@@ -38,11 +52,26 @@ may include:
   0.75]`): instantaneous iso-magnitude contours attached to every sampled
   footprint and contact footprint.
 
-Path generation defaults to off so catalog-only searches remain inexpensive.
-The default cadence is one minute and the default boundary step is two
-degrees. All field products default to off; the effective (clamped and
-sanitized) configuration is echoed back so cache keys can be built against
-what was actually applied.
+## Catalog mode
+
+The default configuration is a documented fast path, not merely a smaller
+payload: every geographic product (`path`, `footprints`, `local_grid`,
+`isolines`, `central_corridor`, `contact_footprints`, `umbra_footprints`)
+is gated *before* its computation, so a default-config search performs
+none of the tracing work. A full-year solar+lunar summary scan (contacts,
+type, magnitudes, gamma, greatest location, Besselian elements) completes
+in well under a second of engine time on commodity hardware. The intended
+pattern for map/list consumers is: fetch the year list with the default
+config, then request a single event with the products you need when the
+user selects it.
+
+Path generation defaults to off as part of that contract. The default
+cadence is one minute and the default boundary step is two degrees. All
+field products default to off; the effective (clamped and sanitized)
+configuration is echoed back so cache keys can be built against what was
+actually applied — note `footprint_step_minutes: 0` echoes as the resolved
+path cadence, so two requests with identical behavior produce identical
+effective configs.
 
 The CLI exposes the same inputs:
 

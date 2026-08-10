@@ -1687,9 +1687,16 @@ struct GrahanOpArgs {
     /// Path sampling cadence in minutes (1-30).
     #[arg(long, default_value_t = 1)]
     path_step_minutes: u32,
+    /// Footprint-ring sampling cadence in minutes (1-30); 0 follows
+    /// --path-step-minutes.
+    #[arg(long, default_value_t = 0)]
+    footprint_step_minutes: u32,
     /// Shadow-boundary angular sampling in degrees (1-15).
     #[arg(long, default_value_t = 2)]
     boundary_step_deg: u32,
+    /// Ring simplification tolerance in degrees of arc (0 = exact rings).
+    #[arg(long, default_value_t = 0.0)]
+    ring_simplify_tolerance_deg: f64,
     /// Include the geographic grid of local circumstances (surya).
     #[arg(long, default_value_t = false)]
     include_local_grid: bool,
@@ -6850,7 +6857,9 @@ fn main() {
                 include_peak_details: !args.no_peak_details,
                 include_path: args.include_path,
                 path_step_minutes: args.path_step_minutes,
+                footprint_step_minutes: args.footprint_step_minutes,
                 boundary_step_deg: args.boundary_step_deg,
+                ring_simplify_tolerance_deg: args.ring_simplify_tolerance_deg,
                 include_local_grid: args.include_local_grid,
                 local_grid_step_deg: args.local_grid_step_deg,
                 include_isolines: args.include_isolines,

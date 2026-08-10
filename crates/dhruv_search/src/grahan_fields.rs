@@ -445,6 +445,121 @@ pub(crate) fn summarize_point(table: &FieldTable, observer: &ObserverPoint) -> P
     }
 }
 
+/// Refined maximum visibility margin only — the visibility-boundary field.
+///
+/// Contour-vertex refinement calls the field ~14 times per ring vertex, and
+/// `summarize_point` answers with three golden-section refinements, interval
+/// bisections, and a margins allocation when the caller needs one scalar.
+/// These targeted evaluators walk the same table and run the same refinement
+/// sequence for their own output — bit-identical values to the matching
+/// `PointSummary` field — and skip everything else.
+fn field_vis_only(table: &FieldTable, observer: &ObserverPoint) -> f64 {
+    let count = table.len();
+    let mut best_vis = f64::NEG_INFINITY;
+    let mut best_vis_index = 0usize;
+    for index in 0..count {
+        let vis = table.eval_index(index, observer).visibility_margin();
+        if vis > best_vis {
+            best_vis = vis;
+            best_vis_index = index;
+        }
+    }
+    let left = table.jd_at(best_vis_index.saturating_sub(1));
+    let right = table.jd_at((best_vis_index + 1).min(count - 1));
+    let (_, f_vis) = golden_max(left, right, |jd| {
+        table.eval_jd(jd, observer).visibility_margin()
+    });
+    f_vis
+}
+
+/// Refined maximum Sun-up-clipped magnitude only — the magnitude field.
+fn field_mag_only(table: &FieldTable, observer: &ObserverPoint) -> f64 {
+    let count = table.len();
+    let mut best_mag = f64::NEG_INFINITY;
+    let mut best_mag_index = 0usize;
+    for index in 0..count {
+        let mag = table.eval_index(index, observer).visible_magnitude();
+        if mag > best_mag {
+            best_mag = mag;
+            best_mag_index = index;
+        }
+    }
+    let left = table.jd_at(best_mag_index.saturating_sub(1));
+    let right = table.jd_at((best_mag_index + 1).min(count - 1));
+    let (_, f_mag) = golden_max(left, right, |jd| {
+        table.eval_jd(jd, observer).visible_magnitude()
+    });
+    f_mag
+}
+
+/// Summed Sun-up partial-phase duration only — the duration field. Streams
+/// the margin walk instead of storing it, but performs the identical
+/// transition bisections and brief-window recovery as `summarize_point`, so
+/// the value is bit-identical to `PointSummary::duration_days`.
+fn field_duration_only(table: &FieldTable, observer: &ObserverPoint) -> f64 {
+    let count = table.len();
+    let margin_at = |jd: f64| table.eval_jd(jd, observer).visibility_margin();
+    let mut best_vis = f64::NEG_INFINITY;
+    let mut best_vis_index = 0usize;
+    let mut duration_days = 0.0_f64;
+    let mut interval_count = 0usize;
+    let mut previous = 0.0_f64;
+    let mut open_start: Option<f64> = None;
+    for index in 0..count {
+        let vis = table.eval_index(index, observer).visibility_margin();
+        if vis > best_vis {
+            best_vis = vis;
+            best_vis_index = index;
+        }
+        if index == 0 {
+            if vis > 0.0 {
+                open_start = Some(table.jd_at(0));
+            }
+        } else if previous <= 0.0 && vis > 0.0 {
+            open_start = Some(bisect_zero(
+                table.jd_at(index - 1),
+                table.jd_at(index),
+                margin_at,
+            ));
+        } else if previous > 0.0
+            && vis <= 0.0
+            && let Some(start) = open_start.take()
+        {
+            let end = bisect_zero(table.jd_at(index), table.jd_at(index - 1), margin_at);
+            duration_days += end - start;
+            interval_count += 1;
+        }
+        previous = vis;
+    }
+    if let Some(start) = open_start.take() {
+        duration_days += table.jd_at(count - 1) - start;
+        interval_count += 1;
+    }
+    if interval_count == 0 {
+        let left = table.jd_at(best_vis_index.saturating_sub(1));
+        let right = table.jd_at((best_vis_index + 1).min(count - 1));
+        let (f_vis_jd, f_vis) = golden_max(left, right, |jd| {
+            table.eval_jd(jd, observer).visibility_margin()
+        });
+        if f_vis > 0.0 {
+            let left_seed = (f_vis_jd - table.step_days).max(table.start_jd());
+            let right_seed = (f_vis_jd + table.step_days).min(table.end_jd());
+            let start = if margin_at(left_seed) <= 0.0 {
+                bisect_zero(left_seed, f_vis_jd, margin_at)
+            } else {
+                left_seed
+            };
+            let end = if margin_at(right_seed) <= 0.0 {
+                bisect_zero(right_seed, f_vis_jd, margin_at)
+            } else {
+                right_seed
+            };
+            duration_days += end - start;
+        }
+    }
+    duration_days
+}
+
 // ---------------------------------------------------------------------------
 // Marching squares over a generic node grid
 // ---------------------------------------------------------------------------
@@ -856,17 +971,21 @@ pub(crate) fn grid_and_isolines(
                 longitude_deg: normalize_lon(lon0 + col_f * lon_step),
             }
         };
-        let summarize_at = |row_f: f64, col_f: f64| -> PointSummary {
+        // Contour refinement evaluates one field ~14 times per ring vertex;
+        // the targeted evaluators answer with just that field's walk and
+        // refinement (bit-identical to the matching PointSummary member)
+        // instead of the full eight-output summary.
+        let observer_at = |row_f: f64, col_f: f64| -> ObserverPoint {
             let geo = point(row_f, col_f);
-            summarize_point(
-                &table,
-                &ObserverPoint::new(geo.latitude_deg, geo.longitude_deg),
-            )
+            ObserverPoint::new(geo.latitude_deg, geo.longitude_deg)
         };
-        let field_vis = |row_f: f64, col_f: f64| -> f64 { summarize_at(row_f, col_f).f_vis };
-        let field_dur =
-            |row_f: f64, col_f: f64| -> f64 { summarize_at(row_f, col_f).duration_days };
-        let field_mag = |row_f: f64, col_f: f64| -> f64 { summarize_at(row_f, col_f).f_mag };
+        let field_vis =
+            |row_f: f64, col_f: f64| -> f64 { field_vis_only(&table, &observer_at(row_f, col_f)) };
+        let field_dur = |row_f: f64, col_f: f64| -> f64 {
+            field_duration_only(&table, &observer_at(row_f, col_f))
+        };
+        let field_mag =
+            |row_f: f64, col_f: f64| -> f64 { field_mag_only(&table, &observer_at(row_f, col_f)) };
 
         let grid = |values: &[f64], field: &dyn Fn(f64, f64) -> f64, level: f64| {
             extract_rings(
@@ -1288,6 +1407,130 @@ fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
         a[0] * b[1] - a[1] * b[0],
     ]
 }
+
+// ---------------------------------------------------------------------------
+// Ring simplification (Douglas-Peucker on the unit sphere)
+// ---------------------------------------------------------------------------
+
+fn ring_unit_vector(point: EclipseGeoPoint) -> [f64; 3] {
+    let lat = point.latitude_deg.to_radians();
+    let lon = point.longitude_deg.to_radians();
+    [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()]
+}
+
+/// Angular deviation, in degrees, of `point` from the great circle through
+/// `anchor_a` and `anchor_b` (unit vectors). Falls back to the point-to-
+/// anchor distance when the anchors are too close to define a circle.
+fn great_circle_deviation_deg(point: [f64; 3], anchor_a: [f64; 3], anchor_b: [f64; 3]) -> f64 {
+    let normal = cross3(anchor_a, anchor_b);
+    let normal_len = norm(normal);
+    if normal_len < 1.0e-12 {
+        return dot(point, anchor_a)
+            .clamp(-1.0, 1.0)
+            .acos()
+            .to_degrees();
+    }
+    (dot(point, scale(normal, 1.0 / normal_len)).abs())
+        .clamp(0.0, 1.0)
+        .asin()
+        .to_degrees()
+}
+
+/// Simplify one closed boundary ring (final vertex repeating the first) with
+/// spherical Douglas-Peucker, keeping every vertex whose great-circle
+/// deviation from the simplified chain exceeds `tolerance_deg`.
+///
+/// Working on unit vectors makes the pass pole- and antimeridian-safe: no
+/// longitude unwrapping is involved in the deviation metric. Two invariants
+/// are preserved explicitly:
+/// - the ring stays closed with at least three distinct vertices (rings that
+///   would collapse further are returned unsimplified);
+/// - consecutive retained vertices are kept within 90 degrees of longitude
+///   of each other (original vertices are reinserted otherwise), so the
+///   winding-based pole containment and the renderers' "jump greater than
+///   180 degrees marks a seam crossing" convention keep working.
+pub(crate) fn simplify_closed_boundary(
+    boundary: &mut Vec<EclipseGeoPoint>,
+    tolerance_deg: f64,
+) {
+    if tolerance_deg <= 0.0 || boundary.len() < 6 {
+        return;
+    }
+    let count = boundary.len(); // closed: boundary[count - 1] == boundary[0]
+    let vectors: Vec<[f64; 3]> = boundary.iter().map(|p| ring_unit_vector(*p)).collect();
+
+    // Anchor the split at the vertex farthest from the ring start, so the
+    // two DP arcs each span a well-conditioned great circle.
+    let mut split = count / 2;
+    let mut best = -1.0;
+    for (index, vector) in vectors.iter().enumerate().take(count - 1).skip(1) {
+        let distance = -dot(*vector, vectors[0]);
+        if distance > best {
+            best = distance;
+            split = index;
+        }
+    }
+
+    let mut keep = vec![false; count];
+    keep[0] = true;
+    keep[split] = true;
+    keep[count - 1] = true;
+    let mut stack = vec![(0usize, split), (split, count - 1)];
+    while let Some((first, last)) = stack.pop() {
+        if last <= first + 1 {
+            continue;
+        }
+        let mut worst = first;
+        let mut worst_deviation = -1.0;
+        for index in first + 1..last {
+            let deviation =
+                great_circle_deviation_deg(vectors[index], vectors[first], vectors[last]);
+            if deviation > worst_deviation {
+                worst_deviation = deviation;
+                worst = index;
+            }
+        }
+        if worst_deviation > tolerance_deg {
+            keep[worst] = true;
+            stack.push((first, worst));
+            stack.push((worst, last));
+        }
+    }
+
+    // Longitude-gap repair: reinsert original vertices until no retained
+    // step spans more than 90 degrees of longitude.
+    loop {
+        let retained: Vec<usize> = (0..count).filter(|i| keep[*i]).collect();
+        let mut inserted = false;
+        for pair in retained.windows(2) {
+            let (first, last) = (pair[0], pair[1]);
+            if last <= first + 1 {
+                continue;
+            }
+            let gap = wrap_delta(
+                boundary[last].longitude_deg - boundary[first].longitude_deg,
+            )
+            .abs();
+            if gap > 90.0 {
+                keep[first + (last - first) / 2] = true;
+                inserted = true;
+            }
+        }
+        if !inserted {
+            break;
+        }
+    }
+
+    let simplified: Vec<EclipseGeoPoint> = (0..count)
+        .filter(|index| keep[*index])
+        .map(|index| boundary[index])
+        .collect();
+    // A valid closed ring needs three distinct vertices plus the closure.
+    if simplified.len() >= 4 {
+        *boundary = simplified;
+    }
+}
+
 
 /// Densified, extended central track with a left-normal frame per node.
 struct TrackFrame {

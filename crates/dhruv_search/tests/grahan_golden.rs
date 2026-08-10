@@ -872,6 +872,134 @@ fn surya_hybrid_and_noncentral_classification() {
     assert_eq!(noncentral.grahan_type, SuryaGrahanType::Annular);
 }
 
+/// `footprint_step_minutes` decouples footprint cadence from path cadence:
+/// a 10-minute footprint step over a 1-minute path must keep the path
+/// byte-identical while sampling ~10x fewer footprints, each of which is a
+/// subset of the single-cadence run's sample instants.
+#[test]
+fn surya_footprint_cadence_split() {
+    let Some(engine) = load_engine() else { return };
+    let base = GrahanConfig {
+        include_path: true,
+        path_step_minutes: 1,
+        boundary_step_deg: 2,
+        ..Default::default()
+    };
+    let split = GrahanConfig {
+        footprint_step_minutes: 10,
+        ..base.clone()
+    };
+    let at = jd_from_date(2024, 3, 1.0);
+    let combined = next_surya_grahan(&engine, None, at, None, &base)
+        .expect("search")
+        .expect("eclipse");
+    let decoupled = next_surya_grahan(&engine, None, at, None, &split)
+        .expect("search")
+        .expect("eclipse");
+
+    assert_eq!(combined.path, decoupled.path, "path must not change");
+    assert!(
+        decoupled.footprints.len() * 8 < combined.footprints.len(),
+        "10-minute footprints should be ~10x fewer: {} vs {}",
+        decoupled.footprints.len(),
+        combined.footprints.len()
+    );
+    // Every decoupled footprint instant exists in the 1-minute run with the
+    // same ring. The two runs accumulate their sample instants with
+    // different step sizes, so instants agree to float accumulation (not
+    // bit-exactly) and a marginal contour vertex may shift by ~1e-4 deg;
+    // compare geometry with a tolerance that still rules out any real
+    // difference in the sampled field.
+    for footprint in &decoupled.footprints {
+        let matching = combined
+            .footprints
+            .iter()
+            .find(|candidate| (candidate.jd_tdb - footprint.jd_tdb).abs() < 1.0e-6)
+            .expect("coarse instant missing from fine run");
+        let count_delta = matching.boundary.len().abs_diff(footprint.boundary.len());
+        assert!(
+            count_delta <= 2,
+            "vertex counts diverge: {} vs {}",
+            matching.boundary.len(),
+            footprint.boundary.len()
+        );
+        for point in &footprint.boundary {
+            let nearest = matching
+                .boundary
+                .iter()
+                .map(|candidate| {
+                    (candidate.latitude_deg - point.latitude_deg)
+                        .hypot(candidate.longitude_deg - point.longitude_deg)
+                })
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                nearest < 1.0e-2,
+                "coarse-run vertex {point:?} strays {nearest} deg from the fine run"
+            );
+        }
+    }
+    // The effective config echoes the resolved cadence, and 0 resolves to
+    // the path cadence.
+    assert_eq!(split.effective().footprint_step_minutes, 10);
+    assert_eq!(base.effective().footprint_step_minutes, 1);
+}
+
+/// `ring_simplify_tolerance_deg` decimates every emitted ring while keeping
+/// closure, pole tagging, and the geometric envelope.
+#[test]
+fn surya_ring_simplification() {
+    let Some(engine) = load_engine() else { return };
+    let base = GrahanConfig {
+        include_path: true,
+        path_step_minutes: 5,
+        boundary_step_deg: 2,
+        ..Default::default()
+    };
+    let simplified_config = GrahanConfig {
+        ring_simplify_tolerance_deg: 0.1,
+        ..base.clone()
+    };
+    let at = jd_from_date(2024, 3, 1.0);
+    let exact = next_surya_grahan(&engine, None, at, None, &base)
+        .expect("search")
+        .expect("eclipse");
+    let simplified = next_surya_grahan(&engine, None, at, None, &simplified_config)
+        .expect("search")
+        .expect("eclipse");
+
+    assert_eq!(exact.footprints.len(), simplified.footprints.len());
+    let exact_vertices: usize = exact.footprints.iter().map(|f| f.boundary.len()).sum();
+    let simplified_vertices: usize = simplified.footprints.iter().map(|f| f.boundary.len()).sum();
+    assert!(
+        simplified_vertices * 3 < exact_vertices,
+        "0.1 deg tolerance should drop well over 2/3 of vertices: {simplified_vertices} of {exact_vertices}"
+    );
+    for (exact_fp, simplified_fp) in exact.footprints.iter().zip(&simplified.footprints) {
+        assert_eq!(exact_fp.contains_pole, simplified_fp.contains_pole);
+        let boundary = &simplified_fp.boundary;
+        assert!(boundary.len() >= 4, "ring must stay a closed polygon");
+        let first = boundary[0];
+        let last = boundary[boundary.len() - 1];
+        assert!(
+            (first.latitude_deg - last.latitude_deg).abs() < 1.0e-9
+                && (first.longitude_deg - last.longitude_deg).abs() < 1.0e-9,
+            "simplified ring must stay closed"
+        );
+        // Every retained vertex is an original contour vertex.
+        for point in boundary {
+            assert!(
+                exact_fp.boundary.iter().any(|original| {
+                    (original.latitude_deg - point.latitude_deg).abs() < 1.0e-12
+                        && (original.longitude_deg - point.longitude_deg).abs() < 1.0e-12
+                }),
+                "simplification must only remove vertices, not move them"
+            );
+        }
+    }
+    // Tolerance 0 is exact passthrough.
+    assert_eq!(base.effective().ring_simplify_tolerance_deg, 0.0);
+}
+
 #[test]
 fn surya_antimeridian_and_polar_footprint_geometry() {
     let Some(engine) = load_engine() else { return };

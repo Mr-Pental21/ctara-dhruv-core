@@ -30,7 +30,9 @@ use dhruv_time::{EopKernel, UtcTime, calendar_to_jd, gmst_rad};
 use crate::conjunction::{next_conjunction, prev_conjunction, search_conjunctions};
 use crate::conjunction_types::ConjunctionConfig;
 use crate::error::SearchError;
-use crate::grahan_fields::{CorridorTrack, central_corridor, grid_and_isolines};
+use crate::grahan_fields::{
+    CorridorTrack, central_corridor, grid_and_isolines, simplify_closed_boundary,
+};
 use crate::grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanLocalCircumstances, ChandraGrahanType,
     EclipseGeoPoint, GeoLocation, GrahanConfig, SuryaCentrality, SuryaContactFootprint,
@@ -745,6 +747,137 @@ pub(crate) fn axis_ground_point(
     Ok(hit.map(|p| ecef_to_geodetic(rotate_z(p, -gast_rad_for(engine, eop, jd_tdb)))))
 }
 
+/// Topocentric Moon-minus-Sun angular-radius difference for an observer at
+/// the shadow-axis ground point, in radians. Positive where that observer
+/// sees the Moon's disk larger than the Sun's (total eclipse), negative
+/// where smaller (annular). `None` when the axis misses the ellipsoid.
+///
+/// On the axis the observer, Moon, and Sun are collinear (`sun = moon + d*q`
+/// and the ground point sits on the same line), so the topocentric
+/// separation is identically zero and `local_type`'s central classification
+/// reduces to this sign. That collinearity also means only distances along
+/// the axis matter — no sidereal rotation or geodetic conversion is needed —
+/// so one `shadow_geometry` evaluation (a single Sun+Moon ephemeris pair)
+/// answers what `axis_ground_point` + `local_disk_geometry` answered with
+/// two.
+fn axis_type_discriminant(engine: &Engine, jd_tdb: f64) -> Result<Option<f64>, SearchError> {
+    let g = shadow_geometry(engine, jd_tdb)?;
+    let Some(hit) = ray_ellipsoid_intersection(g.moon, scale(g.q, -1.0)) else {
+        return Ok(None);
+    };
+    let moon_distance = norm(sub(g.moon, hit));
+    let sun_distance = g.sun_moon_distance + moon_distance;
+    Ok(Some(
+        (MOON_RADIUS_KM / moon_distance).asin() - (SUN_RADIUS_KM / sun_distance).asin(),
+    ))
+}
+
+/// Which central classifications (total / annular) occur along the C2..C3
+/// ground track.
+///
+/// The on-axis classification is the sign of [`axis_type_discriminant`], a
+/// smooth, near-unimodal function of time (it tracks the Moon-to-ground
+/// distance) with at most a couple of zero crossings. A minute-cadence scan
+/// therefore finds every classification a 6-second sweep would, except a
+/// segment of the missing type shorter than the scan step — and such a
+/// segment can only hide at an interior extremum of the discriminant, so
+/// each candidate extremum of the missing sign is refined by golden-section
+/// before concluding it does not exist.
+fn central_types_in_span(
+    engine: &Engine,
+    begin: f64,
+    end: f64,
+) -> Result<(bool, bool), SearchError> {
+    const SCAN_STEP_DAYS: f64 = 1.0 / 1440.0;
+    let intervals = (((end - begin) / SCAN_STEP_DAYS).ceil() as usize).clamp(2, 4096);
+    let mut samples = Vec::with_capacity(intervals + 1);
+    for index in 0..=intervals {
+        let jd = begin + (end - begin) * index as f64 / intervals as f64;
+        samples.push((jd, axis_type_discriminant(engine, jd)?));
+    }
+    let mut has_total = samples
+        .iter()
+        .any(|(_, disc)| matches!(disc, Some(value) if *value > 0.0));
+    let mut has_annular = samples
+        .iter()
+        .any(|(_, disc)| matches!(disc, Some(value) if *value < 0.0));
+
+    // `sign` maps the missing classification onto a minimization problem:
+    // +1.0 hunts a hidden annular segment (a negative dip of the
+    // discriminant), -1.0 a hidden total segment (a positive peak). A hidden
+    // segment can sit at an interior extremum between samples, or — the
+    // usual hybrid case — in the sliver between the axis touching ground and
+    // the discriminant's zero crossing, right beside an off-ground sample.
+    // So the candidates are interior extrema in the hunted direction plus
+    // every run boundary (span end or sample adjacent to an off-ground
+    // sample); off-ground evaluations act as an infinite penalty, steering
+    // the golden section back onto the ground track.
+    let hunt = |sign: f64| -> Result<bool, SearchError> {
+        let count = samples.len();
+        for index in 0..count {
+            let Some(center) = samples[index].1 else {
+                continue;
+            };
+            let previous = if index > 0 { samples[index - 1].1 } else { None };
+            let next = if index + 1 < count {
+                samples[index + 1].1
+            } else {
+                None
+            };
+            let run_boundary =
+                index == 0 || index + 1 == count || previous.is_none() || next.is_none();
+            let interior_extremum = matches!(
+                (previous, next),
+                (Some(p), Some(n)) if sign * center <= sign * p && sign * center <= sign * n
+            );
+            if !run_boundary && !interior_extremum {
+                continue;
+            }
+            let left = samples[index.saturating_sub(1)].0;
+            let right = samples[(index + 1).min(count - 1)].0;
+            if right <= left {
+                continue;
+            }
+            if run_boundary {
+                // Boundary windows are not unimodal — the discriminant is
+                // undefined off-ground and dips hardest right at the axis
+                // liftoff — so golden section does not apply. The window is
+                // at most two scan steps wide; sweep it directly at a finer
+                // cadence than the fine structure it can contain.
+                const BOUNDARY_SCAN_STEP_DAYS: f64 = 3.0 / 86_400.0;
+                let steps = (((right - left) / BOUNDARY_SCAN_STEP_DAYS).ceil() as usize).max(1);
+                for step_index in 0..=steps {
+                    let jd = left + (right - left) * step_index as f64 / steps as f64;
+                    if let Some(value) = axis_type_discriminant(engine, jd)?
+                        && sign * value < 0.0
+                    {
+                        return Ok(true);
+                    }
+                }
+                continue;
+            }
+            let refined_jd = minimize_scalar(left, right, |jd| {
+                Ok(match axis_type_discriminant(engine, jd)? {
+                    Some(value) => sign * value,
+                    None => f64::INFINITY,
+                })
+            })?;
+            if let Some(value) = axis_type_discriminant(engine, refined_jd)?
+                && sign * value < 0.0
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    };
+    if has_total && !has_annular {
+        has_annular = hunt(1.0)?;
+    } else if has_annular && !has_total {
+        has_total = hunt(-1.0)?;
+    }
+    Ok((has_total, has_annular))
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ShadowCone {
     /// Retained for the raw penumbral cone-ellipsoid intersection.
@@ -1181,9 +1314,20 @@ fn validate_surya_inputs(
             "path_step_minutes must be between 1 and 30",
         ));
     }
+    if !(0..=30).contains(&config.footprint_step_minutes) {
+        return Err(SearchError::InvalidConfig(
+            "footprint_step_minutes must be 0 (follow path_step_minutes) or between 1 and 30",
+        ));
+    }
     if !(1..=15).contains(&config.boundary_step_deg) {
         return Err(SearchError::InvalidConfig(
             "boundary_step_deg must be between 1 and 15",
+        ));
+    }
+    if !config.ring_simplify_tolerance_deg.is_finite() || config.ring_simplify_tolerance_deg < 0.0
+    {
+        return Err(SearchError::InvalidConfig(
+            "ring_simplify_tolerance_deg must be finite and non-negative",
         ));
     }
     validate_observer_location(location)
@@ -1312,12 +1456,18 @@ fn sample_path_and_footprints(
         return Ok((Vec::new(), Vec::new()));
     }
     let step = config.path_step_minutes.clamp(1, 30) as f64 / 1440.0;
+    let footprint_step = config.effective_footprint_step_minutes() as f64 / 1440.0;
     let boundary_step = config.boundary_step_deg.clamp(1, 15);
     let magnitude_levels = config.effective_instantaneous_magnitude_levels();
-    let mut path = Vec::new();
+
+    // Footprints on their own cadence: a footprint is a full-globe contour
+    // and costs ~99% of a combined sampling step, so map consumers can keep
+    // a fine path cadence for the moving-shade animation while sampling
+    // footprint rings 5-10x coarser. When the cadences match, the sample
+    // instants are identical to the historical single-loop behavior.
     let mut footprints = Vec::new();
     let mut jd = start_jd;
-    while jd <= end_jd + step * 0.5 {
+    while jd <= end_jd + footprint_step * 0.5 {
         // Terminator-clipped instantaneous visibility ring (same field and
         // clip convention as the magnitude rings and contact footprints):
         // a shadow is only observable where the Sun is up, so the raw
@@ -1334,6 +1484,12 @@ fn sample_path_and_footprints(
                 magnitude_rings: rings.magnitude,
             });
         }
+        jd += footprint_step;
+    }
+
+    let mut path = Vec::new();
+    let mut jd = start_jd;
+    while jd <= end_jd + step * 0.5 {
         if let Some(point) = path_point(engine, eop, jd, boundary_step)? {
             path.push(point);
         }
@@ -1780,6 +1936,17 @@ fn compute_surya_grahan(
     location: Option<GeoLocation>,
     config: &GrahanConfig,
 ) -> Result<Option<SuryaGrahan>, SearchError> {
+    // Cheap prefilter mirroring the chandra path: a solar eclipse needs the
+    // Moon within ~1.6 degrees of the ecliptic near new moon, and even at
+    // the Moon's fastest latitude drift the minimum-rho moment (within hours
+    // of conjunction) cannot recover from beyond this generous band. One
+    // ephemeris query replaces the ~40-iteration besselian minimization for
+    // the ~10 non-eclipse new moons per year.
+    let (_, new_moon_lat, _) = moon_ecliptic(engine, new_moon_jd)?;
+    if new_moon_lat.abs() > GRAHAN_LAT_THRESHOLD_DEG {
+        return Ok(None);
+    }
+
     let greatest_jd = minimize_scalar(new_moon_jd - 0.5, new_moon_jd + 0.5, |jd| {
         let b = besselian_elements_at(engine, eop, jd)?;
         Ok((b.x * b.x + b.y * b.y).sqrt())
@@ -1807,7 +1974,7 @@ fn compute_surya_grahan(
     };
     let start = c1_jd.unwrap_or(greatest_jd - 0.2);
     let end = c4_jd.unwrap_or(greatest_jd + 0.2);
-    let (path, footprints) = sample_path_and_footprints(engine, eop, start, end, config)?;
+    let (path, mut footprints) = sample_path_and_footprints(engine, eop, start, end, config)?;
 
     let peak_point = match central_location {
         Some(point) => point,
@@ -1826,20 +1993,7 @@ fn compute_surya_grahan(
         SuryaGrahanType::Partial
     };
     if let (Some(begin), Some(end)) = (c2_jd, c3_jd) {
-        let mut has_total = false;
-        let mut has_annular = false;
-        let mut jd = begin;
-        while jd <= end + 1.0 / 28_800.0 {
-            if let Some(point) = axis_ground_point(engine, eop, jd)? {
-                let location = GeoLocation::new(point.latitude_deg, point.longitude_deg, 0.0);
-                match local_type(local_disk_geometry(engine, eop, jd, &location)?) {
-                    Some(SuryaGrahanType::Total) => has_total = true,
-                    Some(SuryaGrahanType::Annular) => has_annular = true,
-                    _ => {}
-                }
-            }
-            jd += 0.1 / 1440.0;
-        }
+        let (has_total, has_annular) = central_types_in_span(engine, begin, end)?;
         if has_total && has_annular {
             grahan_type = SuryaGrahanType::Hybrid;
         }
@@ -1861,7 +2015,7 @@ fn compute_surya_grahan(
         SuryaCentrality::None
     };
 
-    let (local_grid, isolines) = if config.include_local_grid || config.include_isolines {
+    let (local_grid, mut isolines) = if config.include_local_grid || config.include_isolines {
         let span_days = match (c1_jd, c4_jd) {
             (Some(first), Some(last)) => last - first,
             _ => end - start,
@@ -1872,7 +2026,7 @@ fn compute_surya_grahan(
         (Vec::new(), None)
     };
 
-    let contact_footprints = if config.include_contact_footprints {
+    let mut contact_footprints = if config.include_contact_footprints {
         let magnitude_levels = config.effective_instantaneous_magnitude_levels();
         let contacts = [
             (SuryaContactKind::C1, c1_jd),
@@ -1914,7 +2068,8 @@ fn compute_surya_grahan(
         Vec::new()
     };
 
-    let umbra_footprints = if config.include_umbra_footprints && centrality != SuryaCentrality::None
+    let mut umbra_footprints = if config.include_umbra_footprints
+        && centrality != SuryaCentrality::None
     {
         let boundary_step = config.boundary_step_deg.clamp(1, 15);
         let mut jds: Vec<f64> = path.iter().map(|point| point.jd_tdb).collect();
@@ -1955,7 +2110,8 @@ fn compute_surya_grahan(
         Vec::new()
     };
 
-    let central_corridor = if config.include_central_corridor && centrality != SuryaCentrality::None
+    let mut central_corridor = if config.include_central_corridor
+        && centrality != SuryaCentrality::None
     {
         let corridor_start = c2_jd.unwrap_or(greatest_jd - 0.05) - 2.0 / 1440.0;
         let corridor_end = c3_jd.unwrap_or(greatest_jd + 0.05) + 2.0 / 1440.0;
@@ -2006,6 +2162,51 @@ fn compute_surya_grahan(
     } else {
         None
     };
+
+    // Optional lossy ring decimation, applied uniformly to every emitted
+    // boundary product so a map consumer's payload shrinks consistently.
+    // Off by default (`ring_simplify_tolerance_deg` 0.0): contour vertices
+    // pass through exactly as extracted.
+    let ring_tolerance = config.effective_ring_simplify_tolerance_deg();
+    if ring_tolerance > 0.0 {
+        for footprint in &mut footprints {
+            simplify_closed_boundary(&mut footprint.boundary, ring_tolerance);
+            for ring in &mut footprint.magnitude_rings {
+                simplify_closed_boundary(&mut ring.boundary, ring_tolerance);
+            }
+        }
+        for entry in &mut contact_footprints {
+            simplify_closed_boundary(&mut entry.boundary, ring_tolerance);
+            for ring in &mut entry.magnitude_rings {
+                simplify_closed_boundary(&mut ring.boundary, ring_tolerance);
+            }
+        }
+        for entry in &mut umbra_footprints {
+            simplify_closed_boundary(&mut entry.boundary, ring_tolerance);
+        }
+        if let Some(isolines) = &mut isolines {
+            for ring in &mut isolines.visibility_boundary {
+                simplify_closed_boundary(&mut ring.boundary, ring_tolerance);
+            }
+            for level in &mut isolines.duration_isolines {
+                for ring in &mut level.rings {
+                    simplify_closed_boundary(&mut ring.boundary, ring_tolerance);
+                }
+            }
+            for level in &mut isolines.magnitude_isolines {
+                for ring in &mut level.rings {
+                    simplify_closed_boundary(&mut ring.boundary, ring_tolerance);
+                }
+            }
+        }
+        if let Some(corridor) = &mut central_corridor {
+            for segment in &mut corridor.segments {
+                for ring in &mut segment.rings {
+                    simplify_closed_boundary(&mut ring.boundary, ring_tolerance);
+                }
+            }
+        }
+    }
 
     Ok(Some(SuryaGrahan {
         grahan_type,

@@ -4977,7 +4977,9 @@ napi_value WriteGrahanConfig(napi_env env, const DhruvGrahanConfig& cfg) {
     SetNamed(env, out, "includePeakDetails", MakeBool(env, cfg.include_peak_details != 0));
     SetNamed(env, out, "includePath", MakeBool(env, cfg.include_path != 0));
     SetNamed(env, out, "pathStepMinutes", MakeUint32(env, cfg.path_step_minutes));
+    SetNamed(env, out, "footprintStepMinutes", MakeUint32(env, cfg.footprint_step_minutes));
     SetNamed(env, out, "boundaryStepDeg", MakeUint32(env, cfg.boundary_step_deg));
+    SetNamed(env, out, "ringSimplifyToleranceDeg", MakeDouble(env, cfg.ring_simplify_tolerance_deg));
     SetNamed(env, out, "includeLocalGrid", MakeBool(env, cfg.include_local_grid != 0));
     SetNamed(env, out, "localGridStepDeg", MakeDouble(env, cfg.local_grid_step_deg));
     SetNamed(env, out, "includeIsolines", MakeBool(env, cfg.include_isolines != 0));
@@ -5186,8 +5188,12 @@ napi_value GrahanSearch(napi_env env, napi_callback_info info) {
         }
         if (!GetOptionalNamedProperty(env, cfg_obj, "pathStepMinutes", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present && !GetUint32(env, v, &cfg.path_step_minutes)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "footprintStepMinutes", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetUint32(env, v, &cfg.footprint_step_minutes)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!GetOptionalNamedProperty(env, cfg_obj, "boundaryStepDeg", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present && !GetUint32(env, v, &cfg.boundary_step_deg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (!GetOptionalNamedProperty(env, cfg_obj, "ringSimplifyToleranceDeg", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+        if (present && !GetDouble(env, v, &cfg.ring_simplify_tolerance_deg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (!GetOptionalNamedProperty(env, cfg_obj, "includeLocalGrid", &v, &present)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
         if (present) {
             bool b = false;

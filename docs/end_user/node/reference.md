@@ -83,7 +83,11 @@ location's eclipse start and end: `c1`..`c4` are pure geometric contacts and
 can fall while the Sun is below the horizon. Both families use the same
 horizon convention, an altitude above -0.833 degrees.
 
-Solar grahan requests may also include path sampling config. Solar
+Solar grahan requests may also include path sampling config, including
+`footprintStepMinutes` (0 = follow `pathStepMinutes`; a coarser value cuts
+footprint compute and payload proportionally) and
+`ringSimplifyToleranceDeg` (0 = exact rings; 0.05-0.1 decimates every
+emitted boundary ring with no visible change at world zoom). Solar
 results include obscuration, gamma, Besselian elements, greatest location,
 materialized `path` and `footprints` arrays, and complete local circumstances.
 The config additionally accepts `includeLocalGrid`/`localGridStepDeg`,

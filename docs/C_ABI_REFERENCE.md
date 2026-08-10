@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 89`
+**ABI version:** `DHRUV_API_VERSION = 90`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -521,6 +521,18 @@ typedef struct {
     /* Instantaneous iso-magnitude contour levels for footprints (v83). */
     double instantaneous_magnitude_levels[DHRUV_GRAHAN_MAX_ISOLINE_LEVELS];
     uint32_t instantaneous_magnitude_level_count;
+    /* Footprint-ring cadence in minutes (v90). 0 follows path_step_minutes;
+       1..30 samples penumbral footprint rings on their own, typically
+       coarser, cadence while the path keeps its own. Umbra footprints
+       follow the path cadence. */
+    uint32_t footprint_step_minutes;
+    /* Ring simplification tolerance in degrees of arc (v90). 0 emits exact
+       contour vertices; positive values run a spherical Douglas-Peucker
+       pass over every emitted boundary ring (footprints, contact and umbra
+       footprints, magnitude rings, isolines, corridor). Clamped to [0, 5];
+       0.05-0.1 typically drops 60-85% of vertices with no visible change
+       at world zoom. */
+    double ring_simplify_tolerance_deg;
 } DhruvGrahanConfig;
 ```
 
@@ -2951,6 +2963,23 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v90**: Grahan performance knobs. `DhruvGrahanConfig` gains
+`footprint_step_minutes` (0 = follow `path_step_minutes`; a coarser
+footprint cadence cuts footprint compute and payload proportionally while
+the path keeps its own cadence for smooth animation) and
+`ring_simplify_tolerance_deg` (0 = exact rings; positive runs a spherical
+Douglas-Peucker pass over every emitted boundary ring — 0.05-0.1 degrees
+typically drops 60-85% of vertices with no visible change at world zoom).
+Both default to the byte-compatible off state. Performance fixes that
+change no output shape: the hybrid Total/Annular/Hybrid classification
+scan dropped from 6-second to minute cadence with extremum refinement
+(~15x fewer ephemeris queries per central eclipse; a default-config year
+scan is now ~3x faster), non-eclipse new moons are rejected by a
+one-query latitude prefilter before the besselian minimization, and
+isoline contour refinement evaluates only the contoured field instead of
+the full eight-output point summary (~35% off an isoline-enabled call,
+bit-identical rings).
 
 **v89**: Lunar local circumstances + solar visible window. The `location`
 on `DhruvGrahanSearchRequest` now applies to `DHRUV_GRAHAN_KIND_CHANDRA`

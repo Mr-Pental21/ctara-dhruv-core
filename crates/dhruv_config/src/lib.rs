@@ -283,6 +283,7 @@ pub struct GrahanConfigPatch {
     pub include_peak_details: Option<bool>,
     pub include_path: Option<bool>,
     pub path_step_minutes: Option<u32>,
+    pub footprint_step_minutes: Option<u32>,
     pub boundary_step_deg: Option<u32>,
     pub include_local_grid: Option<bool>,
     pub local_grid_step_deg: Option<f64>,
@@ -293,6 +294,7 @@ pub struct GrahanConfigPatch {
     pub include_contact_footprints: Option<bool>,
     pub include_umbra_footprints: Option<bool>,
     pub instantaneous_magnitude_levels: Option<Vec<f64>>,
+    pub ring_simplify_tolerance_deg: Option<f64>,
 }
 
 /// `[operations.stationary]`: stationary-point search stepping,
@@ -766,6 +768,13 @@ impl ConfigResolver {
             recommended(self.defaults_mode, 1),
             "grahan.path_step_minutes",
         )?;
+        let (footprint_step_minutes, footprint_step_source) = choose_copy(
+            explicit.footprint_step_minutes,
+            op.footprint_step_minutes,
+            None,
+            recommended(self.defaults_mode, 0),
+            "grahan.footprint_step_minutes",
+        )?;
         let (boundary_step_deg, boundary_step_source) = choose_copy(
             explicit.boundary_step_deg,
             op.boundary_step_deg,
@@ -773,14 +782,32 @@ impl ConfigResolver {
             recommended(self.defaults_mode, 2),
             "grahan.boundary_step_deg",
         )?;
+        let (ring_simplify_tolerance_deg, ring_simplify_source) = choose_copy(
+            explicit.ring_simplify_tolerance_deg,
+            op.ring_simplify_tolerance_deg,
+            None,
+            recommended(self.defaults_mode, 0.0),
+            "grahan.ring_simplify_tolerance_deg",
+        )?;
         if !(1..=30).contains(&path_step_minutes) {
             return Err(ConfigError::InvalidConfig(
                 "grahan.path_step_minutes must be between 1 and 30".to_string(),
             ));
         }
+        if !(0..=30).contains(&footprint_step_minutes) {
+            return Err(ConfigError::InvalidConfig(
+                "grahan.footprint_step_minutes must be 0 (follow path_step_minutes) or between 1 and 30"
+                    .to_string(),
+            ));
+        }
         if !(1..=15).contains(&boundary_step_deg) {
             return Err(ConfigError::InvalidConfig(
                 "grahan.boundary_step_deg must be between 1 and 15".to_string(),
+            ));
+        }
+        if !ring_simplify_tolerance_deg.is_finite() || ring_simplify_tolerance_deg < 0.0 {
+            return Err(ConfigError::InvalidConfig(
+                "grahan.ring_simplify_tolerance_deg must be finite and non-negative".to_string(),
             ));
         }
         let (include_local_grid, local_grid_source) = choose_copy(
@@ -857,7 +884,15 @@ impl ConfigResolver {
         source.insert("include_peak_details".to_string(), d_source);
         source.insert("include_path".to_string(), path_source);
         source.insert("path_step_minutes".to_string(), path_step_source);
+        source.insert(
+            "footprint_step_minutes".to_string(),
+            footprint_step_source,
+        );
         source.insert("boundary_step_deg".to_string(), boundary_step_source);
+        source.insert(
+            "ring_simplify_tolerance_deg".to_string(),
+            ring_simplify_source,
+        );
         source.insert("include_local_grid".to_string(), local_grid_source);
         source.insert("local_grid_step_deg".to_string(), local_grid_step_source);
         source.insert("include_isolines".to_string(), isolines_source);
@@ -889,6 +924,7 @@ impl ConfigResolver {
                 include_peak_details,
                 include_path,
                 path_step_minutes,
+                footprint_step_minutes,
                 boundary_step_deg,
                 include_local_grid,
                 local_grid_step_deg,
@@ -899,6 +935,7 @@ impl ConfigResolver {
                 include_contact_footprints,
                 include_umbra_footprints,
                 instantaneous_magnitude_levels,
+                ring_simplify_tolerance_deg,
             },
             source_by_field: source,
         })

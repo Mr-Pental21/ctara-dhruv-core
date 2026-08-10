@@ -489,7 +489,9 @@ struct SearchConfigInput {
     include_peak_details: Option<bool>,
     include_path: Option<bool>,
     path_step_minutes: Option<u32>,
+    footprint_step_minutes: Option<u32>,
     boundary_step_deg: Option<u32>,
+    ring_simplify_tolerance_deg: Option<f64>,
     include_local_grid: Option<bool>,
     local_grid_step_deg: Option<f64>,
     include_isolines: Option<bool>,
@@ -714,8 +716,108 @@ fn decode_term<T: for<'de> Deserialize<'de>>(term: Term<'_>) -> Result<T, rustle
     serde_json::from_value(value).map_err(|_| rustler::Error::BadArg)
 }
 
+/// JSON map keys whose direct string values arrive in Elixir as atoms,
+/// mirroring the historical `@enum_keys` postprocess list in
+/// `CtaraDhruv.Native`. Strings inside arrays are never atomized, matching
+/// the old Elixir walk. Every name is produced by this NIF itself, so the
+/// atom vocabulary stays bounded.
+const ENUM_VALUE_KEYS: &[&str] = &[
+    "accuracy",
+    "ayanamsha",
+    "backend",
+    "body",
+    "centrality",
+    "contact",
+    "contains_pole",
+    "dignity",
+    "event",
+    "gender",
+    "graha",
+    "grahan_type",
+    "hora",
+    "kind",
+    "masa",
+    "mode",
+    "nakshatra",
+    "nature",
+    "node",
+    "output",
+    "paksha",
+    "phase",
+    "policy",
+    "rashi",
+    "relationship",
+    "role",
+    "samvatsara",
+    "source",
+    "station_type",
+    "status",
+    "system",
+    "type",
+    "vaar",
+    "yoga",
+];
+
+fn is_enum_value_key(key: &str) -> bool {
+    ENUM_VALUE_KEYS.contains(&key)
+}
+
+/// Encode a `serde_json::Value` directly as the term shape the Elixir side
+/// historically produced in `CtaraDhruv.Native.postprocess/1`: atom map
+/// keys, atomized enum-key string values, native everything else.
+///
+/// Doing the atomization here matters beyond saving one traversal: this runs
+/// on the DirtyCpu scheduler, while the old deep `Map.new`/`String.to_atom`
+/// rebuild ran in the calling Elixir process and blocked its scheduler for
+/// the whole walk of a multi-megabyte payload.
+fn json_to_term<'a>(
+    env: Env<'a>,
+    value: &Value,
+    enum_valued: bool,
+) -> Result<Term<'a>, rustler::Error> {
+    match value {
+        Value::Null => Ok(rustler::types::atom::nil().encode(env)),
+        Value::Bool(flag) => Ok(flag.encode(env)),
+        Value::Number(number) => {
+            if let Some(int) = number.as_i64() {
+                Ok(int.encode(env))
+            } else if let Some(int) = number.as_u64() {
+                Ok(int.encode(env))
+            } else {
+                Ok(number.as_f64().unwrap_or(f64::NAN).encode(env))
+            }
+        }
+        Value::String(text) => {
+            if enum_valued {
+                Ok(rustler::types::atom::Atom::from_str(env, text)?.encode(env))
+            } else {
+                Ok(text.encode(env))
+            }
+        }
+        Value::Array(items) => {
+            let terms = items
+                .iter()
+                .map(|item| json_to_term(env, item, false))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(terms.encode(env))
+        }
+        Value::Object(entries) => {
+            let mut map = Term::map_new(env);
+            for (key, entry) in entries {
+                let key_term = rustler::types::atom::Atom::from_str(env, key)?.encode(env);
+                let value_term = json_to_term(env, entry, is_enum_value_key(key))?;
+                map = map.map_put(key_term, value_term)?;
+            }
+            Ok(map)
+        }
+    }
+}
+
 fn encode_json<'a>(env: Env<'a>, result: JsonResult) -> Result<Term<'a>, rustler::Error> {
-    rustler::serde::to_term(env, &result).map_err(Into::into)
+    match result {
+        Ok(value) => Ok((atoms::ok(), json_to_term(env, &value, false)?).encode(env)),
+        Err(value) => Ok((atoms::error(), json_to_term(env, &value, false)?).encode(env)),
+    }
 }
 
 fn read_state(
@@ -2021,8 +2123,14 @@ fn to_grahan_config(
         if let Some(path_step_minutes) = input.path_step_minutes {
             config.path_step_minutes = path_step_minutes;
         }
+        if let Some(footprint_step_minutes) = input.footprint_step_minutes {
+            config.footprint_step_minutes = footprint_step_minutes;
+        }
         if let Some(boundary_step_deg) = input.boundary_step_deg {
             config.boundary_step_deg = boundary_step_deg;
+        }
+        if let Some(ring_simplify_tolerance_deg) = input.ring_simplify_tolerance_deg {
+            config.ring_simplify_tolerance_deg = ring_simplify_tolerance_deg;
         }
         if let Some(include_local_grid) = input.include_local_grid {
             config.include_local_grid = include_local_grid;
@@ -2986,7 +3094,9 @@ fn grahan_effective_config_json(config: &dhruv_search::GrahanConfig) -> Value {
         "include_peak_details": effective.include_peak_details,
         "include_path": effective.include_path,
         "path_step_minutes": effective.path_step_minutes,
+        "footprint_step_minutes": effective.footprint_step_minutes,
         "boundary_step_deg": effective.boundary_step_deg,
+        "ring_simplify_tolerance_deg": effective.ring_simplify_tolerance_deg,
         "include_local_grid": effective.include_local_grid,
         "local_grid_step_deg": effective.local_grid_step_deg,
         "include_isolines": effective.include_isolines,
@@ -5809,7 +5919,7 @@ fn engine_new<'a>(env: Env<'a>, config: Term<'a>) -> Result<Term<'a>, rustler::E
         Ok(engine) => engine,
         Err(err) => {
             let error_term =
-                rustler::serde::to_term(env, &error_payload("engine_error", err.to_string()))?;
+                json_to_term(env, &error_payload("engine_error", err.to_string()), false)?;
             return Ok((atoms::error(), error_term).encode(env));
         }
     };

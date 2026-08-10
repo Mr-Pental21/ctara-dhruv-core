@@ -362,7 +362,12 @@ eclipse start and end — `c1`..`c4` are pure geometric contacts and can fall
 while the Sun is below the horizon, in which case they are not observable.
 
 Solar grahan requests also accept `config.include_path`,
-`path_step_minutes`, and `boundary_step_deg`. Results include Besselian
+`path_step_minutes`, `footprint_step_minutes` (0 = follow the path
+cadence; a coarser value like 5-10 cuts footprint compute and payload
+proportionally while the path stays smooth),
+`ring_simplify_tolerance_deg` (0 = exact rings; 0.05-0.1 decimates every
+emitted boundary ring ~3-8x with no visible change at world zoom), and
+`boundary_step_deg`. Results include Besselian
 elements, greatest location, map path/footprint samples, and local visibility
 circumstances. The config additionally accepts `include_local_grid` /
 `local_grid_step_deg`, `include_isolines` with

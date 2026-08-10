@@ -46,6 +46,15 @@ pub struct GrahanConfig {
     pub include_path: bool,
     /// Sampling cadence for geographic path products. Range: 1..=30 minutes.
     pub path_step_minutes: u32,
+    /// Sampling cadence for the per-step penumbral footprint rings. `0`
+    /// (the default) follows `path_step_minutes`, preserving the historical
+    /// single-cadence behavior. A footprint costs ~99% of a sampling step
+    /// (a full-globe contour vs two ephemeris queries for the path point),
+    /// so map consumers that only need a smooth center-line animation can
+    /// keep a 1-minute path while sampling footprints every 5-10 minutes
+    /// for a ~5-10x compute and payload cut. Umbra footprints follow the
+    /// path cadence and are unaffected. Range: 0 or 1..=30 minutes.
+    pub footprint_step_minutes: u32,
     /// Maximum base angular sampling of instantaneous shadow-cone boundary
     /// rings. Tangent regions are subdivided adaptively. Range: 1..=15 degrees.
     pub boundary_step_deg: u32,
@@ -82,6 +91,16 @@ pub struct GrahanConfig {
     /// these levels. Values outside (0, 1.5] are dropped; the list is
     /// sorted, deduplicated, and capped at 16 entries. Default: empty.
     pub instantaneous_magnitude_levels: Vec<f64>,
+    /// Maximum deviation, in degrees of arc, allowed when simplifying
+    /// emitted boundary rings (footprints, contact and umbra footprints,
+    /// magnitude rings, isolines, corridor). `0.0` (the default) emits the
+    /// exact contour vertices unchanged. Positive values run a
+    /// Douglas-Peucker pass per ring: contour vertices land roughly 0.35-1
+    /// degree apart on smooth quasi-elliptical curves, so a tolerance of
+    /// 0.05-0.1 typically drops 60-85% of vertices with no visible change
+    /// at world zoom. Values are clamped to [0, 5]; non-finite values
+    /// disable simplification.
+    pub ring_simplify_tolerance_deg: f64,
 }
 
 impl Default for GrahanConfig {
@@ -91,6 +110,7 @@ impl Default for GrahanConfig {
             include_peak_details: true,
             include_path: false,
             path_step_minutes: 1,
+            footprint_step_minutes: 0,
             boundary_step_deg: 2,
             include_local_grid: false,
             local_grid_step_deg: 2.0,
@@ -101,6 +121,7 @@ impl Default for GrahanConfig {
             include_contact_footprints: false,
             include_umbra_footprints: false,
             instantaneous_magnitude_levels: Vec::new(),
+            ring_simplify_tolerance_deg: 0.0,
         }
     }
 }
@@ -134,6 +155,25 @@ impl GrahanConfig {
         sanitize_levels(&self.instantaneous_magnitude_levels, 0.0, 1.5, true)
     }
 
+    /// Footprint cadence actually applied: `footprint_step_minutes` clamped
+    /// to 1..=30, or the (clamped) path cadence when it is 0.
+    pub fn effective_footprint_step_minutes(&self) -> u32 {
+        match self.footprint_step_minutes {
+            0 => self.path_step_minutes.clamp(1, 30),
+            value => value.clamp(1, 30),
+        }
+    }
+
+    /// Ring simplification tolerance actually applied: clamped to [0, 5]
+    /// degrees, with non-finite values disabling simplification.
+    pub fn effective_ring_simplify_tolerance_deg(&self) -> f64 {
+        if self.ring_simplify_tolerance_deg.is_finite() {
+            self.ring_simplify_tolerance_deg.clamp(0.0, 5.0)
+        } else {
+            0.0
+        }
+    }
+
     /// The configuration actually applied after clamping and sanitizing.
     /// Responses echo this so callers can build cache keys against the
     /// effective values rather than the raw request.
@@ -143,6 +183,7 @@ impl GrahanConfig {
             include_peak_details: self.include_peak_details,
             include_path: self.include_path,
             path_step_minutes: self.path_step_minutes.clamp(1, 30),
+            footprint_step_minutes: self.effective_footprint_step_minutes(),
             boundary_step_deg: self.boundary_step_deg.clamp(1, 15),
             include_local_grid: self.include_local_grid,
             local_grid_step_deg: self.effective_local_grid_step_deg(),
@@ -153,6 +194,7 @@ impl GrahanConfig {
             include_contact_footprints: self.include_contact_footprints,
             include_umbra_footprints: self.include_umbra_footprints,
             instantaneous_magnitude_levels: self.effective_instantaneous_magnitude_levels(),
+            ring_simplify_tolerance_deg: self.effective_ring_simplify_tolerance_deg(),
         }
     }
 }

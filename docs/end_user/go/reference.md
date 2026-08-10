@@ -423,7 +423,11 @@ geometric contacts and can fall while the Sun is below the horizon. Both
 families use the same horizon convention, an altitude above -0.833 degrees.
 
 `GrahanConfig` controls path
-sampling. `SuryaGrahanResult` includes obscuration, gamma, Besselian elements,
+sampling, including `FootprintStepMinutes` (0 = follow `PathStepMinutes`;
+a coarser value cuts footprint compute and payload proportionally) and
+`RingSimplifyToleranceDeg` (0 = exact rings; 0.05-0.1 decimates every
+emitted boundary ring with no visible change at world zoom).
+`SuryaGrahanResult` includes obscuration, gamma, Besselian elements,
 greatest location, `Path`, `Footprints`, and complete local circumstances.
 `GrahanConfig` additionally exposes `IncludeLocalGrid`/`LocalGridStepDeg`,
 `IncludeIsolines` with `DurationIsolineFractions`/`MagnitudeIsolineLevels`,

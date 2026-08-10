@@ -39,4 +39,25 @@ for readme in bindings/go-open/README.md bindings/node-open/README.md bindings/p
   fi
 done
 
+# Binding-embedded version pins: the Python cffi build embeds a header copy
+# whose #define gates imports at runtime, and the Go wrapper pins
+# ExpectedAPIVersion for its verify_abi check. Both fail loudly at RUNTIME
+# when stale, so catch them here at CI time instead.
+python_version="$(
+  sed -n 's/.*#define DHRUV_API_VERSION[[:space:]]*\([0-9][0-9]*\).*/\1/p' \
+    bindings/python-open/src/ctara_dhruv/_cdef.py | head -n1
+)"
+if [[ "$python_version" != "$code_version" ]]; then
+  echo "ABI pin mismatch: code=$code_version python _cdef.py=$python_version" >&2
+  exit 1
+fi
+go_version="$(
+  sed -n 's/.*ExpectedAPIVersion = \([0-9][0-9]*\).*/\1/p' \
+    bindings/go-open/dhruv/types.go | head -n1
+)"
+if [[ "$go_version" != "$code_version" ]]; then
+  echo "ABI pin mismatch: code=$code_version go types.go=$go_version" >&2
+  exit 1
+fi
+
 echo "ABI docs match code (DHRUV_API_VERSION=$code_version)."

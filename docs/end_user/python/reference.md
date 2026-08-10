@@ -516,7 +516,9 @@ while the Sun is below the horizon. Both families use the same horizon
 convention, an altitude above -0.833 degrees.
 
 The grahan config adds
-`include_path`, `path_step_minutes`, and `boundary_step_deg`; summary results
+`include_path`, `path_step_minutes`, `footprint_step_minutes` (0 = follow
+the path cadence), `ring_simplify_tolerance_deg` (0 = exact rings), and
+`boundary_step_deg`; summary results
 include obscuration, gamma, Besselian elements, greatest location, generated
 sample counts, materialized `path` and `footprints` tuples, and complete local
 circumstances. The config additionally exposes `include_local_grid` /

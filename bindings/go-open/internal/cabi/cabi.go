@@ -990,7 +990,9 @@ func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
 		IncludePeakDetails:           cfg.include_peak_details != 0,
 		IncludePath:                  cfg.include_path != 0,
 		PathStepMinutes:              uint32(cfg.path_step_minutes),
+		FootprintStepMinutes:         uint32(cfg.footprint_step_minutes),
 		BoundaryStepDeg:              uint32(cfg.boundary_step_deg),
+		RingSimplifyToleranceDeg:     float64(cfg.ring_simplify_tolerance_deg),
 		IncludeLocalGrid:             cfg.include_local_grid != 0,
 		LocalGridStepDeg:             float64(cfg.local_grid_step_deg),
 		IncludeIsolines:              cfg.include_isolines != 0,
@@ -1014,8 +1016,10 @@ func cGrahanConfig(cfg GrahanConfig) C.DhruvGrahanConfig {
 		include_contact_footprints: boolU8(cfg.IncludeContactFootprints),
 		include_umbra_footprints:   boolU8(cfg.IncludeUmbraFootprints),
 		path_step_minutes:          C.uint32_t(cfg.PathStepMinutes),
+		footprint_step_minutes:     C.uint32_t(cfg.FootprintStepMinutes),
 		boundary_step_deg:          C.uint32_t(cfg.BoundaryStepDeg),
 		local_grid_step_deg:        C.double(cfg.LocalGridStepDeg),
+		ring_simplify_tolerance_deg: C.double(cfg.RingSimplifyToleranceDeg),
 	}
 	fractionCount := min(len(cfg.DurationIsolineFractions), 16)
 	for i := 0; i < fractionCount; i++ {
