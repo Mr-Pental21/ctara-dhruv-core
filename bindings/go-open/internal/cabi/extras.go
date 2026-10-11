@@ -67,13 +67,16 @@ func goGrahaEntry(v C.DhruvGrahaEntry) GrahaEntry {
 		},
 		SensitivePointDistancesValid: v.sensitive_point_distances_valid != 0,
 		SensitivePointDistances: SensitivePointDistances{
-			Mrityubhaga: float64(v.sensitive_point_distances.mrityubhaga),
+			Mrityubhaga:  float64(v.sensitive_point_distances.mrityubhaga),
 			Pushkarbhaga: float64(v.sensitive_point_distances.pushkarbhaga),
 		},
-		EquatorialValid:     v.equatorial_valid != 0,
-		RightAscensionDeg:   float64(v.right_ascension_deg),
-		DeclinationDeg:      float64(v.declination_deg),
-		EclipticLatitudeDeg: float64(v.ecliptic_latitude_deg),
+		EquatorialValid:         v.equatorial_valid != 0,
+		RightAscensionDeg:       float64(v.right_ascension_deg),
+		DeclinationDeg:          float64(v.declination_deg),
+		EclipticLatitudeDeg:     float64(v.ecliptic_latitude_deg),
+		SpeedValid:              v.speed_valid != 0,
+		LongitudeSpeedDegPerDay: float64(v.longitude_speed_deg_per_day),
+		LatitudeSpeedDegPerDay:  float64(v.latitude_speed_deg_per_day),
 	}
 }
 
@@ -676,16 +679,41 @@ func CalculateAllBAV(grahaRashis [SaptaGrahaCount]uint8, lagnaRashi uint8) ([Sap
 	return res, st
 }
 
+func cBhinna(v BhinnaAshtakavarga) C.DhruvBhinnaAshtakavarga {
+	var out C.DhruvBhinnaAshtakavarga
+	out.graha_index = C.uint8_t(v.GrahaIndex)
+	for j := 0; j < 12; j++ {
+		out.points[j] = C.uint8_t(v.Points[j])
+		for k := 0; k < 8; k++ {
+			out.contributors[j][k] = C.uint8_t(v.Contributors[j][k])
+		}
+	}
+	return out
+}
+
+func cSarva(v SarvaAshtakavarga) C.DhruvSarvaAshtakavarga {
+	var out C.DhruvSarvaAshtakavarga
+	for i := 0; i < 12; i++ {
+		out.total_points[i] = C.uint8_t(v.TotalPoints[i])
+		out.after_trikona[i] = C.uint8_t(v.AfterTrikona[i])
+		out.after_ekadhipatya[i] = C.uint8_t(v.AfterEkadhipatya[i])
+	}
+	return out
+}
+
+func cAshtakavarga(v AshtakavargaResult) C.DhruvAshtakavargaResult {
+	var out C.DhruvAshtakavargaResult
+	for i := 0; i < SaptaGrahaCount; i++ {
+		out.bavs[i] = cBhinna(v.BAVs[i])
+	}
+	out.sav = cSarva(v.SAV)
+	return out
+}
+
 func CalculateSAV(bavs [SaptaGrahaCount]BhinnaAshtakavarga) (SarvaAshtakavarga, Status) {
 	var cbavs [SaptaGrahaCount]C.DhruvBhinnaAshtakavarga
 	for i := 0; i < SaptaGrahaCount; i++ {
-		cbavs[i].graha_index = C.uint8_t(bavs[i].GrahaIndex)
-		for j := 0; j < 12; j++ {
-			cbavs[i].points[j] = C.uint8_t(bavs[i].Points[j])
-			for k := 0; k < 8; k++ {
-				cbavs[i].contributors[j][k] = C.uint8_t(bavs[i].Contributors[j][k])
-			}
-		}
+		cbavs[i] = cBhinna(bavs[i])
 	}
 	var out C.DhruvSarvaAshtakavarga
 	st := Status(C.dhruv_calculate_sav((*C.DhruvBhinnaAshtakavarga)(unsafe.Pointer(&cbavs[0])), &out))
@@ -717,6 +745,182 @@ func AshtakavargaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc Ge
 	var out C.DhruvAshtakavargaResult
 	st := Status(C.dhruv_ashtakavarga_for_date(engine.ptr, eop.ptr, &cutc, &cloc, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &out))
 	return goAshtakavarga(out), st
+}
+
+// --- Tara bala, kakshya, transit ashtakavarga, samvatsara officers ---
+
+func goTaraBala(v C.DhruvTaraBala) TaraBalaInfo {
+	return TaraBalaInfo{
+		TaraIndex: uint8(v.tara_index),
+		Count:     uint8(v.count),
+		Cycle:     uint8(v.cycle),
+		Favorable: v.favorable != 0,
+	}
+}
+
+func goTaraBalaEntry(v C.DhruvTaraBalaEntry) TaraBalaEntry {
+	return TaraBalaEntry{NakshatraIndex: uint8(v.nakshatra_index), TaraBala: goTaraBala(v.tara_bala)}
+}
+
+func goTaraBalaResult(v C.DhruvTaraBalaResult) TaraBalaResult {
+	res := TaraBalaResult{
+		ReferenceNakshatraIndex: uint8(v.reference_nakshatra_index),
+		ReferenceIsChartMoon:    v.reference_is_chart_moon != 0,
+		Lagna:                   goTaraBalaEntry(v.lagna),
+	}
+	for i := 0; i < GrahaCount; i++ {
+		res.Grahas[i] = goTaraBalaEntry(v.grahas[i])
+	}
+	return res
+}
+
+func cAshtakavargaReference(v AshtakavargaReference) C.DhruvAshtakavargaReference {
+	var out C.DhruvAshtakavargaReference
+	for i := 0; i < SaptaGrahaCount; i++ {
+		out.graha_rashis[i] = C.uint8_t(v.GrahaRashis[i])
+	}
+	out.lagna_rashi = C.uint8_t(v.LagnaRashi)
+	return out
+}
+
+func goAshtakavargaReference(v C.DhruvAshtakavargaReference) AshtakavargaReference {
+	var out AshtakavargaReference
+	for i := 0; i < SaptaGrahaCount; i++ {
+		out.GrahaRashis[i] = uint8(v.graha_rashis[i])
+	}
+	out.LagnaRashi = uint8(v.lagna_rashi)
+	return out
+}
+
+func goTransitAshtakavargaEntry(v C.DhruvTransitAshtakavargaEntry) TransitAshtakavargaEntry {
+	return TransitAshtakavargaEntry{
+		GrahaIndex:          uint8(v.graha_index),
+		RashiIndex:          uint8(v.rashi_index),
+		BavBindus:           uint8(v.bav_bindus),
+		SavTotal:            uint8(v.sav_total),
+		SavAfterTrikona:     uint8(v.sav_after_trikona),
+		SavAfterEkadhipatya: uint8(v.sav_after_ekadhipatya),
+		KakshyaIndex:        uint8(v.kakshya_index),
+		KakshyaLord:         uint8(v.kakshya_lord),
+		KakshyaBindu:        v.kakshya_bindu != 0,
+	}
+}
+
+func goTransitAshtakavargaResult(v C.DhruvTransitAshtakavargaResult) TransitAshtakavargaResult {
+	res := TransitAshtakavargaResult{Reference: goAshtakavargaReference(v.reference)}
+	for i := 0; i < SaptaGrahaCount; i++ {
+		res.Entries[i] = goTransitAshtakavargaEntry(v.entries[i])
+	}
+	return res
+}
+
+func goSamvatsaraOfficer(v C.DhruvSamvatsaraOfficer) SamvatsaraOfficer {
+	return SamvatsaraOfficer{
+		OfficeIndex:   uint8(v.office_index),
+		VaarIndex:     uint8(v.vaar_index),
+		LordIndex:     uint8(v.lord_index),
+		EventUTC:      goUTC(v.event_utc),
+		VedicDayStart: goUTC(v.vedic_day_start),
+	}
+}
+
+func goSamvatsaraOfficers(v C.DhruvSamvatsaraOfficers) SamvatsaraOfficers {
+	res := SamvatsaraOfficers{Varsha: goVarshaInfo(v.varsha)}
+	for i := 0; i < SamvatsaraOfficeCount; i++ {
+		res.Officers[i] = goSamvatsaraOfficer(v.officers[i])
+	}
+	return res
+}
+
+// TaraName returns the name of a tara index (0=Janma .. 8=Parama Mitra), or
+// "" for an index out of range.
+func TaraName(index uint32) string {
+	return cString((*C.char)(unsafe.Pointer(C.dhruv_tara_name(C.uint32_t(index)))))
+}
+
+// TaraBala computes the tara relationship of targetNakshatraIndex counted
+// inclusively from referenceNakshatraIndex (both 0-26).
+func TaraBala(referenceNakshatraIndex, targetNakshatraIndex uint32) (TaraBalaInfo, Status) {
+	var out C.DhruvTaraBala
+	st := Status(C.dhruv_tara_bala(C.uint32_t(referenceNakshatraIndex), C.uint32_t(targetNakshatraIndex), &out))
+	return goTaraBala(out), st
+}
+
+// TaraBalaForDate computes the tara bala of the nine grahas and the lagna at
+// a moment and location against referenceNakshatraIndex (0-26, or
+// TaraBalaReferenceChartMoon for that chart's own Moon nakshatra).
+func TaraBalaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, ayanamshaSystem uint32, useNutation bool, referenceNakshatraIndex uint32) (TaraBalaResult, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
+	var out C.DhruvTaraBalaResult
+	st := Status(C.dhruv_tara_bala_for_date(engine.ptr, eop.ptr, &cutc, &cloc, C.uint32_t(ayanamshaSystem), boolU8(useNutation), C.uint32_t(referenceNakshatraIndex), &out))
+	return goTaraBalaResult(out), st
+}
+
+// KakshyaIndex returns the kakshya (eighth of a rashi, 3 deg 45') index 0-7
+// of a sidereal longitude, or -1 for a non-finite input.
+func KakshyaIndex(siderealLongitudeDeg float64) int32 {
+	return int32(C.dhruv_kakshya_index(C.double(siderealLongitudeDeg)))
+}
+
+// KakshyaLord returns the BAV contributor index (0=Sun .. 6=Saturn,
+// 7=Lagna) ruling a kakshya index 0-7 (order Saturn, Jupiter, Mars, Sun,
+// Venus, Mercury, Moon, Lagna), or -1 for an invalid index.
+func KakshyaLord(kakshyaIndex uint32) int32 {
+	return int32(C.dhruv_kakshya_lord(C.uint32_t(kakshyaIndex)))
+}
+
+// KakshyaBindu reports (1/0) whether the kakshya lord at a sidereal
+// longitude contributed a bindu to that rashi in the given BAV; -1 on error.
+func KakshyaBindu(bav BhinnaAshtakavarga, siderealLongitudeDeg float64) int32 {
+	cbav := cBhinna(bav)
+	return int32(C.dhruv_kakshya_bindu(&cbav, C.double(siderealLongitudeDeg)))
+}
+
+// TransitAshtakavarga scores seven transit sidereal longitudes (Sun..Saturn)
+// against a natal ashtakavarga result.
+func TransitAshtakavarga(natal AshtakavargaResult, transitSiderealLons [SaptaGrahaCount]float64) ([SaptaGrahaCount]TransitAshtakavargaEntry, Status) {
+	cnatal := cAshtakavarga(natal)
+	var clons [SaptaGrahaCount]C.double
+	for i := 0; i < SaptaGrahaCount; i++ {
+		clons[i] = C.double(transitSiderealLons[i])
+	}
+	var out [SaptaGrahaCount]C.DhruvTransitAshtakavargaEntry
+	st := Status(C.dhruv_transit_ashtakavarga(&cnatal, &clons[0], &out[0]))
+	var res [SaptaGrahaCount]TransitAshtakavargaEntry
+	for i := 0; i < SaptaGrahaCount; i++ {
+		res[i] = goTransitAshtakavargaEntry(out[i])
+	}
+	return res, st
+}
+
+// TransitAshtakavargaForDate scores the sidereal graha positions at a moment
+// as transits against the natal inputs in reference.
+func TransitAshtakavargaForDate(engine EngineHandle, eop EopHandle, utc UtcTime, ayanamshaSystem uint32, useNutation bool, reference AshtakavargaReference) (TransitAshtakavargaResult, Status) {
+	cutc := cUTC(utc)
+	cref := cAshtakavargaReference(reference)
+	var out C.DhruvTransitAshtakavargaResult
+	st := Status(C.dhruv_transit_ashtakavarga_for_date(engine.ptr, eop.ptr, &cutc, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &cref, &out))
+	return goTransitAshtakavargaResult(out), st
+}
+
+// SamvatsaraOfficeName returns the name of a samvatsara office index
+// (0=Raja .. 8=Durgesha), or "" for an index out of range.
+func SamvatsaraOfficeName(index uint32) string {
+	return cString((*C.char)(unsafe.Pointer(C.dhruv_samvatsara_office_name(C.uint32_t(index)))))
+}
+
+// SamvatsaraOfficersForDate computes the office-bearers of the lunar year
+// containing utc at loc. risesetCfg nil selects the library defaults.
+func SamvatsaraOfficersForDate(engine EngineHandle, eop EopHandle, utc UtcTime, loc GeoLocation, risesetCfg *RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (SamvatsaraOfficers, Status) {
+	cutc, cloc := cUTC(utc), cGeo(loc)
+	var risePtr *C.DhruvRiseSetConfig
+	if risesetCfg != nil {
+		crise := cRiseSetConfig(*risesetCfg)
+		risePtr = &crise
+	}
+	var out C.DhruvSamvatsaraOfficers
+	st := Status(C.dhruv_samvatsara_officers(engine.ptr, eop.ptr, &cutc, &cloc, risePtr, C.uint32_t(ayanamshaSystem), boolU8(useNutation), &out))
+	return goSamvatsaraOfficers(out), st
 }
 
 func GrahaDrishti(grahaIndex uint32, sourceLon, targetLon float64) (DrishtiEntry, Status) {
@@ -780,6 +984,7 @@ func cGrahaPositionsConfig(cfg GrahaPositionsConfig) C.DhruvGrahaPositionsConfig
 			),
 		},
 		include_equatorial: boolU8(cfg.IncludeEquatorial),
+		include_speeds:     boolU8(cfg.IncludeSpeeds),
 	}
 }
 
@@ -932,6 +1137,7 @@ func goAmshaEntry(v C.DhruvAmshaEntry, family, index uint32) AmshaEntry {
 		PointIndex:        index,
 		SiderealLongitude: float64(v.sidereal_longitude),
 		RashiIndex:        uint8(v.rashi_index),
+		Vargottama:        v.vargottama != 0,
 		DmsDegrees:        uint16(v.dms_degrees),
 		DmsMinutes:        uint8(v.dms_minutes),
 		DmsSeconds:        float64(v.dms_seconds),

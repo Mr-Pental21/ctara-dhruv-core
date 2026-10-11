@@ -66,6 +66,7 @@ fn base_all_flags_off() {
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -134,6 +135,7 @@ fn include_nakshatra_populates_nak_and_pada() {
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -192,6 +194,7 @@ fn include_lagna_populates_lagna_entry() {
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -251,6 +254,7 @@ fn include_outer_planets_populates_uranus_neptune_pluto() {
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -315,6 +319,7 @@ fn include_bhava_populates_bhava_numbers() {
         include_bhava: true,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -361,6 +366,7 @@ fn all_flags_on() {
         include_bhava: true,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -446,6 +452,7 @@ fn nakshatra_and_lagna_combined() {
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -573,6 +580,7 @@ fn graha_positions_july_2024() {
         include_bhava: true,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -633,6 +641,7 @@ fn bhava_and_outer_planets_combined() {
         include_bhava: true,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -1033,6 +1042,7 @@ fn lagna_is_rising_in_graha_positions() {
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let result = graha_positions(
@@ -1108,6 +1118,7 @@ fn equatorial_output_consistency() {
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: true,
+        include_speeds: false,
     };
 
     let result = graha_positions(

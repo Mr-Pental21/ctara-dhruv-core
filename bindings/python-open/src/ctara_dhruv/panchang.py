@@ -112,6 +112,7 @@ def _tithi_from_c(t) -> TithiInfo:
         tithi_in_paksha=t.tithi_in_paksha,
         start=_utc_from_c(t.start),
         end=_utc_from_c(t.end),
+        progress=t.progress,
     )
 
 
@@ -121,6 +122,7 @@ def _karana_from_c(k) -> KaranaInfo:
         karana_name_index=k.karana_name_index,
         start=_utc_from_c(k.start),
         end=_utc_from_c(k.end),
+        progress=k.progress,
     )
 
 
@@ -129,6 +131,7 @@ def _yoga_from_c(y) -> YogaInfo:
         yoga_index=y.yoga_index,
         start=_utc_from_c(y.start),
         end=_utc_from_c(y.end),
+        progress=y.progress,
     )
 
 
@@ -137,6 +140,7 @@ def _vaar_from_c(v) -> VaarInfo:
         vaar_index=v.vaar_index,
         start=_utc_from_c(v.start),
         end=_utc_from_c(v.end),
+        progress=v.progress,
     )
 
 
@@ -146,6 +150,7 @@ def _hora_from_c(h) -> HoraInfo:
         hora_position=h.hora_position,
         start=_utc_from_c(h.start),
         end=_utc_from_c(h.end),
+        progress=h.progress,
     )
 
 
@@ -154,6 +159,7 @@ def _ghatika_from_c(g) -> GhatikaInfo:
         value=g.value,
         start=_utc_from_c(g.start),
         end=_utc_from_c(g.end),
+        progress=g.progress,
     )
 
 
@@ -163,6 +169,7 @@ def _nakshatra_from_c(n) -> PanchangNakshatraInfo:
         pada=n.pada,
         start=_utc_from_c(n.start),
         end=_utc_from_c(n.end),
+        progress=n.progress,
     )
 
 
@@ -172,6 +179,7 @@ def _masa_from_c(m) -> MasaInfo:
         adhika=bool(m.adhika),
         start=_utc_from_c(m.start),
         end=_utc_from_c(m.end),
+        progress=m.progress,
     )
 
 
@@ -180,6 +188,7 @@ def _ayana_from_c(a) -> AyanaInfo:
         ayana=a.ayana,
         start=_utc_from_c(a.start),
         end=_utc_from_c(a.end),
+        progress=a.progress,
     )
 
 
@@ -189,6 +198,7 @@ def _varsha_from_c(v) -> VarshaInfo:
         order=v.order,
         start=_utc_from_c(v.start),
         end=_utc_from_c(v.end),
+        progress=v.progress,
     )
 
 
@@ -267,10 +277,11 @@ def panchang(
         sankranti_config: Optional ``DhruvSankrantiConfig`` (C struct).  Uses
             library default when ``None``.
         known_masa: Optional ``MasaInfo`` from a previous result.  Reused
-            verbatim (skipping the new-moon search) when ``INCLUDE_MASA`` is
+            (skipping the new-moon search) when ``INCLUDE_MASA`` is
             selected and the requested moment falls inside its
-            ``[start, end)`` window; otherwise silently ignored and the masa
-            is recomputed.
+            ``[start, end)`` window -- only ``progress`` is re-derived for
+            the new moment; otherwise silently ignored and the masa is
+            recomputed.
         known_ayana: Optional ``AyanaInfo`` from a previous result.  Same
             reuse rule as *known_masa* (element: ``INCLUDE_AYANA``).
         known_varsha: Optional ``VarshaInfo`` from a previous result.  Same

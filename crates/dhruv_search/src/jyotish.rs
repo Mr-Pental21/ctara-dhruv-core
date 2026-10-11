@@ -44,8 +44,8 @@ use dhruv_vedic_base::{
     nakshatra_from_longitude, node_dignity_in_rashi, node_dignity_in_rashi_with_temporal_context,
     normalize_360, nth_rashi_from, own_signs, pranapada_lagna, pushkarabhaga_distance_from_degree,
     rashi_from_longitude, rashi_lord_by_index, sayanadi_all_sub_states, sayanadi_avastha,
-    shadbala_from_inputs, sree_lagna, sun_based_upagrahas, time_upagraha_jd_with_config,
-    vaar_lord as graha_vaar_lord,
+    shadbala_from_inputs, sree_lagna, sun_based_upagrahas, tara_bala, time_upagraha_jd_with_config,
+    transit_ashtakavarga, vaar_lord as graha_vaar_lord,
 };
 
 use crate::conjunction::{
@@ -59,14 +59,15 @@ use crate::dasha::{
 use crate::error::SearchError;
 use crate::jyotish_types::{
     AmshaChart, AmshaChartScope, AmshaEntry, AmshaPoint, AmshaPointFamily, AmshaResult,
-    AmshaSelectionConfig, AmshaSeries, AmshaSeriesChart, AmshaSeriesPoint, BalaBundleResult,
-    BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime,
-    DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
-    GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
+    AmshaSelectionConfig, AmshaSeries, AmshaSeriesChart, AmshaSeriesPoint, AshtakavargaReference,
+    BalaBundleResult, BhavaResultSet, BindusConfig, BindusResult, DashaSelectionConfig,
+    DashaSnapshotTime, DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult,
+    GrahaEntry, GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
     GrahaPositionsConfig, GrahaPositionsPoint, GrahaPositionsSeries, MAX_AMSHA_REQUESTS,
     MAX_AMSHA_SERIES_CELLS, MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry,
-    MovingOsculatingApogees, ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry,
-    VimsopakaResult,
+    MovingOsculatingApogees, ShadbalaEntry, ShadbalaResult, SphutalResult,
+    TARA_BALA_REFERENCE_CHART_MOON, TaraBalaEntry, TaraBalaResult, TransitAshtakavargaResult,
+    VimsopakaEntry, VimsopakaResult,
 };
 use crate::panchang::{
     hora_from_sunrises, masa_for_date_with_eop, panchang_for_date, varsha_for_date_with_eop,
@@ -74,6 +75,7 @@ use crate::panchang::{
 };
 use crate::panchang_types::{MasaInfo, VarshaInfo};
 use crate::sankranti_types::SankrantiConfig;
+use crate::search_util::normalize_to_pm180;
 
 const BHAVABALA_TWILIGHT_HALF_DAYS: f64 = 2.5 / 60.0;
 /// IAU 2015 nominal solar gravitational parameter, km^3/s^2.
@@ -1975,6 +1977,7 @@ pub fn amsha_series(
                         varga_lagna_lon,
                         AmshaPoint::new(AmshaPointFamily::Lagna, 0),
                         lagna_rashi_index,
+                        vargottama_source(req.amsha, lagna_sid),
                     ),
                     grahas: graha_lons.map(|lons| {
                         transform_amsha_family(
@@ -2129,6 +2132,123 @@ fn fill_entry_equatorial(
     entry.ecliptic_latitude_deg = lat_deg;
 }
 
+/// Half-step (days, one minute) of the central finite differences used for
+/// per-entry speeds.
+const SPEED_HALF_STEP_DAYS: f64 = 1.0 / 1440.0;
+
+/// Per-entry sidereal longitude and latitude rates (deg/day) at one epoch.
+struct SpeedEpochData {
+    /// `(longitude rate, latitude rate)` indexed by `Graha::index()`.
+    grahas: [(f64, f64); 9],
+    /// `(longitude rate, latitude rate)` for Uranus, Neptune, Pluto.
+    outer: [(f64, f64); 3],
+    /// Lagna sidereal longitude rate.
+    lagna: f64,
+}
+
+/// Central-difference rate (deg/day) of an angle-valued function.
+fn central_rate(f: &dyn Fn(f64) -> Result<f64, SearchError>, jd: f64) -> Result<f64, SearchError> {
+    let ahead = f(jd + SPEED_HALF_STEP_DAYS)?;
+    let behind = f(jd - SPEED_HALF_STEP_DAYS)?;
+    Ok(normalize_to_pm180(ahead - behind) / (2.0 * SPEED_HALF_STEP_DAYS))
+}
+
+/// Central-difference rates (deg/day) of a `(longitude, latitude)` function.
+fn central_rates(
+    f: &dyn Fn(f64) -> Result<(f64, f64), SearchError>,
+    jd: f64,
+) -> Result<(f64, f64), SearchError> {
+    let (lon_a, lat_a) = f(jd + SPEED_HALF_STEP_DAYS)?;
+    let (lon_b, lat_b) = f(jd - SPEED_HALF_STEP_DAYS)?;
+    Ok((
+        normalize_to_pm180(lon_a - lon_b) / (2.0 * SPEED_HALF_STEP_DAYS),
+        (lat_a - lat_b) / (2.0 * SPEED_HALF_STEP_DAYS),
+    ))
+}
+
+/// Rates of the exact sidereal quantities the position entries report:
+/// reference-plane longitude minus the ayanamsha at each sample, so the
+/// ayanamsha drift and the plane choice are both included.
+fn speed_epoch_data(
+    engine: &Engine,
+    eop: &EopKernel,
+    location: &GeoLocation,
+    aya_config: &SankrantiConfig,
+    include_outer_planets: bool,
+    include_lagna: bool,
+    ctx: &JyotishContext,
+) -> Result<SpeedEpochData, SearchError> {
+    let plane = ctx.reference_plane;
+    let precession_model = aya_config.precession_model;
+    let aya_at = |jd: f64| aya_config.ayanamsha_deg_at_centuries(jd_tdb_to_centuries(jd));
+
+    let body_sidereal = |body: Body| {
+        move |jd: f64| -> Result<(f64, f64), SearchError> {
+            let (lon, lat) = body_lon_lat_on_plane(engine, body, jd, precession_model, plane)?;
+            Ok((normalize_360(lon - aya_at(jd)), lat))
+        }
+    };
+    let rahu_sidereal = |jd: f64| -> Result<f64, SearchError> {
+        let lon = lunar_node_deg_for_epoch_on_plane(
+            engine,
+            LunarNode::Rahu,
+            jd,
+            aya_config.node_mode,
+            precession_model,
+            plane,
+        )?;
+        Ok(normalize_360(lon - aya_at(jd)))
+    };
+
+    let mut grahas = [(0.0f64, 0.0f64); 9];
+    let node_rate = central_rate(&rahu_sidereal, ctx.jd_tdb)?;
+    for graha in ALL_GRAHAS {
+        let idx = graha.index() as usize;
+        grahas[idx] = match graha {
+            Graha::Rahu | Graha::Ketu => (node_rate, 0.0),
+            _ => {
+                let body = graha_to_body(graha).expect("sapta graha has body");
+                central_rates(&body_sidereal(body), ctx.jd_tdb)?
+            }
+        };
+    }
+
+    let mut outer = [(0.0f64, 0.0f64); 3];
+    if include_outer_planets {
+        for (i, body) in OUTER_PLANET_BODIES.iter().copied().enumerate() {
+            outer[i] = central_rates(&body_sidereal(body), ctx.jd_tdb)?;
+        }
+    }
+
+    let lagna = if include_lagna {
+        let ayanamsha = ctx.ayanamsha;
+        let lagna_sidereal = |jd_utc: f64| -> Result<f64, SearchError> {
+            let lagna_rad = lagna_longitude_rad(engine.lsk(), eop, location, jd_utc)?;
+            let lagna_ecl_deg = lagna_rad.to_degrees();
+            let on_plane = match plane {
+                ReferencePlane::Ecliptic => lagna_ecl_deg,
+                ReferencePlane::Invariable => ecliptic_lon_to_invariable_lon(lagna_ecl_deg),
+            };
+            Ok(normalize_360(on_plane - ayanamsha))
+        };
+        central_rate(&lagna_sidereal, ctx.jd_utc)?
+    } else {
+        0.0
+    };
+
+    Ok(SpeedEpochData {
+        grahas,
+        outer,
+        lagna,
+    })
+}
+
+fn fill_entry_speed(entry: &mut GrahaEntry, longitude_rate: f64, latitude_rate: f64) {
+    entry.speed_valid = true;
+    entry.longitude_speed_deg_per_day = longitude_rate;
+    entry.latitude_speed_deg_per_day = latitude_rate;
+}
+
 fn graha_positions_with_ctx(
     engine: &Engine,
     eop: &EopKernel,
@@ -2203,7 +2323,7 @@ fn graha_positions_with_ctx(
         }
     }
 
-    let lagna = if config.include_lagna {
+    let mut lagna = if config.include_lagna {
         let lagna_sid = lagna_sid.expect("include_lagna implies lagna_sid");
         let mut entry = make_graha_entry_for_point(
             lagna_sid,
@@ -2225,7 +2345,7 @@ fn graha_positions_with_ctx(
         GrahaEntry::sentinel()
     };
 
-    let outer_planets = if config.include_outer_planets {
+    let mut outer_planets = if config.include_outer_planets {
         let mut entries = [GrahaEntry::sentinel(); 3];
         let outer_lons = ctx.outer_planet_lons(engine, aya_config)?;
         for (i, &sid_lon) in outer_lons.iter().enumerate() {
@@ -2246,6 +2366,43 @@ fn graha_positions_with_ctx(
     } else {
         [GrahaEntry::sentinel(); 3]
     };
+
+    // Speeds: requested explicitly, or needed for the outer planets'
+    // retrograde state (the sapta-graha retrograde flag keeps using the
+    // cached ecliptic-of-date speed so existing output is unchanged).
+    let outer_retrograde_needed =
+        config.include_outer_planets && config.basic_states_config.include_basic_states;
+    if config.include_speeds || outer_retrograde_needed {
+        let speeds = speed_epoch_data(
+            engine,
+            eop,
+            location,
+            aya_config,
+            config.include_outer_planets,
+            config.include_speeds && config.include_lagna,
+            ctx,
+        )?;
+        if config.include_speeds {
+            for (i, entry) in grahas.iter_mut().enumerate() {
+                let (lon_rate, lat_rate) = speeds.grahas[i];
+                fill_entry_speed(entry, lon_rate, lat_rate);
+            }
+            if config.include_lagna {
+                fill_entry_speed(&mut lagna, speeds.lagna, 0.0);
+            }
+            if config.include_outer_planets {
+                for (i, entry) in outer_planets.iter_mut().enumerate() {
+                    let (lon_rate, lat_rate) = speeds.outer[i];
+                    fill_entry_speed(entry, lon_rate, lat_rate);
+                }
+            }
+        }
+        if outer_retrograde_needed {
+            for (i, entry) in outer_planets.iter_mut().enumerate() {
+                entry.basic_states.retrograde = speeds.outer[i].0 < 0.0;
+            }
+        }
+    }
 
     let (earth_orientation_valid, gmst_deg, gast_deg) = match &equatorial {
         Some(eq) => (true, eq.gmst_deg, eq.gast_deg),
@@ -2310,6 +2467,9 @@ fn make_graha_entry_common(
         right_ascension_deg: 0.0,
         declination_deg: 0.0,
         ecliptic_latitude_deg: 0.0,
+        speed_valid: false,
+        longitude_speed_deg_per_day: 0.0,
+        latitude_speed_deg_per_day: 0.0,
     }
 }
 
@@ -2494,6 +2654,7 @@ fn ashtakavarga_with_ctx(
         include_bhava: false,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
     let bhava_config = BhavaConfig::default();
     let positions = graha_positions_with_ctx(
@@ -2584,6 +2745,7 @@ fn core_bindus_with_ctx(
         include_bhava: config.include_bhava,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
 
     let graha_lons = *ctx.graha_lons(engine, aya_config)?;
@@ -3196,6 +3358,46 @@ pub fn full_kundali_for_date(
         (None, None)
     };
 
+    let tara_bala = if config.include_tara_bala {
+        let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+        let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
+        Some(tara_bala_from_longitudes(
+            &graha_lons.longitudes,
+            lagna_sid,
+            config.tara_bala_reference_nakshatra_index,
+        )?)
+    } else {
+        None
+    };
+
+    let samvatsara_officers = if config.include_samvatsara_officers {
+        Some(crate::samvatsara_officers::samvatsara_officers(
+            engine,
+            eop,
+            utc,
+            location,
+            riseset_config,
+            aya_config,
+        )?)
+    } else {
+        None
+    };
+
+    let transit_ashtakavarga = if config.include_transit_ashtakavarga {
+        let reference = config
+            .transit_ashtakavarga_reference
+            .ok_or(SearchError::InvalidConfig(
+                "transit_ashtakavarga_reference is required when include_transit_ashtakavarga is set",
+            ))?;
+        let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+        Some(transit_ashtakavarga_from_longitudes(
+            &graha_lons.longitudes,
+            &reference,
+        )?)
+    } else {
+        None
+    };
+
     Ok(FullKundaliResult {
         ayanamsha_deg: ayanamsha,
         bhava_cusps,
@@ -3218,7 +3420,105 @@ pub fn full_kundali_for_date(
         panchang,
         dasha,
         dasha_snapshots,
+        tara_bala,
+        samvatsara_officers,
+        transit_ashtakavarga,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tara bala / transit ashtakavarga
+// ---------------------------------------------------------------------------
+
+/// Tara bala of the nine grahas and the lagna from sidereal longitudes.
+///
+/// `reference_nakshatra_index` is the 0-based reference nakshatra (usually
+/// the natal Moon's) or [`TARA_BALA_REFERENCE_CHART_MOON`] to count from the
+/// Moon nakshatra of these longitudes.
+pub fn tara_bala_from_longitudes(
+    graha_sidereal_lons: &[f64; 9],
+    lagna_sidereal_lon: f64,
+    reference_nakshatra_index: u8,
+) -> Result<TaraBalaResult, SearchError> {
+    if reference_nakshatra_index != TARA_BALA_REFERENCE_CHART_MOON
+        && reference_nakshatra_index >= 27
+    {
+        return Err(SearchError::InvalidConfig(
+            "tara bala reference nakshatra index must be 0-26 or 255",
+        ));
+    }
+    let moon_nak = nakshatra_from_longitude(graha_sidereal_lons[Graha::Chandra.index() as usize])
+        .nakshatra_index;
+    let (reference, reference_is_chart_moon) =
+        if reference_nakshatra_index == TARA_BALA_REFERENCE_CHART_MOON {
+            (moon_nak, true)
+        } else {
+            (reference_nakshatra_index, false)
+        };
+    let entry = |lon: f64| {
+        let nak = nakshatra_from_longitude(lon).nakshatra_index;
+        TaraBalaEntry {
+            nakshatra_index: nak,
+            tara_bala: tara_bala(reference, nak),
+        }
+    };
+    Ok(TaraBalaResult {
+        reference_nakshatra_index: reference,
+        reference_is_chart_moon,
+        grahas: core::array::from_fn(|i| entry(graha_sidereal_lons[i])),
+        lagna: entry(lagna_sidereal_lon),
+    })
+}
+
+/// Tara bala of the grahas and lagna at a moment and location.
+pub fn tara_bala_for_date(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    location: &GeoLocation,
+    aya_config: &SankrantiConfig,
+    reference_nakshatra_index: u8,
+) -> Result<TaraBalaResult, SearchError> {
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
+    let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+    let lagna_sid = ctx.lagna_sid(engine, eop, location)?;
+    tara_bala_from_longitudes(&graha_lons.longitudes, lagna_sid, reference_nakshatra_index)
+}
+
+/// Score transiting sapta grahas (from nine sidereal longitudes indexed by
+/// `Graha::index()`) against natal ashtakavarga inputs.
+pub fn transit_ashtakavarga_from_longitudes(
+    graha_sidereal_lons: &[f64; 9],
+    reference: &AshtakavargaReference,
+) -> Result<TransitAshtakavargaResult, SearchError> {
+    if reference.graha_rashis.iter().any(|&r| r >= 12) || reference.lagna_rashi >= 12 {
+        return Err(SearchError::InvalidConfig(
+            "ashtakavarga reference rashi indices must be 0-11",
+        ));
+    }
+    let natal = calculate_ashtakavarga(&reference.graha_rashis, reference.lagna_rashi);
+    let mut lons = [0.0f64; 7];
+    for (i, graha) in SAPTA_GRAHAS.iter().enumerate() {
+        lons[i] = graha_sidereal_lons[graha.index() as usize];
+    }
+    Ok(TransitAshtakavargaResult {
+        reference: *reference,
+        entries: transit_ashtakavarga(&natal, &lons),
+    })
+}
+
+/// Score the transiting sapta grahas at `utc` against natal ashtakavarga
+/// inputs. Geocentric; no location is needed.
+pub fn transit_ashtakavarga_for_date(
+    engine: &Engine,
+    eop: &EopKernel,
+    utc: &UtcTime,
+    aya_config: &SankrantiConfig,
+    reference: &AshtakavargaReference,
+) -> Result<TransitAshtakavargaResult, SearchError> {
+    let mut ctx = JyotishContext::new(engine, Some(eop), utc, aya_config);
+    let graha_lons = *ctx.graha_lons(engine, aya_config)?;
+    transit_ashtakavarga_from_longitudes(&graha_lons.longitudes, reference)
 }
 
 /// Compute Bhava Bala for all 12 houses at a given date and location.
@@ -4458,7 +4758,16 @@ fn assemble_avastha_inputs(
 // ---------------------------------------------------------------------------
 
 /// Convert a sidereal longitude to an AmshaEntry.
-fn make_amsha_entry(sidereal_lon: f64, point: AmshaPoint, lagna_rashi_index: u8) -> AmshaEntry {
+/// Build an amsha entry from its varga longitude.
+///
+/// `d1_rashi_index` is the point's rashi-chart rashi, used for the
+/// vargottama flag; pass `None` on the D1 chart itself (never vargottama).
+fn make_amsha_entry(
+    sidereal_lon: f64,
+    point: AmshaPoint,
+    lagna_rashi_index: u8,
+    d1_rashi_index: Option<u8>,
+) -> AmshaEntry {
     let info = rashi_from_longitude(sidereal_lon);
     let nak = nakshatra_from_longitude(sidereal_lon);
     AmshaEntry {
@@ -4472,7 +4781,14 @@ fn make_amsha_entry(sidereal_lon: f64, point: AmshaPoint, lagna_rashi_index: u8)
         nakshatra_index: nak.nakshatra_index,
         pada: nak.pada,
         rashi_bhava_number: whole_sign_bhava_number(info.rashi_index, lagna_rashi_index),
+        vargottama: d1_rashi_index == Some(info.rashi_index),
     }
+}
+
+/// D1 rashi of a point for the vargottama comparison: `None` when the
+/// chart being built is D1 itself.
+fn vargottama_source(amsha: Amsha, d1_sidereal_lon: f64) -> Option<u8> {
+    (amsha != Amsha::D1).then(|| rashi_from_longitude(d1_sidereal_lon).rashi_index)
 }
 
 /// Whole-sign bhava (1-12) of `rashi_index` counted from `lagna_rashi_index`.
@@ -4489,7 +4805,12 @@ fn transform_to_amsha_entry(
     lagna_rashi_index: u8,
 ) -> AmshaEntry {
     let amsha_lon = amsha_longitude(sidereal_lon, amsha, variation);
-    make_amsha_entry(amsha_lon, point, lagna_rashi_index)
+    make_amsha_entry(
+        amsha_lon,
+        point,
+        lagna_rashi_index,
+        vargottama_source(amsha, sidereal_lon),
+    )
 }
 
 /// Transform a whole point family, tagging each entry with its fixed position.
@@ -4643,6 +4964,7 @@ fn build_amsha_chart(
             lagna_lon,
             AmshaPoint::new(AmshaPointFamily::Lagna, 0),
             lagna_rashi,
+            vargottama_source(amsha, lagna_sid),
         )
     };
     let lagna_rashi_index = lagna.rashi_index;
@@ -4653,6 +4975,7 @@ fn build_amsha_chart(
                 cached.longitudes[i],
                 AmshaPoint::new(AmshaPointFamily::Graha, i as u8),
                 lagna_rashi_index,
+                vargottama_source(amsha, graha_lons[i]),
             )
         }),
         None => transform_amsha_family(

@@ -58,7 +58,7 @@ pub use subperiod::{
 pub use types::{
     ALL_DASHA_SYSTEMS, DAYS_PER_YEAR, DEFAULT_DASHA_LEVEL, DashaEntity, DashaHierarchy, DashaLevel,
     DashaPeriod, DashaSnapshot, DashaSystem, MAX_DASHA_LEVEL, MAX_DASHA_SYSTEMS,
-    MAX_PERIODS_PER_LEVEL,
+    MAX_PERIODS_PER_LEVEL, progress_fraction,
 };
 pub use variation::{DashaVariationConfig, SubPeriodMethod, YoginiScheme};
 pub use yogini::{

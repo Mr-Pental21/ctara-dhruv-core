@@ -5,7 +5,7 @@ canonical C ABI (`dhruv_ffi_c`) via `cffi`.
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=90`
+- ABI target: `DHRUV_API_VERSION=91`
 - Package root: `bindings/python-open`
 - Runtime dependency: `cffi`
 - Primary distribution: PyPI wheels plus sdist from unified `vX.Y.Z` tags
@@ -277,6 +277,78 @@ Grahan results also carry apparent equatorial coordinates at greatest
 grahan: `ChandraGrahanResult.moon_right_ascension_deg` /
 `moon_declination_deg` and `SuryaGrahanResult.sun_right_ascension_deg` /
 `sun_declination_deg` (degrees, equinox of date, nutation applied).
+
+## Speeds, Vargottama, and Progress (ABI v91)
+
+`graha_positions` / `graha_positions_series` accept `config["include_speeds"]`
+(0/1; also `graha_positions_config.include_speeds` on the full-kundali
+config). Each entry then reports `speed_valid=True` with
+`longitude_speed_deg_per_day` (rate of the reported sidereal longitude —
+a central finite difference over ±1 minute, so ayanamsha drift and the
+reference plane are included; negative means retrograde) and
+`latitude_speed_deg_per_day` (rate of the ecliptic latitude; 0 for lagna
+and Rahu/Ketu). Outer planets now receive a real `basic_states.retrograde`
+whenever basic states are requested.
+
+`AmshaEntry.vargottama` is `True` when the varga rashi equals the point's
+D1 rashi (always `False` on the D1 chart itself).
+
+Every panchang info dataclass (`TithiInfo`, `KaranaInfo`, `YogaInfo`,
+`VaarInfo`, `HoraInfo`, `GhatikaInfo`, `PanchangNakshatraInfo`, `MasaInfo`,
+`AyanaInfo`, `VarshaInfo`) carries `progress` — the elapsed fraction of its
+`[start, end)` window at the query moment, clamped to [0, 1]. It is `0.0`
+in `panchang_events` listings and from `vaar_from_sunrises`, and is
+re-derived for the new moment when a `known_*` value is reused by
+`panchang(...)`. `DashaSnapshot.progress` is the parallel list of elapsed
+fractions for each active period at `query_jd`.
+
+## Tara Bala, Kakshya, Transit Ashtakavarga, Samvatsara Officers
+
+`ctara_dhruv.vedic` (also re-exported at top level) adds:
+
+- `tara_name(index)` — `"Janma"` .. `"Parama Mitra"` (0..8), `None` otherwise.
+- `tara_bala(reference_nakshatra_index, target_nakshatra_index)` — pure
+  `TaraBala` (`tara_index`, inclusive `count` 1..27, `cycle` 1..3,
+  `favorable`; favourable taras are Sampat, Kshema, Sadhaka, Mitra, Parama
+  Mitra).
+- `tara_bala_for_date(engine, eop, utc, location, ayanamsha_system=0,
+  use_nutation=1, reference_nakshatra_index=TARA_BALA_REFERENCE_CHART_MOON)`
+  — `TaraBalaResult` for the nine grahas and the lagna; the default
+  reference (255) is this chart's own Moon nakshatra.
+- `kakshya_index(sidereal_longitude_deg)` (0..7, each 3°45'; `-1` for
+  non-finite), `kakshya_lord(kakshya_index)` (BAV contributor index in the
+  order Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna; `-1` when
+  invalid), and `kakshya_bindu(bav, sidereal_longitude_deg)` (`True` when
+  that lord contributed a bindu to the rashi in the graha's BAV).
+- `transit_ashtakavarga(natal, transit_sidereal_lons)` — pure scoring of
+  seven transiting sapta grahas (Sun..Saturn) against an
+  `AshtakavargaResult`; returns `TransitAshtakavargaEntry` values with
+  `bav_bindus`, raw/trikona/ekadhipatya `sav_*`, and the kakshya fields.
+  Rahu/Ketu and outer planets are not scored.
+- `transit_ashtakavarga_for_date(engine, eop, utc, reference,
+  ayanamsha_system=0, use_nutation=1)` — the same at a moment; `reference`
+  is an `AshtakavargaReference`, a `{"graha_rashis": [...7], "lagna_rashi": n}`
+  dict, or a `(graha_rashis, lagna_rashi)` tuple.
+- `samvatsara_office_name(index)` — `"Raja"`, `"Mantri"`, `"Sasyesha"`,
+  `"Dhanyesha"`, `"Meghesha"`, `"Rasesha"`, `"Nirasesha"`, `"Phalesha"`,
+  `"Durgesha"` (0..8).
+- `samvatsara_officers(engine, eop, utc, location, riseset_config=None,
+  ayanamsha_system=0, use_nutation=1)` — `SamvatsaraOfficers` for the lunar
+  year containing `utc`: each office is the vaar lord of the Vedic day
+  (sunrise-to-sunrise at the location) of one event of the year (Raja =
+  Chaitra Shukla Pratipada by the udaya rule, Mantri = Mesha sankranti,
+  Sasyesha = Karka, Dhanyesha = Dhanu, Meghesha = Sun entering Ardra,
+  Rasesha = Tula, Nirasesha = Makara, Phalesha = Meena, Durgesha = Simha;
+  first occurrence at/after the year start).
+
+The full-kundali config (`full_kundali_config_default()`) gains
+`include_tara_bala` with `tara_bala_reference_nakshatra_index` (0..26 or
+the default 255 = chart Moon), `include_samvatsara_officers`, and
+`include_transit_ashtakavarga` with the natal inputs in
+`transit_ashtakavarga_reference.graha_rashis[0..6]` /
+`transit_ashtakavarga_reference.lagna_rashi`. `FullKundaliResult` then
+exposes `tara_bala`, `samvatsara_officers`, and `transit_ashtakavarga`
+(`None` when not requested).
 
 The grahan config additionally exposes the surya field products
 (`include_local_grid`/`local_grid_step_deg`, `include_isolines` with

@@ -1007,18 +1007,18 @@ func goGrahanConfig(cfg C.DhruvGrahanConfig) GrahanConfig {
 
 func cGrahanConfig(cfg GrahanConfig) C.DhruvGrahanConfig {
 	out := C.DhruvGrahanConfig{
-		include_penumbral:          boolU8(cfg.IncludePenumbral),
-		include_peak_details:       boolU8(cfg.IncludePeakDetails),
-		include_path:               boolU8(cfg.IncludePath),
-		include_local_grid:         boolU8(cfg.IncludeLocalGrid),
-		include_isolines:           boolU8(cfg.IncludeIsolines),
-		include_central_corridor:   boolU8(cfg.IncludeCentralCorridor),
-		include_contact_footprints: boolU8(cfg.IncludeContactFootprints),
-		include_umbra_footprints:   boolU8(cfg.IncludeUmbraFootprints),
-		path_step_minutes:          C.uint32_t(cfg.PathStepMinutes),
-		footprint_step_minutes:     C.uint32_t(cfg.FootprintStepMinutes),
-		boundary_step_deg:          C.uint32_t(cfg.BoundaryStepDeg),
-		local_grid_step_deg:        C.double(cfg.LocalGridStepDeg),
+		include_penumbral:           boolU8(cfg.IncludePenumbral),
+		include_peak_details:        boolU8(cfg.IncludePeakDetails),
+		include_path:                boolU8(cfg.IncludePath),
+		include_local_grid:          boolU8(cfg.IncludeLocalGrid),
+		include_isolines:            boolU8(cfg.IncludeIsolines),
+		include_central_corridor:    boolU8(cfg.IncludeCentralCorridor),
+		include_contact_footprints:  boolU8(cfg.IncludeContactFootprints),
+		include_umbra_footprints:    boolU8(cfg.IncludeUmbraFootprints),
+		path_step_minutes:           C.uint32_t(cfg.PathStepMinutes),
+		footprint_step_minutes:      C.uint32_t(cfg.FootprintStepMinutes),
+		boundary_step_deg:           C.uint32_t(cfg.BoundaryStepDeg),
+		local_grid_step_deg:         C.double(cfg.LocalGridStepDeg),
 		ring_simplify_tolerance_deg: C.double(cfg.RingSimplifyToleranceDeg),
 	}
 	fractionCount := min(len(cfg.DurationIsolineFractions), 16)
@@ -1098,41 +1098,41 @@ func SearchGrahan(engine EngineHandle, req GrahanSearchRequest, capacity uint32)
 			return &value
 		}
 		return ChandraGrahanResult{
-			GrahanType:            int32(v.grahan_type),
-			Magnitude:             float64(v.magnitude),
-			PenumbralMagnitude:    float64(v.penumbral_magnitude),
-			GreatestGrahanUTC:     goUTC(v.greatest_grahan_utc),
-			GreatestGrahanJd:      float64(v.greatest_grahan_jd),
-			P1UTC:                 goUTC(v.p1_utc),
-			P1Jd:                  float64(v.p1_jd),
-			U1UTC:                 goOptionalUTC(float64(v.u1_jd) != -1.0, v.u1_utc),
-			U1Jd:                  float64(v.u1_jd),
-			U2UTC:                 goOptionalUTC(float64(v.u2_jd) != -1.0, v.u2_utc),
-			U2Jd:                  float64(v.u2_jd),
-			U3UTC:                 goOptionalUTC(float64(v.u3_jd) != -1.0, v.u3_utc),
-			U3Jd:                  float64(v.u3_jd),
-			U4UTC:                 goOptionalUTC(float64(v.u4_jd) != -1.0, v.u4_utc),
-			U4Jd:                  float64(v.u4_jd),
-			P4UTC:                 goUTC(v.p4_utc),
-			P4Jd:                  float64(v.p4_jd),
-			MoonEclipticLatDeg:    float64(v.moon_ecliptic_lat_deg),
-			AngularSeparationDeg:  float64(v.angular_separation_deg),
-			MoonRightAscensionDeg: float64(v.moon_right_ascension_deg),
-			MoonDeclinationDeg:    float64(v.moon_declination_deg),
-			LocalValid:            v.local_valid != 0,
-			LocalVisible:          v.local_visible != 0,
-			LocalMoonAltitudeDeg:  float64(v.local_moon_altitude_deg),
-			LocalMoonAzimuthDeg:   float64(v.local_moon_azimuth_deg),
-			LocalP1AltitudeDeg:    float64(v.local_p1_altitude_deg),
-			LocalU1AltitudeDeg:    contactAltitude(float64(v.u1_jd), v.local_u1_altitude_deg),
-			LocalU2AltitudeDeg:    contactAltitude(float64(v.u2_jd), v.local_u2_altitude_deg),
-			LocalU3AltitudeDeg:    contactAltitude(float64(v.u3_jd), v.local_u3_altitude_deg),
-			LocalU4AltitudeDeg:    contactAltitude(float64(v.u4_jd), v.local_u4_altitude_deg),
-			LocalP4AltitudeDeg:    float64(v.local_p4_altitude_deg),
-			LocalVisibleStartJd:   float64(v.local_visible_start_jd),
-			LocalVisibleStartUTC:  goOptionalUTC(float64(v.local_visible_start_jd) != -1.0, v.local_visible_start_utc),
-			LocalVisibleEndJd:     float64(v.local_visible_end_jd),
-			LocalVisibleEndUTC:    goOptionalUTC(float64(v.local_visible_end_jd) != -1.0, v.local_visible_end_utc),
+			GrahanType:                  int32(v.grahan_type),
+			Magnitude:                   float64(v.magnitude),
+			PenumbralMagnitude:          float64(v.penumbral_magnitude),
+			GreatestGrahanUTC:           goUTC(v.greatest_grahan_utc),
+			GreatestGrahanJd:            float64(v.greatest_grahan_jd),
+			P1UTC:                       goUTC(v.p1_utc),
+			P1Jd:                        float64(v.p1_jd),
+			U1UTC:                       goOptionalUTC(float64(v.u1_jd) != -1.0, v.u1_utc),
+			U1Jd:                        float64(v.u1_jd),
+			U2UTC:                       goOptionalUTC(float64(v.u2_jd) != -1.0, v.u2_utc),
+			U2Jd:                        float64(v.u2_jd),
+			U3UTC:                       goOptionalUTC(float64(v.u3_jd) != -1.0, v.u3_utc),
+			U3Jd:                        float64(v.u3_jd),
+			U4UTC:                       goOptionalUTC(float64(v.u4_jd) != -1.0, v.u4_utc),
+			U4Jd:                        float64(v.u4_jd),
+			P4UTC:                       goUTC(v.p4_utc),
+			P4Jd:                        float64(v.p4_jd),
+			MoonEclipticLatDeg:          float64(v.moon_ecliptic_lat_deg),
+			AngularSeparationDeg:        float64(v.angular_separation_deg),
+			MoonRightAscensionDeg:       float64(v.moon_right_ascension_deg),
+			MoonDeclinationDeg:          float64(v.moon_declination_deg),
+			LocalValid:                  v.local_valid != 0,
+			LocalVisible:                v.local_visible != 0,
+			LocalMoonAltitudeDeg:        float64(v.local_moon_altitude_deg),
+			LocalMoonAzimuthDeg:         float64(v.local_moon_azimuth_deg),
+			LocalP1AltitudeDeg:          float64(v.local_p1_altitude_deg),
+			LocalU1AltitudeDeg:          contactAltitude(float64(v.u1_jd), v.local_u1_altitude_deg),
+			LocalU2AltitudeDeg:          contactAltitude(float64(v.u2_jd), v.local_u2_altitude_deg),
+			LocalU3AltitudeDeg:          contactAltitude(float64(v.u3_jd), v.local_u3_altitude_deg),
+			LocalU4AltitudeDeg:          contactAltitude(float64(v.u4_jd), v.local_u4_altitude_deg),
+			LocalP4AltitudeDeg:          float64(v.local_p4_altitude_deg),
+			LocalVisibleStartJd:         float64(v.local_visible_start_jd),
+			LocalVisibleStartUTC:        goOptionalUTC(float64(v.local_visible_start_jd) != -1.0, v.local_visible_start_utc),
+			LocalVisibleEndJd:           float64(v.local_visible_end_jd),
+			LocalVisibleEndUTC:          goOptionalUTC(float64(v.local_visible_end_jd) != -1.0, v.local_visible_end_utc),
 			LocalVisibleDurationSeconds: float64(v.local_visible_duration_seconds),
 		}
 	}
@@ -1609,43 +1609,43 @@ func SearchFixedLongitude(engine EngineHandle, req FixedLongitudeRequest, capaci
 }
 
 func goTithiInfo(v C.DhruvTithiInfo) TithiInfo {
-	return TithiInfo{TithiIndex: int32(v.tithi_index), Paksha: int32(v.paksha), TithiInPaksha: int32(v.tithi_in_paksha), Start: goUTC(v.start), End: goUTC(v.end)}
+	return TithiInfo{TithiIndex: int32(v.tithi_index), Paksha: int32(v.paksha), TithiInPaksha: int32(v.tithi_in_paksha), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goKaranaInfo(v C.DhruvKaranaInfo) KaranaInfo {
-	return KaranaInfo{KaranaIndex: int32(v.karana_index), KaranaNameIndex: int32(v.karana_name_index), Start: goUTC(v.start), End: goUTC(v.end)}
+	return KaranaInfo{KaranaIndex: int32(v.karana_index), KaranaNameIndex: int32(v.karana_name_index), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goYogaInfo(v C.DhruvYogaInfo) YogaInfo {
-	return YogaInfo{YogaIndex: int32(v.yoga_index), Start: goUTC(v.start), End: goUTC(v.end)}
+	return YogaInfo{YogaIndex: int32(v.yoga_index), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goVaarInfo(v C.DhruvVaarInfo) VaarInfo {
-	return VaarInfo{VaarIndex: int32(v.vaar_index), Start: goUTC(v.start), End: goUTC(v.end)}
+	return VaarInfo{VaarIndex: int32(v.vaar_index), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goHoraInfo(v C.DhruvHoraInfo) HoraInfo {
-	return HoraInfo{HoraIndex: int32(v.hora_index), HoraPosition: int32(v.hora_position), Start: goUTC(v.start), End: goUTC(v.end)}
+	return HoraInfo{HoraIndex: int32(v.hora_index), HoraPosition: int32(v.hora_position), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goGhatikaInfo(v C.DhruvGhatikaInfo) GhatikaInfo {
-	return GhatikaInfo{Value: int32(v.value), Start: goUTC(v.start), End: goUTC(v.end)}
+	return GhatikaInfo{Value: int32(v.value), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goNakshatraInfo(v C.DhruvPanchangNakshatraInfo) PanchangNakshatraInfo {
-	return PanchangNakshatraInfo{NakshatraIndex: int32(v.nakshatra_index), Pada: int32(v.pada), Start: goUTC(v.start), End: goUTC(v.end)}
+	return PanchangNakshatraInfo{NakshatraIndex: int32(v.nakshatra_index), Pada: int32(v.pada), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goMasaInfo(v C.DhruvMasaInfo) MasaInfo {
-	return MasaInfo{MasaIndex: int32(v.masa_index), Adhika: v.adhika != 0, Start: goUTC(v.start), End: goUTC(v.end)}
+	return MasaInfo{MasaIndex: int32(v.masa_index), Adhika: v.adhika != 0, Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goAyanaInfo(v C.DhruvAyanaInfo) AyanaInfo {
-	return AyanaInfo{Ayana: int32(v.ayana), Start: goUTC(v.start), End: goUTC(v.end)}
+	return AyanaInfo{Ayana: int32(v.ayana), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func goVarshaInfo(v C.DhruvVarshaInfo) VarshaInfo {
-	return VarshaInfo{SamvatsaraIndex: int32(v.samvatsara_index), Order: int32(v.order), Start: goUTC(v.start), End: goUTC(v.end)}
+	return VarshaInfo{SamvatsaraIndex: int32(v.samvatsara_index), Order: int32(v.order), Start: goUTC(v.start), End: goUTC(v.end), Progress: float64(v.progress)}
 }
 
 func TithiForDate(engine EngineHandle, utc UtcTime) (TithiInfo, Status) {
@@ -2078,6 +2078,7 @@ func FullKundaliConfigDefault() FullKundaliConfig {
 				IncludeSensitivePointDistances: cfg.graha_positions_config.basic_states_config.include_sensitive_point_distances != 0,
 			},
 			IncludeEquatorial: cfg.graha_positions_config.include_equatorial != 0,
+			IncludeSpeeds:     cfg.graha_positions_config.include_speeds != 0,
 		},
 		BindusConfig: BindusConfig{
 			IncludeNakshatra: cfg.bindus_config.include_nakshatra != 0,
@@ -2097,10 +2098,15 @@ func FullKundaliConfigDefault() FullKundaliConfig {
 			IncludeSpecialLagnas: cfg.amsha_scope.include_special_lagnas != 0,
 			IncludeOuterPlanets:  cfg.amsha_scope.include_outer_planets != 0,
 		},
-		AmshaSelection:      AmshaSelectionConfig{Count: uint8(cfg.amsha_selection.count)},
-		PanchangIncludeMask: uint32(cfg.panchang_include_mask),
-		IncludeDasha:        cfg.include_dasha != 0,
-		DashaConfig:         goDashaSelectionConfig(cfg.dasha_config),
+		AmshaSelection:                  AmshaSelectionConfig{Count: uint8(cfg.amsha_selection.count)},
+		PanchangIncludeMask:             uint32(cfg.panchang_include_mask),
+		IncludeDasha:                    cfg.include_dasha != 0,
+		DashaConfig:                     goDashaSelectionConfig(cfg.dasha_config),
+		IncludeTaraBala:                 cfg.include_tara_bala != 0,
+		TaraBalaReferenceNakshatraIndex: uint8(cfg.tara_bala_reference_nakshatra_index),
+		IncludeSamvatsaraOfficers:       cfg.include_samvatsara_officers != 0,
+		IncludeTransitAshtakavarga:      cfg.include_transit_ashtakavarga != 0,
+		TransitAshtakavargaReference:    goAshtakavargaReference(cfg.transit_ashtakavarga_reference),
 	}
 }
 
@@ -2135,6 +2141,7 @@ func cFullKundaliConfig(cfg FullKundaliConfig) C.DhruvFullKundaliConfig {
 			),
 		},
 		include_equatorial: boolU8(cfg.GrahaPositionsConfig.IncludeEquatorial),
+		include_speeds:     boolU8(cfg.GrahaPositionsConfig.IncludeSpeeds),
 	}
 	out.bindus_config = C.DhruvBindusConfig{
 		include_nakshatra: boolU8(cfg.BindusConfig.IncludeNakshatra),
@@ -2151,6 +2158,11 @@ func cFullKundaliConfig(cfg FullKundaliConfig) C.DhruvFullKundaliConfig {
 	out.panchang_include_mask = C.uint32_t(cfg.PanchangIncludeMask)
 	out.include_dasha = boolU8(cfg.IncludeDasha)
 	out.dasha_config = cDashaSelectionConfig(cfg.DashaConfig)
+	out.include_tara_bala = boolU8(cfg.IncludeTaraBala)
+	out.tara_bala_reference_nakshatra_index = C.uint8_t(cfg.TaraBalaReferenceNakshatraIndex)
+	out.include_samvatsara_officers = boolU8(cfg.IncludeSamvatsaraOfficers)
+	out.include_transit_ashtakavarga = boolU8(cfg.IncludeTransitAshtakavarga)
+	out.transit_ashtakavarga_reference = cAshtakavargaReference(cfg.TransitAshtakavargaReference)
 	return out
 }
 
@@ -2238,6 +2250,7 @@ func RunDashaSnapshot(engine EngineHandle, eop EopHandle, request DashaSnapshotR
 	res := DashaSnapshot{System: uint8(out.system), QueryJD: float64(out.query_jd), QueryUTC: jdUTCToUTC(float64(out.query_jd)), Count: uint8(out.count)}
 	for i := 0; i < len(res.Periods); i++ {
 		res.Periods[i] = goDashaPeriod(out.periods[i])
+		res.Progress[i] = float64(out.progress[i])
 	}
 	return res, st
 }
@@ -2954,9 +2967,22 @@ func goFullKundaliResult(out C.DhruvFullKundaliResult) (FullKundaliResult, Statu
 					EntityType: uint8(p.entity_type), EntityIndex: uint8(p.entity_index), EntityName: cString((*C.char)(unsafe.Pointer(p.entity_name))), StartJD: float64(p.start_jd),
 					EndJD: float64(p.end_jd), StartUTC: jdUTCToUTC(float64(p.start_jd)), EndUTC: jdUTCToUTC(float64(p.end_jd)), Level: uint8(p.level), Order: uint16(p.order), ParentIdx: uint32(p.parent_idx),
 				}
+				snap.Progress[j] = float64(s.progress[j])
 			}
 			res.DashaSnapshots[i] = snap
 		}
+	}
+	if out.tara_bala_valid != 0 {
+		v := goTaraBalaResult(out.tara_bala)
+		res.TaraBala = &v
+	}
+	if out.samvatsara_officers_valid != 0 {
+		v := goSamvatsaraOfficers(out.samvatsara_officers)
+		res.SamvatsaraOfficers = &v
+	}
+	if out.transit_ashtakavarga_valid != 0 {
+		v := goTransitAshtakavargaResult(out.transit_ashtakavarga)
+		res.TransitAshtakavarga = &v
 	}
 	return res, StatusOK
 }

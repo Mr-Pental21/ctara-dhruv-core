@@ -41,7 +41,7 @@ extern "C" {
  * =================================================================== */
 
 /* API version */
-#define DHRUV_API_VERSION       90
+#define DHRUV_API_VERSION       91
 #define DHRUV_PATH_CAPACITY     512
 #define DHRUV_MAX_SPK_PATHS     8
 #define DHRUV_MAX_AMSHA_VARIATIONS 16
@@ -1156,6 +1156,8 @@ typedef struct {
     int32_t      tithi_in_paksha;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvTithiInfo;
 
 typedef struct {
@@ -1163,18 +1165,24 @@ typedef struct {
     int32_t      karana_name_index;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvKaranaInfo;
 
 typedef struct {
     int32_t      yoga_index;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvYogaInfo;
 
 typedef struct {
     int32_t      vaar_index;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvVaarInfo;
 
 typedef struct {
@@ -1182,12 +1190,16 @@ typedef struct {
     int32_t      hora_position;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvHoraInfo;
 
 typedef struct {
     int32_t      value;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvGhatikaInfo;
 
 typedef struct {
@@ -1195,6 +1207,8 @@ typedef struct {
     int32_t      pada;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvPanchangNakshatraInfo;
 
 typedef struct {
@@ -1202,12 +1216,16 @@ typedef struct {
     uint8_t      adhika;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvMasaInfo;
 
 typedef struct {
     int32_t      ayana;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvAyanaInfo;
 
 typedef struct {
@@ -1215,6 +1233,8 @@ typedef struct {
     int32_t      order;
     DhruvUtcTime start;
     DhruvUtcTime end;
+    /* Elapsed fraction at the query moment, [0, 1]; 0 in range listings. */
+    double       progress;
 } DhruvVarshaInfo;
 
 typedef struct {
@@ -1571,6 +1591,8 @@ typedef struct {
        sidereal time on the result (1 = yes). Equinox of date; nutation
        applied per the request's use_nutation flag. */
     uint8_t include_equatorial;
+    /* Compute sidereal longitude / latitude rates (deg/day) per entry (1 = yes). */
+    uint8_t include_speeds;
 } DhruvGrahaPositionsConfig;
 
 typedef struct {
@@ -1591,6 +1613,11 @@ typedef struct {
     double  declination_deg;
     /* Geocentric ecliptic latitude in degrees (0 for point-like entries). */
     double  ecliptic_latitude_deg;
+    uint8_t speed_valid;
+    /* Rate of the reported sidereal longitude in degrees per day. */
+    double  longitude_speed_deg_per_day;
+    /* Rate of the ecliptic latitude in degrees per day (0 for point-like entries). */
+    double  latitude_speed_deg_per_day;
 } DhruvGrahaEntry;
 
 typedef struct {
@@ -1678,6 +1705,7 @@ typedef struct {
 typedef struct {
     double   sidereal_longitude;
     uint8_t  rashi_index;
+    uint8_t  vargottama;           /* 1 = varga rashi equals the D1 rashi; always 0 on D1 */
     uint16_t dms_degrees;
     uint8_t  dms_minutes;
     uint8_t  nakshatra_index;      /* 0-26 */
@@ -1938,6 +1966,8 @@ typedef struct {
     DhruvUtcTime     query_utc;
     uint8_t          count;
     DhruvDashaPeriod periods[5];
+    /* Elapsed fraction of each active period at query_jd, [0, 1]; parallel to periods. */
+    double           progress[5];
 } DhruvDashaSnapshot;
 
 typedef struct {
@@ -2057,6 +2087,67 @@ typedef struct {
     uint8_t                  child_level;
 } DhruvDashaCompleteLevelRequest;
 
+/* --- Tara bala, kakshya, transit ashtakavarga, samvatsara officers --- */
+
+/* Reference selecting the chart's own Moon nakshatra for tara bala. */
+#define DHRUV_TARA_BALA_REFERENCE_CHART_MOON 255
+
+typedef struct {
+    uint8_t tara_index;   /* 0=Janma .. 8=Parama Mitra */
+    uint8_t count;        /* inclusive count from the reference nakshatra, 1-27 */
+    uint8_t cycle;        /* pass through the nine-fold sequence, 1-3 */
+    uint8_t favorable;    /* 1 when classically favourable */
+} DhruvTaraBala;
+
+typedef struct {
+    uint8_t       nakshatra_index;   /* 0-26 */
+    DhruvTaraBala tara_bala;
+} DhruvTaraBalaEntry;
+
+typedef struct {
+    uint8_t            reference_nakshatra_index;
+    uint8_t            reference_is_chart_moon;
+    DhruvTaraBalaEntry grahas[9];
+    DhruvTaraBalaEntry lagna;
+} DhruvTaraBalaResult;
+
+/* Natal ashtakavarga inputs (same as dhruv_calculate_ashtakavarga). */
+typedef struct {
+    uint8_t graha_rashis[7];   /* 0-based natal rashi of Sun .. Saturn */
+    uint8_t lagna_rashi;       /* 0-based natal lagna rashi */
+} DhruvAshtakavargaReference;
+
+typedef struct {
+    uint8_t graha_index;           /* 0=Sun .. 6=Saturn */
+    uint8_t rashi_index;           /* transit rashi */
+    uint8_t bav_bindus;            /* natal BAV bindus in the transit rashi */
+    uint8_t sav_total;             /* natal SAV of the transit rashi */
+    uint8_t sav_after_trikona;
+    uint8_t sav_after_ekadhipatya;
+    uint8_t kakshya_index;         /* 0-7 */
+    uint8_t kakshya_lord;          /* BAV contributor index, 0=Sun .. 6=Saturn, 7=Lagna */
+    uint8_t kakshya_bindu;         /* 1 when the kakshya lord contributed a bindu */
+} DhruvTransitAshtakavargaEntry;
+
+typedef struct {
+    DhruvAshtakavargaReference    reference;
+    DhruvTransitAshtakavargaEntry entries[7];
+} DhruvTransitAshtakavargaResult;
+
+typedef struct {
+    uint8_t      office_index;     /* 0=Raja,1=Mantri,2=Sasyesha,3=Dhanyesha,4=Meghesha,
+                                      5=Rasesha,6=Nirasesha,7=Phalesha,8=Durgesha */
+    uint8_t      vaar_index;       /* 0=Ravivaar .. 6=Shanivaar */
+    uint8_t      lord_index;       /* graha index of the office-bearer */
+    DhruvUtcTime event_utc;        /* defining event instant */
+    DhruvUtcTime vedic_day_start;  /* sunrise starting the defining Vedic day */
+} DhruvSamvatsaraOfficer;
+
+typedef struct {
+    DhruvVarshaInfo        varsha;
+    DhruvSamvatsaraOfficer officers[9];
+} DhruvSamvatsaraOfficers;
+
 /* --- Full Kundali --- */
 
 typedef struct {
@@ -2086,6 +2177,13 @@ typedef struct {
     uint32_t panchang_include_mask;
     uint8_t  include_dasha;
     DhruvDashaSelectionConfig dasha_config;
+    uint8_t  include_tara_bala;
+    /* 0-26, or DHRUV_TARA_BALA_REFERENCE_CHART_MOON for this chart's Moon. */
+    uint8_t  tara_bala_reference_nakshatra_index;
+    uint8_t  include_samvatsara_officers;
+    /* When set, transit_ashtakavarga_reference must hold the natal inputs. */
+    uint8_t  include_transit_ashtakavarga;
+    DhruvAshtakavargaReference transit_ashtakavarga_reference;
 } DhruvFullKundaliConfig;
 
 typedef struct {
@@ -2148,6 +2246,12 @@ typedef struct {
     uint8_t                   dasha_systems[DHRUV_MAX_DASHA_SYSTEMS];
     uint8_t                   dasha_snapshot_count;
     DhruvDashaSnapshot        dasha_snapshots[DHRUV_MAX_DASHA_SYSTEMS];
+    uint8_t                   tara_bala_valid;
+    DhruvTaraBalaResult       tara_bala;
+    uint8_t                   samvatsara_officers_valid;
+    DhruvSamvatsaraOfficers   samvatsara_officers;
+    uint8_t                   transit_ashtakavarga_valid;
+    DhruvTransitAshtakavargaResult transit_ashtakavarga;
 } DhruvFullKundaliResult;
 
 /* --- Tara (fixed star) --- */
@@ -3555,6 +3659,49 @@ DhruvStatus dhruv_dasha_complete_level(
     const DhruvDashaPeriod *parent_periods,
     uint32_t parent_count,
     DhruvDashaPeriodListHandle *out);
+
+/* --- Tara bala, kakshya, transit ashtakavarga, samvatsara officers --- */
+const char *dhruv_tara_name(uint32_t index);
+DhruvStatus dhruv_tara_bala(
+    uint32_t reference_nakshatra_index,
+    uint32_t target_nakshatra_index,
+    DhruvTaraBala *out);
+DhruvStatus dhruv_tara_bala_for_date(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *utc,
+    const DhruvGeoLocation *location,
+    uint32_t ayanamsha_system,
+    uint8_t use_nutation,
+    uint32_t reference_nakshatra_index,
+    DhruvTaraBalaResult *out);
+int32_t dhruv_kakshya_index(double sidereal_longitude_deg);
+int32_t dhruv_kakshya_lord(uint32_t kakshya_index);
+int32_t dhruv_kakshya_bindu(
+    const DhruvBhinnaAshtakavarga *bav,
+    double sidereal_longitude_deg);
+DhruvStatus dhruv_transit_ashtakavarga(
+    const DhruvAshtakavargaResult *natal,
+    const double *transit_sidereal_lons,
+    DhruvTransitAshtakavargaEntry *out);
+DhruvStatus dhruv_transit_ashtakavarga_for_date(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *utc,
+    uint32_t ayanamsha_system,
+    uint8_t use_nutation,
+    const DhruvAshtakavargaReference *reference,
+    DhruvTransitAshtakavargaResult *out);
+const char *dhruv_samvatsara_office_name(uint32_t index);
+DhruvStatus dhruv_samvatsara_officers(
+    const DhruvEngineHandle *engine,
+    const DhruvEopHandle *eop,
+    const DhruvUtcTime *utc,
+    const DhruvGeoLocation *location,
+    const DhruvRiseSetConfig *riseset_config,
+    uint32_t ayanamsha_system,
+    uint8_t use_nutation,
+    DhruvSamvatsaraOfficers *out);
 
 /* --- Full Kundali --- */
 DhruvFullKundaliConfig dhruv_full_kundali_config_default(void);

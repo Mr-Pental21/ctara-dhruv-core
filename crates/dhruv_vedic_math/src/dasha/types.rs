@@ -155,6 +155,22 @@ impl DashaPeriod {
     pub const fn entity_name(&self) -> &'static str {
         self.entity.name()
     }
+
+    /// Fraction of this period elapsed at `query_jd` (JD UTC), clamped to
+    /// `[0, 1]`. A zero-length period reports `0.0`.
+    pub fn progress_at(&self, query_jd: f64) -> f64 {
+        progress_fraction(self.start_jd, self.end_jd, query_jd)
+    }
+}
+
+/// Elapsed fraction of the interval `[start, end)` at `at`, clamped to
+/// `[0, 1]`. Degenerate (zero or negative length) intervals report `0.0`.
+pub fn progress_fraction(start: f64, end: f64, at: f64) -> f64 {
+    let span = end - start;
+    if !(span > 0.0) || !at.is_finite() {
+        return 0.0;
+    }
+    ((at - start) / span).clamp(0.0, 1.0)
 }
 
 /// All 23 dasha systems.
@@ -279,6 +295,25 @@ pub struct DashaSnapshot {
     pub query_jd: f64,
     /// Active periods: `periods[0]`=active mahadasha, `[1]`=active antardasha, etc.
     pub periods: Vec<DashaPeriod>,
+}
+
+impl DashaSnapshot {
+    /// Elapsed fraction of the active period at `level` (index into
+    /// `periods`) at `query_jd`, or `None` when that level is absent.
+    pub fn period_progress(&self, level: usize) -> Option<f64> {
+        self.periods
+            .get(level)
+            .map(|p| p.progress_at(self.query_jd))
+    }
+
+    /// Elapsed fraction of every active period at `query_jd`, parallel to
+    /// `periods`.
+    pub fn progress(&self) -> Vec<f64> {
+        self.periods
+            .iter()
+            .map(|p| p.progress_at(self.query_jd))
+            .collect()
+    }
 }
 
 #[cfg(test)]

@@ -13,8 +13,8 @@ use dhruv_vedic_base::{
     RiseSetEvent, RiseSetResult, TITHI_SEGMENT_DEG, YOGA_SEGMENT_DEG, approximate_local_noon_jd,
     ayana_from_sidereal_longitude, compute_rise_set, ghatika_from_elapsed, hora_at,
     jd_tdb_to_centuries, karana_from_elongation, masa_from_rashi_index, nakshatra_from_longitude,
-    rashi_from_longitude, samvatsara_from_year, tithi_from_elongation, utc_day_start_jd,
-    vaar_from_jd, yoga_from_sum,
+    progress_fraction, rashi_from_longitude, samvatsara_from_year, tithi_from_elongation,
+    utc_day_start_jd, vaar_from_jd, yoga_from_sum,
 };
 
 use crate::conjunction::{body_ecliptic_lon_lat, body_lon_lat_on_plane};
@@ -118,11 +118,13 @@ pub fn masa_for_date_with_eop(
         (masa_from_rashi_index((rashi_at_prev + 1) % 12), true)
     };
 
+    let jd = utc_to_jd_tdb_maybe_eop(engine, eop, utc);
     Ok(MasaInfo {
         masa,
         adhika,
         start: prev_nm.utc,
         end: next_nm.utc,
+        progress: progress_fraction(prev_nm_jd, next_nm_jd, jd),
     })
 }
 
@@ -165,17 +167,22 @@ pub fn ayana_for_date_with_eop(
         SearchError::NoConvergence("could not find ayana end sankranti"),
     )?;
 
+    let start_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &start_event.utc);
+    let end_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &end_event.utc);
     Ok(AyanaInfo {
         ayana: current_ayana,
         start: start_event.utc,
         end: end_event.utc,
+        progress: progress_fraction(start_jd, end_jd, jd),
     })
 }
 
 /// Determine the Varsha (60-year samvatsara cycle position) for a given date.
 ///
-/// The Vedic year starts at Chaitra Pratipada: the first new moon after Mesha Sankranti
-/// (Sun entering sidereal 0 deg / Mesha rashi).
+/// The Vedic year starts at Chaitra Shukla Pratipada: the new moon that
+/// begins the amanta Chaitra month (the lunation containing Mesha
+/// Sankranti), or the adhika Chaitra pratipada one lunation earlier when
+/// Chaitra is intercalated.
 pub fn varsha_for_date(
     engine: &Engine,
     utc: &UtcTime,
@@ -191,7 +198,7 @@ pub fn varsha_for_date_with_eop(
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<VarshaInfo, SearchError> {
-    // Strategy: find Mesha Sankranti for this year, then next new moon after it = year start.
+    // Strategy: find Chaitra Shukla Pratipada for this calendar year.
     // If that year start is after our date, go back one year.
 
     let year_start = find_chaitra_pratipada_for(engine, eop, utc, config)?;
@@ -222,34 +229,58 @@ pub fn varsha_for_date_with_eop(
     // Use the calendar year of the start to determine the samvatsara
     let (samvatsara, order) = samvatsara_from_year(actual_start.year);
 
+    let actual_start_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &actual_start);
+    let actual_end_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &actual_end);
     Ok(VarshaInfo {
         samvatsara,
         order,
         start: actual_start,
         end: actual_end,
+        progress: progress_fraction(actual_start_jd, actual_end_jd, jd),
     })
 }
 
-/// Find Chaitra Pratipada (Vedic new year) near a given date.
+/// Find Chaitra Shukla Pratipada (Vedic new year) for the calendar year of
+/// `utc`.
 ///
-/// Chaitra Pratipada = first new moon after Mesha Sankranti in the same calendar year.
+/// Under the amanta convention used by [`masa_for_date`], Chaitra is the
+/// lunar month that contains Mesha Sankranti, so Chaitra Shukla Pratipada is
+/// the new moon immediately *before* Mesha Sankranti. When the month before
+/// that is an adhika Chaitra (the Sun is still in Meena at both of its
+/// bounding new moons) the year begins with the adhika month, one lunation
+/// earlier.
 fn find_chaitra_pratipada_for(
     engine: &Engine,
-    _eop: Option<&EopKernel>,
+    eop: Option<&EopKernel>,
     utc: &UtcTime,
     config: &SankrantiConfig,
 ) -> Result<UtcTime, SearchError> {
-    // Find Mesha Sankranti (Sun entering sidereal 0 deg) near this date
+    // Find Mesha Sankranti (Sun entering sidereal 0 deg) in this calendar year.
     let search_start = UtcTime::new(utc.year, 1, 15, 0, 0, 0.0);
     let mesha_sankranti = next_specific_sankranti(engine, &search_start, Rashi::Mesha, config)?
         .ok_or(SearchError::NoConvergence("could not find Mesha Sankranti"))?;
 
-    // Find the next new moon after Mesha Sankranti
-    let nm = next_amavasya(engine, &mesha_sankranti.utc)?.ok_or(SearchError::NoConvergence(
-        "could not find new moon after Mesha Sankranti",
+    // The new moon before Mesha Sankranti starts (nija) Chaitra.
+    let nm = prev_amavasya(engine, &mesha_sankranti.utc)?.ok_or(SearchError::NoConvergence(
+        "could not find new moon before Mesha Sankranti",
     ))?;
 
-    Ok(nm.utc)
+    // Adhika Chaitra check: the preceding lunation is adhika when the Sun's
+    // rashi is unchanged across it (same rule as `masa_for_date`), and an
+    // adhika month preceding nija Chaitra is adhika Chaitra.
+    let nm_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &nm.utc);
+    let probe = UtcTime::from_jd_tdb(nm_jd - 1.0, engine.lsk());
+    let prev = prev_amavasya(engine, &probe)?.ok_or(SearchError::NoConvergence(
+        "could not find new moon before Chaitra",
+    ))?;
+    let prev_jd = utc_to_jd_tdb_maybe_eop(engine, eop, &prev.utc);
+    let rashi_at_nm = sun_sidereal_rashi_index(engine, nm_jd, config)?;
+    let rashi_at_prev = sun_sidereal_rashi_index(engine, prev_jd, config)?;
+    if rashi_at_prev == rashi_at_nm {
+        Ok(prev.utc)
+    } else {
+        Ok(nm.utc)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +393,7 @@ pub fn nakshatra_at(
         pada: pos.pada,
         start: UtcTime::from_jd_tdb(start_jd, engine.lsk()),
         end: UtcTime::from_jd_tdb(end_jd, engine.lsk()),
+        progress: progress_fraction(start_jd, end_jd, jd_tdb),
     })
 }
 
@@ -432,6 +464,7 @@ pub fn tithi_at(
         tithi_in_paksha: pos.tithi_in_paksha,
         start: UtcTime::from_jd_tdb(start_jd, engine.lsk()),
         end: UtcTime::from_jd_tdb(end_jd, engine.lsk()),
+        progress: progress_fraction(start_jd, end_jd, jd_tdb),
     })
 }
 
@@ -471,6 +504,7 @@ pub fn karana_at(
         karana_index: pos.karana_index,
         start: UtcTime::from_jd_tdb(start_jd, engine.lsk()),
         end: UtcTime::from_jd_tdb(end_jd, engine.lsk()),
+        progress: progress_fraction(start_jd, end_jd, jd_tdb),
     })
 }
 
@@ -516,6 +550,7 @@ pub fn yoga_at(
         yoga_index: pos.yoga_index,
         start: UtcTime::from_jd_tdb(start_jd, engine.lsk()),
         end: UtcTime::from_jd_tdb(end_jd, engine.lsk()),
+        progress: progress_fraction(start_jd, end_jd, jd_tdb),
     })
 }
 
@@ -615,17 +650,18 @@ pub fn vaar_for_date(
 ) -> Result<VaarInfo, SearchError> {
     let (sunrise_jd, next_sunrise_jd) =
         vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
-    Ok(vaar_from_sunrises(
-        sunrise_jd,
-        next_sunrise_jd,
-        engine.lsk(),
-    ))
+    let jd_tdb = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), utc);
+    let mut info = vaar_from_sunrises(sunrise_jd, next_sunrise_jd, engine.lsk());
+    info.progress = progress_fraction(sunrise_jd, next_sunrise_jd, jd_tdb);
+    Ok(info)
 }
 
 /// Determine the Vaar from pre-computed sunrise boundaries.
 ///
 /// Pure arithmetic — no engine queries needed. The `lsk` is used only
-/// for converting JD TDB to UTC in the start/end fields.
+/// for converting JD TDB to UTC in the start/end fields. No query moment is
+/// supplied here, so `progress` is `0.0`; [`vaar_for_date`] and
+/// [`panchang_for_date`] fill it in.
 pub fn vaar_from_sunrises(
     sunrise_jd: f64,
     next_sunrise_jd: f64,
@@ -636,6 +672,7 @@ pub fn vaar_from_sunrises(
         vaar,
         start: UtcTime::from_jd_tdb(sunrise_jd, lsk),
         end: UtcTime::from_jd_tdb(next_sunrise_jd, lsk),
+        progress: 0.0,
     }
 }
 
@@ -691,6 +728,7 @@ pub fn hora_from_sunrises(
         hora_index,
         start: UtcTime::from_jd_tdb(hora_start_jd, lsk),
         end: UtcTime::from_jd_tdb(hora_end_jd, lsk),
+        progress: progress_fraction(hora_start_jd, hora_end_jd, jd_tdb),
     }
 }
 
@@ -738,6 +776,7 @@ pub fn ghatika_from_sunrises(
         value: pos.value,
         start: UtcTime::from_jd_tdb(ghatika_start_jd, lsk),
         end: UtcTime::from_jd_tdb(ghatika_end_jd, lsk),
+        progress: progress_fraction(ghatika_start_jd, ghatika_end_jd, jd_tdb),
     }
 }
 
@@ -810,11 +849,9 @@ pub fn panchang_for_date(
         let (sunrise_jd, next_sunrise_jd) =
             vedic_day_sunrises(engine, eop, utc, location, riseset_config)?;
         if include(PANCHANG_INCLUDE_VAAR) {
-            result.vaar = Some(vaar_from_sunrises(
-                sunrise_jd,
-                next_sunrise_jd,
-                engine.lsk(),
-            ));
+            let mut info = vaar_from_sunrises(sunrise_jd, next_sunrise_jd, engine.lsk());
+            info.progress = progress_fraction(sunrise_jd, next_sunrise_jd, jd);
+            result.vaar = Some(info);
         }
         if include(PANCHANG_INCLUDE_HORA) {
             result.hora = Some(hora_from_sunrises(
@@ -834,27 +871,35 @@ pub fn panchang_for_date(
         }
     }
 
-    let window_contains = |start: &UtcTime, end: &UtcTime| -> bool {
+    // Reuse a caller-supplied calendar element when the query moment falls
+    // inside its window; its `progress` is re-derived for this moment.
+    let window_progress = |start: &UtcTime, end: &UtcTime| -> Option<f64> {
         let start_jd = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), start);
         let end_jd = crate::search_util::utc_to_jd_tdb_with_eop(engine, Some(eop), end);
-        start_jd <= jd && jd < end_jd
+        (start_jd <= jd && jd < end_jd).then(|| progress_fraction(start_jd, end_jd, jd))
     };
     if include(PANCHANG_INCLUDE_MASA) {
-        result.masa = match known.masa {
-            Some(k) if window_contains(&k.start, &k.end) => Some(k),
-            _ => Some(masa_for_date_with_eop(engine, Some(eop), utc, config)?),
+        result.masa = match known.masa.and_then(|k| {
+            window_progress(&k.start, &k.end).map(|progress| MasaInfo { progress, ..k })
+        }) {
+            Some(k) => Some(k),
+            None => Some(masa_for_date_with_eop(engine, Some(eop), utc, config)?),
         };
     }
     if include(PANCHANG_INCLUDE_AYANA) {
-        result.ayana = match known.ayana {
-            Some(k) if window_contains(&k.start, &k.end) => Some(k),
-            _ => Some(ayana_for_date_with_eop(engine, Some(eop), utc, config)?),
+        result.ayana = match known.ayana.and_then(|k| {
+            window_progress(&k.start, &k.end).map(|progress| AyanaInfo { progress, ..k })
+        }) {
+            Some(k) => Some(k),
+            None => Some(ayana_for_date_with_eop(engine, Some(eop), utc, config)?),
         };
     }
     if include(PANCHANG_INCLUDE_VARSHA) {
-        result.varsha = match known.varsha {
-            Some(k) if window_contains(&k.start, &k.end) => Some(k),
-            _ => Some(varsha_for_date_with_eop(engine, Some(eop), utc, config)?),
+        result.varsha = match known.varsha.and_then(|k| {
+            window_progress(&k.start, &k.end).map(|progress| VarshaInfo { progress, ..k })
+        }) {
+            Some(k) => Some(k),
+            None => Some(varsha_for_date_with_eop(engine, Some(eop), utc, config)?),
         };
     }
 

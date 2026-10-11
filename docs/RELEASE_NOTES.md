@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- ABI v91: per-entry speeds on graha positions (`include_speeds`:
+  sidereal longitude and ecliptic latitude rates in deg/day), real
+  `retrograde` for Uranus/Neptune/Pluto with basic states, `vargottama` on
+  amsha entries, `progress` on every panchang element and dasha snapshot
+  period, and three opt-in full-kundali sections: tara bala (reference
+  nakshatra or the chart's own Moon), samvatsara office-bearers (Raja,
+  Mantri, Sasyesha, Dhanyesha, Meghesha, Rasesha, Nirasesha, Phalesha,
+  Durgesha) and transit-versus-natal ashtakavarga (BAV bindus, SAV with
+  sodhana, kakshya lord and bindu). Pure helpers `tara_bala`,
+  `kakshya_index`/`kakshya_lord`/`kakshya_bindu` and
+  `transit_ashtakavarga`; search ops `tara_bala_for_date`,
+  `transit_ashtakavarga_for_date`, `samvatsara_officers`. All surfaces
+  (C ABI, `dhruv_rs`, CLI, Python, Go, Node, Elixir) updated; existing
+  outputs unchanged unless a new flag is set.
+- Fix: the Vedic year (`varsha_for_date`, panchang `varsha`) started one
+  lunation late. It took the first new moon after Mesha sankranti, which
+  is Vaishakha pratipada under the amanta rule the masa classifier uses;
+  it now starts at the new moon immediately before Mesha sankranti
+  (Chaitra Shukla Pratipada), or the adhika Chaitra pratipada one lunation
+  earlier when Chaitra is intercalated. 2024 now starts 2024-04-08 and
+  2026 on 2026-03-19.
 - Reworded the LSK leap-second warnings, which told users to do something
   impossible. Both the `TimeWarning::LskFutureFrozen` message and the CLI's
   `--stale-lsk-threshold-days` warning ended with "update `naif0012.tls`",

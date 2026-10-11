@@ -561,11 +561,11 @@ type ChandraGrahanResult struct {
 	LocalU4AltitudeDeg *float64
 	LocalP4AltitudeDeg float64
 	// [P1, P4] clipped to the times the Moon is up; nil/-1 when not visible.
-	LocalVisibleStartJd          float64
-	LocalVisibleStartUTC         *UtcTime
-	LocalVisibleEndJd            float64
-	LocalVisibleEndUTC           *UtcTime
-	LocalVisibleDurationSeconds  float64
+	LocalVisibleStartJd         float64
+	LocalVisibleStartUTC        *UtcTime
+	LocalVisibleEndJd           float64
+	LocalVisibleEndUTC          *UtcTime
+	LocalVisibleDurationSeconds float64
 }
 
 type EclipseGeoPoint struct {
@@ -920,12 +920,18 @@ type LunarPhaseEvent struct {
 	SunLongitudeDeg  float64
 }
 
+// Every panchang info struct carries Progress: the elapsed fraction of the
+// element's [Start, End) interval at the query moment, clamped to [0, 1]
+// ((now - start) / (end - start)). It is 0 in range listings
+// (PanchangEvents) and from VaarFromSunrises.
+
 type TithiInfo struct {
 	TithiIndex    int32
 	Paksha        int32
 	TithiInPaksha int32
 	Start         UtcTime
 	End           UtcTime
+	Progress      float64
 }
 
 type KaranaInfo struct {
@@ -933,18 +939,21 @@ type KaranaInfo struct {
 	KaranaNameIndex int32
 	Start           UtcTime
 	End             UtcTime
+	Progress        float64
 }
 
 type YogaInfo struct {
 	YogaIndex int32
 	Start     UtcTime
 	End       UtcTime
+	Progress  float64
 }
 
 type VaarInfo struct {
 	VaarIndex int32
 	Start     UtcTime
 	End       UtcTime
+	Progress  float64
 }
 
 type HoraInfo struct {
@@ -952,12 +961,14 @@ type HoraInfo struct {
 	HoraPosition int32
 	Start        UtcTime
 	End          UtcTime
+	Progress     float64
 }
 
 type GhatikaInfo struct {
-	Value int32
-	Start UtcTime
-	End   UtcTime
+	Value    int32
+	Start    UtcTime
+	End      UtcTime
+	Progress float64
 }
 
 type PanchangNakshatraInfo struct {
@@ -965,6 +976,7 @@ type PanchangNakshatraInfo struct {
 	Pada           int32
 	Start          UtcTime
 	End            UtcTime
+	Progress       float64
 }
 
 type MasaInfo struct {
@@ -972,12 +984,14 @@ type MasaInfo struct {
 	Adhika    bool
 	Start     UtcTime
 	End       UtcTime
+	Progress  float64
 }
 
 type AyanaInfo struct {
-	Ayana int32
-	Start UtcTime
-	End   UtcTime
+	Ayana    int32
+	Start    UtcTime
+	End      UtcTime
+	Progress float64
 }
 
 type VarshaInfo struct {
@@ -985,6 +999,7 @@ type VarshaInfo struct {
 	Order           int32
 	Start           UtcTime
 	End             UtcTime
+	Progress        float64
 }
 
 // PanchangInclude* mirror the DHRUV_PANCHANG_INCLUDE_* bit flags used by
@@ -1136,6 +1151,9 @@ type GrahaPositionsConfig struct {
 	// Greenwich sidereal time on the result. Equinox of date; nutation is
 	// applied per the request's useNutation flag.
 	IncludeEquatorial bool
+	// IncludeSpeeds requests sidereal longitude and ecliptic latitude rates
+	// (degrees per day) per entry; entries then carry SpeedValid = true.
+	IncludeSpeeds bool
 }
 
 type TimeUpagrahaConfig struct {
@@ -1204,6 +1222,10 @@ type DashaSnapshot struct {
 	QueryUTC UtcTime
 	Count    uint8
 	Periods  [5]DashaPeriod
+	// Progress is the elapsed fraction of each active period at QueryJD,
+	// clamped to [0, 1]; parallel to Periods (only the first Count entries
+	// are meaningful).
+	Progress [5]float64
 }
 
 type Dms struct {
@@ -1311,6 +1333,17 @@ type GrahaEntry struct {
 	// EclipticLatitudeDeg is the geocentric ecliptic latitude in degrees.
 	// Point-like entries (lagna, Rahu/Ketu) report exactly 0.
 	EclipticLatitudeDeg float64
+	// SpeedValid reports whether the speed fields below are populated
+	// (requires GrahaPositionsConfig.IncludeSpeeds).
+	SpeedValid bool
+	// LongitudeSpeedDegPerDay is the rate of the reported sidereal longitude
+	// in degrees per day (central finite difference over +/-1 minute, so
+	// ayanamsha drift and the reference plane are included). Negative means
+	// retrograde.
+	LongitudeSpeedDegPerDay float64
+	// LatitudeSpeedDegPerDay is the rate of the ecliptic latitude in degrees
+	// per day. Lagna and Rahu/Ketu report exactly 0.
+	LatitudeSpeedDegPerDay float64
 }
 
 type BasicStates struct {
@@ -1410,12 +1443,15 @@ type AmshaEntry struct {
 	PointIndex        uint32
 	SiderealLongitude float64
 	RashiIndex        uint8
-	DmsDegrees        uint16
-	DmsMinutes        uint8
-	DmsSeconds        float64
-	DegreesInRashi    float64
-	NakshatraIndex    uint8
-	Pada              uint8
+	// Vargottama is true when the varga rashi equals the point's D1 rashi.
+	// Always false on the D1 chart itself.
+	Vargottama     bool
+	DmsDegrees     uint16
+	DmsMinutes     uint8
+	DmsSeconds     float64
+	DegreesInRashi float64
+	NakshatraIndex uint8
+	Pada           uint8
 	// RashiBhavaNumber is the whole-sign bhava (1-12) counted from the varga
 	// lagna. A varga transform is not monotonic, so the transformed cusps in
 	// BhavaCusps are not ordered house boundaries and there is no cusp-based
@@ -1860,6 +1896,122 @@ type AmshaSelectionConfig struct {
 	Variations [40]uint8
 }
 
+// TaraBalaReferenceChartMoon mirrors DHRUV_TARA_BALA_REFERENCE_CHART_MOON:
+// the reference nakshatra value selecting the chart's own Moon nakshatra.
+const TaraBalaReferenceChartMoon uint8 = 255
+
+// TaraIndex* name the nine-fold tara sequence counted inclusively from the
+// reference nakshatra (TaraName resolves them).
+const (
+	TaraIndexJanma       uint8 = 0
+	TaraIndexSampat      uint8 = 1
+	TaraIndexVipat       uint8 = 2
+	TaraIndexKshema      uint8 = 3
+	TaraIndexPratyak     uint8 = 4
+	TaraIndexSadhaka     uint8 = 5
+	TaraIndexVadha       uint8 = 6
+	TaraIndexMitra       uint8 = 7
+	TaraIndexParamaMitra uint8 = 8
+)
+
+// TaraBalaInfo is the tara relationship of a target nakshatra to a reference
+// nakshatra: the inclusive count (1-27) from the reference, modulo 9, gives
+// TaraIndex; Cycle (1-3) is the pass through the nine-fold sequence; and
+// Favorable is true for the classically favourable set (Sampat, Kshema,
+// Sadhaka, Mitra, Parama Mitra).
+type TaraBalaInfo struct {
+	TaraIndex uint8
+	Count     uint8
+	Cycle     uint8
+	Favorable bool
+}
+
+// TaraBalaEntry is one point's tara bala with its own nakshatra index (0-26).
+type TaraBalaEntry struct {
+	NakshatraIndex uint8
+	TaraBala       TaraBalaInfo
+}
+
+// TaraBalaResult is the tara bala of the nine grahas and the lagna against
+// a reference nakshatra. ReferenceIsChartMoon reports that the reference was
+// resolved from this chart's own Moon (TaraBalaReferenceChartMoon).
+type TaraBalaResult struct {
+	ReferenceNakshatraIndex uint8
+	ReferenceIsChartMoon    bool
+	Grahas                  [GrahaCount]TaraBalaEntry
+	Lagna                   TaraBalaEntry
+}
+
+// AshtakavargaReference carries the natal ashtakavarga inputs (the same
+// inputs as CalculateAshtakavarga): 0-based natal rashis of Sun..Saturn and
+// the natal lagna rashi.
+type AshtakavargaReference struct {
+	GrahaRashis [SaptaGrahaCount]uint8
+	LagnaRashi  uint8
+}
+
+// KakshyaLordLagna is the BAV contributor index of the lagna (kakshya lords
+// are 0=Sun .. 6=Saturn, 7=Lagna).
+const KakshyaLordLagna int32 = 7
+
+// TransitAshtakavargaEntry scores one transiting graha (Sun..Saturn) against
+// the natal ashtakavarga: the natal BAV bindus in the transit rashi, the raw
+// natal SAV of that rashi plus the totals after trikona and ekadhipatya
+// sodhana, and the kakshya (eighth of the rashi, 3 deg 45') with its lord
+// and whether that lord contributed a bindu.
+type TransitAshtakavargaEntry struct {
+	GrahaIndex          uint8
+	RashiIndex          uint8
+	BavBindus           uint8
+	SavTotal            uint8
+	SavAfterTrikona     uint8
+	SavAfterEkadhipatya uint8
+	KakshyaIndex        uint8
+	KakshyaLord         uint8
+	KakshyaBindu        bool
+}
+
+// TransitAshtakavargaResult echoes the natal reference and carries one entry
+// per sapta graha (Sun..Saturn; Rahu/Ketu and outer planets are not scored).
+type TransitAshtakavargaResult struct {
+	Reference AshtakavargaReference
+	Entries   [SaptaGrahaCount]TransitAshtakavargaEntry
+}
+
+// SamvatsaraOffice* identify the nine offices of a lunar year
+// (SamvatsaraOfficeName resolves them).
+const (
+	SamvatsaraOfficeRaja      uint8 = 0
+	SamvatsaraOfficeMantri    uint8 = 1
+	SamvatsaraOfficeSasyesha  uint8 = 2
+	SamvatsaraOfficeDhanyesha uint8 = 3
+	SamvatsaraOfficeMeghesha  uint8 = 4
+	SamvatsaraOfficeRasesha   uint8 = 5
+	SamvatsaraOfficeNirasesha uint8 = 6
+	SamvatsaraOfficePhalesha  uint8 = 7
+	SamvatsaraOfficeDurgesha  uint8 = 8
+	SamvatsaraOfficeCount           = 9
+)
+
+// SamvatsaraOfficer is one office-bearer of a lunar year: the vaar lord
+// (LordIndex, a graha index) of the sunrise-to-sunrise Vedic day at the
+// location containing the office's defining event (EventUTC), with that
+// day's starting sunrise in VedicDayStart.
+type SamvatsaraOfficer struct {
+	OfficeIndex   uint8
+	VaarIndex     uint8
+	LordIndex     uint8
+	EventUTC      UtcTime
+	VedicDayStart UtcTime
+}
+
+// SamvatsaraOfficers carries the lunar year (Varsha) containing the query
+// moment and its nine officers in SamvatsaraOffice* order.
+type SamvatsaraOfficers struct {
+	Varsha   VarshaInfo
+	Officers [SamvatsaraOfficeCount]SamvatsaraOfficer
+}
+
 type FullKundaliConfig struct {
 	IncludeBhavaCusps     bool
 	IncludeGrahaPositions bool
@@ -1888,6 +2040,18 @@ type FullKundaliConfig struct {
 	PanchangIncludeMask uint32
 	IncludeDasha        bool
 	DashaConfig         DashaSelectionConfig
+	// IncludeTaraBala adds the TaraBala section, counted from
+	// TaraBalaReferenceNakshatraIndex (0-26, or TaraBalaReferenceChartMoon
+	// for this chart's own Moon nakshatra; the default).
+	IncludeTaraBala                 bool
+	TaraBalaReferenceNakshatraIndex uint8
+	// IncludeSamvatsaraOfficers adds the lunar-year office-bearers section.
+	IncludeSamvatsaraOfficers bool
+	// IncludeTransitAshtakavarga scores this chart's graha positions as
+	// transits against the natal ashtakavarga inputs in
+	// TransitAshtakavargaReference (required when set).
+	IncludeTransitAshtakavarga   bool
+	TransitAshtakavargaReference AshtakavargaReference
 }
 
 type FullKundaliDashaLevel struct {
@@ -1922,6 +2086,9 @@ type FullKundaliResult struct {
 	Panchang                              *PanchangOperationResult
 	Dasha                                 []FullKundaliDashaHierarchy
 	DashaSnapshots                        []DashaSnapshot
+	TaraBala                              *TaraBalaResult
+	SamvatsaraOfficers                    *SamvatsaraOfficers
+	TransitAshtakavarga                   *TransitAshtakavargaResult
 }
 
 const (

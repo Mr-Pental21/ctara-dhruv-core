@@ -62,7 +62,7 @@ class TestAbiVersion:
         """Library and embedded header agree on the expected ABI version."""
         from ctara_dhruv._ffi import lib
         from ctara_dhruv._cdef import EXPECTED_API_VERSION
-        assert EXPECTED_API_VERSION == 90
+        assert EXPECTED_API_VERSION == 91
         assert lib.dhruv_api_version() == EXPECTED_API_VERSION
 
 
@@ -88,16 +88,22 @@ class TestKnownCalendarReuse:
         assert first.ayana is not None
         assert first.varsha is not None
 
-        # One day later: well inside the masa/ayana/varsha windows.
+        # One day later: well inside the masa/ayana/varsha windows. The
+        # window and identity fields come back verbatim; only ``progress``
+        # (ABI v91) is re-derived for the new moment.
+        from dataclasses import replace
         second = self._compute(
             UtcTime(2024, 6, 16, 12, 0, 0.0),
             known_masa=first.masa,
             known_ayana=first.ayana,
             known_varsha=first.varsha,
         )
-        assert second.masa == first.masa
-        assert second.ayana == first.ayana
-        assert second.varsha == first.varsha
+        assert replace(second.masa, progress=0.0) == replace(first.masa, progress=0.0)
+        assert replace(second.ayana, progress=0.0) == replace(first.ayana, progress=0.0)
+        assert replace(second.varsha, progress=0.0) == replace(first.varsha, progress=0.0)
+        assert second.masa.progress > first.masa.progress
+        assert second.ayana.progress > first.ayana.progress
+        assert second.varsha.progress > first.varsha.progress
 
     def test_stale_known_values_recomputed_at_far_date(self, engine_handles):
         """Values whose windows do not cover the moment are ignored."""
@@ -399,3 +405,64 @@ class TestPanchangEvents:
                 UtcTime(2024, 1, 1, 0, 0, 0.0), UtcTime(2024, 1, 2, 0, 0, 0.0),
                 include_mask=INCLUDE_VAAR,
             )
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestPanchangProgress:
+    """Elapsed-fraction ``progress`` on every panchang info (ABI v91)."""
+
+    def test_progress_in_unit_interval_for_all_elements(self, engine_handles):
+        """Every info reports the elapsed fraction of its own window."""
+        from ctara_dhruv.panchang import panchang, INCLUDE_ALL
+        from ctara_dhruv.types import UtcTime, GeoLocation
+        from ctara_dhruv.engine import engine, lsk, eop
+        utc = UtcTime(2024, 6, 15, 12, 0, 0.0)
+        delhi = GeoLocation(lat_deg=28.6139, lon_deg=77.2090)
+        result = panchang(
+            engine()._ptr, eop(), lsk(), utc, delhi, include_mask=INCLUDE_ALL,
+        )
+        infos = (
+            result.tithi, result.karana, result.yoga, result.vaar, result.hora,
+            result.ghatika, result.nakshatra, result.masa, result.ayana,
+            result.varsha,
+        )
+        for info in infos:
+            assert info is not None
+            assert 0.0 <= info.progress <= 1.0
+            start = info.start.to_datetime()
+            end = info.end.to_datetime()
+            expected = (utc.to_datetime() - start) / (end - start)
+            assert abs(info.progress - expected) < 1e-5
+
+    def test_single_element_call_carries_progress(self, engine_handles):
+        from ctara_dhruv.panchang import tithi_for_date
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine
+        t = tithi_for_date(engine()._ptr, UtcTime(2024, 1, 15, 12, 0, 0.0))
+        assert 0.0 <= t.progress <= 1.0
+
+    def test_range_listing_progress_is_zero(self, engine_handles):
+        """Segments from panchang_events are not tied to a moment."""
+        from ctara_dhruv.panchang import panchang_events, INCLUDE_TITHI
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine, eop
+        result = panchang_events(
+            engine()._ptr, eop(),
+            UtcTime(2024, 1, 1, 0, 0, 0.0), UtcTime(2024, 1, 10, 0, 0, 0.0),
+            include_mask=INCLUDE_TITHI,
+        )
+        assert len(result.tithis) >= 8
+        assert all(t.progress == 0.0 for t in result.tithis)
+
+    def test_vaar_from_sunrises_progress_is_zero(self, engine_handles):
+        from ctara_dhruv.vedic import vedic_day_sunrises
+        from ctara_dhruv.panchang import vaar_from_sunrises
+        from ctara_dhruv.types import UtcTime, GeoLocation
+        from ctara_dhruv.engine import engine, lsk, eop
+        delhi = GeoLocation(lat_deg=28.6139, lon_deg=77.2090)
+        sr, nsr = vedic_day_sunrises(
+            engine()._ptr, eop(), UtcTime(2024, 1, 15, 6, 0, 0.0), delhi
+        )
+        v = vaar_from_sunrises(lsk(), sr, nsr)
+        assert v.progress == 0.0

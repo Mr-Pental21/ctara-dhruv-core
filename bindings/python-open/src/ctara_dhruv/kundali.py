@@ -25,7 +25,12 @@ from .amsha import (
     _extract_amsha_family,
     amsha_sanskrit_name,
 )
-from .vedic import _make_time_upagraha_config
+from .vedic import (
+    _make_time_upagraha_config,
+    _samvatsara_officers_from_c,
+    _tara_bala_result_from_c,
+    _transit_ashtakavarga_result_from_c,
+)
 from .types import (
     AmshaChart,
     AshtakavargaResult,
@@ -227,6 +232,9 @@ def _graha_entry_from_ffi(e):
         right_ascension_deg=e.right_ascension_deg,
         declination_deg=e.declination_deg,
         ecliptic_latitude_deg=e.ecliptic_latitude_deg,
+        speed_valid=bool(e.speed_valid),
+        longitude_speed_deg_per_day=e.longitude_speed_deg_per_day,
+        latitude_speed_deg_per_day=e.latitude_speed_deg_per_day,
     )
 
 
@@ -344,6 +352,7 @@ def _make_graha_positions_config(config):
         "include_sensitive_point_distances", 0
     )
     cfg.include_equatorial = 1 if config.get("include_equatorial", 0) else 0
+    cfg.include_speeds = 1 if config.get("include_speeds", 0) else 0
     return cfg
 
 
@@ -382,12 +391,16 @@ def graha_positions(
         ayanamsha_system: Ayanamsha system code.
         use_nutation: 1=apply nutation, 0=skip.
         config: Optional dict with keys include_nakshatra, include_lagna,
-                include_outer_planets, include_bhava, include_equatorial
-                (all u8 0/1) plus optional basic_states_config dict.
-                include_equatorial adds geocentric equatorial coordinates
+                include_outer_planets, include_bhava, include_equatorial,
+                include_speeds (all u8 0/1) plus optional basic_states_config
+                dict. include_equatorial adds geocentric equatorial coordinates
                 (RA/declination/ecliptic latitude, equinox of date, nutation
                 per use_nutation, geometric) per entry and Greenwich
                 mean/apparent sidereal time (gmst_deg/gast_deg) on the result.
+                include_speeds adds per-entry sidereal longitude and ecliptic
+                latitude rates in deg/day (speed_valid,
+                longitude_speed_deg_per_day, latitude_speed_deg_per_day);
+                a negative longitude rate means retrograde.
         bhava_config: Optional dict for bhava system config.
         sankranti_config: Optional dict for sankranti config.
 
@@ -596,11 +609,19 @@ def full_kundali_config_default():
 
     Core sections (bhava, graha, bindus, drishti, ashtakavarga, upagrahas,
     special_lagnas) default to enabled. Optional sections (amshas, shadbala,
-    vimsopaka, avastha, panchang, dasha) default to disabled.
+    vimsopaka, avastha, panchang, dasha, tara_bala, samvatsara_officers,
+    transit_ashtakavarga) default to disabled.
 
     The panchang section is selected via ``panchang_include_mask`` --
     a bitmask of ``ctara_dhruv.panchang`` INCLUDE_* constants (0 omits
     the section entirely).
+
+    ``include_tara_bala`` counts from ``tara_bala_reference_nakshatra_index``
+    (0-26, or the default ``TARA_BALA_REFERENCE_CHART_MOON`` = 255 for this
+    chart's own Moon). ``include_transit_ashtakavarga`` requires the natal
+    inputs in ``transit_ashtakavarga_reference`` (``graha_rashis[0..6]`` for
+    Sun..Saturn and ``lagna_rashi``, 0-based). ``include_samvatsara_officers``
+    needs no extra inputs.
     """
     return lib.dhruv_full_kundali_config_default()
 
@@ -1326,7 +1347,21 @@ def full_kundali(
                     query_utc=_utc_from_ffi(snap.query_utc),
                     query_jd=snap.query_jd,
                     periods=periods,
+                    progress=[snap.progress[j] for j in range(snap.count)],
                 ))
+
+        # Tara bala, samvatsara officers, transit ashtakavarga
+        tara_bala = None
+        if out.tara_bala_valid:
+            tara_bala = _tara_bala_result_from_c(out.tara_bala)
+
+        samvatsara_officers = None
+        if out.samvatsara_officers_valid:
+            samvatsara_officers = _samvatsara_officers_from_c(out.samvatsara_officers)
+
+        transit_ashtakavarga = None
+        if out.transit_ashtakavarga_valid:
+            transit_ashtakavarga = _transit_ashtakavarga_result_from_c(out.transit_ashtakavarga)
 
         return FullKundaliResult(
             ayanamsha_deg=ayanamsha_deg,
@@ -1350,6 +1385,9 @@ def full_kundali(
             panchang=panchang,
             dasha=dasha,
             dasha_snapshots=dasha_snapshots,
+            tara_bala=tara_bala,
+            samvatsara_officers=samvatsara_officers,
+            transit_ashtakavarga=transit_ashtakavarga,
         )
     finally:
         lib.dhruv_full_kundali_result_free(out)
@@ -1583,7 +1621,20 @@ def _extract_full_kundali_result_ffi(out) -> FullKundaliResult:
                 query_utc=_utc_from_ffi(snap.query_utc),
                 query_jd=snap.query_jd,
                 periods=periods,
+                progress=[snap.progress[j] for j in range(snap.count)],
             ))
+
+    tara_bala = None
+    if out.tara_bala_valid:
+        tara_bala = _tara_bala_result_from_c(out.tara_bala)
+
+    samvatsara_officers = None
+    if out.samvatsara_officers_valid:
+        samvatsara_officers = _samvatsara_officers_from_c(out.samvatsara_officers)
+
+    transit_ashtakavarga = None
+    if out.transit_ashtakavarga_valid:
+        transit_ashtakavarga = _transit_ashtakavarga_result_from_c(out.transit_ashtakavarga)
 
     return FullKundaliResult(
         ayanamsha_deg=ayanamsha_deg,
@@ -1607,4 +1658,7 @@ def _extract_full_kundali_result_ffi(out) -> FullKundaliResult:
         panchang=panchang,
         dasha=dasha,
         dasha_snapshots=dasha_snapshots,
+        tara_bala=tara_bala,
+        samvatsara_officers=samvatsara_officers,
+        transit_ashtakavarga=transit_ashtakavarga,
     )

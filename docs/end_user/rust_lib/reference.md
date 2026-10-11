@@ -546,6 +546,68 @@ explicitly re-exported here, depend on the source crates directly:
 - `dhruv_search`
 - `dhruv_vedic_base`
 
+## Speeds, Vargottama, Tara Bala, Transit Ashtakavarga, Samvatsara Officers
+
+`GrahaPositionsConfig.include_speeds` (default false) adds `speed_valid`,
+`longitude_speed_deg_per_day` and `latitude_speed_deg_per_day` to every
+`GrahaEntry` (grahas, lagna, outer planets): central finite differences
+over ±1 minute of exactly the sidereal longitude the entry reports (so the
+ayanamsha drift and reference plane are included) and of the ecliptic
+latitude. Lagna and the lunar nodes have latitude rate 0. With
+`include_basic_states`, the outer planets now carry a real
+`basic_states.retrograde`. Also via `full_kundali` through
+`graha_positions_config.include_speeds`.
+
+`AmshaEntry.vargottama` is true when the varga rashi equals the point's D1
+rashi (always false on the D1 chart itself).
+
+Pure helpers (`dhruv_vedic_base`, re-exported from `dhruv_rs`):
+`tara_bala(reference_nakshatra_index, target_nakshatra_index) -> TaraBala`
+(`tara`, `tara_index`, inclusive `count` 1..27, `cycle` 1..3,
+`favorable`); `kakshya_index(lon)`, `kakshya_lord_contributor(k)`,
+`kakshya_lord_graha(k)`, `kakshya_bindu(&bav, lon)`;
+`transit_ashtakavarga(&natal, &transit_lons_7) -> [TransitAshtakavargaEntry; 7]`;
+`progress_fraction(start, end, at)`.
+
+Search-level (`dhruv_search`, re-exported from `dhruv_rs`):
+`tara_bala_for_date(engine, eop, utc, location, aya_config,
+reference_nakshatra_index)` and `tara_bala_from_longitudes(...)` returning
+`TaraBalaResult` (reference index 255 = `TARA_BALA_REFERENCE_CHART_MOON`,
+the chart's own Moon); `transit_ashtakavarga_for_date(engine, eop, utc,
+aya_config, &AshtakavargaReference { graha_rashis, lagna_rashi })` and
+`transit_ashtakavarga_from_longitudes(...)` returning
+`TransitAshtakavargaResult`; `samvatsara_officers(engine, eop, utc,
+location, riseset_config, aya_config) -> SamvatsaraOfficers` (the
+`VarshaInfo` plus nine `SamvatsaraOfficer`s: office, event instant, Vedic
+day start, vaar, lord). The office table: Raja = Chaitra Shukla Pratipada
+(udaya rule), Mantri = Mesha sankranti, Sasyesha = Karka, Dhanyesha =
+Dhanu, Meghesha = Sun entering Ardra, Rasesha = Tula, Nirasesha = Makara,
+Phalesha = Meena, Durgesha = Simha; events are the first occurrence at or
+after the lunar year start and the vaar is the sunrise-to-sunrise Vedic
+day at the location.
+
+Full kundali: `FullKundaliConfig.include_tara_bala` +
+`tara_bala_reference_nakshatra_index`, `include_samvatsara_officers`,
+`include_transit_ashtakavarga` + `transit_ashtakavarga_reference:
+Option<AshtakavargaReference>` (required when the flag is set, else
+`InvalidConfig`) populate `FullKundaliResult.tara_bala`,
+`samvatsara_officers` and `transit_ashtakavarga`. `dhruv_rs` adds the
+context-first `tara_bala_op`, `transit_ashtakavarga_op` and
+`samvatsara_officers` requests.
+
+Progress: every panchang info (`TithiInfo` .. `VarshaInfo`) carries
+`progress`, the elapsed fraction of the element at the query moment in
+[0, 1] (0 in `panchang_events` listings and from `vaar_from_sunrises`,
+which has no query moment). `DashaSnapshot::progress()` /
+`period_progress(level)` and `DashaPeriod::progress_at(jd_utc)` give the
+same for active dasha periods.
+
+Behaviour fix: `varsha_for_date` now starts the Vedic year at Chaitra
+Shukla Pratipada (the new moon immediately before Mesha sankranti, or the
+adhika Chaitra pratipada one lunation earlier when Chaitra is
+intercalated). It previously used the new moon after Mesha sankranti,
+which is Vaishakha pratipada. See `docs/clean_room_tara_bala_officers.md`.
+
 ## Notes
 
 - Use request/context attributes for invocation-specific inputs such as UTC vs

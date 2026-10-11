@@ -3,3 +3,8 @@
 # Windows ARM runners use a smaller default main-thread stack, so reserve a
 # larger stack for Windows binaries to avoid stack overflows in CLI smoke tests.
 rustflags = ["-C", "link-arg=/STACK:16777216"]
+
+[env]
+# dhruv_cli arg-parse tests overflow the default 2 MiB test-thread stack in
+# debug builds (large clap enum); CI sets the same value explicitly.
+RUST_MIN_STACK = "16777216"

@@ -150,6 +150,15 @@ from ctara_dhruv.types import (
     TithiPraveshaEvent,
     TransitToNatalAspectEvent,
     GocharEventsResult,
+    TARA_BALA_REFERENCE_CHART_MOON,
+    TaraBala,
+    TaraBalaEntry,
+    TaraBalaResult,
+    AshtakavargaReference,
+    TransitAshtakavargaEntry,
+    TransitAshtakavargaResult,
+    SamvatsaraOfficer,
+    SamvatsaraOfficers,
 )
 
 # Errors
@@ -216,6 +225,20 @@ from ctara_dhruv.dasha import (
 )
 from ctara_dhruv.search import gochar_events, gochar_events_config_default
 
+# Tara bala, kakshya, transit ashtakavarga, samvatsara officers
+from ctara_dhruv.vedic import (
+    tara_name,
+    tara_bala,
+    tara_bala_for_date,
+    kakshya_index,
+    kakshya_lord,
+    kakshya_bindu,
+    transit_ashtakavarga,
+    transit_ashtakavarga_for_date,
+    samvatsara_office_name,
+    samvatsara_officers,
+)
+
 __all__ = [
     # Engine
     "Engine", "init", "engine", "lsk", "eop",
@@ -265,6 +288,9 @@ __all__ = [
     "GocharNatalTarget", "GocharReference", "GocharEventWindow",
     "TajakaReturnEvent", "TithiPraveshaEvent", "TransitToNatalAspectEvent",
     "GocharEventsResult",
+    "TARA_BALA_REFERENCE_CHART_MOON", "TaraBala", "TaraBalaEntry", "TaraBalaResult",
+    "AshtakavargaReference", "TransitAshtakavargaEntry", "TransitAshtakavargaResult",
+    "SamvatsaraOfficer", "SamvatsaraOfficers",
     # Errors
     "DhruvError",
     # Functions
@@ -285,4 +311,8 @@ __all__ = [
     "dasha_level0", "dasha_level0_entity",
     "dasha_children", "dasha_child_period", "dasha_complete_level",
     "gochar_events", "gochar_events_config_default",
+    "tara_name", "tara_bala", "tara_bala_for_date",
+    "kakshya_index", "kakshya_lord", "kakshya_bindu",
+    "transit_ashtakavarga", "transit_ashtakavarga_for_date",
+    "samvatsara_office_name", "samvatsara_officers",
 ]

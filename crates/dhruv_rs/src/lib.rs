@@ -30,10 +30,11 @@ pub use ops::{
     CharakarakaRequest, ConjunctionRequest, ConjunctionRequestQuery, FixedLongitudeRequest,
     FixedLongitudeRequestQuery, FullKundaliRequest, GocharEventsRequest, GrahanRequest,
     GrahanRequestQuery, LunarPhaseRequest, LunarPhaseRequestQuery, MotionRequest,
-    MotionRequestQuery, NodeRequest, PanchangRequest, SankrantiRequest, SankrantiRequestQuery,
-    TaraRequest, TimeInput, UpagrahaRequest, avastha_op, ayanamsha_op, charakaraka, conjunction,
-    fixed_longitude, full_kundali, gochar_events, grahan, lunar_node_op, lunar_phase, motion,
-    panchang_op, sankranti, tara_op, upagraha_op,
+    MotionRequestQuery, NodeRequest, PanchangRequest, SamvatsaraOfficersRequest, SankrantiRequest,
+    SankrantiRequestQuery, TaraBalaRequest, TaraRequest, TimeInput, TransitAshtakavargaRequest,
+    UpagrahaRequest, avastha_op, ayanamsha_op, charakaraka, conjunction, fixed_longitude,
+    full_kundali, gochar_events, grahan, lunar_node_op, lunar_phase, motion, panchang_op,
+    samvatsara_officers, sankranti, tara_bala_op, tara_op, transit_ashtakavarga_op, upagraha_op,
 };
 
 // Re-export core types so callers don't need to depend on dhruv_core directly.
@@ -62,6 +63,12 @@ pub use dhruv_search::grahan_types::{
 pub use dhruv_search::sankranti_types::{SankrantiConfig, SankrantiEvent};
 pub use dhruv_search::stationary_types::{
     MaxSpeedEvent, MaxSpeedType, StationType, StationaryConfig, StationaryEvent,
+};
+pub use dhruv_search::{
+    ALL_SAMVATSARA_OFFICES, AshtakavargaReference, SamvatsaraOffice, SamvatsaraOfficer,
+    SamvatsaraOfficers, TARA_BALA_REFERENCE_CHART_MOON, TaraBalaEntry, TaraBalaResult,
+    TransitAshtakavargaResult, tara_bala_for_date, tara_bala_from_longitudes,
+    transit_ashtakavarga_for_date, transit_ashtakavarga_from_longitudes,
 };
 pub use dhruv_search::{
     AmshaLagnaEvents, AmshaLagnaEventsResult, AmshaLagnaSegment, AmshaSeries, AmshaSeriesChart,
@@ -100,9 +107,11 @@ pub use dhruv_vedic_base::{
     AllGrahaAvasthas, AllUpagrahas, AshtakavargaResult, AyanamshaSystem, BhavaBalaBirthPeriod,
     BhavaBalaEntry, BhavaBalaInputs, BhavaBalaResult, BhavaConfig, BhinnaAshtakavarga,
     CharakarakaEntry, CharakarakaResult, CharakarakaRole, CharakarakaScheme, Graha, GrahaAvasthas,
-    GulikaMaandiPlanet, LunarNode, NodeDignityPolicy, NodeMode, SarvaAshtakavarga,
-    TimeUpagrahaConfig, TimeUpagrahaPoint, calculate_all_bav, calculate_ashtakavarga,
-    calculate_bav, calculate_bhava_bala, calculate_sav,
+    GulikaMaandiPlanet, LunarNode, NodeDignityPolicy, NodeMode, SarvaAshtakavarga, Tara, TaraBala,
+    TimeUpagrahaConfig, TimeUpagrahaPoint, TransitAshtakavargaEntry, calculate_all_bav,
+    calculate_ashtakavarga, calculate_bav, calculate_bhava_bala, calculate_sav, kakshya_bindu,
+    kakshya_index, kakshya_lord_contributor, kakshya_lord_graha, progress_fraction, tara_bala,
+    transit_ashtakavarga,
 };
 pub use dhruv_vedic_ops::{
     NodeBackend, PANCHANG_INCLUDE_ALL, PANCHANG_INCLUDE_ALL_CALENDAR, PANCHANG_INCLUDE_ALL_CORE,

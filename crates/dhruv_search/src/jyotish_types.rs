@@ -192,6 +192,11 @@ pub struct GrahaPositionsConfig {
     /// time on the result. Equinox of date; nutation applied per the
     /// request's `use_nutation` flag.
     pub include_equatorial: bool,
+    /// Compute sidereal longitude and ecliptic latitude rates (deg/day) per
+    /// entry (grahas, lagna and outer planets). Rates are central finite
+    /// differences of the same quantity each entry reports, so the
+    /// ayanamsha drift and reference-plane choice are included.
+    pub include_speeds: bool,
 }
 
 impl Default for GrahaPositionsConfig {
@@ -203,6 +208,7 @@ impl Default for GrahaPositionsConfig {
             include_bhava: false,
             basic_states_config: BasicStatesConfig::default(),
             include_equatorial: false,
+            include_speeds: false,
         }
     }
 }
@@ -243,6 +249,14 @@ pub struct GrahaEntry {
     /// Geocentric ecliptic latitude in degrees (0 for point-like entries
     /// such as lagna and the lunar nodes).
     pub ecliptic_latitude_deg: f64,
+    /// Whether the speed fields were computed for this entry.
+    pub speed_valid: bool,
+    /// Rate of the reported sidereal longitude in degrees per day (negative
+    /// while retrograde).
+    pub longitude_speed_deg_per_day: f64,
+    /// Rate of the ecliptic latitude in degrees per day (0 for point-like
+    /// entries such as lagna and the lunar nodes).
+    pub latitude_speed_deg_per_day: f64,
 }
 
 impl GrahaEntry {
@@ -265,6 +279,9 @@ impl GrahaEntry {
             right_ascension_deg: 0.0,
             declination_deg: 0.0,
             ecliptic_latitude_deg: 0.0,
+            speed_valid: false,
+            longitude_speed_deg_per_day: 0.0,
+            latitude_speed_deg_per_day: 0.0,
         }
     }
 }
@@ -657,6 +674,9 @@ pub struct AmshaEntry {
     /// cusp-based bhava inside a varga. This whole-sign number is the defined
     /// one.
     pub rashi_bhava_number: u8,
+    /// Vargottama: the varga rashi equals the point's D1 (rashi chart)
+    /// rashi. Defined as `false` on the D1 chart itself.
+    pub vargottama: bool,
 }
 
 /// Scope flags: which entity groups to include in amsha charts.
@@ -988,6 +1008,58 @@ impl DashaSelectionConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Tara bala / transit ashtakavarga section types
+// ---------------------------------------------------------------------------
+
+/// Sentinel for `FullKundaliConfig::tara_bala_reference_nakshatra_index`
+/// selecting the chart's own Moon nakshatra as the reference.
+pub const TARA_BALA_REFERENCE_CHART_MOON: u8 = 255;
+
+/// Tara bala of one chart point relative to the reference nakshatra.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaraBalaEntry {
+    /// 0-based nakshatra of the point (0=Ashwini .. 26=Revati).
+    pub nakshatra_index: u8,
+    /// Tara bala counted from the reference nakshatra.
+    pub tara_bala: dhruv_vedic_base::TaraBala,
+}
+
+/// Tara bala section of a full kundali.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaraBalaResult {
+    /// 0-based reference nakshatra actually used.
+    pub reference_nakshatra_index: u8,
+    /// Whether the reference was the chart's own Moon nakshatra.
+    pub reference_is_chart_moon: bool,
+    /// One entry per graha, indexed by `Graha::index()`.
+    pub grahas: [TaraBalaEntry; 9],
+    /// Entry for the lagna.
+    pub lagna: TaraBalaEntry,
+}
+
+/// Natal ashtakavarga inputs used to score a transit chart.
+///
+/// These are the same inputs as `calculate_ashtakavarga`: the natal rashi of
+/// Sun through Saturn and of the natal lagna.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AshtakavargaReference {
+    /// 0-based natal rashi index of Sun, Moon, Mars, Mercury, Jupiter,
+    /// Venus, Saturn.
+    pub graha_rashis: [u8; 7],
+    /// 0-based natal lagna rashi index.
+    pub lagna_rashi: u8,
+}
+
+/// Transit-versus-natal ashtakavarga section of a full kundali.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransitAshtakavargaResult {
+    /// The natal inputs the scores were computed against.
+    pub reference: AshtakavargaReference,
+    /// One entry per transiting sapta graha (Sun through Saturn).
+    pub entries: [dhruv_vedic_base::TransitAshtakavargaEntry; 7],
+}
+
+// ---------------------------------------------------------------------------
 // Full kundali config/result
 // ---------------------------------------------------------------------------
 
@@ -1046,6 +1118,20 @@ pub struct FullKundaliConfig {
     pub amsha_selection: AmshaSelectionConfig,
     /// Which dasha systems to compute.
     pub dasha_config: DashaSelectionConfig,
+    /// Include the tara bala section (nine-fold tara of every graha and the
+    /// lagna relative to a reference nakshatra).
+    pub include_tara_bala: bool,
+    /// 0-based reference nakshatra for tara bala (usually the natal Moon's),
+    /// or [`TARA_BALA_REFERENCE_CHART_MOON`] to use this chart's Moon.
+    pub tara_bala_reference_nakshatra_index: u8,
+    /// Include the samvatsara office-bearers section for the lunar year
+    /// containing the chart moment, evaluated at the chart location.
+    pub include_samvatsara_officers: bool,
+    /// Include the transit-versus-natal ashtakavarga section. Requires
+    /// `transit_ashtakavarga_reference`.
+    pub include_transit_ashtakavarga: bool,
+    /// Natal ashtakavarga inputs scored by the transit section.
+    pub transit_ashtakavarga_reference: Option<AshtakavargaReference>,
 }
 
 impl Default for FullKundaliConfig {
@@ -1079,6 +1165,11 @@ impl Default for FullKundaliConfig {
             amsha_scope: AmshaChartScope::default(),
             amsha_selection: AmshaSelectionConfig::default(),
             dasha_config: DashaSelectionConfig::default(),
+            include_tara_bala: false,
+            tara_bala_reference_nakshatra_index: TARA_BALA_REFERENCE_CHART_MOON,
+            include_samvatsara_officers: false,
+            include_transit_ashtakavarga: false,
+            transit_ashtakavarga_reference: None,
         }
     }
 }
@@ -1145,4 +1236,10 @@ pub struct FullKundaliResult {
     pub dasha: Option<Vec<dhruv_vedic_base::DashaHierarchy>>,
     /// Present when dasha is computed and snapshot_time is set.
     pub dasha_snapshots: Option<Vec<dhruv_vedic_base::DashaSnapshot>>,
+    /// Present when `FullKundaliConfig::include_tara_bala` is true.
+    pub tara_bala: Option<TaraBalaResult>,
+    /// Present when `FullKundaliConfig::include_samvatsara_officers` is true.
+    pub samvatsara_officers: Option<crate::samvatsara_officers::SamvatsaraOfficers>,
+    /// Present when `FullKundaliConfig::include_transit_ashtakavarga` is true.
+    pub transit_ashtakavarga: Option<TransitAshtakavargaResult>,
 }

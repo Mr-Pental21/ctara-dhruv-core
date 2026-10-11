@@ -149,6 +149,7 @@ def _extract_amsha_entry(e, family=AMSHA_POINT_FAMILY_LAGNA, point_index=0):
         point_index=point_index,
         name=amsha_point_key(family, point_index),
         display_name=amsha_point_name(family, point_index),
+        vargottama=bool(e.vargottama),
     )
 
 

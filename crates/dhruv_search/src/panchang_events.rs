@@ -272,21 +272,52 @@ impl Sweeper {
         }
     }
 
-    /// Append the pending segment to the result.
+    /// Append the pending segment to the result. Range listings have no
+    /// query moment, so `progress` is always `0.0` here.
     fn emit(&self, result: &mut PanchangEventsResult) {
         match self {
             Self::Angular { pending, .. } => match pending {
-                PendingAngular::Tithi(info) => result.tithi.push(*info),
-                PendingAngular::Karana(info) => result.karana.push(*info),
-                PendingAngular::Yoga(info) => result.yoga.push(*info),
-                PendingAngular::Nakshatra(info) => result.nakshatra.push(*info),
+                PendingAngular::Tithi(info) => result.tithi.push(TithiInfo {
+                    progress: 0.0,
+                    ..*info
+                }),
+                PendingAngular::Karana(info) => result.karana.push(KaranaInfo {
+                    progress: 0.0,
+                    ..*info
+                }),
+                PendingAngular::Yoga(info) => result.yoga.push(YogaInfo {
+                    progress: 0.0,
+                    ..*info
+                }),
+                PendingAngular::Nakshatra(info) => result.nakshatra.push(PanchangNakshatraInfo {
+                    progress: 0.0,
+                    ..*info
+                }),
             },
-            Self::Masa { current, .. } => result.masa.push(*current),
-            Self::Ayana { current, .. } => result.ayana.push(*current),
-            Self::Varsha { current, .. } => result.varsha.push(*current),
-            Self::Vaar { current, .. } => result.vaar.push(*current),
-            Self::Hora { current, .. } => result.hora.push(*current),
-            Self::Ghatika { current, .. } => result.ghatika.push(*current),
+            Self::Masa { current, .. } => result.masa.push(MasaInfo {
+                progress: 0.0,
+                ..*current
+            }),
+            Self::Ayana { current, .. } => result.ayana.push(AyanaInfo {
+                progress: 0.0,
+                ..*current
+            }),
+            Self::Varsha { current, .. } => result.varsha.push(VarshaInfo {
+                progress: 0.0,
+                ..*current
+            }),
+            Self::Vaar { current, .. } => result.vaar.push(VaarInfo {
+                progress: 0.0,
+                ..*current
+            }),
+            Self::Hora { current, .. } => result.hora.push(HoraInfo {
+                progress: 0.0,
+                ..*current
+            }),
+            Self::Ghatika { current, .. } => result.ghatika.push(GhatikaInfo {
+                progress: 0.0,
+                ..*current
+            }),
         }
     }
 
@@ -330,6 +361,7 @@ impl Sweeper {
                             tithi_in_paksha: pos.tithi_in_paksha,
                             start: start_utc,
                             end: next_end_utc,
+                            progress: 0.0,
                         })
                     }
                     AngularKind::Karana => {
@@ -339,6 +371,7 @@ impl Sweeper {
                             karana_index: pos.karana_index,
                             start: start_utc,
                             end: next_end_utc,
+                            progress: 0.0,
                         })
                     }
                     AngularKind::Yoga => {
@@ -348,6 +381,7 @@ impl Sweeper {
                             yoga_index: pos.yoga_index,
                             start: start_utc,
                             end: next_end_utc,
+                            progress: 0.0,
                         })
                     }
                     AngularKind::Nakshatra => {
@@ -361,6 +395,7 @@ impl Sweeper {
                             pada: pos.pada,
                             start: start_utc,
                             end: next_end_utc,
+                            progress: 0.0,
                         })
                     }
                 };

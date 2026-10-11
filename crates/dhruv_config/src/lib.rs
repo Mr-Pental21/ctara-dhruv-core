@@ -376,6 +376,7 @@ pub struct GrahaPositionsConfigPatch {
     pub include_bhava: Option<bool>,
     pub basic_states: Option<BasicStatesConfigPatch>,
     pub include_equatorial: Option<bool>,
+    pub include_speeds: Option<bool>,
 }
 
 /// Nested `basic_states` patch of
@@ -499,6 +500,21 @@ pub struct FullKundaliConfigPatch {
     pub drishti: Option<DrishtiConfigPatch>,
     pub amsha_selection: Option<AmshaSelectionConfigPatch>,
     pub dasha: Option<DashaSelectionConfigPatch>,
+    pub include_tara_bala: Option<bool>,
+    /// 0-26, or 255 for the chart's own Moon nakshatra.
+    pub tara_bala_reference_nakshatra_index: Option<u8>,
+    pub include_samvatsara_officers: Option<bool>,
+    pub include_transit_ashtakavarga: Option<bool>,
+    pub transit_ashtakavarga_reference: Option<AshtakavargaReferencePatch>,
+}
+
+/// Natal ashtakavarga inputs nested in [`FullKundaliConfigPatch`]: the
+/// natal rashi (0-11) of Sun through Saturn and of the lagna.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AshtakavargaReferencePatch {
+    pub graha_rashis: Option<Vec<u8>>,
+    pub lagna_rashi: Option<u8>,
 }
 
 /// An enum-valued config field as written in the file: either the
@@ -884,10 +900,7 @@ impl ConfigResolver {
         source.insert("include_peak_details".to_string(), d_source);
         source.insert("include_path".to_string(), path_source);
         source.insert("path_step_minutes".to_string(), path_step_source);
-        source.insert(
-            "footprint_step_minutes".to_string(),
-            footprint_step_source,
-        );
+        source.insert("footprint_step_minutes".to_string(), footprint_step_source);
         source.insert("boundary_step_deg".to_string(), boundary_step_source);
         source.insert(
             "ring_simplify_tolerance_deg".to_string(),
@@ -1384,6 +1397,13 @@ impl ConfigResolver {
             recommended(self.defaults_mode, false),
             "graha_positions.include_equatorial",
         )?;
+        let (include_speeds, s8) = choose_copy(
+            explicit.include_speeds,
+            op.include_speeds,
+            None,
+            recommended(self.defaults_mode, false),
+            "graha_positions.include_speeds",
+        )?;
 
         let mut source = BTreeMap::new();
         source.insert("include_nakshatra".to_string(), s1);
@@ -1396,6 +1416,7 @@ impl ConfigResolver {
             s6,
         );
         source.insert("include_equatorial".to_string(), s7);
+        source.insert("include_speeds".to_string(), s8);
 
         Ok(EffectiveConfig {
             value: GrahaPositionsConfig {
@@ -1408,6 +1429,7 @@ impl ConfigResolver {
                     include_sensitive_point_distances,
                 },
                 include_equatorial,
+                include_speeds,
             },
             source_by_field: source,
         })
@@ -1626,6 +1648,60 @@ impl ConfigResolver {
             "include_dasha",
             &mut source,
         );
+        let include_tara_bala = layered_bool(
+            explicit.include_tara_bala,
+            op.include_tara_bala,
+            defaults.include_tara_bala,
+            "include_tara_bala",
+            &mut source,
+        );
+        let include_samvatsara_officers = layered_bool(
+            explicit.include_samvatsara_officers,
+            op.include_samvatsara_officers,
+            defaults.include_samvatsara_officers,
+            "include_samvatsara_officers",
+            &mut source,
+        );
+        let include_transit_ashtakavarga = layered_bool(
+            explicit.include_transit_ashtakavarga,
+            op.include_transit_ashtakavarga,
+            defaults.include_transit_ashtakavarga,
+            "include_transit_ashtakavarga",
+            &mut source,
+        );
+        let tara_bala_reference_nakshatra_index =
+            if let Some(v) = explicit.tara_bala_reference_nakshatra_index {
+                source.insert(
+                    "tara_bala_reference_nakshatra_index".to_string(),
+                    ConfigSource::Explicit,
+                );
+                v
+            } else if let Some(v) = op.tara_bala_reference_nakshatra_index {
+                source.insert(
+                    "tara_bala_reference_nakshatra_index".to_string(),
+                    ConfigSource::Operation,
+                );
+                v
+            } else {
+                source.insert(
+                    "tara_bala_reference_nakshatra_index".to_string(),
+                    ConfigSource::RecommendedDefault,
+                );
+                defaults.tara_bala_reference_nakshatra_index
+            };
+        if tara_bala_reference_nakshatra_index >= 27 && tara_bala_reference_nakshatra_index != 255 {
+            return Err(ConfigError::InvalidConfig(
+                "full_kundali.tara_bala_reference_nakshatra_index: must be 0-26 or 255 (chart Moon)"
+                    .to_string(),
+            ));
+        }
+        let transit_ashtakavarga_reference = apply_ashtakavarga_reference_patch(
+            defaults.transit_ashtakavarga_reference,
+            merge_patch(
+                explicit.transit_ashtakavarga_reference,
+                op.transit_ashtakavarga_reference.clone(),
+            ),
+        )?;
 
         let node_dignity_policy = if let Some(v) = explicit.node_dignity_policy {
             source.insert("node_dignity_policy".to_string(), ConfigSource::Explicit);
@@ -1717,6 +1793,11 @@ impl ConfigResolver {
                 amsha_scope: defaults.amsha_scope,
                 amsha_selection,
                 dasha_config,
+                include_tara_bala,
+                tara_bala_reference_nakshatra_index,
+                include_samvatsara_officers,
+                include_transit_ashtakavarga,
+                transit_ashtakavarga_reference,
             },
             source_by_field: source,
         })
@@ -2206,6 +2287,59 @@ fn apply_amsha_selection_patch(
         }
     }
     Ok(base)
+}
+
+/// Applies a [`AshtakavargaReferencePatch`] on top of `base`. A patch that
+/// sets neither field leaves `base` unchanged; one that sets both yields a
+/// complete reference; a partial patch over `None` is an error.
+fn apply_ashtakavarga_reference_patch(
+    base: Option<dhruv_search::AshtakavargaReference>,
+    patch: Option<AshtakavargaReferencePatch>,
+) -> Result<Option<dhruv_search::AshtakavargaReference>, ConfigError> {
+    let Some(patch) = patch else {
+        return Ok(base);
+    };
+    if patch.graha_rashis.is_none() && patch.lagna_rashi.is_none() {
+        return Ok(base);
+    }
+    let mut reference = base.unwrap_or(dhruv_search::AshtakavargaReference {
+        graha_rashis: [0; 7],
+        lagna_rashi: 0,
+    });
+    let field = "full_kundali.transit_ashtakavarga_reference";
+    match (patch.graha_rashis, base.is_some()) {
+        (Some(rashis), _) => {
+            if rashis.len() != 7 || rashis.iter().any(|&r| r >= 12) {
+                return Err(ConfigError::InvalidConfig(format!(
+                    "{field}.graha_rashis: must list exactly 7 rashi indices in 0-11 (Sun..Saturn)"
+                )));
+            }
+            reference.graha_rashis.copy_from_slice(&rashis);
+        }
+        (None, false) => {
+            return Err(ConfigError::InvalidConfig(format!(
+                "{field}.graha_rashis: required alongside lagna_rashi"
+            )));
+        }
+        (None, true) => {}
+    }
+    match (patch.lagna_rashi, base.is_some()) {
+        (Some(lagna), _) => {
+            if lagna >= 12 {
+                return Err(ConfigError::InvalidConfig(format!(
+                    "{field}.lagna_rashi: must be a rashi index in 0-11"
+                )));
+            }
+            reference.lagna_rashi = lagna;
+        }
+        (None, false) => {
+            return Err(ConfigError::InvalidConfig(format!(
+                "{field}.lagna_rashi: required alongside graha_rashis"
+            )));
+        }
+        (None, true) => {}
+    }
+    Ok(Some(reference))
 }
 
 fn apply_dasha_selection_patch(

@@ -36,9 +36,8 @@ use crate::grahan_fields::{
 use crate::grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanLocalCircumstances, ChandraGrahanType,
     EclipseGeoPoint, GeoLocation, GrahanConfig, SuryaCentrality, SuryaContactFootprint,
-    SuryaContactKind, SuryaGrahan,
-    SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
-    SuryaUmbraFootprint,
+    SuryaContactKind, SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances,
+    SuryaGrahanPathPoint, SuryaGrahanType, SuryaUmbraFootprint,
 };
 
 // ---------------------------------------------------------------------------
@@ -818,7 +817,11 @@ fn central_types_in_span(
             let Some(center) = samples[index].1 else {
                 continue;
             };
-            let previous = if index > 0 { samples[index - 1].1 } else { None };
+            let previous = if index > 0 {
+                samples[index - 1].1
+            } else {
+                None
+            };
             let next = if index + 1 < count {
                 samples[index + 1].1
             } else {
@@ -1121,7 +1124,8 @@ pub(crate) fn horizon_altaz_deg(
     let east = -lon.sin() * ecef[0] + lon.cos() * ecef[1];
     let north =
         -lat.sin() * lon.cos() * ecef[0] - lat.sin() * lon.sin() * ecef[1] + lat.cos() * ecef[2];
-    let up = lat.cos() * lon.cos() * ecef[0] + lat.cos() * lon.sin() * ecef[1] + lat.sin() * ecef[2];
+    let up =
+        lat.cos() * lon.cos() * ecef[0] + lat.cos() * lon.sin() * ecef[1] + lat.sin() * ecef[2];
     (
         up.clamp(-1.0, 1.0).asin().to_degrees(),
         east.atan2(north).to_degrees().rem_euclid(360.0),
@@ -1324,8 +1328,7 @@ fn validate_surya_inputs(
             "boundary_step_deg must be between 1 and 15",
         ));
     }
-    if !config.ring_simplify_tolerance_deg.is_finite() || config.ring_simplify_tolerance_deg < 0.0
-    {
+    if !config.ring_simplify_tolerance_deg.is_finite() || config.ring_simplify_tolerance_deg < 0.0 {
         return Err(SearchError::InvalidConfig(
             "ring_simplify_tolerance_deg must be finite and non-negative",
         ));
@@ -1634,9 +1637,8 @@ fn chandra_local_circumstances(
     let altitude_at = |jd: f64| -> Result<f64, SearchError> {
         Ok(moon_horizon_altaz_deg(engine, eop, jd, &location)?.0)
     };
-    let altitude_at_optional = |jd: Option<f64>| -> Result<Option<f64>, SearchError> {
-        jd.map(altitude_at).transpose()
-    };
+    let altitude_at_optional =
+        |jd: Option<f64>| -> Result<Option<f64>, SearchError> { jd.map(altitude_at).transpose() };
 
     let (moon_altitude_deg, moon_azimuth_deg) =
         moon_horizon_altaz_deg(engine, eop, grahan.greatest_grahan_jd, &location)?;
@@ -2068,100 +2070,98 @@ fn compute_surya_grahan(
         Vec::new()
     };
 
-    let mut umbra_footprints = if config.include_umbra_footprints
-        && centrality != SuryaCentrality::None
-    {
-        let boundary_step = config.boundary_step_deg.clamp(1, 15);
-        let mut jds: Vec<f64> = path.iter().map(|point| point.jd_tdb).collect();
-        for jd in [c2_jd, Some(greatest_jd), c3_jd].into_iter().flatten() {
-            jds.push(jd);
-        }
-        jds.sort_by(f64::total_cmp);
-        jds.dedup_by(|a, b| (*a - *b).abs() < 1.0e-9);
-        let mut entries = Vec::new();
-        for jd in jds {
-            let raw = shadow_boundary(engine, eop, jd, ShadowCone::Central, boundary_step)?;
-            if raw.is_empty() {
-                continue;
+    let mut umbra_footprints =
+        if config.include_umbra_footprints && centrality != SuryaCentrality::None {
+            let boundary_step = config.boundary_step_deg.clamp(1, 15);
+            let mut jds: Vec<f64> = path.iter().map(|point| point.jd_tdb).collect();
+            for jd in [c2_jd, Some(greatest_jd), c3_jd].into_iter().flatten() {
+                jds.push(jd);
             }
-            // Terminator-clip like the penumbral footprints: near the
-            // central contacts the grazing ellipse juts past the terminator
-            // where totality is not observable (Change 8b).
-            let Some(ring) =
-                crate::grahan_fields::instantaneous_central_ring(engine, eop, jd, &raw)?
-            else {
-                continue;
-            };
-            let elements = besselian_elements_at(engine, eop, jd)?;
-            entries.push(SuryaUmbraFootprint {
-                jd_tdb: jd,
-                utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
-                grahan_type: if elements.l2 < 0.0 {
-                    SuryaGrahanType::Total
-                } else {
-                    SuryaGrahanType::Annular
-                },
-                boundary: ring.boundary,
-                contains_pole: ring.contains_pole,
-            });
-        }
-        entries
-    } else {
-        Vec::new()
-    };
-
-    let mut central_corridor = if config.include_central_corridor
-        && centrality != SuryaCentrality::None
-    {
-        let corridor_start = c2_jd.unwrap_or(greatest_jd - 0.05) - 2.0 / 1440.0;
-        let corridor_end = c3_jd.unwrap_or(greatest_jd + 0.05) + 2.0 / 1440.0;
-        let boundary_step = config.boundary_step_deg.clamp(1, 15);
-        let mut track_points: Vec<(f64, EclipseGeoPoint)> = Vec::new();
-        let mut extra: Vec<EclipseGeoPoint> = Vec::new();
-        if path.is_empty() {
-            for index in 0..=16 {
-                let jd = corridor_start + (corridor_end - corridor_start) * index as f64 / 16.0;
-                track_points.push((jd, closest_axis_surface_point(engine, eop, jd)?));
+            jds.sort_by(f64::total_cmp);
+            jds.dedup_by(|a, b| (*a - *b).abs() < 1.0e-9);
+            let mut entries = Vec::new();
+            for jd in jds {
+                let raw = shadow_boundary(engine, eop, jd, ShadowCone::Central, boundary_step)?;
+                if raw.is_empty() {
+                    continue;
+                }
+                // Terminator-clip like the penumbral footprints: near the
+                // central contacts the grazing ellipse juts past the terminator
+                // where totality is not observable (Change 8b).
+                let Some(ring) =
+                    crate::grahan_fields::instantaneous_central_ring(engine, eop, jd, &raw)?
+                else {
+                    continue;
+                };
+                let elements = besselian_elements_at(engine, eop, jd)?;
+                entries.push(SuryaUmbraFootprint {
+                    jd_tdb: jd,
+                    utc: UtcTime::from_jd_tdb(jd, engine.lsk()),
+                    grahan_type: if elements.l2 < 0.0 {
+                        SuryaGrahanType::Total
+                    } else {
+                        SuryaGrahanType::Annular
+                    },
+                    boundary: ring.boundary,
+                    contains_pole: ring.contains_pole,
+                });
             }
+            entries
         } else {
-            for point in &path {
-                track_points.push((point.jd_tdb, point.center));
-                if let Some(limit) = point.northern_limit {
-                    extra.push(limit);
+            Vec::new()
+        };
+
+    let mut central_corridor =
+        if config.include_central_corridor && centrality != SuryaCentrality::None {
+            let corridor_start = c2_jd.unwrap_or(greatest_jd - 0.05) - 2.0 / 1440.0;
+            let corridor_end = c3_jd.unwrap_or(greatest_jd + 0.05) + 2.0 / 1440.0;
+            let boundary_step = config.boundary_step_deg.clamp(1, 15);
+            let mut track_points: Vec<(f64, EclipseGeoPoint)> = Vec::new();
+            let mut extra: Vec<EclipseGeoPoint> = Vec::new();
+            if path.is_empty() {
+                for index in 0..=16 {
+                    let jd = corridor_start + (corridor_end - corridor_start) * index as f64 / 16.0;
+                    track_points.push((jd, closest_axis_surface_point(engine, eop, jd)?));
                 }
-                if let Some(limit) = point.southern_limit {
-                    extra.push(limit);
+            } else {
+                for point in &path {
+                    track_points.push((point.jd_tdb, point.center));
+                    if let Some(limit) = point.northern_limit {
+                        extra.push(limit);
+                    }
+                    if let Some(limit) = point.southern_limit {
+                        extra.push(limit);
+                    }
                 }
             }
-        }
-        // Instantaneous central outlines through the window cover the
-        // rounded corridor end caps in the bounding box; the shadow's
-        // ground speed peaks near the contacts, so sample densely there.
-        for fraction in [
-            0.0, 0.01, 0.03, 0.08, 0.25, 0.5, 0.75, 0.92, 0.97, 0.99, 1.0,
-        ] {
-            let jd = corridor_start + (corridor_end - corridor_start) * fraction;
-            extra.extend(shadow_boundary(
+            // Instantaneous central outlines through the window cover the
+            // rounded corridor end caps in the bounding box; the shadow's
+            // ground speed peaks near the contacts, so sample densely there.
+            for fraction in [
+                0.0, 0.01, 0.03, 0.08, 0.25, 0.5, 0.75, 0.92, 0.97, 0.99, 1.0,
+            ] {
+                let jd = corridor_start + (corridor_end - corridor_start) * fraction;
+                extra.extend(shadow_boundary(
+                    engine,
+                    eop,
+                    jd,
+                    ShadowCone::Central,
+                    boundary_step,
+                )?);
+            }
+            Some(central_corridor(
                 engine,
                 eop,
-                jd,
-                ShadowCone::Central,
-                boundary_step,
-            )?);
-        }
-        Some(central_corridor(
-            engine,
-            eop,
-            corridor_start,
-            corridor_end,
-            &CorridorTrack {
-                points: track_points,
-                extra,
-            },
-        )?)
-    } else {
-        None
-    };
+                corridor_start,
+                corridor_end,
+                &CorridorTrack {
+                    points: track_points,
+                    extra,
+                },
+            )?)
+        } else {
+            None
+        };
 
     // Optional lossy ring decimation, applied uniformly to every emitted
     // boundary product so a map consumer's payload shrinks consistently.

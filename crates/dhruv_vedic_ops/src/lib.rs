@@ -7,6 +7,7 @@ pub mod jyotish_types;
 pub mod operations;
 pub mod panchang;
 pub mod panchang_types;
+pub mod samvatsara_officers;
 mod search_util;
 
 pub use dasha::{
@@ -22,14 +23,17 @@ pub use jyotish::{
     arudha_padas_for_date, ashtakavarga_for_date, avastha_for_date, avastha_for_graha,
     charakaraka_for_date, core_bindus, drishti_for_date, full_kundali_for_date, graha_longitudes,
     graha_positions, shadbala_for_date, shadbala_for_graha, special_lagnas_for_date,
-    vimsopaka_for_date, vimsopaka_for_graha,
+    tara_bala_for_date, tara_bala_from_longitudes, transit_ashtakavarga_for_date,
+    transit_ashtakavarga_from_longitudes, vimsopaka_for_date, vimsopaka_for_graha,
 };
 pub use jyotish_types::{
-    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
-    BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig, DrishtiResult,
-    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
-    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry,
-    ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
+    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig,
+    AshtakavargaReference, BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime,
+    DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
+    GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
+    GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, SphutalResult,
+    TARA_BALA_REFERENCE_CHART_MOON, TaraBalaEntry, TaraBalaResult, TransitAshtakavargaResult,
+    VimsopakaEntry, VimsopakaResult,
 };
 pub use operations::{
     AyanamshaMode, AyanamshaOperation, NodeBackend, NodeOperation, PANCHANG_INCLUDE_ALL,
@@ -52,5 +56,9 @@ pub use panchang::{
 pub use panchang_types::{
     AyanaInfo, GhatikaInfo, HoraInfo, KaranaInfo, MasaInfo, PanchangNakshatraInfo, TithiInfo,
     VaarInfo, VarshaInfo, YogaInfo,
+};
+pub use samvatsara_officers::{
+    ALL_SAMVATSARA_OFFICES, SamvatsaraOffice, SamvatsaraOfficer, SamvatsaraOfficers,
+    samvatsara_officers,
 };
 pub use search_util::{set_time_conversion_policy, time_conversion_policy};

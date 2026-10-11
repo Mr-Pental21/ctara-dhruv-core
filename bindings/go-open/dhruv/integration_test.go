@@ -456,8 +456,15 @@ func TestSearchAndPanchangSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PanchangComputeEx with known calendar values: %v", err)
 	}
-	if reused.Masa != first.Masa || reused.Ayana != first.Ayana || reused.Varsha != first.Varsha {
+	// The known windows are echoed verbatim; only Progress is recomputed for
+	// the new query moment.
+	reusedMasa, reusedAyana, reusedVarsha := reused.Masa, reused.Ayana, reused.Varsha
+	reusedMasa.Progress, reusedAyana.Progress, reusedVarsha.Progress = first.Masa.Progress, first.Ayana.Progress, first.Varsha.Progress
+	if reusedMasa != first.Masa || reusedAyana != first.Ayana || reusedVarsha != first.Varsha {
 		t.Fatalf("known calendar values must be reused verbatim inside their windows")
+	}
+	if reused.Masa.Progress <= first.Masa.Progress || reused.Masa.Progress > 1 {
+		t.Fatalf("reused masa progress must advance with the query moment: %v -> %v", first.Masa.Progress, reused.Masa.Progress)
 	}
 	calReq.UTC = UtcTime{Year: 2024, Month: 5, Day: 20, Hour: 12}
 	recomputed, err := eng.PanchangComputeEx(eop, lsk, calReq)
@@ -1515,5 +1522,682 @@ func TestLowTierDashaWrappers(t *testing.T) {
 	}
 	if len(complete) < len(children) {
 		t.Fatalf("expected complete child level, got=%d children=%d", len(complete), len(children))
+	}
+}
+
+func TestTaraBalaPure(t *testing.T) {
+	cases := []struct {
+		ref, target uint32
+		count, tara uint8
+		cycle       uint8
+		favorable   bool
+	}{
+		{0, 0, 1, TaraIndexJanma, 1, false},
+		{0, 1, 2, TaraIndexSampat, 1, true},
+		{0, 2, 3, TaraIndexVipat, 1, false},
+		{0, 8, 9, TaraIndexParamaMitra, 1, true},
+		{0, 9, 10, TaraIndexJanma, 2, false},
+		{0, 26, 27, TaraIndexParamaMitra, 3, true},
+		{5, 4, 27, TaraIndexParamaMitra, 3, true},
+		{26, 0, 2, TaraIndexSampat, 1, true},
+	}
+	for _, c := range cases {
+		tb, err := TaraBala(c.ref, c.target)
+		if err != nil {
+			t.Fatalf("TaraBala(%d,%d): %v", c.ref, c.target, err)
+		}
+		if tb.Count != c.count || tb.TaraIndex != c.tara || tb.Cycle != c.cycle || tb.Favorable != c.favorable {
+			t.Fatalf("TaraBala(%d,%d) = %+v, want count=%d tara=%d cycle=%d favorable=%v",
+				c.ref, c.target, tb, c.count, c.tara, c.cycle, c.favorable)
+		}
+	}
+	if _, err := TaraBala(27, 0); err == nil {
+		t.Fatalf("expected error for reference nakshatra out of range")
+	}
+	if _, err := TaraBala(0, 27); err == nil {
+		t.Fatalf("expected error for target nakshatra out of range")
+	}
+
+	wantNames := []string{"Janma", "Sampat", "Vipat", "Kshema", "Pratyak", "Sadhaka", "Vadha", "Mitra", "Parama Mitra"}
+	for i, want := range wantNames {
+		if got := TaraName(uint32(i)); got != want {
+			t.Fatalf("TaraName(%d) = %q, want %q", i, got, want)
+		}
+	}
+	if TaraName(9) != "" {
+		t.Fatalf("TaraName(9) should be empty, got %q", TaraName(9))
+	}
+}
+
+func TestKakshyaHelpers(t *testing.T) {
+	idxCases := []struct {
+		lon  float64
+		want int32
+	}{
+		{0, 0}, {3.74, 0}, {3.75, 1}, {15, 4}, {29.99, 7}, {30, 0}, {33.75, 1}, {359.99, 7},
+	}
+	for _, c := range idxCases {
+		if got := KakshyaIndex(c.lon); got != c.want {
+			t.Fatalf("KakshyaIndex(%v) = %d, want %d", c.lon, got, c.want)
+		}
+	}
+	if KakshyaIndex(math.NaN()) != -1 || KakshyaIndex(math.Inf(1)) != -1 {
+		t.Fatalf("KakshyaIndex must return -1 for non-finite input")
+	}
+
+	// Kakshya lords in order: Saturn, Jupiter, Mars, Sun, Venus, Mercury,
+	// Moon, Lagna (BAV contributor indices 0=Sun .. 6=Saturn, 7=Lagna).
+	wantLords := []int32{6, 4, 2, 0, 5, 3, 1, KakshyaLordLagna}
+	for i, want := range wantLords {
+		if got := KakshyaLord(uint32(i)); got != want {
+			t.Fatalf("KakshyaLord(%d) = %d, want %d", i, got, want)
+		}
+	}
+	if KakshyaLord(8) != -1 {
+		t.Fatalf("KakshyaLord(8) should be -1, got %d", KakshyaLord(8))
+	}
+
+	// The kakshya bindu is exactly the kakshya lord's contributor flag for
+	// the rashi in the BAV.
+	bav, err := CalculateBAV(0, [7]uint8{0, 1, 2, 3, 4, 5, 6}, 0)
+	if err != nil {
+		t.Fatalf("CalculateBAV: %v", err)
+	}
+	for rashi := 0; rashi < 12; rashi++ {
+		for k := 0; k < 8; k++ {
+			lon := float64(rashi)*30 + float64(k)*3.75 + 1.0
+			got := KakshyaBindu(bav, lon)
+			want := int32(bav.Contributors[rashi][KakshyaLord(uint32(k))])
+			if got != want {
+				t.Fatalf("KakshyaBindu(rashi=%d kakshya=%d) = %d, want %d", rashi, k, got, want)
+			}
+		}
+	}
+	if KakshyaBindu(bav, math.NaN()) != -1 {
+		t.Fatalf("KakshyaBindu must return -1 for non-finite input")
+	}
+}
+
+func TestTransitAshtakavargaPure(t *testing.T) {
+	natalRashis := [7]uint8{0, 1, 2, 3, 4, 5, 6}
+	natal, err := CalculateAshtakavarga(natalRashis, 0)
+	if err != nil {
+		t.Fatalf("CalculateAshtakavarga: %v", err)
+	}
+	lons := [7]float64{10, 40, 70, 100, 130, 160, 190}
+	entries, err := TransitAshtakavarga(natal, lons)
+	if err != nil {
+		t.Fatalf("TransitAshtakavarga: %v", err)
+	}
+	for i, e := range entries {
+		rashi := uint8(int(lons[i]) / 30)
+		if e.GrahaIndex != uint8(i) || e.RashiIndex != rashi {
+			t.Fatalf("entry %d identity: %+v", i, e)
+		}
+		if e.BavBindus != natal.BAVs[i].Points[rashi] {
+			t.Fatalf("entry %d bav bindus %d, want %d", i, e.BavBindus, natal.BAVs[i].Points[rashi])
+		}
+		if e.SavTotal != natal.SAV.TotalPoints[rashi] ||
+			e.SavAfterTrikona != natal.SAV.AfterTrikona[rashi] ||
+			e.SavAfterEkadhipatya != natal.SAV.AfterEkadhipatya[rashi] {
+			t.Fatalf("entry %d SAV %d/%d/%d, want %d/%d/%d", i,
+				e.SavTotal, e.SavAfterTrikona, e.SavAfterEkadhipatya,
+				natal.SAV.TotalPoints[rashi], natal.SAV.AfterTrikona[rashi], natal.SAV.AfterEkadhipatya[rashi])
+		}
+		if int32(e.KakshyaIndex) != KakshyaIndex(lons[i]) {
+			t.Fatalf("entry %d kakshya index %d, want %d", i, e.KakshyaIndex, KakshyaIndex(lons[i]))
+		}
+		if int32(e.KakshyaLord) != KakshyaLord(uint32(e.KakshyaIndex)) {
+			t.Fatalf("entry %d kakshya lord %d, want %d", i, e.KakshyaLord, KakshyaLord(uint32(e.KakshyaIndex)))
+		}
+		if e.KakshyaBindu != (KakshyaBindu(natal.BAVs[i], lons[i]) == 1) {
+			t.Fatalf("entry %d kakshya bindu %v disagrees with KakshyaBindu", i, e.KakshyaBindu)
+		}
+	}
+	lons[3] = math.NaN()
+	if _, err := TransitAshtakavarga(natal, lons); err == nil {
+		t.Fatalf("expected error for non-finite transit longitude")
+	}
+}
+
+func TestGrahaPositionsSpeedsAndOuterRetrograde(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	// 2025-01-15: Mars and Jupiter are retrograde, Uranus is retrograde,
+	// Neptune and Pluto are direct.
+	utc := UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12}
+	loc := GeoLocation{LatitudeDeg: 12.9716, LongitudeDeg: 77.5946, AltitudeM: 920}
+	bhava := BhavaConfigDefault()
+
+	cfg := GrahaPositionsConfig{
+		IncludeLagna:        true,
+		IncludeOuterPlanets: true,
+		BasicStatesConfig:   BasicStatesConfig{IncludeBasicStates: true},
+	}
+	plain, err := eng.GrahaPositionsForDate(eop, utc, loc, bhava, 0, true, cfg)
+	if err != nil {
+		t.Fatalf("GrahaPositionsForDate (no speeds): %v", err)
+	}
+	check := func(name string, e GrahaEntry) {
+		if e.SpeedValid || e.LongitudeSpeedDegPerDay != 0 || e.LatitudeSpeedDegPerDay != 0 {
+			t.Fatalf("%s: speeds must be absent without IncludeSpeeds: %+v", name, e)
+		}
+	}
+	for i, e := range plain.Grahas {
+		check(GrahaName(uint32(i)), e)
+	}
+	check("lagna", plain.Lagna)
+	for i, e := range plain.OuterPlanets {
+		check("outer"+string(rune('0'+i)), e)
+	}
+
+	cfg.IncludeSpeeds = true
+	gp, err := eng.GrahaPositionsForDate(eop, utc, loc, bhava, 0, true, cfg)
+	if err != nil {
+		t.Fatalf("GrahaPositionsForDate (speeds): %v", err)
+	}
+	for i, e := range gp.Grahas {
+		if !e.SpeedValid {
+			t.Fatalf("graha %d: expected SpeedValid", i)
+		}
+		if math.IsNaN(e.LongitudeSpeedDegPerDay) || math.IsNaN(e.LatitudeSpeedDegPerDay) {
+			t.Fatalf("graha %d: NaN speed: %+v", i, e)
+		}
+	}
+	// Sun ~1 deg/day, Moon ~12-15 deg/day, both direct.
+	if s := gp.Grahas[0].LongitudeSpeedDegPerDay; s < 0.9 || s > 1.1 {
+		t.Fatalf("Sun longitude speed %v outside [0.9, 1.1]", s)
+	}
+	if s := gp.Grahas[1].LongitudeSpeedDegPerDay; s < 11 || s > 16 {
+		t.Fatalf("Moon longitude speed %v outside [11, 16]", s)
+	}
+	// Mars (2) and Jupiter (4) retrograde: negative rate and flag set.
+	for _, g := range []int{2, 4} {
+		e := gp.Grahas[g]
+		if e.LongitudeSpeedDegPerDay >= 0 || !e.BasicStates.Retrograde {
+			t.Fatalf("graha %d: expected retrograde (speed %v, flag %v)", g, e.LongitudeSpeedDegPerDay, e.BasicStates.Retrograde)
+		}
+	}
+	// Rahu/Ketu and lagna are ecliptic points: latitude rate exactly 0.
+	for _, g := range []int{7, 8} {
+		if gp.Grahas[g].LatitudeSpeedDegPerDay != 0 {
+			t.Fatalf("graha %d: node latitude rate must be 0, got %v", g, gp.Grahas[g].LatitudeSpeedDegPerDay)
+		}
+	}
+	if !gp.Lagna.SpeedValid || gp.Lagna.LatitudeSpeedDegPerDay != 0 || gp.Lagna.LongitudeSpeedDegPerDay <= 0 {
+		t.Fatalf("lagna speeds: %+v", gp.Lagna)
+	}
+	// Outer planets: speeds present, and the basic-states retrograde flag
+	// now agrees with the sign of the longitude rate.
+	wantOuterRetro := []bool{true, false, false} // Uranus, Neptune, Pluto
+	for i, e := range gp.OuterPlanets {
+		if !e.SpeedValid || !e.BasicStatesValid {
+			t.Fatalf("outer %d: expected SpeedValid and BasicStatesValid: %+v", i, e)
+		}
+		if e.BasicStates.Retrograde != wantOuterRetro[i] {
+			t.Fatalf("outer %d: retrograde flag %v, want %v", i, e.BasicStates.Retrograde, wantOuterRetro[i])
+		}
+		if (e.LongitudeSpeedDegPerDay < 0) != e.BasicStates.Retrograde {
+			t.Fatalf("outer %d: speed %v disagrees with retrograde flag %v", i, e.LongitudeSpeedDegPerDay, e.BasicStates.Retrograde)
+		}
+	}
+
+	// The series carries the same per-entry speed fields.
+	toUTC := utc
+	toUTC.Hour += 1
+	series, err := eng.GrahaPositionsSeriesForDate(eop, utc, toUTC, 60, loc, bhava, 0, true, cfg)
+	if err != nil {
+		t.Fatalf("GrahaPositionsSeriesForDate (speeds): %v", err)
+	}
+	if len(series) != 2 || !series[0].Positions.Grahas[1].SpeedValid {
+		t.Fatalf("expected speed-bearing series points, got %d", len(series))
+	}
+	if series[0].Positions.Grahas[1].LongitudeSpeedDegPerDay != gp.Grahas[1].LongitudeSpeedDegPerDay {
+		t.Fatalf("series point 0 Moon speed differs from single-epoch call")
+	}
+}
+
+func TestAmshaVargottama(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	utc := UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12}
+	loc := GeoLocation{LatitudeDeg: 12.9716, LongitudeDeg: 77.5946, AltitudeM: 920}
+	bhava := BhavaConfigDefault()
+	riseset := RiseSetConfigDefault()
+	scope := AmshaChartScope{IncludeOuterPlanets: true}
+
+	d1, err := eng.AmshaChartForDate(eop, utc, loc, bhava, riseset, 0, true, 1, 0, scope)
+	if err != nil {
+		t.Fatalf("AmshaChartForDate D1: %v", err)
+	}
+	if d1.Lagna.Vargottama {
+		t.Fatalf("D1 lagna must never be vargottama")
+	}
+	for g, e := range d1.Grahas {
+		if e.Vargottama {
+			t.Fatalf("D1 graha %d must never be vargottama", g)
+		}
+	}
+	for g, e := range d1.OuterPlanets {
+		if e.Vargottama {
+			t.Fatalf("D1 outer planet %d must never be vargottama", g)
+		}
+	}
+
+	for _, code := range []uint16{2, 9, 60} {
+		chart, err := eng.AmshaChartForDate(eop, utc, loc, bhava, riseset, 0, true, code, 0, scope)
+		if err != nil {
+			t.Fatalf("AmshaChartForDate D%d: %v", code, err)
+		}
+		if want := chart.Lagna.RashiIndex == d1.Lagna.RashiIndex; chart.Lagna.Vargottama != want {
+			t.Fatalf("D%d lagna vargottama %v, want %v", code, chart.Lagna.Vargottama, want)
+		}
+		for g := range chart.Grahas {
+			want := chart.Grahas[g].RashiIndex == d1.Grahas[g].RashiIndex
+			if chart.Grahas[g].Vargottama != want {
+				t.Fatalf("D%d graha %d vargottama %v, want %v", code, g, chart.Grahas[g].Vargottama, want)
+			}
+		}
+		for g := range chart.OuterPlanets {
+			want := chart.OuterPlanets[g].RashiIndex == d1.OuterPlanets[g].RashiIndex
+			if chart.OuterPlanets[g].Vargottama != want {
+				t.Fatalf("D%d outer %d vargottama %v, want %v", code, g, chart.OuterPlanets[g].Vargottama, want)
+			}
+		}
+	}
+
+	// Full-kundali embedded charts and the amsha series carry the same flag.
+	cfg := FullKundaliConfigDefault()
+	cfg.IncludeAmshas = true
+	cfg.AmshaSelection.Count = 1
+	cfg.AmshaSelection.Codes[0] = 9
+	kundali, err := eng.FullKundaliForDate(eop, utc, loc, bhava, riseset, 0, true, cfg)
+	if err != nil {
+		t.Fatalf("FullKundaliForDate (D9): %v", err)
+	}
+	d9, err := eng.AmshaChartForDate(eop, utc, loc, bhava, riseset, 0, true, 9, 0, AmshaChartScope{})
+	if err != nil {
+		t.Fatalf("AmshaChartForDate D9: %v", err)
+	}
+	if len(kundali.Amshas) != 1 {
+		t.Fatalf("expected 1 embedded amsha, got %d", len(kundali.Amshas))
+	}
+	for g := range d9.Grahas {
+		if kundali.Amshas[0].Grahas[g].Vargottama != d9.Grahas[g].Vargottama {
+			t.Fatalf("embedded D9 graha %d vargottama differs from standalone chart", g)
+		}
+	}
+	seriesTo := utc
+	seriesTo.Hour += 1
+	series, err := eng.AmshaSeries(eop, utc, seriesTo, 60, loc, SankrantiConfigDefault(), []AmshaRequest{{AmshaCode: 9}}, true)
+	if err != nil {
+		t.Fatalf("AmshaSeries D9: %v", err)
+	}
+	if len(series) != 2 || len(series[0].Charts) != 1 {
+		t.Fatalf("expected two D9 series points with one chart each, got %d", len(series))
+	}
+	for g := range d9.Grahas {
+		if series[0].Charts[0].Grahas[g].Vargottama != d9.Grahas[g].Vargottama {
+			t.Fatalf("series D9 graha %d vargottama differs from standalone chart", g)
+		}
+	}
+}
+
+// progressOf recomputes the elapsed fraction of a [start, end) window from
+// UTC fields, for comparison with the library's Progress.
+func progressOf(now, start, end UtcTime) float64 {
+	return (utcJD(now) - utcJD(start)) / (utcJD(end) - utcJD(start))
+}
+
+func TestPanchangProgress(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	utc := UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12}
+	loc := GeoLocation{LatitudeDeg: 12.9716, LongitudeDeg: 77.5946, AltitudeM: 920}
+	_, lskPath, _, _ := kernelPaths(t)
+	lsk, err := LoadLSK(lskPath)
+	if err != nil {
+		t.Fatalf("LoadLSK: %v", err)
+	}
+	defer lsk.Close()
+
+	res, err := eng.PanchangComputeEx(eop, lsk, PanchangComputeRequest{
+		TimeKind:        QueryTimeUTC,
+		UTC:             utc,
+		IncludeMask:     PanchangIncludeAll,
+		HasLocation:     true,
+		Location:        loc,
+		RiseSetConfig:   RiseSetConfigDefault(),
+		SankrantiConfig: SankrantiConfigDefault(),
+	})
+	if err != nil {
+		t.Fatalf("PanchangComputeEx: %v", err)
+	}
+	type elem struct {
+		name       string
+		valid      bool
+		progress   float64
+		start, end UtcTime
+	}
+	elems := []elem{
+		{"tithi", res.TithiValid, res.Tithi.Progress, res.Tithi.Start, res.Tithi.End},
+		{"karana", res.KaranaValid, res.Karana.Progress, res.Karana.Start, res.Karana.End},
+		{"yoga", res.YogaValid, res.Yoga.Progress, res.Yoga.Start, res.Yoga.End},
+		{"vaar", res.VaarValid, res.Vaar.Progress, res.Vaar.Start, res.Vaar.End},
+		{"hora", res.HoraValid, res.Hora.Progress, res.Hora.Start, res.Hora.End},
+		{"ghatika", res.GhatikaValid, res.Ghatika.Progress, res.Ghatika.Start, res.Ghatika.End},
+		{"nakshatra", res.NakshatraValid, res.Nakshatra.Progress, res.Nakshatra.Start, res.Nakshatra.End},
+		{"masa", res.MasaValid, res.Masa.Progress, res.Masa.Start, res.Masa.End},
+		{"ayana", res.AyanaValid, res.Ayana.Progress, res.Ayana.Start, res.Ayana.End},
+		{"varsha", res.VarshaValid, res.Varsha.Progress, res.Varsha.Start, res.Varsha.End},
+	}
+	for _, e := range elems {
+		if !e.valid {
+			t.Fatalf("%s: expected valid element", e.name)
+		}
+		if e.progress < 0 || e.progress > 1 {
+			t.Fatalf("%s: progress %v outside [0,1]", e.name, e.progress)
+		}
+		// A ghatika is 24 minutes, so allow a few seconds of UTC rounding
+		// relative to the window length.
+		if want := progressOf(utc, e.start, e.end); math.Abs(e.progress-want) > 5e-3 {
+			t.Fatalf("%s: progress %v, recomputed %v", e.name, e.progress, want)
+		}
+	}
+
+	// The standalone per-element calls carry the same progress.
+	tithi, err := eng.TithiForDate(utc)
+	if err != nil {
+		t.Fatalf("TithiForDate: %v", err)
+	}
+	if math.Abs(tithi.Progress-res.Tithi.Progress) > 1e-9 {
+		t.Fatalf("TithiForDate progress %v vs PanchangComputeEx %v", tithi.Progress, res.Tithi.Progress)
+	}
+
+	// Range listings report 0, as does VaarFromSunrises.
+	events, err := eng.PanchangEvents(eop, UtcTime{Year: 2025, Month: 1, Day: 14}, UtcTime{Year: 2025, Month: 1, Day: 16},
+		PanchangIncludeTithi|PanchangIncludeVaar, &loc, nil, SankrantiConfigDefault(), 0)
+	if err != nil {
+		t.Fatalf("PanchangEvents: %v", err)
+	}
+	if len(events.Tithis) == 0 || len(events.Vaars) == 0 {
+		t.Fatalf("expected tithi and vaar segments")
+	}
+	for i, ti := range events.Tithis {
+		if ti.Progress != 0 {
+			t.Fatalf("tithi segment %d progress must be 0 in range listings, got %v", i, ti.Progress)
+		}
+	}
+	for i, v := range events.Vaars {
+		if v.Progress != 0 {
+			t.Fatalf("vaar segment %d progress must be 0 in range listings, got %v", i, v.Progress)
+		}
+	}
+	sunrise, next, err := eng.VedicDaySunrises(eop, utc, loc, RiseSetConfigDefault())
+	if err != nil {
+		t.Fatalf("VedicDaySunrises: %v", err)
+	}
+	vaar, err := VaarFromSunrises(lsk, sunrise, next)
+	if err != nil {
+		t.Fatalf("VaarFromSunrises: %v", err)
+	}
+	if vaar.Progress != 0 {
+		t.Fatalf("VaarFromSunrises progress must be 0, got %v", vaar.Progress)
+	}
+}
+
+func TestDashaSnapshotProgress(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	loc := GeoLocation{LatitudeDeg: 12.9716, LongitudeDeg: 77.5946, AltitudeM: 920}
+	// Match the full-kundali call below (ayanamsha 0, nutation on) so the
+	// standalone and embedded snapshots share the same birth Moon.
+	sank := SankrantiConfigDefault()
+	sank.AyanamshaSystem = 0
+	sank.UseNutation = true
+	birth := DashaBirthContext{
+		TimeKind:        DashaTimeUTC,
+		BirthUTC:        UtcTime{Year: 1990, Month: 1, Day: 1, Hour: 12},
+		HasLocation:     true,
+		Location:        loc,
+		BhavaConfig:     BhavaConfigDefault(),
+		RiseSetConfig:   RiseSetConfigDefault(),
+		SankrantiConfig: sank,
+	}
+	snap, err := eng.DashaSnapshot(eop, DashaSnapshotRequest{
+		Birth:         birth,
+		QueryTimeKind: DashaTimeUTC,
+		QueryUTC:      UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12},
+		System:        0,
+		MaxLevel:      2,
+		Variation:     DashaVariationConfigDefault(),
+	})
+	if err != nil {
+		t.Fatalf("DashaSnapshot: %v", err)
+	}
+	if snap.Count < 2 {
+		t.Fatalf("expected at least 2 active periods, got %d", snap.Count)
+	}
+	for i := 0; i < int(snap.Count); i++ {
+		p := snap.Periods[i]
+		got := snap.Progress[i]
+		if got < 0 || got > 1 {
+			t.Fatalf("level %d progress %v outside [0,1]", i, got)
+		}
+		want := (snap.QueryJD - p.StartJD) / (p.EndJD - p.StartJD)
+		if math.Abs(got-want) > 1e-9 {
+			t.Fatalf("level %d progress %v, recomputed %v", i, got, want)
+		}
+	}
+
+	// The full-kundali embedded snapshot carries the same progress values.
+	cfg := FullKundaliConfigDefault()
+	cfg.IncludeDasha = true
+	cfg.DashaConfig.Count = 1
+	cfg.DashaConfig.Systems[0] = 0
+	cfg.DashaConfig.MaxLevels[0] = 2
+	cfg.DashaConfig.SnapshotTime = &DashaSnapshotTime{TimeKind: DashaTimeUTC, UTC: UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12}}
+	kundali, err := eng.FullKundaliForDate(eop, birth.BirthUTC, loc, BhavaConfigDefault(), RiseSetConfigDefault(), 0, true, cfg)
+	if err != nil {
+		t.Fatalf("FullKundaliForDate (snapshot): %v", err)
+	}
+	if len(kundali.DashaSnapshots) != 1 {
+		t.Fatalf("expected 1 embedded snapshot, got %d", len(kundali.DashaSnapshots))
+	}
+	embedded := kundali.DashaSnapshots[0]
+	if embedded.Count != snap.Count {
+		t.Fatalf("embedded snapshot count %d vs standalone %d", embedded.Count, snap.Count)
+	}
+	for i := 0; i < int(snap.Count); i++ {
+		if math.Abs(embedded.Progress[i]-snap.Progress[i]) > 1e-6 {
+			t.Fatalf("embedded level %d progress %v vs standalone %v", i, embedded.Progress[i], snap.Progress[i])
+		}
+	}
+}
+
+func TestFullKundaliTaraBalaOfficersTransit(t *testing.T) {
+	eng, eop := newRangeOpsFixtures(t)
+
+	utc := UtcTime{Year: 2025, Month: 1, Day: 15, Hour: 12}
+	loc := GeoLocation{LatitudeDeg: 12.9716, LongitudeDeg: 77.5946, AltitudeM: 920}
+	bhava := BhavaConfigDefault()
+	riseset := RiseSetConfigDefault()
+
+	// Defaults: all three sections off, chart-Moon tara reference.
+	cfg := FullKundaliConfigDefault()
+	if cfg.IncludeTaraBala || cfg.IncludeSamvatsaraOfficers || cfg.IncludeTransitAshtakavarga {
+		t.Fatalf("new sections must default off: %+v", cfg)
+	}
+	if cfg.TaraBalaReferenceNakshatraIndex != TaraBalaReferenceChartMoon {
+		t.Fatalf("tara bala reference default %d, want %d", cfg.TaraBalaReferenceNakshatraIndex, TaraBalaReferenceChartMoon)
+	}
+	off, err := eng.FullKundaliForDate(eop, utc, loc, bhava, riseset, 0, true, cfg)
+	if err != nil {
+		t.Fatalf("FullKundaliForDate (defaults): %v", err)
+	}
+	if off.TaraBala != nil || off.SamvatsaraOfficers != nil || off.TransitAshtakavarga != nil {
+		t.Fatalf("sections must be nil when not requested")
+	}
+
+	// Natal reference for the transit section: this chart's own rashis.
+	gp, err := eng.GrahaPositionsForDate(eop, utc, loc, bhava, 0, true, GrahaPositionsConfig{IncludeNakshatra: true, IncludeLagna: true})
+	if err != nil {
+		t.Fatalf("GrahaPositionsForDate: %v", err)
+	}
+	var ref AshtakavargaReference
+	for i := 0; i < 7; i++ {
+		ref.GrahaRashis[i] = gp.Grahas[i].RashiIndex
+	}
+	ref.LagnaRashi = gp.Lagna.RashiIndex
+
+	cfg.IncludeTaraBala = true
+	cfg.IncludeSamvatsaraOfficers = true
+	cfg.IncludeTransitAshtakavarga = true
+	cfg.TransitAshtakavargaReference = ref
+	on, err := eng.FullKundaliForDate(eop, utc, loc, bhava, riseset, 0, true, cfg)
+	if err != nil {
+		t.Fatalf("FullKundaliForDate (sections on): %v", err)
+	}
+	if on.TaraBala == nil || on.SamvatsaraOfficers == nil || on.TransitAshtakavarga == nil {
+		t.Fatalf("expected all three sections present")
+	}
+
+	// Tara bala against the chart's own Moon: the Moon is Janma.
+	tb := on.TaraBala
+	if !tb.ReferenceIsChartMoon || tb.ReferenceNakshatraIndex != gp.Grahas[1].NakshatraIndex {
+		t.Fatalf("tara bala reference: %+v (moon nakshatra %d)", tb, gp.Grahas[1].NakshatraIndex)
+	}
+	if tb.Grahas[1].TaraBala.TaraIndex != TaraIndexJanma || tb.Grahas[1].TaraBala.Count != 1 {
+		t.Fatalf("Moon must be Janma against its own nakshatra: %+v", tb.Grahas[1])
+	}
+	for g := 0; g < GrahaCount; g++ {
+		if tb.Grahas[g].NakshatraIndex != gp.Grahas[g].NakshatraIndex {
+			t.Fatalf("graha %d nakshatra %d vs positions %d", g, tb.Grahas[g].NakshatraIndex, gp.Grahas[g].NakshatraIndex)
+		}
+		pure, err := TaraBala(uint32(tb.ReferenceNakshatraIndex), uint32(tb.Grahas[g].NakshatraIndex))
+		if err != nil {
+			t.Fatalf("TaraBala: %v", err)
+		}
+		if tb.Grahas[g].TaraBala != pure {
+			t.Fatalf("graha %d tara bala %+v differs from pure %+v", g, tb.Grahas[g].TaraBala, pure)
+		}
+	}
+	if tb.Lagna.NakshatraIndex != gp.Lagna.NakshatraIndex {
+		t.Fatalf("lagna nakshatra %d vs positions %d", tb.Lagna.NakshatraIndex, gp.Lagna.NakshatraIndex)
+	}
+	standalone, err := eng.TaraBalaForDate(eop, utc, loc, 0, true, uint32(TaraBalaReferenceChartMoon))
+	if err != nil {
+		t.Fatalf("TaraBalaForDate: %v", err)
+	}
+	if standalone != *tb {
+		t.Fatalf("standalone tara bala differs from embedded section")
+	}
+	explicit, err := eng.TaraBalaForDate(eop, utc, loc, 0, true, 0)
+	if err != nil {
+		t.Fatalf("TaraBalaForDate (explicit reference): %v", err)
+	}
+	if explicit.ReferenceIsChartMoon || explicit.ReferenceNakshatraIndex != 0 {
+		t.Fatalf("explicit reference not honored: %+v", explicit)
+	}
+	if _, err := eng.TaraBalaForDate(eop, utc, loc, 0, true, 27); err == nil {
+		t.Fatalf("expected error for reference nakshatra out of range")
+	}
+
+	// Samvatsara officers: nine offices in order, vaar lords, events inside
+	// the lunar year and on their Vedic day.
+	so := on.SamvatsaraOfficers
+	if so.Varsha.SamvatsaraIndex < 0 || so.Varsha.SamvatsaraIndex >= 60 {
+		t.Fatalf("varsha samvatsara index out of range: %+v", so.Varsha)
+	}
+	if utcJD(so.Varsha.Start) > utcJD(utc) || utcJD(so.Varsha.End) < utcJD(utc) {
+		t.Fatalf("varsha window does not contain the query: %+v", so.Varsha)
+	}
+	for i, o := range so.Officers {
+		if int(o.OfficeIndex) != i {
+			t.Fatalf("officer %d office index %d", i, o.OfficeIndex)
+		}
+		if o.VaarIndex > 6 || o.LordIndex > 6 {
+			t.Fatalf("officer %d vaar/lord out of range: %+v", i, o)
+		}
+		if ev, start := utcJD(o.EventUTC), utcJD(so.Varsha.Start); ev < start-1e-5 || ev > utcJD(so.Varsha.End)+30 {
+			t.Fatalf("officer %d event outside the lunar year: %+v", i, o)
+		}
+		// Raja follows the udaya rule: its Vedic day is the one at whose
+		// sunrise Chaitra Shukla Pratipada prevails, so the tithi may begin
+		// before that sunrise. The sankranti offices use the Vedic day
+		// containing the event.
+		ds, ev := utcJD(o.VedicDayStart), utcJD(o.EventUTC)
+		if o.OfficeIndex == SamvatsaraOfficeRaja {
+			if ev < ds-1.1 || ev > ds+1.1 {
+				t.Fatalf("officer %d event not within a day of its Vedic day start: %+v", i, o)
+			}
+		} else if ev < ds-1e-5 || ev > ds+1.1 {
+			t.Fatalf("officer %d event not on its Vedic day: %+v", i, o)
+		}
+		if VaarFromJD(utcJD(o.VedicDayStart)+0.5) != int32(o.VaarIndex) {
+			t.Fatalf("officer %d vaar index %d disagrees with the Vedic day start weekday", i, o.VaarIndex)
+		}
+	}
+	wantOffices := []string{"Raja", "Mantri", "Sasyesha", "Dhanyesha", "Meghesha", "Rasesha", "Nirasesha", "Phalesha", "Durgesha"}
+	for i, want := range wantOffices {
+		if got := SamvatsaraOfficeName(uint32(i)); got != want {
+			t.Fatalf("SamvatsaraOfficeName(%d) = %q, want %q", i, got, want)
+		}
+	}
+	if SamvatsaraOfficeName(9) != "" {
+		t.Fatalf("SamvatsaraOfficeName(9) should be empty")
+	}
+	soStandalone, err := eng.SamvatsaraOfficers(eop, utc, loc, nil, 0, true)
+	if err != nil {
+		t.Fatalf("SamvatsaraOfficers: %v", err)
+	}
+	if soStandalone != *so {
+		t.Fatalf("standalone samvatsara officers differ from embedded section")
+	}
+	soExplicit, err := eng.SamvatsaraOfficers(eop, utc, loc, &riseset, 0, true)
+	if err != nil {
+		t.Fatalf("SamvatsaraOfficers (explicit riseset): %v", err)
+	}
+	if soExplicit != *so {
+		t.Fatalf("explicit default riseset config changed samvatsara officers")
+	}
+
+	// Transit ashtakavarga: reference echoed, transit rashis match the
+	// chart, and the pure scorer agrees.
+	ta := on.TransitAshtakavarga
+	if ta.Reference != ref {
+		t.Fatalf("transit reference %+v, want %+v", ta.Reference, ref)
+	}
+	natal, err := CalculateAshtakavarga(ref.GrahaRashis, ref.LagnaRashi)
+	if err != nil {
+		t.Fatalf("CalculateAshtakavarga: %v", err)
+	}
+	var lons [7]float64
+	for i := 0; i < 7; i++ {
+		lons[i] = gp.Grahas[i].SiderealLongitude
+	}
+	pure, err := TransitAshtakavarga(natal, lons)
+	if err != nil {
+		t.Fatalf("TransitAshtakavarga: %v", err)
+	}
+	for i := 0; i < 7; i++ {
+		if ta.Entries[i].RashiIndex != gp.Grahas[i].RashiIndex {
+			t.Fatalf("transit entry %d rashi %d vs positions %d", i, ta.Entries[i].RashiIndex, gp.Grahas[i].RashiIndex)
+		}
+		if ta.Entries[i] != pure[i] {
+			t.Fatalf("transit entry %d %+v differs from pure %+v", i, ta.Entries[i], pure[i])
+		}
+	}
+	taStandalone, err := eng.TransitAshtakavargaForDate(eop, utc, 0, true, ref)
+	if err != nil {
+		t.Fatalf("TransitAshtakavargaForDate: %v", err)
+	}
+	if taStandalone != *ta {
+		t.Fatalf("standalone transit ashtakavarga differs from embedded section")
+	}
+	badRef := ref
+	badRef.LagnaRashi = 12
+	if _, err := eng.TransitAshtakavargaForDate(eop, utc, 0, true, badRef); err == nil {
+		t.Fatalf("expected error for natal lagna rashi out of range")
 	}
 }

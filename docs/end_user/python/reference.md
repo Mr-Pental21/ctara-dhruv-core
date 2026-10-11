@@ -25,6 +25,12 @@ This page summarizes the public Python wrapper by module, using
 - charakaraka range operations `charakaraka_events`,
   `next_charakaraka_event`, `prev_charakaraka_event` plus the cap
   `MAX_CHARAKARAKA_EVENTS`
+- tara bala, kakshya, transit ashtakavarga, and samvatsara officer helpers
+  from `vedic` (`tara_name`, `tara_bala`, `tara_bala_for_date`,
+  `kakshya_index`, `kakshya_lord`, `kakshya_bindu`, `transit_ashtakavarga`,
+  `transit_ashtakavarga_for_date`, `samvatsara_office_name`,
+  `samvatsara_officers`) with their result dataclasses and
+  `TARA_BALA_REFERENCE_CHART_MOON`
 - build identity: `library_version`, `build_git_hash`
 
 The fuller public surface is intentionally module-based.
@@ -228,6 +234,52 @@ replacement.
   - `graha_drishti`
   - `graha_drishti_matrix`
   - `drishti_for_date`
+- tara bala, kakshya, transit ashtakavarga, samvatsara officers:
+  - `tara_name(index)` — `"Janma"` .. `"Parama Mitra"` (0..8), `None`
+    otherwise
+  - `tara_bala(reference_nakshatra_index, target_nakshatra_index)` — pure
+    `TaraBala`: `tara_index` (0=Janma, 1=Sampat, 2=Vipat, 3=Kshema,
+    4=Pratyak, 5=Sadhaka, 6=Vadha, 7=Mitra, 8=Parama Mitra), inclusive
+    `count` (1..27), `cycle` (1..3), `favorable` (Sampat, Kshema, Sadhaka,
+    Mitra, Parama Mitra)
+  - `tara_bala_for_date(engine, eop, utc, location, ayanamsha_system=0,
+    use_nutation=1, reference_nakshatra_index=TARA_BALA_REFERENCE_CHART_MOON)`
+    — `TaraBalaResult` (`reference_nakshatra_index`,
+    `reference_is_chart_moon`, `grahas` (9 `TaraBalaEntry`), `lagna`); the
+    default reference `255` counts from this chart's own Moon nakshatra
+  - `kakshya_index(sidereal_longitude_deg)` — 0..7 (each 3°45'), `-1` for
+    non-finite input
+  - `kakshya_lord(kakshya_index)` — BAV contributor index of the lord
+    (order Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna, i.e.
+    `6, 4, 2, 0, 5, 3, 1, 7`), `-1` when invalid
+  - `kakshya_bindu(bav, sidereal_longitude_deg)` — `True` when the kakshya
+    lord contributed a bindu to that rashi in the `BhinnaAshtakavarga`
+  - `transit_ashtakavarga(natal, transit_sidereal_lons)` — pure scoring of
+    seven transiting sapta grahas (Sun..Saturn) against an
+    `AshtakavargaResult`; returns 7 `TransitAshtakavargaEntry` values
+    (`graha_index`, `rashi_index`, `bav_bindus`, `sav_total`,
+    `sav_after_trikona`, `sav_after_ekadhipatya`, `kakshya_index`,
+    `kakshya_lord`, `kakshya_bindu`). Rahu/Ketu and outer planets are not
+    scored
+  - `transit_ashtakavarga_for_date(engine, eop, utc, reference,
+    ayanamsha_system=0, use_nutation=1)` — `TransitAshtakavargaResult`
+    (`reference`, `entries`); `reference` is an `AshtakavargaReference`
+    (`graha_rashis` for Sun..Saturn, `lagna_rashi`, 0-based), a dict with
+    those keys, or a `(graha_rashis, lagna_rashi)` tuple. Geocentric; no
+    location needed
+  - `samvatsara_office_name(index)` — `"Raja"`, `"Mantri"`, `"Sasyesha"`,
+    `"Dhanyesha"`, `"Meghesha"`, `"Rasesha"`, `"Nirasesha"`, `"Phalesha"`,
+    `"Durgesha"` (0..8)
+  - `samvatsara_officers(engine, eop, utc, location, riseset_config=None,
+    ayanamsha_system=0, use_nutation=1)` — `SamvatsaraOfficers` (`varsha`
+    as `VarshaInfo`, `officers` as 9 `SamvatsaraOfficer` values with
+    `office_index`, `vaar_index`, `lord_index`, `event_utc`,
+    `vedic_day_start`). Each office is the vaar lord of the Vedic day
+    (sunrise-to-sunrise at the location) of one event of the lunar year:
+    Raja = Chaitra Shukla Pratipada (udaya rule), Mantri = Mesha sankranti,
+    Sasyesha = Karka, Dhanyesha = Dhanu, Meghesha = Sun entering Ardra,
+    Rasesha = Tula, Nirasesha = Makara, Phalesha = Meena, Durgesha = Simha;
+    events are the first occurrence at/after the year start
 
 `panchang`:
 
@@ -280,13 +332,21 @@ location-dependent elements (vaar, hora, ghatika) without a location raises
 `DhruvError`. The returned `PanchangResult` keeps every element `Optional` —
 each of the ten fields is `None` unless requested and computed.
 
+Every info dataclass (`TithiInfo`, `KaranaInfo`, `YogaInfo`, `VaarInfo`,
+`HoraInfo`, `GhatikaInfo`, `PanchangNakshatraInfo`, `MasaInfo`, `AyanaInfo`,
+`VarshaInfo`) carries `progress`: the elapsed fraction of its
+`[start, end)` window at the query moment, `(now - start) / (end - start)`
+clamped to [0, 1]. It is `0.0` in `panchang_events` listings and from
+`vaar_from_sunrises`.
+
 `panchang(...)` also accepts optional `known_masa` (`MasaInfo`),
 `known_ayana` (`AyanaInfo`), and `known_varsha` (`VarshaInfo`) keyword
 arguments — the exact dataclasses returned by a previous `panchang` call.
-A known value is reused verbatim (skipping the new-moon/sankranti search)
-only when its element is selected in `include_mask` and the requested moment
-falls inside the value's `[start, end)` window; stale or out-of-window
-values are silently ignored and the element is recomputed.
+A known value is reused (skipping the new-moon/sankranti search) only when
+its element is selected in `include_mask` and the requested moment falls
+inside the value's `[start, end)` window; its window and identity fields
+come back verbatim while `progress` is re-derived for the new moment. Stale
+or out-of-window values are silently ignored and the element is recomputed.
 
 `panchang_events(engine, eop, from_utc, to_utc,
 include_mask=INCLUDE_LOCATION_INDEPENDENT, location=None,
@@ -334,6 +394,13 @@ point: call again with `from_utc=result.next_from` and deduplicate on
   Lagna and Rahu/Ketu report ecliptic latitude exactly 0. The result also
   exposes `earth_orientation_valid`, `gmst_deg`, and `gast_deg` (Greenwich
   mean/apparent sidereal time in degrees at the request instant).
+  Optional `config["include_speeds"]` (0/1) adds per-entry rates:
+  `speed_valid`, `longitude_speed_deg_per_day` (rate of the reported
+  sidereal longitude — a central finite difference over ±1 minute, so
+  ayanamsha drift and the reference plane are included; negative means
+  retrograde), and `latitude_speed_deg_per_day` (rate of the ecliptic
+  latitude; 0 for lagna and Rahu/Ketu). Outer planets receive a real
+  `basic_states.retrograde` whenever basic states are requested.
 - `core_bindus`
 - `charakaraka_for_date`
 - `charakaraka_events(engine, eop, from_utc, to_utc, scheme=0,
@@ -461,7 +528,9 @@ apply to the graha. They also expose `lajjitadi`, `lajjitadi_states`, and
 
 Dasha period objects expose `entity_name` with the exact canonical Sanskrit
 entity name, plus structured `start_utc` / `end_utc` alongside `start_jd` /
-`end_jd`. Dasha snapshots similarly expose `query_utc` alongside `query_jd`.
+`end_jd`. Dasha snapshots similarly expose `query_utc` alongside `query_jd`,
+and `progress` — a list parallel to `periods` holding each active period's
+elapsed fraction at `query_jd`, clamped to [0, 1].
 Python dasha calls can use either UTC/location birth context or `birth_jd` plus
 precomputed `inputs` on the same main functions.
 
@@ -622,7 +691,19 @@ Common dict-style or struct-style config inputs:
   full-kundali results can also expose bhava-cusp distance arrays.
   `graha_positions_config.include_equatorial` enables per-entry equatorial
   output and result-level `gmst_deg`/`gast_deg` on the embedded
-  `graha_positions` section.
+  `graha_positions` section; `graha_positions_config.include_speeds`
+  enables the per-entry `speed_valid` / `*_speed_deg_per_day` fields.
+  `include_tara_bala` adds `FullKundaliResult.tara_bala` counted from
+  `tara_bala_reference_nakshatra_index` (0..26, or the default
+  `TARA_BALA_REFERENCE_CHART_MOON` = 255 for this chart's Moon).
+  `include_samvatsara_officers` adds `samvatsara_officers`.
+  `include_transit_ashtakavarga` adds `transit_ashtakavarga` and requires
+  the natal inputs in `transit_ashtakavarga_reference.graha_rashis[0..6]`
+  (Sun..Saturn) and `transit_ashtakavarga_reference.lagna_rashi` (0-based).
+  All three default to off and their sections are `None` when not
+  requested. Embedded `dasha_snapshots` carry `progress` and embedded
+  amsha entries carry `vargottama` (varga rashi equals the D1 rashi;
+  always `False` on D1).
 - dasha configs returned by `dasha_selection_config_default` and `dasha_variation_config_default`
 
 For embedded full-kundali dasha snapshots, the CFFI dasha selection config now

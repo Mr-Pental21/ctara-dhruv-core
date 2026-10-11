@@ -91,6 +91,19 @@ are omitted, the Elixir wrapper aligns with the shared wrapper convention:
   `time_upagraha_jd/1`, `all_sphutas/1`, `calculate_ashtakavarga/1`,
   `calculate_bav/1`, `calculate_all_bav/1`, `calculate_sav/1`,
   `trikona_sodhana/1`, `ekadhipatya_sodhana/1`
+- tara bala, kakshya, transit ashtakavarga, and samvatsara office helpers:
+  `tara_bala/1` (`%{reference_nakshatra_index, target_nakshatra_index}`,
+  0-based, reduced mod 27; returns `tara`, `tara_name`, `tara_index` 0..8,
+  `count` 1..27, `cycle` 1..3, `favorable`), `tara_name/1` (`%{index}`),
+  `kakshya_index/1` (`%{sidereal_longitude_deg}` -> 0..7),
+  `kakshya_lord/1` (`%{kakshya_index}` -> BAV contributor index
+  0=Sun..6=Saturn, 7=Lagna), `kakshya_bindu/1` (`%{bav,
+  sidereal_longitude_deg}` with a `calculate_bav/1` result map),
+  `transit_ashtakavarga/1` (`%{natal, transit_sidereal_lons}` where `natal`
+  is a `calculate_ashtakavarga/1` result, or `%{graha_rashis, lagna_rashi,
+  transit_sidereal_lons}`; returns `%{entries: [7]}` in the
+  `Jyotish.transit_ashtakavarga/2` entry shape), and
+  `samvatsara_office_name/1` (`%{index}` -> `%{name, event_name}`)
 - engine-free amsha helpers:
   `amsha_rashi_infos/1`, `amsha_variations/1`, `amsha_variations_many/1`
 
@@ -171,6 +184,13 @@ the requested moment lies inside the value's `start`/`end` window; stale
 values are silently recomputed. Unknown enum names are rejected with
 `:invalid_request`.
 
+Every panchang element map (`tithi`, `karana`, `yoga`, `nakshatra`, `vaar`,
+`hora`, `ghatika`, `masa`, `ayana`, `varsha`) carries `:progress`, the
+elapsed fraction `(now - start) / (end - start)` of the interval at the
+query moment clamped to `[0, 1]`. It is `0.0` in `events/2` range listings
+and from `vaar_from_sunrises/2`; known values fed back to `daily/2` get
+their `:progress` re-derived for the new moment.
+
 `events/2` streams exact panchang element segments over a UTC range. The
 request takes `:from_utc` and `:to_utc`, an optional `:include_mask` (any
 element/group names or bits — integer mask, name, or list of names/atoms,
@@ -219,6 +239,13 @@ refute events.truncated
   `:gmst_deg`, and `:gast_deg` (Greenwich mean/apparent sidereal time in
   degrees), populated when equatorial output is requested. The same fields
   appear in the embedded `full_kundali` `:graha_positions` block.
+  With `:include_speeds` enabled (default `false`), each entry carries
+  `:speed_valid`, `:longitude_speed_deg_per_day`, and
+  `:latitude_speed_deg_per_day` — central finite differences (±1 minute)
+  of the reported sidereal longitude (ayanamsha drift and reference plane
+  included; negative = retrograde) and of the ecliptic latitude. Lagna and
+  Rahu/Ketu report a latitude rate of exactly `0.0`. With basic states
+  requested, outer planets now carry a real `basic_states.retrograde`.
 - `special_lagnas/2`
 - `arudha/2`
 - `upagrahas/2`
@@ -236,9 +263,43 @@ refute events.truncated
   nested `:graha_positions_config[:basic_states_config]` flows through to the
   same entry/state outputs, and sensitive-point distance mode can also surface
   bhava-cusp distance arrays
+- `tara_bala/2`
+  Tara bala of the nine grahas and the lagna at `:utc` / `:location`,
+  counted from `:reference_nakshatra_index` (0-based; omit or pass `255`
+  for this chart's own Moon nakshatra). Returns
+  `%{reference_nakshatra_index, reference_is_chart_moon, grahas: [9],
+  lagna}`; each entry carries `:graha` (grahas only), `:nakshatra_index`,
+  `:tara` (`:janma` .. `:parama_mitra`), `:tara_name`, `:tara_index`
+  (0..8), `:count` (inclusive, 1..27), `:cycle` (1..3), and `:favorable`
+  (Sampat, Kshema, Sadhaka, Mitra, Parama Mitra).
+- `transit_ashtakavarga/2`
+  Scores the transiting Sun..Saturn at `:utc` against a natal chart given
+  by the required `:ashtakavarga_reference` (`%{graha_rashis: [7],
+  lagna_rashi}`, 0-based natal rashi indices). Returns `%{reference,
+  entries: [7]}`; each entry carries `:graha_index`, `:graha`,
+  `:rashi_index`, `:bav_bindus`, `:sav_total`, `:sav_after_trikona`,
+  `:sav_after_ekadhipatya`, `:kakshya_index` (0..7, eighths of 3°45'),
+  `:kakshya_lord` (contributor index; order Saturn, Jupiter, Mars, Sun,
+  Venus, Mercury, Moon, Lagna), and `:kakshya_bindu`. Rahu/Ketu and outer
+  planets are not scored.
+- `samvatsara_officers/2`
+  Office-bearers of the lunar year containing `:utc`, Vedic days evaluated
+  at `:location` (optional `:riseset_config`). Returns `%{varsha, officers:
+  [9]}` in office order (Raja, Mantri, Sasyesha, Dhanyesha, Meghesha,
+  Rasesha, Nirasesha, Phalesha, Durgesha); each officer carries `:office`,
+  `:office_index`, `:office_name`, `:event_name`, `:event_utc`,
+  `:vedic_day_start`, `:vaar`, `:lord`, `:lord_index`, and `:lord_name`.
+  Each office is the vaar lord of the Vedic day of its event (Raja =
+  Chaitra Shukla Pratipada under the udaya rule, Mantri = Mesha sankranti,
+  Sasyesha = Karka, Dhanyesha = Dhanu, Meghesha = Sun entering Ardra,
+  Rasesha = Tula, Nirasesha = Makara, Phalesha = Meena, Durgesha = Simha),
+  first occurrence at/after the year start.
 - `amsha/2`
 - `amsha_series/2`
 - `amsha_lagna_events/2`
+
+Every amsha entry also carries `"vargottama"`: `true` when the varga rashi
+equals the point's D1 rashi, always `false` on the D1 chart itself.
 
 Each chart map carries `"sanskrit_name"` — the library's display name for the
 amsha (`"Navamsha"`, `"Drekkana"`, ...) — alongside the code-derived
@@ -599,7 +660,16 @@ Accepted enum-style string values:
   selected elements.
 - Dasha period results now include `:start_utc` / `:end_utc` alongside
   `:start_jd` / `:end_jd`, and dasha snapshots include `:query_utc`
-  alongside `:query_jd`.
+  alongside `:query_jd` plus a `:progress` list parallel to `:periods`
+  (elapsed fraction of each active period at the query moment, in
+  `[0, 1]`).
+- `full_kundali_config` also accepts `:include_tara_bala` (with
+  `:tara_bala_reference_nakshatra_index`, default `255` = chart Moon),
+  `:include_samvatsara_officers`, and `:include_transit_ashtakavarga`
+  (which requires `:transit_ashtakavarga_reference`, `%{graha_rashis: [7],
+  lagna_rashi}`); all default to `false`. The result then carries
+  `:tara_bala`, `:samvatsara_officers`, and `:transit_ashtakavarga` in the
+  standalone-op shapes, `nil` when not requested.
 
 For build/runtime notes, see [`bindings/elixir-open/README.md`](../../../bindings/elixir-open/README.md).
 

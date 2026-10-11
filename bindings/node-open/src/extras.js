@@ -207,6 +207,140 @@ function ashtakavargaForDate(engine, eop, utc, location, ayanamshaSystem = 0, us
   return r.result;
 }
 
+// Tara bala tara indices (dhruv_tara_name order).
+const TARA = Object.freeze({
+  JANMA: 0,
+  SAMPAT: 1,
+  VIPAT: 2,
+  KSHEMA: 3,
+  PRATYAK: 4,
+  SADHAKA: 5,
+  VADHA: 6,
+  MITRA: 7,
+  PARAMA_MITRA: 8,
+});
+
+// Samvatsara office indices (dhruv_samvatsara_office_name order).
+const SAMVATSARA_OFFICE = Object.freeze({
+  RAJA: 0,
+  MANTRI: 1,
+  SASYESHA: 2,
+  DHANYESHA: 3,
+  MEGHESHA: 4,
+  RASESHA: 5,
+  NIRASESHA: 6,
+  PHALESHA: 7,
+  DURGESHA: 8,
+});
+
+// Reference selecting the chart's own Moon nakshatra for tara bala
+// (DHRUV_TARA_BALA_REFERENCE_CHART_MOON).
+const TARA_BALA_REFERENCE_CHART_MOON = 255;
+
+// Tara bala of `targetNakshatraIndex` counted inclusively from
+// `referenceNakshatraIndex` (both 0..26). Returns { taraIndex, count, cycle,
+// favorable }: `taraIndex` is the TARA code, `count` the inclusive count
+// 1..27, `cycle` the pass through the nine-fold sequence 1..3, and
+// `favorable` true for Sampat, Kshema, Sadhaka, Mitra, and Parama Mitra.
+function taraBala(referenceNakshatraIndex, targetNakshatraIndex) {
+  const r = addon.taraBala(referenceNakshatraIndex, targetNakshatraIndex);
+  checkStatus('tara_bala', r.status);
+  return r.result;
+}
+
+// Tara bala of every graha and the lagna at `utc` against a reference
+// nakshatra (TARA_BALA_REFERENCE_CHART_MOON = this chart's own Moon).
+// Returns { referenceNakshatraIndex, referenceIsChartMoon, grahas[9], lagna }
+// with entries { nakshatraIndex, taraBala }.
+function taraBalaForDate(
+  engine,
+  eop,
+  utc,
+  location,
+  ayanamshaSystem = 0,
+  useNutation = true,
+  referenceNakshatraIndex = TARA_BALA_REFERENCE_CHART_MOON,
+) {
+  const r = addon.taraBalaForDate(
+    engine._handle,
+    eop._handle,
+    utc,
+    location,
+    ayanamshaSystem,
+    !!useNutation,
+    referenceNakshatraIndex,
+  );
+  checkStatus('tara_bala_for_date', r.status);
+  return r.result;
+}
+
+// Kakshya (eighth of a rashi, 3 deg 45 min) index 0..7 of a sidereal
+// longitude; -1 for a non-finite input.
+function kakshyaIndex(siderealLongitudeDeg) {
+  return addon.kakshyaIndex(siderealLongitudeDeg);
+}
+
+// BAV contributor index of a kakshya lord (0=Sun .. 6=Saturn, 7=Lagna) in
+// the order Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna; -1 for
+// an invalid kakshya index.
+function kakshyaLord(kakshyaIdx) {
+  return addon.kakshyaLord(kakshyaIdx);
+}
+
+// Whether the kakshya lord at `siderealLongitudeDeg` contributed a bindu to
+// that rashi in `bav` (a bhinna ashtakavarga object with `contributors`).
+function kakshyaBindu(bav, siderealLongitudeDeg) {
+  const r = addon.kakshyaBindu(bav, siderealLongitudeDeg);
+  checkStatus('kakshya_bindu', r.status);
+  return r.value;
+}
+
+// Transit ashtakavarga of seven transit sidereal longitudes (Sun..Saturn)
+// against a natal ashtakavarga result (the `calculateAshtakavarga` /
+// `ashtakavargaForDate` shape). Returns 7 entries { grahaIndex, rashiIndex,
+// bavBindus, savTotal, savAfterTrikona, savAfterEkadhipatya, kakshyaIndex,
+// kakshyaLord, kakshyaBindu }. Rahu/Ketu and outer planets are not scored.
+function transitAshtakavarga(natal, transitSiderealLons) {
+  const r = addon.transitAshtakavarga(natal, transitSiderealLons);
+  checkStatus('transit_ashtakavarga', r.status);
+  return r.entries;
+}
+
+// Transit ashtakavarga at `utc` against the natal inputs
+// `reference` = { grahaRashis: [7], lagnaRashi }. Returns
+// { reference, entries[7] }.
+function transitAshtakavargaForDate(engine, eop, utc, ayanamshaSystem = 0, useNutation = true, reference) {
+  const r = addon.transitAshtakavargaForDate(
+    engine._handle,
+    eop._handle,
+    utc,
+    ayanamshaSystem,
+    !!useNutation,
+    reference,
+  );
+  checkStatus('transit_ashtakavarga_for_date', r.status);
+  return r.result;
+}
+
+// Office-bearers of the lunar year containing `utc`: each office is the vaar
+// lord of the Vedic day (sunrise-to-sunrise at `location`) of its defining
+// event. Returns { varsha, officers[9] } with officers { officeIndex,
+// officeName, vaarIndex, lordIndex, eventUtc, vedicDayStart }. `riseSetConfig`
+// null selects the library defaults.
+function samvatsaraOfficers(engine, eop, utc, location, ayanamshaSystem = 0, useNutation = true, riseSetConfig = null) {
+  const r = addon.samvatsaraOfficers(
+    engine._handle,
+    eop._handle,
+    utc,
+    location,
+    ayanamshaSystem,
+    !!useNutation,
+    riseSetConfig,
+  );
+  checkStatus('samvatsara_officers', r.status);
+  return r.result;
+}
+
 function grahaDrishti(grahaIndex, sourceLon, targetLon) {
   const r = addon.grahaDrishti(grahaIndex, sourceLon, targetLon);
   checkStatus('graha_drishti', r.status);
@@ -622,6 +756,17 @@ module.exports = {
   trikonaSodhana,
   ekadhipatyaSodhana,
   ashtakavargaForDate,
+  TARA,
+  SAMVATSARA_OFFICE,
+  TARA_BALA_REFERENCE_CHART_MOON,
+  taraBala,
+  taraBalaForDate,
+  kakshyaIndex,
+  kakshyaLord,
+  kakshyaBindu,
+  transitAshtakavarga,
+  transitAshtakavargaForDate,
+  samvatsaraOfficers,
   grahaDrishti,
   grahaDrishtiMatrixForLongitudes,
   drishtiForDate,

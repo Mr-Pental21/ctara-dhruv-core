@@ -3290,6 +3290,7 @@ fn ffi_full_kundali_result_free_double_free_same_pointer() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3316,6 +3317,14 @@ fn ffi_full_kundali_result_free_double_free_same_pointer() {
         },
         include_dasha: 1,
         dasha_config: dasha_cfg,
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -3393,6 +3402,7 @@ fn ffi_full_kundali_error_path_free_safety() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3419,6 +3429,14 @@ fn ffi_full_kundali_error_path_free_safety() {
         },
         include_dasha: 1,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -3486,6 +3504,7 @@ fn ffi_full_kundali_dasha_overflow_rejection() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3512,6 +3531,14 @@ fn ffi_full_kundali_dasha_overflow_rejection() {
         },
         include_dasha: 1,
         dasha_config: dasha_cfg,
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -3589,6 +3616,7 @@ fn ffi_full_kundali_dasha_partial_success_contract() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3615,6 +3643,14 @@ fn ffi_full_kundali_dasha_partial_success_contract() {
         },
         include_dasha: 1,
         dasha_config: dasha_cfg,
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -3703,6 +3739,7 @@ fn ffi_full_kundali_panchang_only() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3729,6 +3766,14 @@ fn ffi_full_kundali_panchang_only() {
         },
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -3799,6 +3844,7 @@ fn ffi_full_kundali_panchang_disabled() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3825,6 +3871,14 @@ fn ffi_full_kundali_panchang_disabled() {
         },
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -3889,6 +3943,7 @@ fn ffi_full_kundali_calendar_only_mask() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -3915,6 +3970,14 @@ fn ffi_full_kundali_calendar_only_mask() {
         },
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -3987,6 +4050,7 @@ fn ffi_full_kundali_panchang_and_calendar() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -4013,6 +4077,14 @@ fn ffi_full_kundali_panchang_and_calendar() {
         },
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -4086,6 +4158,7 @@ fn ffi_full_kundali_bhava_cusps_enabled() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -4112,6 +4185,14 @@ fn ffi_full_kundali_bhava_cusps_enabled() {
         },
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();
@@ -4187,6 +4268,7 @@ fn ffi_full_kundali_bhava_cusps_disabled() {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -4213,6 +4295,14 @@ fn ffi_full_kundali_bhava_cusps_disabled() {
         },
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: 255,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     };
 
     let mut result = std::mem::MaybeUninit::<DhruvFullKundaliResult>::uninit();

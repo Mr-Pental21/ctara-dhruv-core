@@ -4,9 +4,11 @@
 //! re-exports them so existing `dhruv_vedic_ops` paths keep working.
 
 pub use dhruv_search::jyotish_types::{
-    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig, BindusConfig,
-    BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig, DrishtiResult,
-    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
-    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry,
-    ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
+    AmshaChart, AmshaChartScope, AmshaEntry, AmshaResult, AmshaSelectionConfig,
+    AshtakavargaReference, BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime,
+    DrishtiConfig, DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry,
+    GrahaLongitudeKind, GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions,
+    GrahaPositionsConfig, MAX_AMSHA_REQUESTS, ShadbalaEntry, ShadbalaResult, SphutalResult,
+    TARA_BALA_REFERENCE_CHART_MOON, TaraBalaEntry, TaraBalaResult, TransitAshtakavargaResult,
+    VimsopakaEntry, VimsopakaResult,
 };

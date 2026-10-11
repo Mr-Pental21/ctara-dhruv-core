@@ -792,6 +792,8 @@ class TithiInfo:
     ``tithi_index``: 0-based (0=Shukla Pratipada .. 29=Amavasya).
     ``paksha``: 0=Shukla, 1=Krishna.
     ``tithi_in_paksha``: 1-based (1-15).
+    ``progress``: elapsed fraction of ``[start, end)`` at the query moment,
+    clamped to [0, 1]; ``0.0`` in range listings (``panchang_events``).
     """
 
     tithi_index: int
@@ -799,6 +801,7 @@ class TithiInfo:
     tithi_in_paksha: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -807,12 +810,15 @@ class KaranaInfo:
 
     ``karana_index``: 0-based sequence index (0-59) within the synodic month.
     ``karana_name_index``: name index in ALL_KARANAS (0=Bava .. 10=Kinstugna).
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings.
     """
 
     karana_index: int
     karana_name_index: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -820,11 +826,14 @@ class YogaInfo:
     """Yoga with time boundaries.
 
     ``yoga_index``: 0-based (0=Vishkumbha .. 26=Vaidhriti).
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings.
     """
 
     yoga_index: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -832,11 +841,14 @@ class VaarInfo:
     """Vaar (weekday) with time boundaries.
 
     ``vaar_index``: 0=Ravivaar(Sunday) .. 6=Shanivaar(Saturday).
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings and from ``vaar_from_sunrises``.
     """
 
     vaar_index: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -845,12 +857,15 @@ class HoraInfo:
 
     ``hora_index``: Chaldean sequence lord index (0=Surya .. 6=Mangal).
     ``hora_position``: 0-based position within the Vedic day (0-23).
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings.
     """
 
     hora_index: int
     hora_position: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -858,11 +873,14 @@ class GhatikaInfo:
     """Ghatika with time boundaries.
 
     ``value``: ghatika number (1-60).
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings.
     """
 
     value: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -871,12 +889,15 @@ class PanchangNakshatraInfo:
 
     ``nakshatra_index``: 0-based (0=Ashwini .. 26=Revati).
     ``pada``: quarter 1-4.
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings.
     """
 
     nakshatra_index: int
     pada: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -885,12 +906,16 @@ class MasaInfo:
 
     ``masa_index``: 0-based (0=Chaitra .. 11=Phalguna).
     ``adhika``: True if intercalary month.
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings. Re-derived for the new moment when a known value is
+    reused by ``panchang(known_masa=...)``.
     """
 
     masa_index: int
     adhika: bool
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -898,11 +923,14 @@ class AyanaInfo:
     """Ayana with time boundaries.
 
     ``ayana``: 0=Uttarayana, 1=Dakshinayana.
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings.
     """
 
     ayana: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -911,12 +939,15 @@ class VarshaInfo:
 
     ``samvatsara_index``: 0-based (0=Prabhava .. 59=Akshaya).
     ``order``: 1-based position in the 60-year cycle (1-60).
+    ``progress``: elapsed fraction at the query moment, [0, 1]; ``0.0`` in
+    range listings.
     """
 
     samvatsara_index: int
     order: int
     start: UtcTime
     end: UtcTime
+    progress: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -1160,6 +1191,12 @@ class GrahaEntry:
     populated. Equinox of date, nutation per the request's ``use_nutation``
     flag; geometric (no light-time/aberration). Lagna and Rahu/Ketu report
     ecliptic latitude exactly 0.
+    ``speed_valid``: True when speeds were requested; then
+    ``longitude_speed_deg_per_day`` is the rate of the reported sidereal
+    longitude (central finite difference over +/-1 minute, so ayanamsha
+    drift and the reference plane are included; negative = retrograde) and
+    ``latitude_speed_deg_per_day`` the rate of the ecliptic latitude
+    (0 for lagna and Rahu/Ketu).
     """
 
     sidereal_longitude: float
@@ -1176,6 +1213,9 @@ class GrahaEntry:
     right_ascension_deg: float = 0.0
     declination_deg: float = 0.0
     ecliptic_latitude_deg: float = 0.0
+    speed_valid: bool = False
+    longitude_speed_deg_per_day: float = 0.0
+    latitude_speed_deg_per_day: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -1261,6 +1301,8 @@ class AmshaEntry:
     varga transform is not monotonic, so the transformed cusps in
     ``bhava_cusps`` are not ordered house boundaries and there is no
     cusp-based bhava inside a varga.
+    ``vargottama``: True when the varga rashi equals the point's D1 rashi;
+    always False on the D1 chart itself.
     """
 
     sidereal_longitude: float
@@ -1276,6 +1318,7 @@ class AmshaEntry:
     point_index: int = 0
     name: Optional[str] = None
     display_name: Optional[str] = None
+    vargottama: bool = False
 
 
 @dataclass(frozen=True)
@@ -1603,12 +1646,15 @@ class DashaSnapshot:
     ``query_utc``: structured Gregorian UTC query instant.
     ``query_jd``: query JD UTC kept alongside UTC.
     ``periods``: one period per active level.
+    ``progress``: elapsed fraction of each active period at ``query_jd``,
+    clamped to [0, 1]; parallel to ``periods``.
     """
 
     system: int
     query_jd: float
     periods: list[DashaPeriod]
     query_utc: Optional[UtcTime] = None
+    progress: list[float] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -1747,6 +1793,144 @@ class MovingOsculatingApogees:
 
 
 # ---------------------------------------------------------------------------
+# Tara bala, transit ashtakavarga, samvatsara officers
+# ---------------------------------------------------------------------------
+
+
+# ``reference_nakshatra_index`` sentinel selecting the chart's own Moon
+# nakshatra (DHRUV_TARA_BALA_REFERENCE_CHART_MOON).
+TARA_BALA_REFERENCE_CHART_MOON = 255
+
+
+@dataclass(frozen=True)
+class TaraBala:
+    """Nine-fold tara of a nakshatra counted from a reference nakshatra.
+
+    ``tara_index``: 0=Janma, 1=Sampat, 2=Vipat, 3=Kshema, 4=Pratyak,
+    5=Sadhaka, 6=Vadha, 7=Mitra, 8=Parama Mitra (see ``vedic.tara_name``).
+    ``count``: inclusive count from the reference nakshatra (1-27).
+    ``cycle``: pass through the nine-fold sequence (1-3).
+    ``favorable``: True for Sampat, Kshema, Sadhaka, Mitra, Parama Mitra.
+    """
+
+    tara_index: int
+    count: int
+    cycle: int
+    favorable: bool
+
+
+@dataclass(frozen=True)
+class TaraBalaEntry:
+    """Tara bala of one chart point.
+
+    ``nakshatra_index``: the point's nakshatra (0-26).
+    """
+
+    nakshatra_index: int
+    tara_bala: TaraBala
+
+
+@dataclass(frozen=True)
+class TaraBalaResult:
+    """Tara bala of the nine grahas and the lagna at a moment.
+
+    ``reference_nakshatra_index``: the nakshatra counted from (0-26).
+    ``reference_is_chart_moon``: True when the reference was this chart's
+    own Moon nakshatra (``TARA_BALA_REFERENCE_CHART_MOON``).
+    ``grahas``: 9 entries indexed by graha index 0-8. ``lagna``: lagna entry.
+    """
+
+    reference_nakshatra_index: int
+    reference_is_chart_moon: bool
+    grahas: list[TaraBalaEntry]
+    lagna: TaraBalaEntry
+
+
+@dataclass(frozen=True)
+class AshtakavargaReference:
+    """Natal ashtakavarga inputs (same as ``calculate_ashtakavarga``).
+
+    ``graha_rashis``: 0-based natal rashi of Sun .. Saturn (7 entries).
+    ``lagna_rashi``: 0-based natal lagna rashi.
+    """
+
+    graha_rashis: list[int]
+    lagna_rashi: int
+
+
+@dataclass(frozen=True)
+class TransitAshtakavargaEntry:
+    """One transiting sapta graha scored against a natal ashtakavarga.
+
+    ``graha_index``: 0=Sun .. 6=Saturn. ``rashi_index``: transit rashi.
+    ``bav_bindus``: natal BAV bindus of that graha in the transit rashi.
+    ``sav_total`` / ``sav_after_trikona`` / ``sav_after_ekadhipatya``:
+    natal SAV of the transit rashi, raw and after each sodhana.
+    ``kakshya_index``: 0-7 (each 3 deg 45'). ``kakshya_lord``: BAV
+    contributor index of the kakshya lord (0=Sun .. 6=Saturn, 7=Lagna; order
+    Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna).
+    ``kakshya_bindu``: True when that lord contributed a bindu to the rashi.
+    """
+
+    graha_index: int
+    rashi_index: int
+    bav_bindus: int
+    sav_total: int
+    sav_after_trikona: int
+    sav_after_ekadhipatya: int
+    kakshya_index: int
+    kakshya_lord: int
+    kakshya_bindu: bool
+
+
+@dataclass(frozen=True)
+class TransitAshtakavargaResult:
+    """Transit ashtakavarga of the seven sapta grahas at a moment.
+
+    Natal BAV/SAV only; Rahu/Ketu and outer planets are not scored.
+    ``reference``: the natal inputs used. ``entries``: Sun .. Saturn.
+    """
+
+    reference: AshtakavargaReference
+    entries: list[TransitAshtakavargaEntry]
+
+
+@dataclass(frozen=True)
+class SamvatsaraOfficer:
+    """One office-bearer of a lunar year.
+
+    ``office_index``: 0=Raja, 1=Mantri, 2=Sasyesha, 3=Dhanyesha,
+    4=Meghesha, 5=Rasesha, 6=Nirasesha, 7=Phalesha, 8=Durgesha (see
+    ``vedic.samvatsara_office_name``).
+    ``vaar_index``: vaar (0=Ravivaar .. 6=Shanivaar) of the Vedic day
+    containing the defining event; ``lord_index``: its graha lord.
+    ``event_utc``: the defining event instant. ``vedic_day_start``: the
+    sunrise starting that Vedic day at the location.
+    """
+
+    office_index: int
+    vaar_index: int
+    lord_index: int
+    event_utc: UtcTime
+    vedic_day_start: UtcTime
+
+
+@dataclass(frozen=True)
+class SamvatsaraOfficers:
+    """Samvatsara office-bearers of the lunar year containing a moment.
+
+    ``varsha``: the lunar year. ``officers``: 9 entries in office order --
+    Raja (Chaitra Shukla Pratipada, udaya rule), Mantri (Mesha sankranti),
+    Sasyesha (Karka), Dhanyesha (Dhanu), Meghesha (Sun entering Ardra),
+    Rasesha (Tula), Nirasesha (Makara), Phalesha (Meena), Durgesha (Simha);
+    each event is the first occurrence at/after the year start.
+    """
+
+    varsha: VarshaInfo
+    officers: list[SamvatsaraOfficer]
+
+
+# ---------------------------------------------------------------------------
 # Full Kundali
 # ---------------------------------------------------------------------------
 
@@ -1779,6 +1963,9 @@ class FullKundaliResult:
     panchang: Optional[PanchangResult] = None
     dasha: Optional[list[DashaHierarchy]] = None
     dasha_snapshots: Optional[list[DashaSnapshot]] = None
+    tara_bala: Optional[TaraBalaResult] = None
+    samvatsara_officers: Optional[SamvatsaraOfficers] = None
+    transit_ashtakavarga: Optional[TransitAshtakavargaResult] = None
 
 
 @dataclass(frozen=True)

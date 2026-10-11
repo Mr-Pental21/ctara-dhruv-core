@@ -313,6 +313,112 @@ pub fn calculate_ashtakavarga(graha_rashis: &[u8; 7], lagna_rashi: u8) -> Ashtak
 }
 
 // ---------------------------------------------------------------------------
+// Kakshya (eighth-of-rashi sub-divisions)
+// ---------------------------------------------------------------------------
+
+/// Number of kakshyas in a rashi.
+pub const KAKSHYA_COUNT: u8 = 8;
+
+/// Angular span of one kakshya in degrees (30° / 8 = 3°45').
+pub const KAKSHYA_SPAN_DEG: f64 = 30.0 / KAKSHYA_COUNT as f64;
+
+/// Kakshya lords in kakshya order, expressed as BAV contributor indices
+/// (0=Sun, 1=Moon, 2=Mars, 3=Mercury, 4=Jupiter, 5=Venus, 6=Saturn, 7=Lagna).
+///
+/// The classical order of kakshya lords within every rashi is Saturn,
+/// Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna (slowest to fastest, then
+/// the ascendant).
+pub const KAKSHYA_LORD_CONTRIBUTOR_INDEX: [u8; 8] = [6, 4, 2, 0, 5, 3, 1, 7];
+
+/// 0-based kakshya index (0..7) of a sidereal longitude within its rashi.
+pub fn kakshya_index(sidereal_longitude_deg: f64) -> u8 {
+    let lon = crate::util::normalize_360(sidereal_longitude_deg);
+    let deg_in_rashi = lon - (lon / 30.0).floor() * 30.0;
+    let idx = (deg_in_rashi / KAKSHYA_SPAN_DEG).floor() as i64;
+    idx.clamp(0, (KAKSHYA_COUNT - 1) as i64) as u8
+}
+
+/// BAV contributor index (0=Sun .. 6=Saturn, 7=Lagna) of the lord of
+/// kakshya `kakshya_index` (0..7). Indices outside 0..7 wrap.
+pub const fn kakshya_lord_contributor(kakshya_index: u8) -> u8 {
+    KAKSHYA_LORD_CONTRIBUTOR_INDEX[(kakshya_index % KAKSHYA_COUNT) as usize]
+}
+
+/// Graha lord of a kakshya, or `None` for the Lagna kakshya (index 7).
+pub fn kakshya_lord_graha(kakshya_index: u8) -> Option<crate::graha::Graha> {
+    match kakshya_lord_contributor(kakshya_index) {
+        7 => None,
+        idx => crate::graha::SAPTA_GRAHAS.get(idx as usize).copied(),
+    }
+}
+
+/// Whether the kakshya occupied by `sidereal_longitude_deg` carries a bindu
+/// in `bav`: true when the kakshya lord contributed a point to that rashi.
+pub fn kakshya_bindu(bav: &BhinnaAshtakavarga, sidereal_longitude_deg: f64) -> bool {
+    let lon = crate::util::normalize_360(sidereal_longitude_deg);
+    let rashi = ((lon / 30.0).floor() as usize).min(11);
+    let contributor = kakshya_lord_contributor(kakshya_index(lon)) as usize;
+    bav.contributors[rashi][contributor] == 1
+}
+
+// ---------------------------------------------------------------------------
+// Transit scoring against a natal ashtakavarga
+// ---------------------------------------------------------------------------
+
+/// Ashtakavarga score of one transiting sapta graha against a natal chart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransitAshtakavargaEntry {
+    /// Transiting graha (0=Sun through 6=Saturn).
+    pub graha_index: u8,
+    /// 0-based rashi the graha currently transits.
+    pub rashi_index: u8,
+    /// Natal BAV bindus of this graha in the transit rashi (0..8).
+    pub bav_bindus: u8,
+    /// Natal SAV total of the transit rashi.
+    pub sav_total: u8,
+    /// Natal SAV of the transit rashi after trikona sodhana.
+    pub sav_after_trikona: u8,
+    /// Natal SAV of the transit rashi after ekadhipatya sodhana.
+    pub sav_after_ekadhipatya: u8,
+    /// 0-based kakshya (0..7) within the transit rashi.
+    pub kakshya_index: u8,
+    /// Kakshya lord as a BAV contributor index (0=Sun .. 6=Saturn, 7=Lagna).
+    pub kakshya_lord: u8,
+    /// Whether the kakshya lord contributed a bindu to the transit rashi in
+    /// this graha's natal BAV.
+    pub kakshya_bindu: bool,
+}
+
+/// Score the seven transiting sapta grahas against a natal ashtakavarga.
+///
+/// `transit_sidereal_lons` holds the transit sidereal longitudes of Sun
+/// through Saturn (same order as `natal.bavs`). The natal chart supplies the
+/// BAV/SAV; Rahu, Ketu and outer planets have no classical BAV and are not
+/// scored.
+pub fn transit_ashtakavarga(
+    natal: &AshtakavargaResult,
+    transit_sidereal_lons: &[f64; 7],
+) -> [TransitAshtakavargaEntry; 7] {
+    core::array::from_fn(|i| {
+        let lon = crate::util::normalize_360(transit_sidereal_lons[i]);
+        let rashi = ((lon / 30.0).floor() as usize).min(11);
+        let k = kakshya_index(lon);
+        let bav = &natal.bavs[i];
+        TransitAshtakavargaEntry {
+            graha_index: i as u8,
+            rashi_index: rashi as u8,
+            bav_bindus: bav.points[rashi],
+            sav_total: natal.sav.total_points[rashi],
+            sav_after_trikona: natal.sav.after_trikona[rashi],
+            sav_after_ekadhipatya: natal.sav.after_ekadhipatya[rashi],
+            kakshya_index: k,
+            kakshya_lord: kakshya_lord_contributor(k),
+            kakshya_bindu: kakshya_bindu(bav, lon),
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -486,5 +592,70 @@ mod tests {
         // Ekadhipatya further reduces
         let ekadhi_total: u16 = result.sav.after_ekadhipatya.iter().map(|&p| p as u16).sum();
         assert!(ekadhi_total <= trikona_total);
+    }
+}
+
+#[cfg(test)]
+mod kakshya_tests {
+    use super::*;
+
+    #[test]
+    fn kakshya_index_boundaries() {
+        assert_eq!(kakshya_index(0.0), 0);
+        assert_eq!(kakshya_index(3.74), 0);
+        assert_eq!(kakshya_index(3.75), 1);
+        assert_eq!(kakshya_index(29.99), 7);
+        assert_eq!(kakshya_index(30.0), 0);
+        assert_eq!(kakshya_index(359.99), 7);
+        assert_eq!(kakshya_index(-0.01), 7);
+    }
+
+    #[test]
+    fn kakshya_lord_order() {
+        // Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna
+        let expected = [6u8, 4, 2, 0, 5, 3, 1, 7];
+        for (k, &e) in expected.iter().enumerate() {
+            assert_eq!(kakshya_lord_contributor(k as u8), e);
+        }
+        assert_eq!(kakshya_lord_graha(7), None);
+        assert_eq!(kakshya_lord_graha(0), Some(crate::graha::Graha::Shani));
+        assert_eq!(kakshya_lord_graha(3), Some(crate::graha::Graha::Surya));
+    }
+
+    #[test]
+    fn kakshya_bindu_follows_contributor_matrix() {
+        let rashis = [0u8; 7];
+        let bavs = calculate_all_bav(&rashis, 0);
+        let sun = &bavs[0];
+        // Sun's own BAV from Sun at Mesha: offset 1 (Mesha) is favourable,
+        // so Sun's kakshya (index 3) in Mesha carries a bindu.
+        assert_eq!(sun.contributors[0][0], 1);
+        assert!(kakshya_bindu(sun, 3.0 * KAKSHYA_SPAN_DEG + 0.1));
+        // Moon contributes offset 3,6,10,11 only: Moon kakshya (index 6) in
+        // Mesha (offset 1) has no bindu.
+        assert_eq!(sun.contributors[0][1], 0);
+        assert!(!kakshya_bindu(sun, 6.0 * KAKSHYA_SPAN_DEG + 0.1));
+    }
+
+    #[test]
+    fn transit_ashtakavarga_reads_natal_tables() {
+        let natal = calculate_ashtakavarga(&[3, 7, 0, 11, 5, 9, 2], 1);
+        let lons = [45.5, 100.0, 200.0, 300.0, 359.0, 10.0, 180.0];
+        let entries = transit_ashtakavarga(&natal, &lons);
+        for (i, e) in entries.iter().enumerate() {
+            assert_eq!(e.graha_index as usize, i);
+            let rashi = (lons[i] / 30.0).floor() as usize;
+            assert_eq!(e.rashi_index as usize, rashi);
+            assert_eq!(e.bav_bindus, natal.bavs[i].points[rashi]);
+            assert_eq!(e.sav_total, natal.sav.total_points[rashi]);
+            assert_eq!(e.sav_after_trikona, natal.sav.after_trikona[rashi]);
+            assert_eq!(e.sav_after_ekadhipatya, natal.sav.after_ekadhipatya[rashi]);
+            assert_eq!(e.kakshya_index, kakshya_index(lons[i]));
+            assert_eq!(e.kakshya_lord, kakshya_lord_contributor(e.kakshya_index));
+            assert_eq!(e.kakshya_bindu, kakshya_bindu(&natal.bavs[i], lons[i]));
+        }
+        // 45.5° = Vrishabha, 15.5° in = kakshya 4 (Venus)
+        assert_eq!(entries[0].kakshya_index, 4);
+        assert_eq!(entries[0].kakshya_lord, 5);
     }
 }

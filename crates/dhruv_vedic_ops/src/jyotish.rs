@@ -9,5 +9,6 @@ pub use dhruv_search::jyotish::{
     arudha_padas_for_date, ashtakavarga_for_date, avastha_for_date, avastha_for_graha,
     charakaraka_for_date, core_bindus, drishti_for_date, full_kundali_for_date, graha_longitudes,
     graha_positions, shadbala_for_date, shadbala_for_graha, special_lagnas_for_date,
-    vimsopaka_for_date, vimsopaka_for_graha,
+    tara_bala_for_date, tara_bala_from_longitudes, transit_ashtakavarga_for_date,
+    transit_ashtakavarga_from_longitudes, vimsopaka_for_date, vimsopaka_for_graha,
 };

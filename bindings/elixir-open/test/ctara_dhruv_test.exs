@@ -957,9 +957,14 @@ defmodule CtaraDhruvTest do
                      known_varsha: base.varsha
                    })
 
-          assert reused.masa == base.masa
-          assert reused.ayana == base.ayana
-          assert reused.varsha == base.varsha
+          # Everything but `progress` is echoed verbatim; progress is
+          # re-derived for the new moment, so it advances by one day.
+          without_progress = &Map.delete(&1, :progress)
+          assert without_progress.(reused.masa) == without_progress.(base.masa)
+          assert without_progress.(reused.ayana) == without_progress.(base.ayana)
+          assert without_progress.(reused.varsha) == without_progress.(base.varsha)
+          assert reused.masa.progress > base.masa.progress
+          assert reused.masa.progress <= 1.0
 
           # The known value is echoed verbatim, not recomputed: a tagged copy
           # (flipped adhika) inside the window comes back with the tag intact.
@@ -972,7 +977,7 @@ defmodule CtaraDhruvTest do
                      known_masa: tagged_masa
                    })
 
-          assert tagged.masa == tagged_masa
+          assert without_progress.(tagged.masa) == without_progress.(tagged_masa)
 
           # Outside the masa window the stale value is ignored and recomputed.
           far = %{utc | month: 7}
@@ -1011,5 +1016,358 @@ defmodule CtaraDhruvTest do
     assert length(many.catalogs) == 2
     assert Enum.at(many.catalogs, 1).amsha_code == 9
     assert Enum.at(Enum.at(many.catalogs, 1).variations, 0).is_default == true
+  end
+
+  test "elixir math exposes tara bala, kakshya, and transit ashtakavarga helpers" do
+    # Same nakshatra counts as Janma; Revati -> Ashwini wraps to Sampat; a
+    # 27-count lands on Parama Mitra in the third cycle.
+    assert {:ok, janma} =
+             Math.tara_bala(%{reference_nakshatra_index: 4, target_nakshatra_index: 4})
+
+    assert janma.tara == :janma
+    assert janma.tara_name == "Janma"
+    assert janma.tara_index == 0
+    assert janma.count == 1
+    assert janma.cycle == 1
+    refute janma.favorable
+
+    assert {:ok, wrap} =
+             Math.tara_bala(%{reference_nakshatra_index: 26, target_nakshatra_index: 0})
+
+    assert wrap.tara == :sampat
+    assert wrap.count == 2
+    assert wrap.favorable
+
+    assert {:ok, third} =
+             Math.tara_bala(%{reference_nakshatra_index: 3, target_nakshatra_index: 2})
+
+    assert third.tara == :parama_mitra
+    assert third.count == 27
+    assert third.cycle == 3
+
+    favorable =
+      for target <- 0..8 do
+        {:ok, tb} =
+          Math.tara_bala(%{reference_nakshatra_index: 0, target_nakshatra_index: target})
+
+        tb.favorable
+      end
+
+    assert favorable == [false, true, false, true, false, true, false, true, true]
+
+    assert {:ok, %{name: "Janma"}} = Math.tara_name(%{index: 0})
+    assert {:ok, %{name: "Parama Mitra"}} = Math.tara_name(%{index: 8})
+    assert {:error, _} = Math.tara_name(%{index: 9})
+
+    # Kakshya: eighths of a rashi (3 deg 45'), lords Saturn, Jupiter, Mars,
+    # Sun, Venus, Mercury, Moon, Lagna as BAV contributor indices.
+    assert {:ok, %{kakshya_index: 0}} = Math.kakshya_index(%{sidereal_longitude_deg: 0.0})
+    assert {:ok, %{kakshya_index: 2}} = Math.kakshya_index(%{sidereal_longitude_deg: 37.5})
+    assert {:ok, %{kakshya_index: 7}} = Math.kakshya_index(%{sidereal_longitude_deg: 389.9})
+
+    lords =
+      for kakshya <- 0..7 do
+        {:ok, %{kakshya_lord: lord}} = Math.kakshya_lord(%{kakshya_index: kakshya})
+        lord
+      end
+
+    assert lords == [6, 4, 2, 0, 5, 3, 1, 7]
+
+    assert {:error, %CtaraDhruv.Error{kind: :invalid_request}} =
+             Math.kakshya_lord(%{kakshya_index: 8})
+
+    graha_rashis = [0, 1, 2, 3, 4, 5, 6]
+    lagna_rashi = 0
+
+    assert {:ok, %{bav: bav}} =
+             Math.calculate_bav(%{
+               graha_index: 0,
+               graha_rashis: graha_rashis,
+               lagna_rashi: lagna_rashi
+             })
+
+    # 15 deg Mesha is kakshya 4 (lord Venus = contributor 5): the bindu is
+    # present exactly when Venus contributed to Mesha in the Sun's BAV.
+    assert {:ok, %{kakshya_bindu: bindu}} =
+             Math.kakshya_bindu(%{bav: bav, sidereal_longitude_deg: 15.0})
+
+    assert bindu == (bav.contributors |> Enum.at(0) |> Enum.at(5) == 1)
+
+    assert {:ok, natal} =
+             Math.calculate_ashtakavarga(%{graha_rashis: graha_rashis, lagna_rashi: lagna_rashi})
+
+    transit = [15.0, 45.0, 75.0, 105.0, 135.0, 165.0, 195.0]
+
+    assert {:ok, %{entries: entries}} =
+             Math.transit_ashtakavarga(%{natal: natal, transit_sidereal_lons: transit})
+
+    assert length(entries) == 7
+    assert Enum.map(entries, & &1.graha_index) == Enum.to_list(0..6)
+    assert Enum.map(entries, & &1.rashi_index) == Enum.to_list(0..6)
+    [sun | _] = entries
+    assert sun.graha == :surya
+    assert sun.kakshya_index == 4
+    assert sun.kakshya_lord == 5
+    assert sun.bav_bindus == natal.bhinna |> hd() |> Map.fetch!(:points) |> Enum.at(0)
+    assert sun.sav_total == Enum.at(natal.sarva.total_points, 0)
+    assert sun.sav_after_trikona == Enum.at(natal.sarva.after_trikona, 0)
+    assert sun.sav_after_ekadhipatya == Enum.at(natal.sarva.after_ekadhipatya, 0)
+    assert sun.kakshya_bindu == bindu
+
+    # The raw natal inputs are accepted in place of the result map.
+    assert {:ok, %{entries: same_entries}} =
+             Math.transit_ashtakavarga(%{
+               graha_rashis: graha_rashis,
+               lagna_rashi: lagna_rashi,
+               transit_sidereal_lons: transit
+             })
+
+    assert same_entries == entries
+
+    assert {:ok, %{name: "Raja", event_name: "Chaitra Shukla Pratipada"}} =
+             Math.samvatsara_office_name(%{index: 0})
+
+    assert {:ok, %{name: "Durgesha"}} = Math.samvatsara_office_name(%{index: 8})
+    assert {:error, _} = Math.samvatsara_office_name(%{index: 9})
+  end
+
+  test "elixir wrapper exposes speeds, vargottama, progress, and the new kundali sections" do
+    case with_engine() do
+      :skip ->
+        assert true
+
+      {:ok, engine} ->
+        if File.exists?(@eop) do
+          assert {:ok, _} = Engine.load_eop(engine, @eop)
+
+          location = %{latitude_deg: 28.6139, longitude_deg: 77.2090, altitude_m: 0.0}
+          utc = %{year: 2015, month: 1, day: 15, hour: 6, minute: 0, second: 0.0}
+
+          # Speeds are opt-in.
+          assert {:ok, plain} = Jyotish.graha_positions(engine, %{utc: utc, location: location})
+          for entry <- plain.grahas, do: refute(entry.speed_valid)
+          refute plain.lagna.speed_valid
+
+          assert {:ok, with_speeds} =
+                   Jyotish.graha_positions(engine, %{
+                     utc: utc,
+                     location: location,
+                     graha_positions_config: %{
+                       include_speeds: true,
+                       include_lagna: true,
+                       include_outer_planets: true,
+                       basic_states_config: %{include_basic_states: true}
+                     }
+                   })
+
+          for entry <- with_speeds.grahas do
+            assert entry.speed_valid
+            assert is_float(entry.longitude_speed_deg_per_day)
+            assert is_float(entry.latitude_speed_deg_per_day)
+          end
+
+          moon = Enum.find(with_speeds.grahas, &(&1.graha == :chandra))
+          assert moon.longitude_speed_deg_per_day > 11.0
+          assert moon.longitude_speed_deg_per_day < 16.0
+          rahu = Enum.find(with_speeds.grahas, &(&1.graha == :rahu))
+          assert rahu.latitude_speed_deg_per_day == 0.0
+          assert with_speeds.lagna.speed_valid
+          assert with_speeds.lagna.longitude_speed_deg_per_day > 0.0
+          assert with_speeds.lagna.latitude_speed_deg_per_day == 0.0
+
+          # Outer planets get a real retrograde flag with basic states, agreeing
+          # with the sign of their longitude rate.
+          for outer <- with_speeds.outer_planets do
+            assert outer.speed_valid
+            assert is_boolean(outer.basic_states.retrograde)
+            assert outer.basic_states.retrograde == outer.longitude_speed_deg_per_day < 0.0
+          end
+
+          # Vargottama: varga rashi equals the D1 rashi; never on D1 itself.
+          assert {:ok, amsha} =
+                   Jyotish.amsha(engine, %{
+                     utc: utc,
+                     location: location,
+                     amsha_requests: [%{code: 1}, %{code: 9}]
+                   })
+
+          [d1, d9] = amsha.charts
+          for entry <- d1.grahas, do: refute(entry.vargottama)
+          refute d1.lagna.vargottama
+
+          for entry <- d9.grahas do
+            d1_entry = Enum.find(d1.grahas, &(&1.name == entry.name))
+            assert entry.vargottama == (entry.rashi_index == d1_entry.rashi_index)
+          end
+
+          assert d9.lagna.vargottama == (d9.lagna.rashi_index == d1.lagna.rashi_index)
+
+          # Progress: elapsed fraction of every panchang interval, in [0, 1].
+          assert {:ok, %{tithi: tithi}} = Panchang.tithi(engine, %{utc: utc})
+          assert tithi.progress >= 0.0 and tithi.progress <= 1.0
+
+          assert {:ok, daily} =
+                   Panchang.daily(engine, %{utc: utc, location: location, include_mask: :all})
+
+          for key <- [
+                :tithi,
+                :karana,
+                :yoga,
+                :nakshatra,
+                :vaar,
+                :hora,
+                :ghatika,
+                :masa,
+                :ayana,
+                :varsha
+              ] do
+            element = Map.fetch!(daily, key)
+            assert is_float(element.progress)
+            assert element.progress >= 0.0 and element.progress <= 1.0
+          end
+
+          assert {:ok, events} =
+                   Panchang.events(engine, %{
+                     from_utc: utc,
+                     to_utc: %{utc | day: 17},
+                     include_mask: [:tithi]
+                   })
+
+          for segment <- events.tithi, do: assert(segment.progress == 0.0)
+
+          assert {:ok, snapshot} =
+                   Dasha.snapshot(engine, %{
+                     birth_utc: utc,
+                     location: location,
+                     query_utc: %{utc | year: 2020},
+                     system: :vimshottari,
+                     max_level: 2
+                   })
+
+          assert length(snapshot.progress) == length(snapshot.periods)
+          assert snapshot.progress != []
+
+          for {period, progress} <- Enum.zip(snapshot.periods, snapshot.progress) do
+            expected = (snapshot.query_jd - period.start_jd) / (period.end_jd - period.start_jd)
+            assert_in_delta progress, expected, 1.0e-9
+            assert progress >= 0.0 and progress <= 1.0
+          end
+
+          # Tara bala for a date: the chart Moon is the default reference.
+          assert {:ok, tara_bala} = Jyotish.tara_bala(engine, %{utc: utc, location: location})
+          assert tara_bala.reference_is_chart_moon
+          assert length(tara_bala.grahas) == 9
+          chart_moon = Enum.at(tara_bala.grahas, 1)
+          assert chart_moon.graha == :chandra
+          assert chart_moon.tara == :janma
+          assert chart_moon.count == 1
+          assert tara_bala.reference_nakshatra_index == chart_moon.nakshatra_index
+          assert tara_bala.lagna.tara_index in 0..8
+          assert is_boolean(tara_bala.lagna.favorable)
+
+          assert {:ok, from_ashwini} =
+                   Jyotish.tara_bala(engine, %{
+                     utc: utc,
+                     location: location,
+                     reference_nakshatra_index: 0
+                   })
+
+          refute from_ashwini.reference_is_chart_moon
+          assert from_ashwini.reference_nakshatra_index == 0
+
+          assert {:error, %CtaraDhruv.Error{kind: :invalid_request}} =
+                   Jyotish.tara_bala(engine, %{
+                     utc: utc,
+                     location: location,
+                     reference_nakshatra_index: 27
+                   })
+
+          # Transit ashtakavarga for a date against natal inputs.
+          reference = %{graha_rashis: [0, 1, 2, 3, 4, 5, 6], lagna_rashi: 0}
+
+          assert {:ok, transit} =
+                   Jyotish.transit_ashtakavarga(engine, %{
+                     utc: utc,
+                     ashtakavarga_reference: reference
+                   })
+
+          assert transit.reference.graha_rashis == [0, 1, 2, 3, 4, 5, 6]
+          assert transit.reference.lagna_rashi == 0
+          assert length(transit.entries) == 7
+
+          for entry <- transit.entries do
+            assert entry.kakshya_index in 0..7
+            assert entry.kakshya_lord in 0..7
+            assert entry.bav_bindus in 0..8
+            assert entry.sav_total in 0..56
+            assert is_boolean(entry.kakshya_bindu)
+          end
+
+          assert {:error, %CtaraDhruv.Error{kind: :invalid_request}} =
+                   Jyotish.transit_ashtakavarga(engine, %{utc: utc})
+
+          # Samvatsara officers of the lunar year.
+          assert {:ok, officers} =
+                   Jyotish.samvatsara_officers(engine, %{utc: utc, location: location})
+
+          assert length(officers.officers) == 9
+          assert Enum.map(officers.officers, & &1.office_index) == Enum.to_list(0..8)
+          [raja | _] = officers.officers
+          assert raja.office == :raja
+          assert raja.office_name == "Raja"
+          assert raja.event_name == "Chaitra Shukla Pratipada"
+          assert raja.event_utc == officers.varsha.start
+          assert is_map(raja.vedic_day_start)
+          assert raja.lord_index in 0..6
+          assert is_binary(raja.lord_name)
+          assert is_map(officers.varsha)
+
+          # Full kundali: the new sections are off by default and opt-in.
+          assert {:ok, chart} = Jyotish.full_kundali(engine, %{utc: utc, location: location})
+          assert is_nil(chart.tara_bala)
+          assert is_nil(chart.samvatsara_officers)
+          assert is_nil(chart.transit_ashtakavarga)
+
+          assert {:ok, chart_on} =
+                   Jyotish.full_kundali(engine, %{
+                     utc: utc,
+                     location: location,
+                     full_kundali_config: %{
+                       include_tara_bala: true,
+                       include_samvatsara_officers: true,
+                       include_transit_ashtakavarga: true,
+                       transit_ashtakavarga_reference: reference
+                     }
+                   })
+
+          assert chart_on.tara_bala.reference_is_chart_moon
+          assert chart_on.tara_bala.grahas == tara_bala.grahas
+          assert length(chart_on.samvatsara_officers.officers) == 9
+          assert chart_on.transit_ashtakavarga.entries == transit.entries
+
+          assert {:ok, chart_ref} =
+                   Jyotish.full_kundali(engine, %{
+                     utc: utc,
+                     location: location,
+                     full_kundali_config: %{
+                       include_tara_bala: true,
+                       tara_bala_reference_nakshatra_index: 0
+                     }
+                   })
+
+          refute chart_ref.tara_bala.reference_is_chart_moon
+          assert chart_ref.tara_bala.reference_nakshatra_index == 0
+
+          # The transit section needs its natal reference.
+          assert {:error, %CtaraDhruv.Error{}} =
+                   Jyotish.full_kundali(engine, %{
+                     utc: utc,
+                     location: location,
+                     full_kundali_config: %{include_transit_ashtakavarga: true}
+                   })
+        else
+          assert true
+        end
+    end
   end
 end

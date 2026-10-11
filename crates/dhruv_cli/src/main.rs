@@ -221,6 +221,66 @@ struct VarshaArgs {
 }
 
 #[derive(clap::Args)]
+struct SamvatsaraOfficersArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
+    #[arg(long)]
+    date: String,
+    /// Latitude in degrees (north positive)
+    #[arg(long)]
+    lat: f64,
+    /// Longitude in degrees (east positive)
+    #[arg(long)]
+    lon: f64,
+    /// Altitude in meters (default 0)
+    #[arg(long, default_value = "0")]
+    alt: f64,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
+struct TransitAshtakavargaArgs {
+    /// UTC datetime (YYYY-MM-DDThh:mm:ssZ) of the transit moment
+    #[arg(long)]
+    date: String,
+    /// Ayanamsha system code (0-19, default 0=Lahiri)
+    #[arg(long, default_value = "0")]
+    ayanamsha: i32,
+    /// Apply nutation correction
+    #[arg(long)]
+    nutation: bool,
+    /// Natal rashi indices (0-11) of Sun,Moon,Mars,Mercury,Jupiter,Venus,
+    /// Saturn, comma-separated
+    #[arg(long)]
+    natal_graha_rashis: String,
+    /// Natal lagna rashi index (0-11)
+    #[arg(long)]
+    natal_lagna_rashi: u8,
+    /// Path to SPK kernel
+    #[arg(long)]
+    bsp: Option<PathBuf>,
+    /// Path to leap second kernel
+    #[arg(long)]
+    lsk: Option<PathBuf>,
+    /// Path to IERS EOP file (finals2000A.all)
+    #[arg(long)]
+    eop: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct YogaArgs {
     /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
     #[arg(long)]
@@ -676,6 +736,9 @@ struct GrahaPositionsArgs {
     /// latitude) per entry plus Greenwich sidereal time
     #[arg(long)]
     equatorial: bool,
+    /// Include sidereal longitude and latitude rates (deg/day) per entry
+    #[arg(long)]
+    speeds: bool,
     /// Series mode: sample positions from --date to this UTC datetime
     /// (requires --step-minutes)
     #[arg(long, requires = "step_minutes")]
@@ -1039,6 +1102,32 @@ struct KundaliArgs {
     /// latitude) on graha positions plus Greenwich sidereal time
     #[arg(long)]
     include_equatorial: bool,
+    /// Include sidereal longitude/latitude rates (deg/day) on graha positions
+    #[arg(long)]
+    include_speeds: bool,
+    /// Include tara bala of every graha and the lagna relative to a
+    /// reference nakshatra (default reference: this chart's Moon)
+    #[arg(long)]
+    include_tara_bala: bool,
+    /// 0-based reference nakshatra (0-26) for --include-tara-bala, usually
+    /// the natal Moon's nakshatra
+    #[arg(long)]
+    tara_reference_nakshatra: Option<u8>,
+    /// Include the samvatsara office-bearers of the lunar year containing
+    /// the date, evaluated at the chart location
+    #[arg(long)]
+    include_samvatsara_officers: bool,
+    /// Include transit-versus-natal ashtakavarga scoring; requires
+    /// --natal-graha-rashis and --natal-lagna-rashi
+    #[arg(long)]
+    include_transit_ashtakavarga: bool,
+    /// Natal rashi indices (0-11) of Sun,Moon,Mars,Mercury,Jupiter,Venus,
+    /// Saturn, comma-separated (for --include-transit-ashtakavarga)
+    #[arg(long)]
+    natal_graha_rashis: Option<String>,
+    /// Natal lagna rashi index (0-11) (for --include-transit-ashtakavarga)
+    #[arg(long)]
+    natal_lagna_rashi: Option<u8>,
     /// Include amsha (divisional charts)
     #[arg(long)]
     include_amshas: bool,
@@ -2832,6 +2921,26 @@ enum Commands {
     Ayana(AyanaArgs),
     /// Determine the Varsha (60-year samvatsara cycle) for a date
     Varsha(VarshaArgs),
+    /// Samvatsara office-bearers (Raja, Mantri, ...) of the lunar year
+    /// containing a date, evaluated at a location
+    SamvatsaraOfficers(SamvatsaraOfficersArgs),
+    /// Tara bala of a nakshatra counted from a reference nakshatra (pure math)
+    TaraBala {
+        /// 0-based reference nakshatra (0-26), usually the natal Moon's
+        #[arg(long)]
+        reference: u8,
+        /// 0-based target nakshatra (0-26)
+        #[arg(long)]
+        target: u8,
+    },
+    /// Kakshya (eighth of a rashi) index and lord of a sidereal longitude (pure math)
+    Kakshya {
+        /// Sidereal longitude in degrees
+        #[arg(long)]
+        longitude: f64,
+    },
+    /// Score the transiting sapta grahas at a date against natal ashtakavarga inputs
+    TransitAshtakavarga(TransitAshtakavargaArgs),
     /// Determine the Tithi (lunar day) for a date
     Tithi {
         /// UTC datetime (YYYY-MM-DDThh:mm:ssZ)
@@ -4533,6 +4642,118 @@ fn main() {
             }
         }
 
+        Commands::SamvatsaraOfficers(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let location = GeoLocation::new(args.lat, args.lon, args.alt);
+            let rs_config = RiseSetConfig::default();
+            let config = SankrantiConfig::new(system, args.nutation);
+            match dhruv_search::samvatsara_officers(
+                &engine,
+                &eop_kernel,
+                &utc,
+                &location,
+                &rs_config,
+                &config,
+            ) {
+                Ok(result) => {
+                    write_samvatsara_officers(&mut std::io::stdout(), &result).unwrap_or_else(
+                        |e| {
+                            eprintln!("Error writing output: {e}");
+                            std::process::exit(1);
+                        },
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::TaraBala { reference, target } => {
+            if reference >= 27 || target >= 27 {
+                eprintln!("--reference and --target must be 0-26");
+                std::process::exit(1);
+            }
+            let tb = dhruv_vedic_base::tara_bala(reference, target);
+            println!(
+                "{} (index {}): count {} from {}, cycle {}, {}",
+                tb.tara.name(),
+                tb.tara_index,
+                tb.count,
+                dhruv_vedic_base::ALL_NAKSHATRAS_27[reference as usize].name(),
+                tb.cycle,
+                if tb.favorable {
+                    "favorable"
+                } else {
+                    "unfavorable"
+                }
+            );
+        }
+
+        Commands::Kakshya { longitude } => {
+            if !longitude.is_finite() {
+                eprintln!("--longitude must be finite");
+                std::process::exit(1);
+            }
+            let index = dhruv_vedic_base::kakshya_index(longitude);
+            let contributor_names = [
+                "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Lagna",
+            ];
+            let lord = dhruv_vedic_base::kakshya_lord_contributor(index);
+            println!(
+                "Kakshya {} of {} (lord: {}, contributor index {})",
+                index + 1,
+                dhruv_vedic_base::rashi_from_longitude(longitude)
+                    .rashi
+                    .name(),
+                contributor_names[lord as usize],
+                lord
+            );
+        }
+
+        Commands::TransitAshtakavarga(args) => {
+            let utc = parse_utc(&args.date).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            let system = require_aya_system(args.ayanamsha);
+            let engine = load_engine(&args.bsp, &args.lsk);
+            let eop_kernel = load_eop(&args.eop);
+            let config = SankrantiConfig::new(system, args.nutation);
+            let reference = parse_ashtakavarga_reference(
+                Some(args.natal_graha_rashis.as_str()),
+                Some(args.natal_lagna_rashi),
+            );
+            match dhruv_search::transit_ashtakavarga_for_date(
+                &engine,
+                &eop_kernel,
+                &utc,
+                &config,
+                &reference,
+            ) {
+                Ok(result) => {
+                    println!("Transit at {}:", args.date);
+                    write_transit_ashtakavarga(&mut std::io::stdout(), &result).unwrap_or_else(
+                        |e| {
+                            eprintln!("Error writing output: {e}");
+                            std::process::exit(1);
+                        },
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         Commands::Tithi { date, bsp, lsk } => {
             let utc = parse_utc(&date).unwrap_or_else(|e| {
                 eprintln!("{e}");
@@ -5403,6 +5624,7 @@ fn main() {
                         include_sensitive_point_distances: args.sensitive_point_distances,
                     },
                     include_equatorial: args.equatorial,
+                    include_speeds: args.speeds,
                 };
 
                 if let (Some(to_date), Some(step_minutes)) =
@@ -5479,6 +5701,13 @@ fn main() {
                                     entry.right_ascension_deg,
                                     entry.declination_deg,
                                     entry.ecliptic_latitude_deg
+                                );
+                            }
+                            if entry.speed_valid {
+                                print!(
+                                    "  Speed {:>+11.6}°/d  LatSpeed {:>+10.6}°/d",
+                                    entry.longitude_speed_deg_per_day,
+                                    entry.latitude_speed_deg_per_day
                                 );
                             }
                             println!();
@@ -5559,6 +5788,9 @@ fn main() {
                                 entry.declination_deg,
                                 entry.ecliptic_latitude_deg,
                             );
+                        }
+                        if let Some(speed) = format_speed(entry) {
+                            println!("             Speed: {speed}");
                         }
                     };
 
@@ -5926,6 +6158,29 @@ fn main() {
             }
             if args.include_equatorial {
                 full_config.graha_positions_config.include_equatorial = true;
+            }
+            if args.include_speeds {
+                full_config.graha_positions_config.include_speeds = true;
+            }
+            if args.include_tara_bala {
+                full_config.include_tara_bala = true;
+                if let Some(reference) = args.tara_reference_nakshatra {
+                    if reference >= 27 {
+                        eprintln!("--tara-reference-nakshatra must be 0-26");
+                        std::process::exit(1);
+                    }
+                    full_config.tara_bala_reference_nakshatra_index = reference;
+                }
+            }
+            if args.include_samvatsara_officers {
+                full_config.include_samvatsara_officers = true;
+            }
+            if args.include_transit_ashtakavarga {
+                full_config.include_transit_ashtakavarga = true;
+                full_config.transit_ashtakavarga_reference = Some(parse_ashtakavarga_reference(
+                    args.natal_graha_rashis.as_deref(),
+                    args.natal_lagna_rashi,
+                ));
             }
 
             let result = dhruv_search::full_kundali_for_date(
@@ -11838,6 +12093,7 @@ fn build_kundali_config(
             include_bhava: true,
             basic_states_config: Default::default(),
             include_equatorial: false,
+            include_speeds: false,
         }
     } else {
         dhruv_search::GrahaPositionsConfig::default()
@@ -11908,6 +12164,11 @@ fn build_kundali_config(
             include_bindus: resolved.include_drishti,
         },
         amsha_scope: *requested_amsha_scope,
+        include_tara_bala: false,
+        tara_bala_reference_nakshatra_index: dhruv_search::TARA_BALA_REFERENCE_CHART_MOON,
+        include_samvatsara_officers: false,
+        include_transit_ashtakavarga: false,
+        transit_ashtakavarga_reference: None,
     }
 }
 
@@ -12003,6 +12264,178 @@ fn format_equatorial(entry: &dhruv_search::GrahaEntry) -> Option<String> {
     ))
 }
 
+fn format_speed(entry: &dhruv_search::GrahaEntry) -> Option<String> {
+    if !entry.speed_valid {
+        return None;
+    }
+    Some(format!(
+        "lon {:+.6}°/day  lat {:+.6}°/day",
+        entry.longitude_speed_deg_per_day, entry.latitude_speed_deg_per_day
+    ))
+}
+
+fn vargottama_marker(entry: &dhruv_search::AmshaEntry) -> &'static str {
+    if entry.vargottama {
+        "  [vargottama]"
+    } else {
+        ""
+    }
+}
+
+fn write_tara_bala_row(
+    w: &mut impl std::io::Write,
+    name: &str,
+    entry: &dhruv_search::TaraBalaEntry,
+) -> std::io::Result<()> {
+    writeln!(
+        w,
+        "  {:<8} {:<16} {:<13} {:>5} {:>5} {:>9}",
+        name,
+        dhruv_vedic_base::ALL_NAKSHATRAS_27[entry.nakshatra_index as usize].name(),
+        entry.tara_bala.tara.name(),
+        entry.tara_bala.count,
+        entry.tara_bala.cycle,
+        if entry.tara_bala.favorable {
+            "Yes"
+        } else {
+            "No"
+        },
+    )
+}
+
+fn write_tara_bala(
+    w: &mut impl std::io::Write,
+    result: &dhruv_search::TaraBalaResult,
+) -> std::io::Result<()> {
+    let graha_names = [
+        "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu",
+    ];
+    writeln!(
+        w,
+        "Tara Bala (reference nakshatra {} {}{}):",
+        result.reference_nakshatra_index,
+        dhruv_vedic_base::ALL_NAKSHATRAS_27[result.reference_nakshatra_index as usize].name(),
+        if result.reference_is_chart_moon {
+            ", chart Moon"
+        } else {
+            ""
+        }
+    )?;
+    writeln!(
+        w,
+        "  {:<8} {:<16} {:<13} {:>5} {:>5} {:>9}",
+        "Point", "Nakshatra", "Tara", "Count", "Cycle", "Favorable"
+    )?;
+    writeln!(w, "  {}", "-".repeat(62))?;
+    for (i, entry) in result.grahas.iter().enumerate() {
+        write_tara_bala_row(w, graha_names[i], entry)?;
+    }
+    write_tara_bala_row(w, "Lagna", &result.lagna)
+}
+
+fn write_samvatsara_officers(
+    w: &mut impl std::io::Write,
+    result: &dhruv_search::SamvatsaraOfficers,
+) -> std::io::Result<()> {
+    writeln!(
+        w,
+        "Samvatsara Officers for {} (order {} of 60), year {} to {}:",
+        result.varsha.samvatsara.name(),
+        result.varsha.order,
+        result.varsha.start,
+        result.varsha.end
+    )?;
+    writeln!(
+        w,
+        "  {:<10} {:<10} {:<11} {:<26} {:<26} {}",
+        "Office", "Lord", "Vaar", "Event (UTC)", "Vedic day start (UTC)", "Event"
+    )?;
+    writeln!(w, "  {}", "-".repeat(110))?;
+    for officer in &result.officers {
+        writeln!(
+            w,
+            "  {:<10} {:<10} {:<11} {:<26} {:<26} {}",
+            officer.office.name(),
+            officer.lord.name(),
+            officer.vaar.name(),
+            officer.event_utc.to_string(),
+            officer.vedic_day_start.to_string(),
+            officer.office.event_name(),
+        )?;
+    }
+    Ok(())
+}
+
+fn write_transit_ashtakavarga(
+    w: &mut impl std::io::Write,
+    result: &dhruv_search::TransitAshtakavargaResult,
+) -> std::io::Result<()> {
+    let graha_names = [
+        "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn",
+    ];
+    let contributor_names = [
+        "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Lagna",
+    ];
+    writeln!(
+        w,
+        "Transit Ashtakavarga (natal rashis Sun..Saturn {:?}, lagna {}):",
+        result.reference.graha_rashis, result.reference.lagna_rashi
+    )?;
+    writeln!(
+        w,
+        "  {:<8} {:<11} {:>4} {:>4} {:>8} {:>8} {:>8} {:<8} {:>6}",
+        "Graha", "Rashi", "BAV", "SAV", "Trikona", "Ekadhip", "Kakshya", "Lord", "Bindu"
+    )?;
+    writeln!(w, "  {}", "-".repeat(78))?;
+    for entry in &result.entries {
+        writeln!(
+            w,
+            "  {:<8} {:<11} {:>4} {:>4} {:>8} {:>8} {:>8} {:<8} {:>6}",
+            graha_names[entry.graha_index as usize],
+            dhruv_vedic_base::ALL_RASHIS[entry.rashi_index as usize].name(),
+            entry.bav_bindus,
+            entry.sav_total,
+            entry.sav_after_trikona,
+            entry.sav_after_ekadhipatya,
+            entry.kakshya_index,
+            contributor_names[entry.kakshya_lord as usize],
+            if entry.kakshya_bindu { "Yes" } else { "No" },
+        )?;
+    }
+    Ok(())
+}
+
+fn parse_ashtakavarga_reference(
+    graha_rashis: Option<&str>,
+    lagna_rashi: Option<u8>,
+) -> dhruv_search::AshtakavargaReference {
+    let (Some(graha_rashis), Some(lagna_rashi)) = (graha_rashis, lagna_rashi) else {
+        eprintln!("--natal-graha-rashis and --natal-lagna-rashi are both required");
+        std::process::exit(1);
+    };
+    let parsed: Vec<u8> = graha_rashis
+        .split(',')
+        .map(|token| {
+            token.trim().parse::<u8>().unwrap_or_else(|_| {
+                eprintln!("--natal-graha-rashis must be 7 comma-separated rashi indices (0-11)");
+                std::process::exit(1);
+            })
+        })
+        .collect();
+    if parsed.len() != 7 || parsed.iter().any(|&r| r >= 12) || lagna_rashi >= 12 {
+        eprintln!(
+            "--natal-graha-rashis must list 7 rashi indices (0-11) for Sun..Saturn and --natal-lagna-rashi must be 0-11"
+        );
+        std::process::exit(1);
+    }
+    let mut rashis = [0u8; 7];
+    rashis.copy_from_slice(&parsed);
+    dhruv_search::AshtakavargaReference {
+        graha_rashis: rashis,
+        lagna_rashi,
+    }
+}
+
 fn write_amsha_chart(
     w: &mut impl std::io::Write,
     chart: &dhruv_search::AmshaChart,
@@ -12030,9 +12463,10 @@ fn write_amsha_chart(
     for (index, entry) in chart.grahas.iter().enumerate() {
         writeln!(
             w,
-            "{base_indent}  {:<14} {}",
+            "{base_indent}  {:<14} {}{}",
             graha_names[index],
-            format_rashi_dms(entry.sidereal_longitude)
+            format_rashi_dms(entry.sidereal_longitude),
+            vargottama_marker(entry)
         )?;
     }
     if let Some(ref outer_planets) = chart.outer_planets {
@@ -12041,17 +12475,19 @@ fn write_amsha_chart(
         for (name, entry) in names.iter().zip(outer_planets.iter()) {
             writeln!(
                 w,
-                "{base_indent}    {:<12} {}",
+                "{base_indent}    {:<12} {}{}",
                 name,
-                format_rashi_dms(entry.sidereal_longitude)
+                format_rashi_dms(entry.sidereal_longitude),
+                vargottama_marker(entry)
             )?;
         }
     }
     writeln!(
         w,
-        "{base_indent}  {:<14} {}",
+        "{base_indent}  {:<14} {}{}",
         "Lagna",
-        format_rashi_dms(chart.lagna.sidereal_longitude)
+        format_rashi_dms(chart.lagna.sidereal_longitude),
+        vargottama_marker(&chart.lagna)
     )?;
 
     if let Some(ref cusps) = chart.bhava_cusps {
@@ -12178,6 +12614,9 @@ fn print_kundali(
             if let Some(equatorial) = format_equatorial(entry) {
                 writeln!(w, "           Equatorial: {equatorial}")?;
             }
+            if let Some(speed) = format_speed(entry) {
+                writeln!(w, "           Speed: {speed}")?;
+            }
         }
         writeln!(
             w,
@@ -12199,6 +12638,9 @@ fn print_kundali(
         }
         if let Some(equatorial) = format_equatorial(&g.lagna) {
             writeln!(w, "           Equatorial: {equatorial}")?;
+        }
+        if let Some(speed) = format_speed(&g.lagna) {
+            writeln!(w, "           Speed: {speed}")?;
         }
         if g.outer_planets
             .iter()
@@ -12227,6 +12669,9 @@ fn print_kundali(
                 }
                 if let Some(equatorial) = format_equatorial(entry) {
                     writeln!(w, "             Equatorial: {equatorial}")?;
+                }
+                if let Some(speed) = format_speed(entry) {
+                    writeln!(w, "             Speed: {speed}")?;
                 }
             }
         }
@@ -12609,7 +13054,11 @@ fn print_kundali(
                 tithi.paksha.name(),
                 tithi.tithi_in_paksha
             )?;
-            writeln!(w, "    Start:  {}  End: {}", tithi.start, tithi.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                tithi.start, tithi.end, tithi.progress
+            )?;
         }
         if let Some(ref karana) = p.karana {
             writeln!(
@@ -12618,7 +13067,11 @@ fn print_kundali(
                 karana.karana.name(),
                 karana.karana_index
             )?;
-            writeln!(w, "    Start:  {}  End: {}", karana.start, karana.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                karana.start, karana.end, karana.progress
+            )?;
         }
         if let Some(ref yoga) = p.yoga {
             writeln!(
@@ -12627,11 +13080,19 @@ fn print_kundali(
                 yoga.yoga.name(),
                 yoga.yoga_index
             )?;
-            writeln!(w, "    Start:  {}  End: {}", yoga.start, yoga.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                yoga.start, yoga.end, yoga.progress
+            )?;
         }
         if let Some(ref vaar) = p.vaar {
             writeln!(w, "  Vaar:      {}", vaar.vaar.name())?;
-            writeln!(w, "    Start:  {}  End: {}", vaar.start, vaar.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                vaar.start, vaar.end, vaar.progress
+            )?;
         }
         if let Some(ref hora) = p.hora {
             writeln!(
@@ -12640,11 +13101,19 @@ fn print_kundali(
                 hora.hora.name(),
                 hora.hora_index
             )?;
-            writeln!(w, "    Start:  {}  End: {}", hora.start, hora.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                hora.start, hora.end, hora.progress
+            )?;
         }
         if let Some(ref ghatika) = p.ghatika {
             writeln!(w, "  Ghatika:   {}/60", ghatika.value)?;
-            writeln!(w, "    Start:  {}  End: {}", ghatika.start, ghatika.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                ghatika.start, ghatika.end, ghatika.progress
+            )?;
         }
         if let Some(ref nakshatra) = p.nakshatra {
             writeln!(
@@ -12654,16 +13123,28 @@ fn print_kundali(
                 nakshatra.nakshatra_index,
                 nakshatra.pada
             )?;
-            writeln!(w, "    Start:  {}  End: {}", nakshatra.start, nakshatra.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                nakshatra.start, nakshatra.end, nakshatra.progress
+            )?;
         }
         if let Some(ref m) = p.masa {
             let adhika_str = if m.adhika { " (Adhika)" } else { "" };
             writeln!(w, "  Masa:      {}{}", m.masa.name(), adhika_str)?;
-            writeln!(w, "    Start:  {}  End: {}", m.start, m.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                m.start, m.end, m.progress
+            )?;
         }
         if let Some(ref a) = p.ayana {
             writeln!(w, "  Ayana:     {}", a.ayana.name())?;
-            writeln!(w, "    Start:  {}  End: {}", a.start, a.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                a.start, a.end, a.progress
+            )?;
         }
         if let Some(ref v) = p.varsha {
             writeln!(
@@ -12672,8 +13153,27 @@ fn print_kundali(
                 v.samvatsara.name(),
                 v.order
             )?;
-            writeln!(w, "    Start:  {}  End: {}", v.start, v.end)?;
+            writeln!(
+                w,
+                "    Start:  {}  End: {}  Progress: {:.3}",
+                v.start, v.end, v.progress
+            )?;
         }
+        writeln!(w)?;
+    }
+
+    if let Some(ref tb) = result.tara_bala {
+        write_tara_bala(w, tb)?;
+        writeln!(w)?;
+    }
+
+    if let Some(ref officers) = result.samvatsara_officers {
+        write_samvatsara_officers(w, officers)?;
+        writeln!(w)?;
+    }
+
+    if let Some(ref ta) = result.transit_ashtakavarga {
+        write_transit_ashtakavarga(w, ta)?;
         writeln!(w)?;
     }
 
@@ -12726,11 +13226,12 @@ fn print_kundali(
                 let indent = "    ".to_string() + &"  ".repeat(period.level as usize);
                 writeln!(
                     w,
-                    "{}{}: {} ({:.1} days)",
+                    "{}{}: {} ({:.1} days, {:.3} elapsed)",
                     indent,
                     period.level.name(),
                     format_dasha_entity(&period.entity),
                     period.duration_days(),
+                    period.progress_at(snap.query_jd),
                 )?;
             }
         }
@@ -13291,6 +13792,9 @@ mod tests {
             panchang: None,
             dasha: None,
             dasha_snapshots: None,
+            tara_bala: None,
+            samvatsara_officers: None,
+            transit_ashtakavarga: None,
         }
     }
 

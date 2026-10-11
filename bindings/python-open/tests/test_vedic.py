@@ -1,6 +1,7 @@
 """Tests for vedic base functions: rashi, nakshatra, bhava, rise/set, names."""
 
 import pytest
+from datetime import timedelta
 from conftest import skip_no_kernels, skip_no_eop
 
 
@@ -377,3 +378,240 @@ class TestBhava:
         for b in result.bhavas:
             assert 1 <= b.number <= 12
             assert 0 <= b.cusp_deg < 360
+
+
+class TestTaraBalaPureMath:
+    def test_tara_names(self):
+        from ctara_dhruv.vedic import tara_name
+        assert tara_name(0) == "Janma"
+        assert tara_name(1) == "Sampat"
+        assert tara_name(8) == "Parama Mitra"
+        assert tara_name(9) is None
+
+    def test_counting_and_cycles(self):
+        from ctara_dhruv.vedic import tara_bala
+        from ctara_dhruv.types import TaraBala
+        assert tara_bala(0, 0) == TaraBala(tara_index=0, count=1, cycle=1, favorable=False)
+        assert tara_bala(0, 1) == TaraBala(tara_index=1, count=2, cycle=1, favorable=True)
+        assert tara_bala(0, 9) == TaraBala(tara_index=0, count=10, cycle=2, favorable=False)
+        assert tara_bala(26, 0) == TaraBala(tara_index=1, count=2, cycle=1, favorable=True)
+        assert tara_bala(0, 26) == TaraBala(tara_index=8, count=27, cycle=3, favorable=True)
+
+    def test_favorable_set_and_invariants(self):
+        from ctara_dhruv.vedic import tara_bala
+        favorable = {1, 3, 5, 7, 8}  # Sampat, Kshema, Sadhaka, Mitra, Parama Mitra
+        for target in range(27):
+            tb = tara_bala(10, target)
+            assert 1 <= tb.count <= 27
+            assert tb.tara_index == (tb.count - 1) % 9
+            assert tb.cycle == (tb.count - 1) // 9 + 1
+            assert tb.favorable == (tb.tara_index in favorable)
+
+    def test_invalid_index_raises(self):
+        from ctara_dhruv.vedic import tara_bala
+        from ctara_dhruv import DhruvError
+        with pytest.raises(DhruvError):
+            tara_bala(27, 0)
+        with pytest.raises(DhruvError):
+            tara_bala(0, 27)
+
+
+class TestKakshyaPureMath:
+    def test_kakshya_index(self):
+        from ctara_dhruv.vedic import kakshya_index
+        assert kakshya_index(0.0) == 0
+        assert kakshya_index(3.75) == 1
+        assert kakshya_index(29.99) == 7
+        assert kakshya_index(33.75) == 1
+        assert kakshya_index(359.99) == 7
+        assert kakshya_index(float("nan")) == -1
+
+    def test_kakshya_lord_order(self):
+        """Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna."""
+        from ctara_dhruv.vedic import kakshya_lord
+        assert [kakshya_lord(i) for i in range(8)] == [6, 4, 2, 0, 5, 3, 1, 7]
+        assert kakshya_lord(8) == -1
+
+    def test_kakshya_bindu_matches_contributors(self):
+        from ctara_dhruv.vedic import (
+            calculate_ashtakavarga, kakshya_bindu, kakshya_index, kakshya_lord,
+        )
+        natal = calculate_ashtakavarga([0, 1, 2, 3, 4, 5, 6], 0)
+        for bav in natal.bavs:
+            for lon in (0.0, 5.0, 33.75, 100.0, 200.5, 359.0):
+                rashi = int(lon // 30)
+                lord = kakshya_lord(kakshya_index(lon))
+                assert kakshya_bindu(bav, lon) == bool(bav.contributors[rashi][lord])
+
+    def test_kakshya_bindu_non_finite_raises(self):
+        from ctara_dhruv.vedic import calculate_ashtakavarga, kakshya_bindu
+        from ctara_dhruv import DhruvError
+        natal = calculate_ashtakavarga([0, 1, 2, 3, 4, 5, 6], 0)
+        with pytest.raises(DhruvError):
+            kakshya_bindu(natal.bavs[0], float("nan"))
+
+
+class TestTransitAshtakavargaPureMath:
+    def test_entries_match_natal_tables(self):
+        from ctara_dhruv.vedic import (
+            calculate_ashtakavarga, kakshya_bindu, kakshya_index, kakshya_lord,
+            transit_ashtakavarga,
+        )
+        natal = calculate_ashtakavarga([0, 1, 2, 3, 4, 5, 6], 0)
+        lons = [15.0, 45.0, 75.0, 100.0, 200.0, 250.0, 359.0]
+        entries = transit_ashtakavarga(natal, lons)
+        assert len(entries) == 7
+        for i, (e, lon) in enumerate(zip(entries, lons)):
+            rashi = int(lon // 30)
+            assert e.graha_index == i
+            assert e.rashi_index == rashi
+            assert e.bav_bindus == natal.bavs[i].points[rashi]
+            assert e.sav_total == natal.sav.total_points[rashi]
+            assert e.sav_after_trikona == natal.sav.after_trikona[rashi]
+            assert e.sav_after_ekadhipatya == natal.sav.after_ekadhipatya[rashi]
+            assert e.kakshya_index == kakshya_index(lon)
+            assert e.kakshya_lord == kakshya_lord(e.kakshya_index)
+            assert e.kakshya_bindu == kakshya_bindu(natal.bavs[i], lon)
+
+    def test_wrong_length_raises(self):
+        from ctara_dhruv.vedic import calculate_ashtakavarga, transit_ashtakavarga
+        natal = calculate_ashtakavarga([0, 1, 2, 3, 4, 5, 6], 0)
+        with pytest.raises(ValueError):
+            transit_ashtakavarga(natal, [0.0] * 6)
+
+    def test_non_finite_raises(self):
+        from ctara_dhruv.vedic import calculate_ashtakavarga, transit_ashtakavarga
+        from ctara_dhruv import DhruvError
+        natal = calculate_ashtakavarga([0, 1, 2, 3, 4, 5, 6], 0)
+        with pytest.raises(DhruvError):
+            transit_ashtakavarga(natal, [0.0] * 6 + [float("nan")])
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestTaraBalaForDate:
+    UTC = (2024, 1, 15, 6, 0, 0.0)
+
+    def _call(self, **kwargs):
+        from ctara_dhruv.vedic import tara_bala_for_date
+        from ctara_dhruv.types import UtcTime, GeoLocation
+        from ctara_dhruv.engine import engine, eop
+        return tara_bala_for_date(
+            engine()._ptr, eop(), UtcTime(*self.UTC),
+            GeoLocation(lat_deg=28.6139, lon_deg=77.2090), **kwargs,
+        )
+
+    def test_chart_moon_reference(self, engine_handles):
+        from ctara_dhruv.vedic import tara_bala
+        result = self._call()
+        assert result.reference_is_chart_moon
+        assert result.grahas[1].nakshatra_index == result.reference_nakshatra_index
+        assert result.grahas[1].tara_bala.tara_index == 0
+        assert len(result.grahas) == 9
+        for entry in result.grahas + [result.lagna]:
+            assert 0 <= entry.nakshatra_index <= 26
+            assert entry.tara_bala == tara_bala(result.reference_nakshatra_index, entry.nakshatra_index)
+
+    def test_explicit_reference(self, engine_handles):
+        result = self._call(reference_nakshatra_index=3)
+        assert result.reference_nakshatra_index == 3
+        assert not result.reference_is_chart_moon
+
+    def test_invalid_reference_raises(self, engine_handles):
+        from ctara_dhruv import DhruvError
+        with pytest.raises(DhruvError):
+            self._call(reference_nakshatra_index=27)
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestTransitAshtakavargaForDate:
+    NATAL = (2024, 1, 15, 6, 0, 0.0)
+    QUERY = (2025, 3, 1, 12, 0, 0.0)
+    LOC = (28.6139, 77.2090)
+
+    def test_matches_pure_scoring(self, engine_handles):
+        from ctara_dhruv.vedic import (
+            calculate_ashtakavarga, transit_ashtakavarga, transit_ashtakavarga_for_date,
+        )
+        from ctara_dhruv.kundali import graha_positions
+        from ctara_dhruv.types import AshtakavargaReference, UtcTime
+        from ctara_dhruv.engine import engine, lsk, eop
+        natal_pos = graha_positions(
+            engine(), lsk(), eop(), jd_utc=self.NATAL, location=self.LOC,
+            config={"include_lagna": 1},
+        )
+        rashis = [natal_pos.grahas[i].rashi_index for i in range(7)]
+        lagna_rashi = natal_pos.lagna.rashi_index
+        reference = AshtakavargaReference(graha_rashis=rashis, lagna_rashi=lagna_rashi)
+
+        result = transit_ashtakavarga_for_date(
+            engine()._ptr, eop(), UtcTime(*self.QUERY), reference,
+        )
+        assert result.reference == reference
+        assert len(result.entries) == 7
+
+        transit_pos = graha_positions(
+            engine(), lsk(), eop(), jd_utc=self.QUERY, location=self.LOC,
+        )
+        lons = [transit_pos.grahas[i].sidereal_longitude for i in range(7)]
+        natal = calculate_ashtakavarga(rashis, lagna_rashi)
+        assert result.entries == transit_ashtakavarga(natal, lons)
+
+    def test_reference_accepts_dict_and_tuple(self, engine_handles):
+        from ctara_dhruv.vedic import transit_ashtakavarga_for_date
+        from ctara_dhruv.types import UtcTime
+        from ctara_dhruv.engine import engine, eop
+        rashis = [9, 7, 8, 9, 0, 10, 10]
+        a = transit_ashtakavarga_for_date(
+            engine()._ptr, eop(), UtcTime(*self.QUERY),
+            {"graha_rashis": rashis, "lagna_rashi": 4},
+        )
+        b = transit_ashtakavarga_for_date(
+            engine()._ptr, eop(), UtcTime(*self.QUERY), (rashis, 4),
+        )
+        assert a == b
+        assert a.reference.graha_rashis == rashis
+        assert a.reference.lagna_rashi == 4
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestSamvatsaraOfficers:
+    def test_officers_of_the_year(self, engine_handles):
+        from ctara_dhruv.vedic import samvatsara_officers, samvatsara_office_name
+        from ctara_dhruv.types import UtcTime, GeoLocation
+        from ctara_dhruv.engine import engine, eop
+        utc = UtcTime(2024, 6, 15, 12, 0, 0.0)
+        result = samvatsara_officers(
+            engine()._ptr, eop(), utc, GeoLocation(lat_deg=28.6139, lon_deg=77.2090)
+        )
+        assert [samvatsara_office_name(i) for i in range(9)] == [
+            "Raja", "Mantri", "Sasyesha", "Dhanyesha", "Meghesha",
+            "Rasesha", "Nirasesha", "Phalesha", "Durgesha",
+        ]
+        assert samvatsara_office_name(9) is None
+        assert 0 <= result.varsha.samvatsara_index <= 59
+        assert len(result.officers) == 9
+        year_start = result.varsha.start.to_datetime()
+        for i, o in enumerate(result.officers):
+            assert o.office_index == i
+            assert 0 <= o.vaar_index <= 6
+            assert o.lord_index == o.vaar_index  # vaar lords are Surya..Shani in order
+            assert o.event_utc.to_datetime() >= year_start
+            day_start = o.vedic_day_start.to_datetime()
+            event = o.event_utc.to_datetime()
+            if i == 0:
+                # Raja follows the udaya rule: the Vedic day is the one whose
+                # sunrise falls inside Chaitra Shukla Pratipada, so the
+                # sunrise comes at or after the tithi start.
+                assert event <= day_start < event + timedelta(days=1.2)
+            else:
+                # Sankranti-style events lie inside their Vedic day.
+                assert day_start <= event < day_start + timedelta(days=1.1)
+        # Solar ingress events follow the Sun through the year:
+        # Mesha (Mantri) < Karka (Sasyesha) < Tula (Rasesha) < Makara (Nirasesha).
+        mantri, sasyesha, rasesha, nirasesha = (
+            result.officers[i].event_utc.to_datetime() for i in (1, 2, 5, 6)
+        )
+        assert mantri < sasyesha < rasesha < nirasesha

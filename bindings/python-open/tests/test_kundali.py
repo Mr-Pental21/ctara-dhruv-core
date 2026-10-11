@@ -1,6 +1,7 @@
 """Tests for graha positions, core bindus, and full kundali."""
 
 import pytest
+from datetime import timedelta
 from conftest import skip_no_kernels, skip_no_eop
 
 
@@ -318,3 +319,176 @@ class TestFullKundali:
         assert result.charakaraka is not None
         assert result.charakaraka.scheme == 2
         assert len(result.charakaraka.entries) == 7
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestGrahaSpeeds:
+    """include_speeds / speed_valid (ABI v91)."""
+
+    def test_speeds_present_when_requested(self, engine_handles):
+        from ctara_dhruv.kundali import graha_positions
+        from ctara_dhruv.engine import engine, lsk, eop
+        result = graha_positions(
+            engine(), lsk(), eop(),
+            jd_utc=(2024, 1, 15, 6, 0, 0.0),
+            location=(28.6139, 77.2090),
+            config={"include_speeds": True, "include_lagna": 1},
+        )
+        for g in result.grahas:
+            assert g.speed_valid
+        # Sun ~1 deg/day, Moon ~12-15 deg/day, both direct.
+        assert 0.9 < result.grahas[0].longitude_speed_deg_per_day < 1.1
+        assert 11.0 < result.grahas[1].longitude_speed_deg_per_day < 16.0
+        # Rahu/Ketu report latitude rate exactly 0.
+        assert result.grahas[7].latitude_speed_deg_per_day == 0.0
+        assert result.grahas[8].latitude_speed_deg_per_day == 0.0
+        # Lagna sweeps the zodiac daily; latitude rate 0.
+        assert result.lagna.speed_valid
+        assert result.lagna.longitude_speed_deg_per_day > 100.0
+        assert result.lagna.latitude_speed_deg_per_day == 0.0
+        for o in result.outer_planets:
+            assert o.speed_valid
+
+    def test_speeds_absent_by_default(self, engine_handles):
+        from ctara_dhruv.kundali import graha_positions
+        from ctara_dhruv.engine import engine, lsk, eop
+        result = graha_positions(
+            engine(), lsk(), eop(),
+            jd_utc=(2024, 1, 15, 6, 0, 0.0),
+            location=(28.6139, 77.2090),
+            config={"include_lagna": 1},
+        )
+        for g in result.grahas + [result.lagna] + result.outer_planets:
+            assert not g.speed_valid
+            assert g.longitude_speed_deg_per_day == 0.0
+            assert g.latitude_speed_deg_per_day == 0.0
+
+    def test_outer_planet_retrograde_with_basic_states(self, engine_handles):
+        """Outer planets get a real retrograde flag; it agrees with the speed sign."""
+        from ctara_dhruv.kundali import graha_positions
+        from ctara_dhruv.engine import engine, lsk, eop
+        result = graha_positions(
+            engine(), lsk(), eop(),
+            jd_utc=(2024, 1, 15, 6, 0, 0.0),
+            location=(28.6139, 77.2090),
+            config={
+                "include_speeds": True,
+                "basic_states_config": {"include_basic_states": 1},
+            },
+        )
+        for o in result.outer_planets:
+            assert o.basic_states_valid
+            assert o.basic_states.retrograde == (o.longitude_speed_deg_per_day < 0)
+        # Uranus was retrograde on 2024-01-15 (it stationed direct on 2024-01-27).
+        assert result.outer_planets[0].basic_states.retrograde
+        assert result.outer_planets[0].longitude_speed_deg_per_day < 0
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestFullKundaliV91Sections:
+    """tara_bala / samvatsara_officers / transit_ashtakavarga sections."""
+
+    BIRTH = (2024, 1, 15, 6, 0, 0.0)
+    LOC = (28.6139, 77.2090)
+
+    def _run(self, cfg=None):
+        from ctara_dhruv.kundali import full_kundali
+        from ctara_dhruv.engine import engine, lsk, eop
+        return full_kundali(
+            engine(), lsk(), eop(), jd_utc=self.BIRTH, location=self.LOC, config=cfg,
+        )
+
+    def test_sections_absent_by_default(self, engine_handles):
+        result = self._run()
+        assert result.tara_bala is None
+        assert result.samvatsara_officers is None
+        assert result.transit_ashtakavarga is None
+
+    def test_tara_bala_from_chart_moon(self, engine_handles):
+        from ctara_dhruv.kundali import full_kundali_config_default
+        from ctara_dhruv.vedic import tara_bala
+        cfg = full_kundali_config_default()
+        cfg.include_tara_bala = 1
+        cfg.graha_positions_config.include_nakshatra = 1
+        cfg.graha_positions_config.include_lagna = 1
+        result = self._run(cfg)
+        tb = result.tara_bala
+        assert tb is not None
+        assert tb.reference_is_chart_moon
+        moon = result.graha_positions.grahas[1]
+        assert tb.reference_nakshatra_index == moon.nakshatra_index
+        assert tb.grahas[1].tara_bala.tara_index == 0  # Moon is its own Janma tara
+        assert tb.grahas[1].tara_bala.count == 1
+        assert tb.lagna.nakshatra_index == result.graha_positions.lagna.nakshatra_index
+        for entry in tb.grahas + [tb.lagna]:
+            assert entry.tara_bala == tara_bala(tb.reference_nakshatra_index, entry.nakshatra_index)
+
+    def test_tara_bala_explicit_reference(self, engine_handles):
+        from ctara_dhruv.kundali import full_kundali_config_default
+        cfg = full_kundali_config_default()
+        cfg.include_tara_bala = 1
+        cfg.tara_bala_reference_nakshatra_index = 5
+        result = self._run(cfg)
+        assert result.tara_bala is not None
+        assert result.tara_bala.reference_nakshatra_index == 5
+        assert not result.tara_bala.reference_is_chart_moon
+
+    def test_samvatsara_officers_section(self, engine_handles):
+        from ctara_dhruv.kundali import full_kundali_config_default
+        from ctara_dhruv.vedic import samvatsara_office_name
+        cfg = full_kundali_config_default()
+        cfg.include_samvatsara_officers = 1
+        result = self._run(cfg)
+        so = result.samvatsara_officers
+        assert so is not None
+        assert 0 <= so.varsha.samvatsara_index <= 59
+        assert len(so.officers) == 9
+        for i, o in enumerate(so.officers):
+            assert o.office_index == i
+            assert samvatsara_office_name(i) is not None
+            assert 0 <= o.vaar_index <= 6
+            assert o.lord_index == o.vaar_index  # vaar lords are Surya..Shani in order
+            day_start = o.vedic_day_start.to_datetime()
+            event = o.event_utc.to_datetime()
+            if i == 0:
+                # Raja (udaya rule): the sunrise falls inside the tithi.
+                assert event <= day_start < event + timedelta(days=1.2)
+            else:
+                assert day_start <= event < day_start + timedelta(days=1.1)
+
+    def test_transit_ashtakavarga_section(self, engine_handles):
+        from ctara_dhruv.kundali import full_kundali_config_default
+        from ctara_dhruv.vedic import kakshya_lord
+        base_cfg = full_kundali_config_default()
+        base_cfg.graha_positions_config.include_lagna = 1
+        base = self._run(base_cfg)
+        rashis = [base.graha_positions.grahas[i].rashi_index for i in range(7)]
+        lagna_rashi = base.graha_positions.lagna.rashi_index
+
+        cfg = full_kundali_config_default()
+        cfg.graha_positions_config.include_lagna = 1
+        cfg.include_transit_ashtakavarga = 1
+        for i, r in enumerate(rashis):
+            cfg.transit_ashtakavarga_reference.graha_rashis[i] = r
+        cfg.transit_ashtakavarga_reference.lagna_rashi = lagna_rashi
+        result = self._run(cfg)
+        ta = result.transit_ashtakavarga
+        assert ta is not None
+        assert ta.reference.graha_rashis == rashis
+        assert ta.reference.lagna_rashi == lagna_rashi
+        assert len(ta.entries) == 7
+        sav = base.ashtakavarga.sav
+        for i, e in enumerate(ta.entries):
+            assert e.graha_index == i
+            # Transit at the natal moment occupies the natal rashi.
+            assert e.rashi_index == rashis[i]
+            bav = base.ashtakavarga.bavs[i]
+            assert e.bav_bindus == bav.points[e.rashi_index]
+            assert e.sav_total == sav.total_points[e.rashi_index]
+            assert e.sav_after_trikona == sav.after_trikona[e.rashi_index]
+            assert e.sav_after_ekadhipatya == sav.after_ekadhipatya[e.rashi_index]
+            assert 0 <= e.kakshya_index <= 7
+            assert e.kakshya_lord == kakshya_lord(e.kakshya_index)
+            assert e.kakshya_bindu == bool(bav.contributors[e.rashi_index][e.kakshya_lord])

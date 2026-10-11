@@ -83,6 +83,58 @@ defmodule CtaraDhruv.Jyotish do
   def full_kundali(engine, request, sankranti_config),
     do: full_kundali(engine, put_sankranti_config(request, sankranti_config))
 
+  @doc """
+  Tara bala of every graha and the lagna at `:utc` / `:location`.
+
+  The optional `:reference_nakshatra_index` (0-based, 0..26) selects the
+  reference nakshatra; omit it (or pass `255`) to count from this chart's own
+  Moon nakshatra. Returns `%{reference_nakshatra_index: ...,
+  reference_is_chart_moon: bool, grahas: [entry x 9], lagna: entry}` where
+  each entry carries `:graha` (grahas only), `:nakshatra_index`, `:tara`
+  (`:janma` .. `:parama_mitra`), `:tara_name`, `:tara_index` (0..8),
+  `:count` (inclusive, 1..27), `:cycle` (1..3), and `:favorable`.
+  """
+  def tara_bala(engine, request),
+    do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :tara_bala))
+
+  @doc """
+  Transit ashtakavarga of the seven sapta grahas at `:utc` scored against a
+  natal chart.
+
+  `:ashtakavarga_reference` (required) is `%{graha_rashis: [7 x 0..11],
+  lagna_rashi: 0..11}` — the natal rashi of Sun through Saturn and of the
+  natal lagna. Returns `%{reference: ..., entries: [entry x 7]}`; each entry
+  carries `:graha_index`, `:graha`, `:rashi_index`, `:bav_bindus`,
+  `:sav_total`, `:sav_after_trikona`, `:sav_after_ekadhipatya`,
+  `:kakshya_index` (0..7), `:kakshya_lord` (BAV contributor index,
+  0=Sun..6=Saturn, 7=Lagna), and `:kakshya_bindu`.
+  """
+  def transit_ashtakavarga(engine, request),
+    do:
+      Native.call_engine(
+        &Native.jyotish_run/2,
+        engine,
+        Map.put(request, :op, :transit_ashtakavarga)
+      )
+
+  @doc """
+  Samvatsara office-bearers of the lunar year containing `:utc`, with Vedic
+  days evaluated at `:location` (optional `:riseset_config`).
+
+  Returns `%{varsha: ..., officers: [officer x 9]}` in office order (Raja,
+  Mantri, Sasyesha, Dhanyesha, Meghesha, Rasesha, Nirasesha, Phalesha,
+  Durgesha). Each officer carries `:office`, `:office_index`, `:office_name`,
+  `:event_name`, `:event_utc`, `:vedic_day_start`, `:vaar`, `:lord`,
+  `:lord_index`, and `:lord_name`.
+  """
+  def samvatsara_officers(engine, request),
+    do:
+      Native.call_engine(
+        &Native.jyotish_run/2,
+        engine,
+        Map.put(request, :op, :samvatsara_officers)
+      )
+
   def amsha(engine, request),
     do: Native.call_engine(&Native.jyotish_run/2, engine, Map.put(request, :op, :amsha))
 

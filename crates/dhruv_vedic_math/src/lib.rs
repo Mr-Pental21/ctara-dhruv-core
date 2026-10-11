@@ -24,6 +24,7 @@ pub mod samvatsara;
 pub mod shadbala;
 pub mod special_lagna;
 pub mod sphuta;
+pub mod tara_bala;
 pub mod tithi;
 pub mod upagraha;
 pub mod util;
@@ -42,9 +43,11 @@ pub use amsha::{
 };
 pub use arudha::{ALL_ARUDHA_PADAS, ArudhaPada, ArudhaResult, all_arudha_padas, arudha_pada};
 pub use ashtakavarga::{
-    AshtakavargaResult, BAV_TOTALS, BhinnaAshtakavarga, SAV_TOTAL, SarvaAshtakavarga,
-    calculate_all_bav, calculate_ashtakavarga, calculate_bav, calculate_sav, ekadhipatya_sodhana,
-    trikona_sodhana,
+    AshtakavargaResult, BAV_TOTALS, BhinnaAshtakavarga, KAKSHYA_COUNT,
+    KAKSHYA_LORD_CONTRIBUTOR_INDEX, KAKSHYA_SPAN_DEG, SAV_TOTAL, SarvaAshtakavarga,
+    TransitAshtakavargaEntry, calculate_all_bav, calculate_ashtakavarga, calculate_bav,
+    calculate_sav, ekadhipatya_sodhana, kakshya_bindu, kakshya_index, kakshya_lord_contributor,
+    kakshya_lord_graha, transit_ashtakavarga, trikona_sodhana,
 };
 pub use avastha::{
     ALL_NAME_GROUPS, AllGrahaAvasthas, AvasthaInputs, BaladiAvastha, DEEPTADI_PRIORITY,
@@ -82,7 +85,7 @@ pub use dasha::{
     MAX_DASHA_SYSTEMS, MAX_PERIODS_PER_LEVEL, NakshatraDashaConfig, SubPeriodMethod, YoginiScheme,
     find_active_period, nakshatra_birth_balance, nakshatra_child_period, nakshatra_children,
     nakshatra_complete_level, nakshatra_hierarchy, nakshatra_level0, nakshatra_level0_entity,
-    nakshatra_snapshot, snapshot_from_hierarchy, vimshottari_config,
+    nakshatra_snapshot, progress_fraction, snapshot_from_hierarchy, vimshottari_config,
 };
 pub use drishti::{
     DrishtiEntry, GrahaDrishtiMatrix, base_virupa, graha_drishti, graha_drishti_matrix,
@@ -137,6 +140,7 @@ pub use sphuta::{
     rahu_tithi_sphuta, sookshma_trisphuta, tithi_sphuta, trisphuta, yoga_sphuta,
     yoga_sphuta_normalized,
 };
+pub use tara_bala::{ALL_TARAS, Tara, TaraBala, tara_bala};
 pub use tithi::{
     ALL_TITHIS, Paksha, TITHI_SEGMENT_DEG, Tithi, TithiPosition, tithi_from_elongation,
 };

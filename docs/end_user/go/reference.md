@@ -40,7 +40,13 @@ Core inputs and configs:
   request's `useNutation` flag, geometric (no light-time/aberration); lagna
   and Rahu/Ketu report ecliptic latitude exactly 0 — plus
   `EarthOrientationValid`, `GmstDeg`, and `GastDeg` (Greenwich mean/apparent
-  sidereal time in degrees) on the `GrahaPositions` result.
+  sidereal time in degrees) on the `GrahaPositions` result. `IncludeSpeeds`
+  adds `SpeedValid`, `LongitudeSpeedDegPerDay` (rate of the reported sidereal
+  longitude; central finite difference over +/-1 minute, so ayanamsha drift
+  and the reference plane are included; negative = retrograde), and
+  `LatitudeSpeedDegPerDay` (ecliptic latitude rate; lagna and Rahu/Ketu
+  report exactly 0) per entry. With `BasicStatesConfig.IncludeBasicStates`
+  the outer planets report a real `BasicStates.Retrograde`.
 - `BindusConfig`
 - `DrishtiConfig`
 - `TimeUpagrahaConfig`
@@ -52,6 +58,31 @@ Core inputs and configs:
 - `DashaSelectionConfig`
 - `DashaVariationConfig`
 - `TaraConfig`
+- `AshtakavargaReference`
+  natal `GrahaRashis` (Sun..Saturn) and `LagnaRashi`, the inputs of
+  `CalculateAshtakavarga`, used by `TransitAshtakavargaForDate` and
+  `FullKundaliConfig.TransitAshtakavargaReference`
+
+Tara bala, transit ashtakavarga, and samvatsara officer results:
+
+- `TaraBalaInfo` (`TaraIndex` 0=Janma .. 8=Parama Mitra, inclusive `Count`
+  1-27, `Cycle` 1-3, `Favorable`), `TaraBalaEntry`, `TaraBalaResult`
+  (`ReferenceNakshatraIndex`, `ReferenceIsChartMoon`, `Grahas`, `Lagna`)
+- `TransitAshtakavargaEntry` (`GrahaIndex`, `RashiIndex`, `BavBindus`,
+  `SavTotal`, `SavAfterTrikona`, `SavAfterEkadhipatya`, `KakshyaIndex`,
+  `KakshyaLord`, `KakshyaBindu`), `TransitAshtakavargaResult` (`Reference`,
+  `Entries` for Sun..Saturn)
+- `SamvatsaraOfficer` (`OfficeIndex`, `VaarIndex`, `LordIndex`, `EventUTC`,
+  `VedicDayStart`), `SamvatsaraOfficers` (`Varsha`, nine `Officers`)
+- Constants: `TaraBalaReferenceChartMoon` (255), `TaraIndex*`,
+  `KakshyaLordLagna` (7), `SamvatsaraOffice*`, `SamvatsaraOfficeCount`
+
+Panchang info structs (`TithiInfo` .. `VarshaInfo`) carry `Progress`, the
+elapsed fraction of `[Start, End)` at the query moment clamped to `[0, 1]`
+(`0` in `PanchangEvents` listings and from `VaarFromSunrises`).
+`DashaSnapshot.Progress [5]float64` is the elapsed fraction of each active
+period at `QueryJD`, parallel to `Periods`. `AmshaEntry.Vargottama` is true
+when the varga rashi equals the point's D1 rashi (always false on D1).
 
 Query request constants:
 
@@ -261,6 +292,26 @@ Pure ashtakavarga and drishti helpers:
 - `GrahaDrishti`
 - `GrahaDrishtiMatrixForLongitudes`
 
+Tara bala, kakshya, and transit ashtakavarga helpers (pure):
+
+- `TaraName(index)` — name of a `TaraIndex*` value (`""` out of range)
+- `TaraBala(referenceNakshatraIndex, targetNakshatraIndex)` — inclusive
+  count from the reference, modulo 9 (Janma, Sampat, Vipat, Kshema, Pratyak,
+  Sadhaka, Vadha, Mitra, Parama Mitra); `Cycle` is the pass through the
+  sequence; favourable set = Sampat, Kshema, Sadhaka, Mitra, Parama Mitra
+- `KakshyaIndex(siderealLongitudeDeg)` — 0-7 (eighth of a rashi, 3°45'),
+  -1 for a non-finite input
+- `KakshyaLord(kakshyaIndex)` — BAV contributor index in the order Saturn,
+  Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna (`KakshyaLordLagna`);
+  -1 when invalid
+- `KakshyaBindu(bav, siderealLongitudeDeg)` — 1/0 whether the kakshya lord
+  contributed a bindu to that rashi in `bav`; -1 on error
+- `TransitAshtakavarga(natal, transitSiderealLons [7]float64)` — Sun..Saturn
+  scored against the natal BAV/SAV (raw SAV plus after trikona and
+  ekadhipatya sodhana) with the kakshya lord/bindu; Rahu/Ketu and outer
+  planets are not scored
+- `SamvatsaraOfficeName(index)` — name of a `SamvatsaraOffice*` value
+
 Amsha helpers:
 
 - `AmshaLongitude`
@@ -387,6 +438,23 @@ Jyotish and charts:
 - `(*Engine).CoreBindusForDate`
 - `(*Engine).DrishtiForDate`
 - `(*Engine).AshtakavargaForDate`
+- `(*Engine).TaraBalaForDate(eop, utc, loc, ayanamshaSystem, useNutation, referenceNakshatraIndex)`
+  Tara bala of the nine grahas and the lagna against a reference nakshatra
+  (0-26), or against that chart's own Moon nakshatra when the reference is
+  `TaraBalaReferenceChartMoon` (the result then reports
+  `ReferenceIsChartMoon`).
+- `(*Engine).TransitAshtakavargaForDate(eop, utc, ayanamshaSystem, useNutation, reference)`
+  Scores the sidereal positions at `utc` as transits against the natal
+  `AshtakavargaReference`; the result echoes `Reference` and carries one
+  `TransitAshtakavargaEntry` per sapta graha.
+- `(*Engine).SamvatsaraOfficers(eop, utc, loc, risesetCfg, ayanamshaSystem, useNutation)`
+  Office-bearers of the lunar year containing `utc`: each office is the vaar
+  lord of the sunrise-to-sunrise Vedic day at `loc` holding one event of the
+  year — Raja = Chaitra Shukla Pratipada (udaya rule), Mantri = Mesha
+  sankranti, Sasyesha = Karka, Dhanyesha = Dhanu, Meghesha = Sun entering
+  Ardra, Rasesha = Tula, Nirasesha = Makara, Phalesha = Meena, Durgesha =
+  Simha (first occurrence at or after the year start). `risesetCfg` is a
+  `*RiseSetConfig`; nil selects the library defaults.
 - `(*Engine).FullKundaliForDateSummary`
 - `(*Engine).FullKundaliForDate`
 - `(*Engine).TimeUpagrahaJDUTC`
@@ -571,6 +639,12 @@ events found up to the edge.
 - `AmshaSelection`
 - `PanchangIncludeMask`
 - `DashaConfig`
+- `IncludeTaraBala` + `TaraBalaReferenceNakshatraIndex` (default
+  `TaraBalaReferenceChartMoon`), `IncludeSamvatsaraOfficers`,
+  `IncludeTransitAshtakavarga` + `TransitAshtakavargaReference` (required
+  when set); all three default off. The result then carries
+  `TaraBala *TaraBalaResult`, `SamvatsaraOfficers *SamvatsaraOfficers`, and
+  `TransitAshtakavarga *TransitAshtakavargaResult` (nil when not requested).
 
 `FullKundaliConfig.PanchangIncludeMask` selects the embedded panchang section
 with the `PanchangInclude*` bits (0 omits the section); it replaces the former

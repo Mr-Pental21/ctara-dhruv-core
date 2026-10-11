@@ -2211,6 +2211,7 @@ fn ffi_orchestrators_bench(c: &mut Criterion) {
         include_bhava: true,
         basic_states_config: Default::default(),
         include_equatorial: false,
+        include_speeds: false,
     };
     let gp_cfg_ffi = dhruv_ffi_c::DhruvGrahaPositionsConfig {
         include_nakshatra: 1,
@@ -2222,6 +2223,7 @@ fn ffi_orchestrators_bench(c: &mut Criterion) {
             include_sensitive_point_distances: 0,
         },
         include_equatorial: 0,
+        include_speeds: 0,
     };
     let mut gp_out: dhruv_ffi_c::DhruvGrahaPositions = zeroed();
     bench_pair(

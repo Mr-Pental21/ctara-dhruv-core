@@ -377,6 +377,81 @@ func (e *Engine) AshtakavargaForDate(ep *EOP, utc UtcTime, loc GeoLocation, ayan
 	return out, statusErr("ashtakavarga_for_date", st)
 }
 
+// TaraName resolves a tara index (TaraIndex*, 0=Janma .. 8=Parama Mitra) to
+// its name ("" for an index out of range).
+func TaraName(index uint32) string { return cabi.TaraName(index) }
+
+// TaraBala computes the tara relationship of targetNakshatraIndex counted
+// inclusively from referenceNakshatraIndex (both 0-26): the inclusive count,
+// its tara index modulo 9, the cycle (1-3) through the nine-fold sequence,
+// and whether it is classically favourable (Sampat, Kshema, Sadhaka, Mitra,
+// Parama Mitra).
+func TaraBala(referenceNakshatraIndex, targetNakshatraIndex uint32) (TaraBalaInfo, error) {
+	out, st := cabi.TaraBala(referenceNakshatraIndex, targetNakshatraIndex)
+	return out, statusErr("tara_bala", st)
+}
+
+// TaraBalaForDate computes the tara bala of the nine grahas and the lagna at
+// utc/loc against referenceNakshatraIndex (0-26), or against that chart's
+// own Moon nakshatra when referenceNakshatraIndex is
+// TaraBalaReferenceChartMoon (the result then reports
+// ReferenceIsChartMoon).
+func (e *Engine) TaraBalaForDate(ep *EOP, utc UtcTime, loc GeoLocation, ayanamshaSystem uint32, useNutation bool, referenceNakshatraIndex uint32) (TaraBalaResult, error) {
+	out, st := cabi.TaraBalaForDate(e.h, ep.h, utc, loc, ayanamshaSystem, useNutation, referenceNakshatraIndex)
+	return out, statusErr("tara_bala_for_date", st)
+}
+
+// KakshyaIndex returns the kakshya (eighth of a rashi, 3 deg 45') index 0-7
+// of a sidereal longitude, or -1 for a non-finite input.
+func KakshyaIndex(siderealLongitudeDeg float64) int32 { return cabi.KakshyaIndex(siderealLongitudeDeg) }
+
+// KakshyaLord returns the BAV contributor index ruling kakshya 0-7, in the
+// order Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna
+// (0=Sun .. 6=Saturn, KakshyaLordLagna=7), or -1 for an invalid index.
+func KakshyaLord(kakshyaIndex uint32) int32 { return cabi.KakshyaLord(kakshyaIndex) }
+
+// KakshyaBindu reports whether the kakshya lord at siderealLongitudeDeg
+// contributed a bindu to that rashi in bav: 1 when present, 0 when absent,
+// -1 on error (non-finite longitude).
+func KakshyaBindu(bav BhinnaAshtakavarga, siderealLongitudeDeg float64) int32 {
+	return cabi.KakshyaBindu(bav, siderealLongitudeDeg)
+}
+
+// TransitAshtakavarga scores seven transit sidereal longitudes (Sun..Saturn,
+// in graha order) against a natal ashtakavarga: per graha, the natal BAV
+// bindus in the transit rashi, the natal SAV of that rashi (raw, after
+// trikona, after ekadhipatya sodhana), and the kakshya with its lord and
+// bindu. Rahu/Ketu and outer planets are not scored.
+func TransitAshtakavarga(natal AshtakavargaResult, transitSiderealLons [7]float64) ([7]TransitAshtakavargaEntry, error) {
+	out, st := cabi.TransitAshtakavarga(natal, transitSiderealLons)
+	return out, statusErr("transit_ashtakavarga", st)
+}
+
+// TransitAshtakavargaForDate scores the sidereal graha positions at utc as
+// transits against the natal ashtakavarga inputs in reference (the same
+// inputs as CalculateAshtakavarga).
+func (e *Engine) TransitAshtakavargaForDate(ep *EOP, utc UtcTime, ayanamshaSystem uint32, useNutation bool, reference AshtakavargaReference) (TransitAshtakavargaResult, error) {
+	out, st := cabi.TransitAshtakavargaForDate(e.h, ep.h, utc, ayanamshaSystem, useNutation, reference)
+	return out, statusErr("transit_ashtakavarga_for_date", st)
+}
+
+// SamvatsaraOfficeName resolves a samvatsara office index (SamvatsaraOffice*,
+// 0=Raja .. 8=Durgesha) to its name ("" for an index out of range).
+func SamvatsaraOfficeName(index uint32) string { return cabi.SamvatsaraOfficeName(index) }
+
+// SamvatsaraOfficers computes the office-bearers of the lunar year
+// containing utc. Each office is the vaar lord of the sunrise-to-sunrise
+// Vedic day at loc holding one event of the year: Raja = Chaitra Shukla
+// Pratipada (udaya rule), Mantri = Mesha sankranti, Sasyesha = Karka,
+// Dhanyesha = Dhanu, Meghesha = Sun entering Ardra, Rasesha = Tula,
+// Nirasesha = Makara, Phalesha = Meena, Durgesha = Simha; events are the
+// first occurrence at or after the year start. risesetCfg nil selects the
+// library defaults.
+func (e *Engine) SamvatsaraOfficers(ep *EOP, utc UtcTime, loc GeoLocation, risesetCfg *RiseSetConfig, ayanamshaSystem uint32, useNutation bool) (SamvatsaraOfficers, error) {
+	out, st := cabi.SamvatsaraOfficersForDate(e.h, ep.h, utc, loc, risesetCfg, ayanamshaSystem, useNutation)
+	return out, statusErr("samvatsara_officers", st)
+}
+
 func GrahaDrishti(grahaIndex uint32, sourceLon, targetLon float64) (DrishtiEntry, error) {
 	out, st := cabi.GrahaDrishti(grahaIndex, sourceLon, targetLon)
 	return out, statusErr("graha_drishti", st)

@@ -194,6 +194,13 @@ calls skip the expensive new-moon/sankranti searches. The result carries
 per-element `*Valid` flags (`tithiValid`, `vaarValid`, `masaValid`, ...)
 alongside the element payloads.
 
+Every panchang element object (from the `*ForDate` helpers,
+`panchangComputeEx`, and the embedded kundali section) carries `progress`,
+the elapsed fraction `(now - start) / (end - start)` of the element at the
+query moment, clamped to `[0, 1]`. A reused known calendar value keeps its
+window but has `progress` re-evaluated at the new moment; `panchangEvents`
+segments and `vaarFromSunrises` report `progress: 0`.
+
 `panchangEvents(engine, eop, fromUtc, toUtc, includeMask, sankrantiConfig,
 maxEvents, location, riseSetConfig)` streams the exact panchang element
 segments overlapping `[fromUtc, toUtc]` without a sampling grid.
@@ -280,6 +287,8 @@ sweeps re-solve boundaries, so match starts with a small tolerance).
 - `specialLagnaName`
 - `arudhaPadaName`
 - `upagrahaName`
+- `taraName` (tara bala names `0..8`, Janma .. Parama Mitra)
+- `samvatsaraOfficeName` (office names `0..8`, Raja .. Durgesha)
 - `vaarFromJd`
 - `masaFromRashiIndex`
 - `ayanaFromSiderealLongitude`
@@ -342,6 +351,43 @@ sweeps re-solve boundaries, so match starts with a small tolerance).
   - `trikonaSodhana`
   - `ekadhipatyaSodhana`
   - `ashtakavargaForDate`
+- tara bala, kakshya, transit ashtakavarga, and samvatsara officers:
+  - `taraBala(referenceNakshatraIndex, targetNakshatraIndex)` — pure
+    nine-fold tara: `{ taraIndex, count, cycle, favorable }` (`taraIndex` is a
+    `TARA` code; `count` is the inclusive count `1..27`; `cycle` the pass
+    `1..3`; `favorable` for Sampat, Kshema, Sadhaka, Mitra, Parama Mitra).
+  - `taraBalaForDate(engine, eop, utc, location, ayanamshaSystem = 0,
+    useNutation = true, referenceNakshatraIndex =
+    TARA_BALA_REFERENCE_CHART_MOON)` — `{ referenceNakshatraIndex,
+    referenceIsChartMoon, grahas: [9 x { nakshatraIndex, taraBala }], lagna }`;
+    the default reference (255) is the chart's own Moon nakshatra.
+  - `kakshyaIndex(siderealLongitudeDeg)` — eighth of the rashi, `0..7`
+    (`-1` for non-finite input).
+  - `kakshyaLord(kakshyaIndex)` — BAV contributor index of the lord
+    (order Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna;
+    `0=Sun .. 6=Saturn, 7=Lagna`; `-1` when invalid).
+  - `kakshyaBindu(bav, siderealLongitudeDeg)` — `true` when that lord
+    contributed a bindu to the rashi in the bhinna ashtakavarga object.
+  - `transitAshtakavarga(natal, transitSiderealLons)` — seven entries
+    `{ grahaIndex, rashiIndex, bavBindus, savTotal, savAfterTrikona,
+    savAfterEkadhipatya, kakshyaIndex, kakshyaLord, kakshyaBindu }` from a
+    natal ashtakavarga result and seven Sun..Saturn sidereal longitudes
+    (Rahu/Ketu and outer planets are not scored).
+  - `transitAshtakavargaForDate(engine, eop, utc, ayanamshaSystem,
+    useNutation, reference)` — same scoring at a moment from the natal inputs
+    `reference = { grahaRashis: [7], lagnaRashi }`; returns
+    `{ reference, entries }`.
+  - `samvatsaraOfficers(engine, eop, utc, location, ayanamshaSystem = 0,
+    useNutation = true, riseSetConfig = null)` — office-bearers of the lunar
+    year containing `utc`: `{ varsha, officers: [9 x { officeIndex,
+    officeName, vaarIndex, lordIndex, eventUtc, vedicDayStart }] }`. Each
+    office is the vaar lord of the Vedic day (sunrise-to-sunrise at
+    `location`) of its defining event (Raja = Chaitra Shukla Pratipada,
+    Mantri = Mesha sankranti, Sasyesha = Karka, Dhanyesha = Dhanu,
+    Meghesha = Sun entering Ardra, Rasesha = Tula, Nirasesha = Makara,
+    Phalesha = Meena, Durgesha = Simha), the first occurrence at or after the
+    year start.
+  - `TARA`, `SAMVATSARA_OFFICE`, `TARA_BALA_REFERENCE_CHART_MOON`
   - `grahaDrishti`
   - `grahaDrishtiMatrixForLongitudes`
   - `drishtiForDate`
@@ -365,7 +411,9 @@ sweeps re-solve boundaries, so match starts with a small tolerance).
   Every entry inside an amsha chart identifies itself: `name` is a stable
   snake_case key (`'sree_lagna'`, `'gulika'`, `'a1'`, `'bhava_3'`,
   `'surya'`), `displayName` is the readable form, and `family` / `pointIndex`
-  address the point. Entries also carry `nakshatraIndex`, `pada`, and
+  address the point. Entries also carry `vargottama` (`true` when the varga
+  rashi equals the point's D1 rashi; always `false` on D1 itself),
+  `nakshatraIndex`, `pada`, and
   `rashiBhavaNumber` (whole-sign bhava from the varga lagna; a varga
   transform is not monotonic, so `bhavaCusps` are not ordered house
   boundaries and there is no cusp-based bhava inside a varga). All chart
@@ -451,7 +499,9 @@ With repeated cycles, a period's cycle number is
 
 Returned dasha period objects include `entityName`, the exact canonical
 Sanskrit entity name, plus `startUtc` / `endUtc` alongside `startJd` /
-`endJd`. Dasha snapshots expose `queryUtc` alongside `queryJd`.
+`endJd`. Dasha snapshots expose `queryUtc` alongside `queryJd`, and a
+`progress` array parallel to `periods`: the elapsed fraction of each active
+period at the query moment, clamped to `[0, 1]`.
 
 Chara-style dasha periods use dual lordship for Kumbha (`Shani`/`Rahu`) and
 Vrischika (`Mangal`/`Ketu`). Rahu owns Kumbha and Ketu owns Vrischika for the
@@ -484,7 +534,13 @@ Common config objects:
   the request's `useNutation` flag, geometric without light-time or
   aberration; lagna and Rahu/Ketu report ecliptic latitude exactly `0`), and
   the positions result exposes `earthOrientationValid`, `gmstDeg`, and
-  `gastDeg` (Greenwich mean/apparent sidereal time in degrees)
+  `gastDeg` (Greenwich mean/apparent sidereal time in degrees).
+  Also supports `includeSpeeds`: each entry then exposes `speedValid`,
+  `longitudeSpeedDegPerDay`, and `latitudeSpeedDegPerDay` (central finite
+  difference, plus/minus one minute, of the reported sidereal longitude and
+  of the ecliptic latitude; negative longitude rate = retrograde; lagna and
+  Rahu/Ketu report a latitude rate of exactly `0`). With basic states
+  requested, `outerPlanets` entries carry a real `basicStates.retrograde`.
 - bindus config
 - full-kundali config
   forwards the same nested graha-position settings and may return
@@ -495,6 +551,14 @@ Common config objects:
   `includePanchang`/`includeCalendar` booleans). The embedded
   `fullKundaliForDate(...).panchang` result uses the same per-element
   `*Valid` shape as `panchangComputeEx`.
+  Also accepts `includeTaraBala` (with `taraBalaReferenceNakshatraIndex`,
+  default `TARA_BALA_REFERENCE_CHART_MOON` = 255 for the chart's own Moon),
+  `includeSamvatsaraOfficers`, and `includeTransitAshtakavarga` (which needs
+  `transitAshtakavargaReference = { grahaRashis: [7], lagnaRashi }`); all
+  default to `false`. The result then carries `taraBala`,
+  `samvatsaraOfficers`, and `transitAshtakavarga` in the same shapes as
+  `taraBalaForDate`, `samvatsaraOfficers`, and
+  `transitAshtakavargaForDate` (absent when not requested).
 - dasha selection and variation configs
 
 - `grahaPositionsSeriesForDate(engine, eop, fromUtc, toUtc, stepMinutes,

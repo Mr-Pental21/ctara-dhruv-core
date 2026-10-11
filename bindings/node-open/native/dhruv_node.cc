@@ -109,6 +109,9 @@ napi_value WriteBhavaBalaResult(napi_env env, const DhruvBhavaBalaResult& b);
 napi_value WriteVimsopakaResult(napi_env env, const DhruvVimsopakaResult& v);
 napi_value WriteAllGrahaAvasthas(napi_env env, const DhruvAllGrahaAvasthas& a);
 napi_value WriteCharakarakaResult(napi_env env, const DhruvCharakarakaResult& c);
+napi_value WriteTaraBalaResult(napi_env env, const DhruvTaraBalaResult& t);
+napi_value WriteSamvatsaraOfficers(napi_env env, const DhruvSamvatsaraOfficers& s);
+napi_value WriteTransitAshtakavargaResult(napi_env env, const DhruvTransitAshtakavargaResult& t);
 int32_t WriteDashaHierarchyFromHandle(
     napi_env env,
     DhruvDashaHierarchyHandle handle,
@@ -469,6 +472,11 @@ bool ReadGrahaPositionsConfig(napi_env env, napi_value obj, DhruvGrahaPositionsC
         if (!GetBool(env, v, &b)) return false;
         out->include_equatorial = b ? 1 : 0;
     }
+    if (!GetOptionalNamedProperty(env, obj, "includeSpeeds", &v, &has)) return false;
+    if (has) {
+        if (!GetBool(env, v, &b)) return false;
+        out->include_speeds = b ? 1 : 0;
+    }
     return true;
 }
 
@@ -750,6 +758,31 @@ bool ReadDashaPeriodValue(napi_env env, napi_value obj, DhruvDashaPeriod* out) {
     return true;
 }
 
+// Natal ashtakavarga inputs: { grahaRashis: [7], lagnaRashi }.
+bool ReadAshtakavargaReference(napi_env env, napi_value obj, DhruvAshtakavargaReference* out) {
+    napi_value v;
+    uint32_t u32 = 0;
+    if (!GetNamedProperty(env, obj, "grahaRashis", &v) || !ReadUint8ArrayFixed(env, v, out->graha_rashis, DHRUV_SAPTA_GRAHA_COUNT)) {
+        return false;
+    }
+    if (!GetNamedProperty(env, obj, "lagnaRashi", &v) || !GetUint32(env, v, &u32)) return false;
+    out->lagna_rashi = static_cast<uint8_t>(u32);
+    return true;
+}
+
+napi_value WriteAshtakavargaReference(napi_env env, const DhruvAshtakavargaReference& r) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_value rashis;
+    napi_create_array_with_length(env, DHRUV_SAPTA_GRAHA_COUNT, &rashis);
+    for (uint32_t i = 0; i < DHRUV_SAPTA_GRAHA_COUNT; ++i) {
+        napi_set_element(env, rashis, i, MakeUint32(env, r.graha_rashis[i]));
+    }
+    SetNamed(env, obj, "grahaRashis", rashis);
+    SetNamed(env, obj, "lagnaRashi", MakeUint32(env, r.lagna_rashi));
+    return obj;
+}
+
 bool ReadFullKundaliConfig(napi_env env, napi_value obj, DhruvFullKundaliConfig* out) {
     *out = dhruv_full_kundali_config_default();
     napi_value v;
@@ -798,6 +831,29 @@ bool ReadFullKundaliConfig(napi_env env, napi_value obj, DhruvFullKundaliConfig*
     if (!GetNamedProperty(env, obj, "includeDasha", &v) || !GetBool(env, v, &b)) return false;
     out->include_dasha = b ? 1 : 0;
     if (!GetNamedProperty(env, obj, "dashaConfig", &v) || !ReadDashaSelectionConfig(env, v, &out->dasha_config)) return false;
+    // v91 sections: optional so configs built before them keep working.
+    if (!GetOptionalNamedProperty(env, obj, "includeTaraBala", &v, &has)) return false;
+    if (has) {
+        if (!GetBool(env, v, &b)) return false;
+        out->include_tara_bala = b ? 1 : 0;
+    }
+    if (!GetOptionalNamedProperty(env, obj, "taraBalaReferenceNakshatraIndex", &v, &has)) return false;
+    if (has) {
+        if (!GetUint32(env, v, &u32)) return false;
+        out->tara_bala_reference_nakshatra_index = static_cast<uint8_t>(u32);
+    }
+    if (!GetOptionalNamedProperty(env, obj, "includeSamvatsaraOfficers", &v, &has)) return false;
+    if (has) {
+        if (!GetBool(env, v, &b)) return false;
+        out->include_samvatsara_officers = b ? 1 : 0;
+    }
+    if (!GetOptionalNamedProperty(env, obj, "includeTransitAshtakavarga", &v, &has)) return false;
+    if (has) {
+        if (!GetBool(env, v, &b)) return false;
+        out->include_transit_ashtakavarga = b ? 1 : 0;
+    }
+    if (!GetOptionalNamedProperty(env, obj, "transitAshtakavargaReference", &v, &has)) return false;
+    if (has && !ReadAshtakavargaReference(env, v, &out->transit_ashtakavarga_reference)) return false;
     return true;
 }
 
@@ -1208,6 +1264,7 @@ napi_value WriteTithiInfo(napi_env env, const DhruvTithiInfo& t) {
     SetNamed(env, obj, "tithiInPaksha", MakeInt32(env, t.tithi_in_paksha));
     SetNamed(env, obj, "start", WriteUtcTime(env, t.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, t.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, t.progress));
     return obj;
 }
 
@@ -1217,6 +1274,7 @@ napi_value WriteVaarInfo(napi_env env, const DhruvVaarInfo& v) {
     SetNamed(env, obj, "vaarIndex", MakeInt32(env, v.vaar_index));
     SetNamed(env, obj, "start", WriteUtcTime(env, v.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, v.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, v.progress));
     return obj;
 }
 
@@ -1227,6 +1285,7 @@ napi_value WriteKaranaInfo(napi_env env, const DhruvKaranaInfo& k) {
     SetNamed(env, obj, "karanaNameIndex", MakeInt32(env, k.karana_name_index));
     SetNamed(env, obj, "start", WriteUtcTime(env, k.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, k.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, k.progress));
     return obj;
 }
 
@@ -1236,6 +1295,7 @@ napi_value WriteYogaInfo(napi_env env, const DhruvYogaInfo& y) {
     SetNamed(env, obj, "yogaIndex", MakeInt32(env, y.yoga_index));
     SetNamed(env, obj, "start", WriteUtcTime(env, y.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, y.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, y.progress));
     return obj;
 }
 
@@ -1246,6 +1306,7 @@ napi_value WriteHoraInfo(napi_env env, const DhruvHoraInfo& h) {
     SetNamed(env, obj, "horaPosition", MakeInt32(env, h.hora_position));
     SetNamed(env, obj, "start", WriteUtcTime(env, h.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, h.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, h.progress));
     return obj;
 }
 
@@ -1255,6 +1316,7 @@ napi_value WriteGhatikaInfo(napi_env env, const DhruvGhatikaInfo& g) {
     SetNamed(env, obj, "value", MakeInt32(env, g.value));
     SetNamed(env, obj, "start", WriteUtcTime(env, g.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, g.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, g.progress));
     return obj;
 }
 
@@ -1265,6 +1327,7 @@ napi_value WritePanchangNakshatraInfo(napi_env env, const DhruvPanchangNakshatra
     SetNamed(env, obj, "pada", MakeInt32(env, n.pada));
     SetNamed(env, obj, "start", WriteUtcTime(env, n.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, n.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, n.progress));
     return obj;
 }
 
@@ -1275,6 +1338,7 @@ napi_value WriteMasaInfo(napi_env env, const DhruvMasaInfo& m) {
     SetNamed(env, obj, "adhika", MakeBool(env, m.adhika != 0));
     SetNamed(env, obj, "start", WriteUtcTime(env, m.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, m.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, m.progress));
     return obj;
 }
 
@@ -1334,6 +1398,7 @@ napi_value WriteAyanaInfo(napi_env env, const DhruvAyanaInfo& a) {
     SetNamed(env, obj, "ayana", MakeInt32(env, a.ayana));
     SetNamed(env, obj, "start", WriteUtcTime(env, a.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, a.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, a.progress));
     return obj;
 }
 
@@ -1344,6 +1409,7 @@ napi_value WriteVarshaInfo(napi_env env, const DhruvVarshaInfo& v) {
     SetNamed(env, obj, "order", MakeInt32(env, v.order));
     SetNamed(env, obj, "start", WriteUtcTime(env, v.start));
     SetNamed(env, obj, "end", WriteUtcTime(env, v.end));
+    SetNamed(env, obj, "progress", MakeDouble(env, v.progress));
     return obj;
 }
 
@@ -1583,13 +1649,25 @@ int32_t WriteFullKundaliResultObject(
             SetNamed(env, so, "count", MakeUint32(env, snapshot.count));
             napi_value periods;
             napi_create_array_with_length(env, snapshot.count, &periods);
+            napi_value progress;
+            napi_create_array_with_length(env, snapshot.count, &progress);
             for (uint32_t j = 0; j < snapshot.count && j < 5; ++j) {
                 napi_set_element(env, periods, j, WriteDashaPeriod(env, snapshot.periods[j]));
+                napi_set_element(env, progress, j, MakeDouble(env, snapshot.progress[j]));
             }
             SetNamed(env, so, "periods", periods);
+            SetNamed(env, so, "progress", progress);
             napi_set_element(env, snapshots, i, so);
         }
         SetNamed(env, obj, "dashaSnapshots", snapshots);
+    }
+
+    if (result.tara_bala_valid != 0) SetNamed(env, obj, "taraBala", WriteTaraBalaResult(env, result.tara_bala));
+    if (result.samvatsara_officers_valid != 0) {
+        SetNamed(env, obj, "samvatsaraOfficers", WriteSamvatsaraOfficers(env, result.samvatsara_officers));
+    }
+    if (result.transit_ashtakavarga_valid != 0) {
+        SetNamed(env, obj, "transitAshtakavarga", WriteTransitAshtakavargaResult(env, result.transit_ashtakavarga));
     }
 
     *out = obj;
@@ -2107,6 +2185,11 @@ napi_value WriteGrahaEntry(napi_env env, const DhruvGrahaEntry& g) {
         SetNamed(env, obj, "declinationDeg", MakeDouble(env, g.declination_deg));
         SetNamed(env, obj, "eclipticLatitudeDeg", MakeDouble(env, g.ecliptic_latitude_deg));
     }
+    SetNamed(env, obj, "speedValid", MakeBool(env, g.speed_valid != 0));
+    if (g.speed_valid != 0) {
+        SetNamed(env, obj, "longitudeSpeedDegPerDay", MakeDouble(env, g.longitude_speed_deg_per_day));
+        SetNamed(env, obj, "latitudeSpeedDegPerDay", MakeDouble(env, g.latitude_speed_deg_per_day));
+    }
     return obj;
 }
 
@@ -2167,6 +2250,121 @@ napi_value WriteAshtakavargaResult(napi_env env, const DhruvAshtakavargaResult& 
     return obj;
 }
 
+bool ReadSarvaAshtakavarga(napi_env env, napi_value obj, DhruvSarvaAshtakavarga* out) {
+    napi_value v;
+    if (!GetNamedProperty(env, obj, "totalPoints", &v) || !ReadUint8ArrayFixed(env, v, out->total_points, 12)) return false;
+    if (!GetNamedProperty(env, obj, "afterTrikona", &v) || !ReadUint8ArrayFixed(env, v, out->after_trikona, 12)) return false;
+    if (!GetNamedProperty(env, obj, "afterEkadhipatya", &v) || !ReadUint8ArrayFixed(env, v, out->after_ekadhipatya, 12)) return false;
+    return true;
+}
+
+// Reads the shape WriteAshtakavargaResult emits (calculateAshtakavarga /
+// ashtakavargaForDate / fullKundali.ashtakavarga results).
+bool ReadAshtakavargaResult(napi_env env, napi_value obj, DhruvAshtakavargaResult* out) {
+    napi_value v;
+    if (!GetNamedProperty(env, obj, "bavs", &v)) return false;
+    bool is_array = false;
+    if (napi_is_array(env, v, &is_array) != napi_ok || !is_array) return false;
+    uint32_t len = 0;
+    if (napi_get_array_length(env, v, &len) != napi_ok || len < DHRUV_SAPTA_GRAHA_COUNT) return false;
+    for (uint32_t i = 0; i < DHRUV_SAPTA_GRAHA_COUNT; ++i) {
+        napi_value item;
+        if (napi_get_element(env, v, i, &item) != napi_ok || !ReadBhinnaAshtakavarga(env, item, &out->bavs[i])) return false;
+    }
+    if (!GetNamedProperty(env, obj, "sav", &v) || !ReadSarvaAshtakavarga(env, v, &out->sav)) return false;
+    return true;
+}
+
+napi_value WriteTaraBala(napi_env env, const DhruvTaraBala& t) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "taraIndex", MakeUint32(env, t.tara_index));
+    SetNamed(env, obj, "count", MakeUint32(env, t.count));
+    SetNamed(env, obj, "cycle", MakeUint32(env, t.cycle));
+    SetNamed(env, obj, "favorable", MakeBool(env, t.favorable != 0));
+    return obj;
+}
+
+napi_value WriteTaraBalaEntry(napi_env env, const DhruvTaraBalaEntry& e) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "nakshatraIndex", MakeUint32(env, e.nakshatra_index));
+    SetNamed(env, obj, "taraBala", WriteTaraBala(env, e.tara_bala));
+    return obj;
+}
+
+napi_value WriteTaraBalaResult(napi_env env, const DhruvTaraBalaResult& t) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "referenceNakshatraIndex", MakeUint32(env, t.reference_nakshatra_index));
+    SetNamed(env, obj, "referenceIsChartMoon", MakeBool(env, t.reference_is_chart_moon != 0));
+    napi_value grahas;
+    napi_create_array_with_length(env, DHRUV_GRAHA_COUNT, &grahas);
+    for (uint32_t i = 0; i < DHRUV_GRAHA_COUNT; ++i) {
+        napi_set_element(env, grahas, i, WriteTaraBalaEntry(env, t.grahas[i]));
+    }
+    SetNamed(env, obj, "grahas", grahas);
+    SetNamed(env, obj, "lagna", WriteTaraBalaEntry(env, t.lagna));
+    return obj;
+}
+
+napi_value WriteTransitAshtakavargaEntry(napi_env env, const DhruvTransitAshtakavargaEntry& e) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "grahaIndex", MakeUint32(env, e.graha_index));
+    SetNamed(env, obj, "rashiIndex", MakeUint32(env, e.rashi_index));
+    SetNamed(env, obj, "bavBindus", MakeUint32(env, e.bav_bindus));
+    SetNamed(env, obj, "savTotal", MakeUint32(env, e.sav_total));
+    SetNamed(env, obj, "savAfterTrikona", MakeUint32(env, e.sav_after_trikona));
+    SetNamed(env, obj, "savAfterEkadhipatya", MakeUint32(env, e.sav_after_ekadhipatya));
+    SetNamed(env, obj, "kakshyaIndex", MakeUint32(env, e.kakshya_index));
+    SetNamed(env, obj, "kakshyaLord", MakeUint32(env, e.kakshya_lord));
+    SetNamed(env, obj, "kakshyaBindu", MakeBool(env, e.kakshya_bindu != 0));
+    return obj;
+}
+
+napi_value WriteTransitAshtakavargaEntries(napi_env env, const DhruvTransitAshtakavargaEntry* entries) {
+    napi_value arr;
+    napi_create_array_with_length(env, DHRUV_SAPTA_GRAHA_COUNT, &arr);
+    for (uint32_t i = 0; i < DHRUV_SAPTA_GRAHA_COUNT; ++i) {
+        napi_set_element(env, arr, i, WriteTransitAshtakavargaEntry(env, entries[i]));
+    }
+    return arr;
+}
+
+napi_value WriteTransitAshtakavargaResult(napi_env env, const DhruvTransitAshtakavargaResult& t) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "reference", WriteAshtakavargaReference(env, t.reference));
+    SetNamed(env, obj, "entries", WriteTransitAshtakavargaEntries(env, t.entries));
+    return obj;
+}
+
+napi_value WriteSamvatsaraOfficer(napi_env env, const DhruvSamvatsaraOfficer& o) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "officeIndex", MakeUint32(env, o.office_index));
+    SetNamed(env, obj, "officeName", MakeString(env, dhruv_samvatsara_office_name(o.office_index)));
+    SetNamed(env, obj, "vaarIndex", MakeUint32(env, o.vaar_index));
+    SetNamed(env, obj, "lordIndex", MakeUint32(env, o.lord_index));
+    SetNamed(env, obj, "eventUtc", WriteUtcTime(env, o.event_utc));
+    SetNamed(env, obj, "vedicDayStart", WriteUtcTime(env, o.vedic_day_start));
+    return obj;
+}
+
+napi_value WriteSamvatsaraOfficers(napi_env env, const DhruvSamvatsaraOfficers& s) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    SetNamed(env, obj, "varsha", WriteVarshaInfo(env, s.varsha));
+    napi_value officers;
+    napi_create_array_with_length(env, 9, &officers);
+    for (uint32_t i = 0; i < 9; ++i) {
+        napi_set_element(env, officers, i, WriteSamvatsaraOfficer(env, s.officers[i]));
+    }
+    SetNamed(env, obj, "officers", officers);
+    return obj;
+}
+
 // Writes an amsha entry together with its point identity. `family` is a
 // DHRUV_AMSHA_POINT_FAMILY_* code and `index` the entry's fixed position
 // inside that family, so callers never recover identity from array order.
@@ -2181,6 +2379,7 @@ napi_value WriteAmshaEntry(napi_env env, const DhruvAmshaEntry& a,
     SetNamed(env, obj, "pointIndex", MakeUint32(env, index));
     SetNamed(env, obj, "siderealLongitude", MakeDouble(env, a.sidereal_longitude));
     SetNamed(env, obj, "rashiIndex", MakeUint32(env, a.rashi_index));
+    SetNamed(env, obj, "vargottama", MakeBool(env, a.vargottama != 0));
     SetNamed(env, obj, "dmsDegrees", MakeUint32(env, a.dms_degrees));
     SetNamed(env, obj, "dmsMinutes", MakeUint32(env, a.dms_minutes));
     SetNamed(env, obj, "dmsSeconds", MakeDouble(env, a.dms_seconds));
@@ -6848,6 +7047,182 @@ napi_value AshtakavargaForDate(napi_env env, napi_callback_info info) {
     return out;
 }
 
+// --- Tara bala, kakshya, transit ashtakavarga, samvatsara officers ---
+
+napi_value TaraName(napi_env env, napi_callback_info info) { return NameLookup(env, info, dhruv_tara_name); }
+napi_value SamvatsaraOfficeName(napi_env env, napi_callback_info info) { return NameLookup(env, info, dhruv_samvatsara_office_name); }
+
+napi_value TaraBala(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    uint32_t reference = 0;
+    uint32_t target = 0;
+    if (!GetUint32(env, args[0], &reference) || !GetUint32(env, args[1], &target)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvTaraBala result{};
+    int32_t status = dhruv_tara_bala(reference, target, &result);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "result", WriteTaraBala(env, result));
+    return out;
+}
+
+napi_value TaraBalaForDate(napi_env env, napi_callback_info info) {
+    size_t argc = 7;
+    napi_value args[7];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 7) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime utc{};
+    DhruvGeoLocation loc{};
+    uint32_t ayanamsha = 0;
+    bool use_nutation = false;
+    uint32_t reference = 0;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) || !ReadUtcTime(env, args[2], &utc) ||
+        !ReadGeoLocation(env, args[3], &loc) || !GetUint32(env, args[4], &ayanamsha) || !GetBool(env, args[5], &use_nutation) ||
+        !GetUint32(env, args[6], &reference)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvTaraBalaResult result{};
+    int32_t status = dhruv_tara_bala_for_date(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &utc,
+        &loc,
+        ayanamsha,
+        use_nutation ? 1 : 0,
+        reference,
+        &result);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "result", WriteTaraBalaResult(env, result));
+    return out;
+}
+
+napi_value KakshyaIndex(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    double lon = 0.0;
+    if (argc < 1 || !GetDouble(env, args[0], &lon)) return MakeInt32(env, -1);
+    return MakeInt32(env, dhruv_kakshya_index(lon));
+}
+
+napi_value KakshyaLord(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    uint32_t idx = 0;
+    if (argc < 1 || !GetUint32(env, args[0], &idx)) return MakeInt32(env, -1);
+    return MakeInt32(env, dhruv_kakshya_lord(idx));
+}
+
+napi_value KakshyaBindu(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    DhruvBhinnaAshtakavarga bav{};
+    double lon = 0.0;
+    if (!ReadBhinnaAshtakavarga(env, args[0], &bav) || !GetDouble(env, args[1], &lon)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    int32_t bindu = dhruv_kakshya_bindu(&bav, lon);
+    if (bindu < 0) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    napi_value out = MakeStatusResult(env, STATUS_OK);
+    SetNamed(env, out, "value", MakeBool(env, bindu != 0));
+    return out;
+}
+
+napi_value TransitAshtakavarga(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    DhruvAshtakavargaResult natal{};
+    double lons[DHRUV_SAPTA_GRAHA_COUNT]{};
+    if (!ReadAshtakavargaResult(env, args[0], &natal) || !ReadDoubleArrayFixed(env, args[1], lons, DHRUV_SAPTA_GRAHA_COUNT)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvTransitAshtakavargaEntry entries[DHRUV_SAPTA_GRAHA_COUNT]{};
+    int32_t status = dhruv_transit_ashtakavarga(&natal, lons, entries);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "entries", WriteTransitAshtakavargaEntries(env, entries));
+    return out;
+}
+
+napi_value TransitAshtakavargaForDate(napi_env env, napi_callback_info info) {
+    size_t argc = 6;
+    napi_value args[6];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 6) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime utc{};
+    uint32_t ayanamsha = 0;
+    bool use_nutation = false;
+    DhruvAshtakavargaReference reference{};
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) || !ReadUtcTime(env, args[2], &utc) ||
+        !GetUint32(env, args[3], &ayanamsha) || !GetBool(env, args[4], &use_nutation) ||
+        !ReadAshtakavargaReference(env, args[5], &reference)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    DhruvTransitAshtakavargaResult result{};
+    int32_t status = dhruv_transit_ashtakavarga_for_date(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &utc,
+        ayanamsha,
+        use_nutation ? 1 : 0,
+        &reference,
+        &result);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "result", WriteTransitAshtakavargaResult(env, result));
+    return out;
+}
+
+napi_value SamvatsaraOfficers(napi_env env, napi_callback_info info) {
+    size_t argc = 7;
+    napi_value args[7];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 6) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    void* e_ptr = nullptr;
+    void* ep_ptr = nullptr;
+    DhruvUtcTime utc{};
+    DhruvGeoLocation loc{};
+    uint32_t ayanamsha = 0;
+    bool use_nutation = false;
+    if (!ReadExternalPtr(env, args[0], &e_ptr) || !ReadExternalPtr(env, args[1], &ep_ptr) || !ReadUtcTime(env, args[2], &utc) ||
+        !ReadGeoLocation(env, args[3], &loc) || !GetUint32(env, args[4], &ayanamsha) || !GetBool(env, args[5], &use_nutation)) {
+        return MakeStatusResult(env, STATUS_INVALID_INPUT);
+    }
+    // Optional 7th argument: rise/set config (null/undefined = library default).
+    DhruvRiseSetConfig rise_cfg{};
+    const DhruvRiseSetConfig* rise_ptr = nullptr;
+    if (argc >= 7) {
+        napi_valuetype type = napi_undefined;
+        if (napi_typeof(env, args[6], &type) == napi_ok && type != napi_undefined && type != napi_null) {
+            if (!ReadRiseSetConfig(env, args[6], &rise_cfg)) return MakeStatusResult(env, STATUS_INVALID_INPUT);
+            rise_ptr = &rise_cfg;
+        }
+    }
+    DhruvSamvatsaraOfficers result{};
+    int32_t status = dhruv_samvatsara_officers(
+        static_cast<const DhruvEngineHandle*>(e_ptr),
+        static_cast<const DhruvEopHandle*>(ep_ptr),
+        &utc,
+        &loc,
+        rise_ptr,
+        ayanamsha,
+        use_nutation ? 1 : 0,
+        &result);
+    napi_value out = MakeStatusResult(env, status);
+    if (status == STATUS_OK) SetNamed(env, out, "result", WriteSamvatsaraOfficers(env, result));
+    return out;
+}
+
 napi_value GrahaDrishti(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value args[3];
@@ -7984,6 +8359,7 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
     SetNamed(env, basic_states_cfg, "includeSensitivePointDistances", MakeBool(env, cfg.graha_positions_config.basic_states_config.include_sensitive_point_distances != 0));
     SetNamed(env, graha_cfg, "basicStatesConfig", basic_states_cfg);
     SetNamed(env, graha_cfg, "includeEquatorial", MakeBool(env, cfg.graha_positions_config.include_equatorial != 0));
+    SetNamed(env, graha_cfg, "includeSpeeds", MakeBool(env, cfg.graha_positions_config.include_speeds != 0));
     SetNamed(env, obj, "grahaPositionsConfig", graha_cfg);
 
     napi_value bindus_cfg;
@@ -8060,6 +8436,12 @@ napi_value FullKundaliConfigDefault(napi_env env, napi_callback_info info) {
         SetNamed(env, dasha_cfg, "snapshotUtc", nullv);
     }
     SetNamed(env, obj, "dashaConfig", dasha_cfg);
+
+    SetNamed(env, obj, "includeTaraBala", MakeBool(env, cfg.include_tara_bala != 0));
+    SetNamed(env, obj, "taraBalaReferenceNakshatraIndex", MakeUint32(env, cfg.tara_bala_reference_nakshatra_index));
+    SetNamed(env, obj, "includeSamvatsaraOfficers", MakeBool(env, cfg.include_samvatsara_officers != 0));
+    SetNamed(env, obj, "includeTransitAshtakavarga", MakeBool(env, cfg.include_transit_ashtakavarga != 0));
+    SetNamed(env, obj, "transitAshtakavargaReference", WriteAshtakavargaReference(env, cfg.transit_ashtakavarga_reference));
     return obj;
 }
 
@@ -8556,10 +8938,14 @@ napi_value DashaSnapshot(napi_env env, napi_callback_info info) {
 
         napi_value periods;
         napi_create_array_with_length(env, snapshot.count, &periods);
-        for (uint32_t i = 0; i < snapshot.count; ++i) {
+        napi_value progress;
+        napi_create_array_with_length(env, snapshot.count, &progress);
+        for (uint32_t i = 0; i < snapshot.count && i < 5; ++i) {
             napi_set_element(env, periods, i, WriteDashaPeriod(env, snapshot.periods[i]));
+            napi_set_element(env, progress, i, MakeDouble(env, snapshot.progress[i]));
         }
         SetNamed(env, snap, "periods", periods);
+        SetNamed(env, snap, "progress", progress);
         SetNamed(env, out, "snapshot", snap);
     }
 
@@ -9334,6 +9720,16 @@ napi_value Init(napi_env env, napi_value exports) {
         {"trikonaSodhana", nullptr, TrikonaSodhana, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"ekadhipatyaSodhana", nullptr, EkadhipatyaSodhana, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"ashtakavargaForDate", nullptr, AshtakavargaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"taraName", nullptr, TaraName, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"taraBala", nullptr, TaraBala, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"taraBalaForDate", nullptr, TaraBalaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"kakshyaIndex", nullptr, KakshyaIndex, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"kakshyaLord", nullptr, KakshyaLord, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"kakshyaBindu", nullptr, KakshyaBindu, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"transitAshtakavarga", nullptr, TransitAshtakavarga, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"transitAshtakavargaForDate", nullptr, TransitAshtakavargaForDate, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"samvatsaraOfficeName", nullptr, SamvatsaraOfficeName, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"samvatsaraOfficers", nullptr, SamvatsaraOfficers, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"grahaDrishti", nullptr, GrahaDrishti, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"grahaDrishtiMatrix", nullptr, GrahaDrishtiMatrix, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"drishtiForDate", nullptr, DrishtiForDate, nullptr, nullptr, nullptr, napi_default, nullptr},

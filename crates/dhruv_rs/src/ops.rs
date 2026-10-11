@@ -13,6 +13,11 @@ use dhruv_search::{
     SankrantiTarget, StationaryConfig, TransitBody, all_upagrahas_for_date_with_config,
     avastha_for_date, avastha_for_graha, full_kundali_for_date,
 };
+use dhruv_search::{
+    AshtakavargaReference, SamvatsaraOfficers, TaraBalaResult, TransitAshtakavargaResult,
+    samvatsara_officers as search_samvatsara_officers, tara_bala_for_date,
+    transit_ashtakavarga_for_date,
+};
 use dhruv_search::{FullKundaliConfig, FullKundaliResult};
 use dhruv_tara::{EarthState, TaraCatalog, TaraConfig, TaraId};
 use dhruv_time::{EopKernel, UtcTime, calendar_to_jd, jd_to_tdb_seconds, tdb_seconds_to_jd};
@@ -814,6 +819,88 @@ pub fn full_kundali(
         &riseset_config,
         &sankranti_config,
         &config,
+    )?)
+}
+
+/// Unified samvatsara office-bearers request.
+#[derive(Debug, Clone, Copy)]
+pub struct SamvatsaraOfficersRequest {
+    pub at: TimeInput,
+    pub location: GeoLocation,
+    pub riseset_config: Option<RiseSetConfig>,
+    pub sankranti_config: Option<SankrantiConfig>,
+}
+
+/// Compute the samvatsara office-bearers of the lunar year containing `at`.
+pub fn samvatsara_officers(
+    ctx: &DhruvContext,
+    eop: &EopKernel,
+    request: &SamvatsaraOfficersRequest,
+) -> Result<SamvatsaraOfficers, DhruvError> {
+    let utc = time_input_to_utc_for_context(ctx, request.at);
+    let riseset_config = resolve_riseset_config(ctx, request.riseset_config)?;
+    let sankranti_config = resolve_sankranti_config(ctx, request.sankranti_config)?;
+    Ok(search_samvatsara_officers(
+        ctx.engine(),
+        eop,
+        &utc,
+        &request.location,
+        &riseset_config,
+        &sankranti_config,
+    )?)
+}
+
+/// Unified tara bala request.
+#[derive(Debug, Clone, Copy)]
+pub struct TaraBalaRequest {
+    pub at: TimeInput,
+    pub location: GeoLocation,
+    pub sankranti_config: Option<SankrantiConfig>,
+    /// 0-based reference nakshatra, or
+    /// `dhruv_search::TARA_BALA_REFERENCE_CHART_MOON` for the chart Moon.
+    pub reference_nakshatra_index: u8,
+}
+
+/// Tara bala of the grahas and lagna at `at` relative to a reference nakshatra.
+pub fn tara_bala_op(
+    ctx: &DhruvContext,
+    eop: &EopKernel,
+    request: &TaraBalaRequest,
+) -> Result<TaraBalaResult, DhruvError> {
+    let utc = time_input_to_utc_for_context(ctx, request.at);
+    let sankranti_config = resolve_sankranti_config(ctx, request.sankranti_config)?;
+    Ok(tara_bala_for_date(
+        ctx.engine(),
+        eop,
+        &utc,
+        &request.location,
+        &sankranti_config,
+        request.reference_nakshatra_index,
+    )?)
+}
+
+/// Unified transit-versus-natal ashtakavarga request.
+#[derive(Debug, Clone, Copy)]
+pub struct TransitAshtakavargaRequest {
+    pub at: TimeInput,
+    pub sankranti_config: Option<SankrantiConfig>,
+    pub reference: AshtakavargaReference,
+}
+
+/// Score the transiting sapta grahas at `at` against natal ashtakavarga inputs.
+pub fn transit_ashtakavarga_op(
+    ctx: &DhruvContext,
+    eop: &EopKernel,
+    request: &TransitAshtakavargaRequest,
+) -> Result<TransitAshtakavargaResult, DhruvError> {
+    let utc = time_input_to_utc_for_context(ctx, request.at);
+    let sankranti_config = resolve_sankranti_config(ctx, request.sankranti_config)?;
+    Ok(transit_ashtakavarga_for_date(
+        ctx.engine(),
+        eop,
+        &utc,
+        &sankranti_config,
+        &request.reference,
     )?)
 }
 

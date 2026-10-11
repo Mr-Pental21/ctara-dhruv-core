@@ -130,6 +130,9 @@ pub mod special_lagna {
 pub mod sphuta {
     pub use dhruv_vedic_math::sphuta::*;
 }
+pub mod tara_bala {
+    pub use dhruv_vedic_math::tara_bala::*;
+}
 pub mod time_policy {
     pub use dhruv_vedic_engine::time_policy::*;
 }

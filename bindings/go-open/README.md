@@ -4,7 +4,7 @@ Open-source Go bindings for `ctara-dhruv-core`, implemented against the canonica
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=90`
+- ABI target: `DHRUV_API_VERSION=91`
 - Binding strategy: `cgo` over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `ctara-dhruv-core/bindings/go-open/dhruv`
 - Distribution model: tagged Go module plus validated C ABI release artifacts
@@ -81,7 +81,7 @@ If runtime loading fails:
 ## Coverage
 
 Low-level coverage in `internal/cabi` maps all currently exported `dhruv_ffi_c`
-symbols from `dhruv.h` (ABI v87).
+symbols from `dhruv.h` (ABI v91).
 
 Dasha periods returned through the Go wrapper now carry `EntityName`, the exact
 canonical Sanskrit entity name alongside the numeric kind/index fields.
@@ -125,8 +125,12 @@ The public `dhruv` package includes wrappers for:
 - graha longitude and jyotish date APIs
 - shadbala, vimsopaka, and avastha date APIs
 - drishti, ashtakavarga, core bindus, and amsha APIs
+- tara bala, kakshya, transit ashtakavarga, and samvatsara officer APIs (see
+  "Tara Bala, Transit Ashtakavarga, Samvatsara Officers" below)
 - dasha hierarchy/snapshot APIs
-- full-kundali summary and full-result APIs, including root sphutas and dasha hierarchies
+- full-kundali summary and full-result APIs, including root sphutas, dasha
+  hierarchies, and the optional tara bala / samvatsara officers / transit
+  ashtakavarga sections
 - tara catalog and compute APIs
 - low-level graha relationship/combustion/dignity helpers
 - low-level tara propagation and correction primitives
@@ -202,6 +206,59 @@ of `FullKundaliForDate` with the same bits (0 omits the section, replacing the
 former `IncludePanchang`/`IncludeCalendar` booleans). The result section
 `FullKundaliResult.Panchang` is a `*PanchangOperationResult` with the same
 per-element `*Valid` flags as the standalone call.
+
+Every panchang info struct (`TithiInfo`, `KaranaInfo`, `YogaInfo`, `VaarInfo`,
+`HoraInfo`, `GhatikaInfo`, `PanchangNakshatraInfo`, `MasaInfo`, `AyanaInfo`,
+`VarshaInfo`) carries `Progress`: the elapsed fraction of its `[Start, End)`
+window at the query moment, clamped to `[0, 1]`. It is `0` in range listings
+(`PanchangEvents`) and from `VaarFromSunrises`. `DashaSnapshot` likewise
+carries `Progress [5]float64`, parallel to `Periods`, with the elapsed
+fraction of each active period at `QueryJD`.
+
+## Tara Bala, Transit Ashtakavarga, Samvatsara Officers
+
+- `TaraBala(referenceNakshatraIndex, targetNakshatraIndex)` returns a
+  `TaraBalaInfo` (`TaraIndex` 0=Janma .. 8=Parama Mitra, inclusive `Count`
+  1-27, `Cycle` 1-3, `Favorable` for Sampat/Kshema/Sadhaka/Mitra/Parama
+  Mitra); `TaraName(index)` resolves the `TaraIndex*` constants.
+  `(*Engine).TaraBalaForDate(eop, utc, loc, ayanamshaSystem, useNutation,
+  referenceNakshatraIndex)` returns a `TaraBalaResult` for the nine grahas
+  and the lagna; pass `TaraBalaReferenceChartMoon` (255) to count from that
+  chart's own Moon nakshatra (`ReferenceIsChartMoon` is then true).
+- `KakshyaIndex(siderealLongitudeDeg)` (0-7, eighth of a rashi; -1 for a
+  non-finite input), `KakshyaLord(kakshyaIndex)` (BAV contributor index in
+  the order Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna =
+  `KakshyaLordLagna`; -1 when invalid), and `KakshyaBindu(bav,
+  siderealLongitudeDeg)` (1/0 whether that lord contributed a bindu to the
+  rashi in the BAV; -1 on error).
+- `TransitAshtakavarga(natal AshtakavargaResult, transitSiderealLons
+  [7]float64)` scores Sun..Saturn transits against a natal ashtakavarga
+  (`TransitAshtakavargaEntry`: `BavBindus`, `SavTotal`, `SavAfterTrikona`,
+  `SavAfterEkadhipatya`, `KakshyaIndex`, `KakshyaLord`, `KakshyaBindu`).
+  `(*Engine).TransitAshtakavargaForDate(eop, utc, ayanamshaSystem,
+  useNutation, reference AshtakavargaReference)` does the same for the
+  sidereal positions at `utc`; `AshtakavargaReference` holds the natal
+  `GrahaRashis` (Sun..Saturn) and `LagnaRashi`, the same inputs as
+  `CalculateAshtakavarga`. Rahu/Ketu and outer planets are not scored.
+- `(*Engine).SamvatsaraOfficers(eop, utc, loc, risesetCfg *RiseSetConfig,
+  ayanamshaSystem, useNutation)` returns the `Varsha` containing `utc` plus
+  nine `SamvatsaraOfficer` values in `SamvatsaraOffice*` order (Raja,
+  Mantri, Sasyesha, Dhanyesha, Meghesha, Rasesha, Nirasesha, Phalesha,
+  Durgesha; `SamvatsaraOfficeName(index)` resolves them). Each office is the
+  vaar lord (`LordIndex`, with `VaarIndex`) of the sunrise-to-sunrise Vedic
+  day at `loc` containing the office's defining event (`EventUTC`, with that
+  day's `VedicDayStart`): Raja = Chaitra Shukla Pratipada (udaya rule),
+  Mantri = Mesha sankranti, Sasyesha = Karka, Dhanyesha = Dhanu, Meghesha =
+  Sun entering Ardra, Rasesha = Tula, Nirasesha = Makara, Phalesha = Meena,
+  Durgesha = Simha, each the first occurrence at or after the year start.
+  A nil `risesetCfg` selects the library defaults.
+- `FullKundaliConfig` gains `IncludeTaraBala` with
+  `TaraBalaReferenceNakshatraIndex` (default `TaraBalaReferenceChartMoon`),
+  `IncludeSamvatsaraOfficers`, and `IncludeTransitAshtakavarga` with
+  `TransitAshtakavargaReference` (required when set). `FullKundaliResult`
+  then carries `TaraBala *TaraBalaResult`, `SamvatsaraOfficers
+  *SamvatsaraOfficers`, and `TransitAshtakavarga
+  *TransitAshtakavargaResult` (nil when not requested).
 
 ## Range Sweeps
 
@@ -315,6 +372,17 @@ nutation per the request's `useNutation` flag, geometric with no
 light-time/aberration correction; lagna and Rahu/Ketu report ecliptic latitude
 exactly 0). The `GrahaPositions` result also carries `EarthOrientationValid`,
 `GmstDeg`, and `GastDeg` (Greenwich mean/apparent sidereal time in degrees).
+
+Setting `GrahaPositionsConfig.IncludeSpeeds` adds per-entry rates: `SpeedValid`,
+`LongitudeSpeedDegPerDay` (rate of the reported sidereal longitude, a central
+finite difference over +/-1 minute so ayanamsha drift and the reference plane
+are included; negative means retrograde), and `LatitudeSpeedDegPerDay` (rate
+of the ecliptic latitude; lagna and Rahu/Ketu report exactly 0). With
+`BasicStatesConfig.IncludeBasicStates`, the outer planets now report a real
+`BasicStates.Retrograde` flag.
+
+`AmshaEntry` carries `Vargottama`: true when the varga rashi equals the
+point's D1 rashi (always false on the D1 chart itself).
 
 `Engine.GrahaPositionsSeriesForDate(eop, fromUTC, toUTC, stepMinutes, ...)`
 samples the same op at a fixed cadence (endpoints inclusive when they fall on

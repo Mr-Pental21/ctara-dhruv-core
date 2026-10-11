@@ -28,6 +28,7 @@ pub mod operations;
 pub mod panchang;
 pub mod panchang_events;
 pub mod panchang_types;
+pub mod samvatsara_officers;
 pub mod sankranti;
 pub mod sankranti_types;
 pub(crate) mod search_util;
@@ -76,11 +77,10 @@ pub use grahan::{
 };
 pub use grahan_types::{
     BesselianElements, ChandraGrahan, ChandraGrahanLocalCircumstances, ChandraGrahanType,
-    EclipseGeoPoint, GeoLocation, GrahanConfig, PoleSide, SuryaCentralCorridor,
-    SuryaCentrality, SuryaContactFootprint,
-    SuryaContactKind, SuryaCorridorSegment, SuryaDurationIsoline, SuryaGrahan,
-    SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint, SuryaGrahanType,
-    SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline,
+    EclipseGeoPoint, GeoLocation, GrahanConfig, PoleSide, SuryaCentralCorridor, SuryaCentrality,
+    SuryaContactFootprint, SuryaContactKind, SuryaCorridorSegment, SuryaDurationIsoline,
+    SuryaGrahan, SuryaGrahanFootprint, SuryaGrahanLocalCircumstances, SuryaGrahanPathPoint,
+    SuryaGrahanType, SuryaIsolineRing, SuryaIsolines, SuryaLocalGridSample, SuryaMagnitudeIsoline,
     SuryaMagnitudeRing, SuryaUmbraFootprint,
 };
 pub use jyotish::{
@@ -92,19 +92,21 @@ pub use jyotish::{
     moving_osculating_apogees_for_date, outer_planet_longitudes, shadbala_for_date,
     shadbala_for_graha, sidereal_bhava_results_for_date, sidereal_bhavas_for_date,
     sidereal_lagna_for_date, sidereal_mc_for_date, siderealize_bhava_result,
-    special_lagnas_for_date, tropical_to_sidereal_longitude, vimsopaka_for_date,
-    vimsopaka_for_graha,
+    special_lagnas_for_date, tara_bala_for_date, tara_bala_from_longitudes,
+    transit_ashtakavarga_for_date, transit_ashtakavarga_from_longitudes,
+    tropical_to_sidereal_longitude, vimsopaka_for_date, vimsopaka_for_graha,
 };
 pub use jyotish_types::{
     ALL_AMSHA_POINT_FAMILIES, AmshaChart, AmshaChartScope, AmshaEntry, AmshaPoint,
     AmshaPointFamily, AmshaResult, AmshaSelectionConfig, AmshaSeries, AmshaSeriesChart,
-    AmshaSeriesPoint, BalaBundleResult, BasicStatesConfig, BhavaResultSet, BindusConfig,
-    BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig, DrishtiResult,
-    FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind, GrahaLongitudes,
-    GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig, GrahaPositionsPoint,
-    GrahaPositionsSeries, MAX_AMSHA_REQUESTS, MAX_AMSHA_SERIES_CELLS,
+    AmshaSeriesPoint, AshtakavargaReference, BalaBundleResult, BasicStatesConfig, BhavaResultSet,
+    BindusConfig, BindusResult, DashaSelectionConfig, DashaSnapshotTime, DrishtiConfig,
+    DrishtiResult, FullKundaliConfig, FullKundaliResult, GrahaEntry, GrahaLongitudeKind,
+    GrahaLongitudes, GrahaLongitudesConfig, GrahaPositions, GrahaPositionsConfig,
+    GrahaPositionsPoint, GrahaPositionsSeries, MAX_AMSHA_REQUESTS, MAX_AMSHA_SERIES_CELLS,
     MAX_GRAHA_POSITIONS_SERIES_POINTS, MovingOsculatingApogeeEntry, MovingOsculatingApogees,
-    ShadbalaEntry, ShadbalaResult, SphutalResult, VimsopakaEntry, VimsopakaResult,
+    ShadbalaEntry, ShadbalaResult, SphutalResult, TARA_BALA_REFERENCE_CHART_MOON, TaraBalaEntry,
+    TaraBalaResult, TransitAshtakavargaResult, VimsopakaEntry, VimsopakaResult,
 };
 pub use lunar_phase::{
     next_amavasya, next_purnima, prev_amavasya, prev_purnima, search_amavasyas, search_purnimas,
@@ -124,6 +126,10 @@ pub use operations::{
     SankrantiQuery, SankrantiResult, SankrantiTarget, TaraOperation, TaraOutputKind, TaraResult,
     ayanamsha, conjunction, fixed_longitude, grahan, lunar_node, lunar_phase, motion, panchang,
     panchang_include_bits, sankranti, tara,
+};
+pub use samvatsara_officers::{
+    ALL_SAMVATSARA_OFFICES, SamvatsaraOffice, SamvatsaraOfficer, SamvatsaraOfficers,
+    samvatsara_officers,
 };
 
 pub use panchang::{

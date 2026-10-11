@@ -276,3 +276,20 @@ class TestAmshaLagnaEvents:
                 (2024, 1, 15, 0, 0, 0.0), (2024, 1, 16, 0, 0, 0.0),
                 self._DELHI, [],
             )
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestVargottama:
+    def test_d1_never_and_d9_matches_rashi_comparison(self, engine_handles):
+        """vargottama is False on D1 and equals (D9 rashi == D1 rashi) elsewhere."""
+        from ctara_dhruv.amsha import amsha_chart_for_date
+        from ctara_dhruv.engine import engine, lsk, eop
+        kwargs = dict(jd_utc=(2024, 1, 15, 6, 0, 0.0), location=(28.6139, 77.2090))
+        d1 = amsha_chart_for_date(engine(), lsk(), eop(), amsha_code=1, **kwargs)
+        d9 = amsha_chart_for_date(engine(), lsk(), eop(), amsha_code=9, **kwargs)
+        assert not any(g.vargottama for g in d1.grahas)
+        assert not d1.lagna.vargottama
+        for a, b in zip(d1.grahas, d9.grahas):
+            assert b.vargottama == (a.rashi_index == b.rashi_index)
+        assert d9.lagna.vargottama == (d1.lagna.rashi_index == d9.lagna.rashi_index)

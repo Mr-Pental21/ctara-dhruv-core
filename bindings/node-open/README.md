@@ -4,7 +4,7 @@ Open-source Node.js bindings for `ctara-dhruv-core`, implemented against the can
 
 ## Status
 
-- ABI target: `DHRUV_API_VERSION=90`
+- ABI target: `DHRUV_API_VERSION=91`
 - Binding strategy: Native Node-API addon (`native/dhruv_node.cc`) over `crates/dhruv_ffi_c/include/dhruv.h`
 - Package: `bindings/node-open`
 - Primary distribution: npm package with bundled platform prebuilds from unified `vX.Y.Z` tags
@@ -103,7 +103,13 @@ Public modules included in this wrapper:
 - extras/composable APIs (panchang intermediates, sphuta/special-lagna scalar helpers, ashtakavarga, drishti, graha positions, bindus, amsha)
 - low-level graha relationship/combustion/dignity helpers in `extras`
 - shadbala/vimsopaka/avastha and full-kundali summary
-- dasha hierarchy and snapshot, with `entityName` on returned period objects for the exact canonical Sanskrit entity name
+- tara bala (`taraBala`, `taraBalaForDate`, `taraName`), kakshya helpers
+  (`kakshyaIndex`, `kakshyaLord`, `kakshyaBindu`), transit ashtakavarga
+  (`transitAshtakavarga`, `transitAshtakavargaForDate`), and samvatsara
+  officers (`samvatsaraOfficers`, `samvatsaraOfficeName`), also embeddable in
+  `fullKundaliForDate` (see "Tara Bala, Transit Ashtakavarga, Samvatsara
+  Officers")
+- dasha hierarchy and snapshot, with `entityName` on returned period objects for the exact canonical Sanskrit entity name, and a `progress` array on snapshots (elapsed fraction of each active period at the query moment)
 - dasha level-0 cycle repetition through `variationConfig.cycles` and `variationConfig.minSpanYears`
 - tara catalog load/compute helpers plus low-level propagation/correction primitives
 
@@ -177,6 +183,15 @@ values are silently ignored and recomputed.
 
 The result carries per-element `*Valid` flags (`tithiValid`, `vaarValid`,
 `masaValid`, ...) alongside the element payloads.
+
+Every panchang element object (`tithi`, `karana`, `yoga`, `vaar`, `hora`,
+`ghatika`, `nakshatra`, `masa`, `ayana`, `varsha`, from the `*ForDate`
+helpers, `panchangComputeEx`, and the embedded kundali section) carries
+`progress`: the elapsed fraction `(now - start) / (end - start)` of the
+element at the query moment, clamped to `[0, 1]`. A known calendar value fed
+back through `knownMasa`/`knownAyana`/`knownVarsha` keeps its window but has
+`progress` re-evaluated at the new moment. Range listings (`panchangEvents`)
+and `vaarFromSunrises` report `progress: 0`.
 
 `panchangEvents(engine, eop, fromUtc, toUtc, includeMask, sankrantiConfig,
 maxEvents, location, riseSetConfig)` streams the exact element segments
@@ -323,6 +338,19 @@ light-time or aberration). Lagna and Rahu/Ketu report ecliptic latitude
 exactly `0`. The positions result also carries `earthOrientationValid` with
 `gmstDeg` and `gastDeg` (Greenwich mean/apparent sidereal time in degrees).
 
+Set `includeSpeeds: true` on the same config for motion rates. Each entry then
+reports `speedValid`, `longitudeSpeedDegPerDay`, and `latitudeSpeedDegPerDay`:
+a central finite difference (plus/minus one minute) of the exact sidereal
+longitude the entry reports (ayanamsha drift and reference plane included)
+and of the ecliptic latitude, in degrees per day. A negative longitude rate
+means retrograde. Lagna and Rahu/Ketu report a latitude rate of exactly `0`.
+With `basicStatesConfig.includeBasicStates`, the `outerPlanets` entries now
+carry a real `basicStates.retrograde` as well.
+
+Amsha chart entries (direct `amshaChartForDate`, `amshaSeries`, and embedded
+`fullKundaliForDate(...).amshas`) carry `vargottama`: `true` when the varga
+rashi equals the point's D1 rashi; always `false` on the D1 chart itself.
+
 `grahaPositionsSeriesForDate(engine, eop, fromUtc, toUtc, stepMinutes,
 location, bhavaConfig, ayanamshaSystem, useNutation, config)` samples the
 same op at a fixed cadence (endpoints inclusive when on the grid, at most
@@ -347,6 +375,60 @@ Embedded `fullKundaliForDate(...).amshas` now returns the full resolved amsha
 union used by the call, not only the explicitly requested subset. Numeric
 `variationCode` values are interpreted per amsha; use `amshaVariations*` to
 discover the valid codes and names for a given amsha.
+
+## Tara Bala, Transit Ashtakavarga, Samvatsara Officers
+
+`taraBala(referenceNakshatraIndex, targetNakshatraIndex)` is the pure
+nine-fold tara of a target nakshatra counted inclusively from a reference
+(both `0..26`): `{ taraIndex, count, cycle, favorable }` with `taraIndex` a
+`TARA` code (`JANMA`, `SAMPAT`, `VIPAT`, `KSHEMA`, `PRATYAK`, `SADHAKA`,
+`VADHA`, `MITRA`, `PARAMA_MITRA`; names via `taraName`), `count` the inclusive
+count `1..27`, `cycle` the pass through the sequence `1..3`, and `favorable`
+`true` for Sampat, Kshema, Sadhaka, Mitra, and Parama Mitra.
+`taraBalaForDate(engine, eop, utc, location, ayanamshaSystem, useNutation,
+referenceNakshatraIndex)` scores every graha and the lagna at a moment;
+`referenceNakshatraIndex` defaults to `TARA_BALA_REFERENCE_CHART_MOON` (255),
+the chart's own Moon nakshatra. The result is `{ referenceNakshatraIndex,
+referenceIsChartMoon, grahas: [9 x { nakshatraIndex, taraBala }], lagna }`.
+
+`kakshyaIndex(siderealLongitudeDeg)` returns the eighth of the rashi
+(3 deg 45 min each) as `0..7` (`-1` for a non-finite input);
+`kakshyaLord(kakshyaIndex)` the BAV contributor index of its lord in the
+order Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna (`0=Sun ..
+6=Saturn, 7=Lagna`; `-1` when invalid); and `kakshyaBindu(bav,
+siderealLongitudeDeg)` whether that lord contributed a bindu to the rashi in
+a bhinna ashtakavarga object (the `calculateBav` shape with `contributors`).
+
+`transitAshtakavarga(natal, transitSiderealLons)` scores seven transit
+sidereal longitudes (Sun..Saturn) against a natal ashtakavarga result (the
+`calculateAshtakavarga`/`ashtakavargaForDate` shape) and returns seven
+entries `{ grahaIndex, rashiIndex, bavBindus, savTotal, savAfterTrikona,
+savAfterEkadhipatya, kakshyaIndex, kakshyaLord, kakshyaBindu }`. Only the
+natal BAV/SAV are used; Rahu/Ketu and the outer planets are not scored.
+`transitAshtakavargaForDate(engine, eop, utc, ayanamshaSystem, useNutation,
+reference)` computes the transit longitudes itself from the natal inputs
+`reference = { grahaRashis: [7], lagnaRashi }` and returns
+`{ reference, entries }`.
+
+`samvatsaraOfficers(engine, eop, utc, location, ayanamshaSystem, useNutation,
+riseSetConfig)` returns the office-bearers of the lunar year containing
+`utc`: `{ varsha, officers: [9 x { officeIndex, officeName, vaarIndex,
+lordIndex, eventUtc, vedicDayStart }] }`. Each office is the vaar lord of the
+Vedic day (sunrise-to-sunrise at `location`) of its defining event, the first
+occurrence at or after the year start: Raja = Chaitra Shukla Pratipada (udaya
+rule), Mantri = Mesha sankranti, Sasyesha = Karka, Dhanyesha = Dhanu,
+Meghesha = Sun entering Ardra, Rasesha = Tula, Nirasesha = Makara,
+Phalesha = Meena, Durgesha = Simha. Office indices are exported as
+`SAMVATSARA_OFFICE` and named by `samvatsaraOfficeName`. `riseSetConfig`
+`null` selects the library defaults.
+
+`fullKundaliConfig` embeds the same three computations through
+`includeTaraBala` (with `taraBalaReferenceNakshatraIndex`, default
+`TARA_BALA_REFERENCE_CHART_MOON`), `includeSamvatsaraOfficers`, and
+`includeTransitAshtakavarga` (which requires `transitAshtakavargaReference`
+to hold the natal inputs). All default to `false`; the result then carries
+`taraBala`, `samvatsaraOfficers`, and `transitAshtakavarga` sections in the
+shapes above (absent when not requested).
 
 ## Library Loading
 

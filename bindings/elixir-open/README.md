@@ -259,6 +259,104 @@ of `:utc` (endpoints inclusive when on the grid, at most 10,000 points).
 The result is `%{points: [%{utc: ..., jd_utc: ..., positions: ...}]}`
 where each `positions` value has the single-epoch shape.
 
+## Graha Speeds
+
+`graha_positions_config: %{include_speeds: true}` adds `speed_valid`,
+`longitude_speed_deg_per_day`, and `latitude_speed_deg_per_day` to every
+entry (grahas, lagna, outer planets). The longitude rate is a central finite
+difference (±1 minute) of the exact sidereal longitude the entry reports, so
+ayanamsha drift and the reference plane are included; a negative rate means
+retrograde. Lagna and Rahu/Ketu report a latitude rate of exactly `0.0`.
+When basic states are requested, the outer planets now carry a real
+`basic_states.retrograde` flag too.
+
+## Vargottama
+
+Every amsha entry (from `Jyotish.amsha/2`, `amsha_series/2`, and the
+embedded `full_kundali` `:amshas` block) carries `vargottama`: `true` when
+the varga rashi equals the point's D1 rashi. It is always `false` on the D1
+chart itself.
+
+## Tara Bala, Transit Ashtakavarga, Samvatsara Officers
+
+Three new chart sections and their standalone ops:
+
+```elixir
+# Tara bala of all grahas and the lagna, counted from the chart Moon's
+# nakshatra (omit :reference_nakshatra_index, or pass 255) or from any
+# 0-based nakshatra index.
+{:ok, tara_bala} = Jyotish.tara_bala(engine, %{utc: utc, location: location})
+tara_bala.reference_is_chart_moon       # true
+[sun | _] = tara_bala.grahas            # %{graha: :surya, nakshatra_index: ...,
+                                        #   tara: :sampat, tara_name: "Sampat",
+                                        #   tara_index: 1, count: 2, cycle: 1,
+                                        #   favorable: true}
+
+# Transit ashtakavarga of Sun..Saturn against natal inputs (the natal rashi
+# of Sun..Saturn and of the natal lagna, as for Math.calculate_ashtakavarga/1).
+{:ok, transit} =
+  Jyotish.transit_ashtakavarga(engine, %{
+    utc: utc,
+    ashtakavarga_reference: %{graha_rashis: [0, 1, 2, 3, 4, 5, 6], lagna_rashi: 0}
+  })
+[sun | _] = transit.entries             # %{graha_index: 0, rashi_index: ...,
+                                        #   bav_bindus: ..., sav_total: ...,
+                                        #   sav_after_trikona: ..., sav_after_ekadhipatya: ...,
+                                        #   kakshya_index: 0..7, kakshya_lord: 0..7,
+                                        #   kakshya_bindu: bool}
+
+# Samvatsara office-bearers of the lunar year containing :utc, with Vedic
+# days (sunrise to sunrise) evaluated at :location.
+{:ok, officers} = Jyotish.samvatsara_officers(engine, %{utc: utc, location: location})
+[raja | _] = officers.officers          # %{office: :raja, office_index: 0,
+                                        #   office_name: "Raja", event_name: ...,
+                                        #   event_utc: ..., vedic_day_start: ...,
+                                        #   vaar: ..., lord: ..., lord_index: ...,
+                                        #   lord_name: ...}
+```
+
+The same sections embed in `full_kundali` via `full_kundali_config` keys
+`include_tara_bala` (+ `tara_bala_reference_nakshatra_index`, default `255`
+= chart Moon), `include_samvatsara_officers`, and
+`include_transit_ashtakavarga` (+ required `transit_ashtakavarga_reference`);
+all are off by default and the result keys `tara_bala`,
+`samvatsara_officers`, and `transit_ashtakavarga` are `nil` when off.
+
+Semantics: tara bala is the inclusive count from the reference nakshatra
+modulo 9 (Janma, Sampat, Vipat, Kshema, Pratyak, Sadhaka, Vadha, Mitra,
+Parama Mitra); `cycle` 1..3 is the pass through the sequence; the
+favourable taras are Sampat, Kshema, Sadhaka, Mitra, and Parama Mitra.
+A kakshya is an eighth of a rashi (3°45'), lords in order Saturn, Jupiter,
+Mars, Sun, Venus, Mercury, Moon, Lagna (reported as BAV contributor
+indices 0=Sun..6=Saturn, 7=Lagna); the bindu is present when that lord
+contributed a point to the rashi in the graha's natal BAV. Transit scoring
+uses the natal BAV/SAV only; Rahu/Ketu and the outer planets are not
+scored. Each samvatsara office is the vaar lord of the Vedic day of one
+event of the lunar year: Raja = Chaitra Shukla Pratipada (udaya rule),
+Mantri = Mesha sankranti, Sasyesha = Karka, Dhanyesha = Dhanu, Meghesha =
+Sun entering Ardra, Rasesha = Tula, Nirasesha = Makara, Phalesha = Meena,
+Durgesha = Simha (first occurrence at/after the year start).
+
+Engine-free helpers on `CtaraDhruv.Math`: `tara_bala/1`
+(`%{reference_nakshatra_index, target_nakshatra_index}`), `tara_name/1`,
+`kakshya_index/1` (`%{sidereal_longitude_deg}`), `kakshya_lord/1`
+(`%{kakshya_index}`), `kakshya_bindu/1` (`%{bav, sidereal_longitude_deg}`
+with a `calculate_bav/1` result), `transit_ashtakavarga/1` (`%{natal |
+graha_rashis + lagna_rashi, transit_sidereal_lons}`), and
+`samvatsara_office_name/1`.
+
+## Interval Progress
+
+Every panchang element map (`tithi`, `karana`, `yoga`, `nakshatra`, `vaar`,
+`hora`, `ghatika`, `masa`, `ayana`, `varsha`, from the per-moment ops,
+`daily/2`, and the embedded `full_kundali` panchang block) carries
+`progress`: the elapsed fraction `(now - start) / (end - start)` of the
+interval at the query moment, clamped to `[0, 1]`. It is `0.0` in range
+listings (`Panchang.events/2`) and from `vaar_from_sunrises/2`. Known
+calendar values fed back to `daily/2` have their `progress` re-derived for
+the new moment. `Dasha.snapshot/2` results (and `full_kundali`
+`dasha_snapshots`) carry a `progress` list parallel to `periods`.
+
 Grahan results also carry apparent equatorial coordinates at greatest
 grahan: `moon_right_ascension_deg`/`moon_declination_deg` on chandra
 grahan results and `sun_right_ascension_deg`/`sun_declination_deg` on

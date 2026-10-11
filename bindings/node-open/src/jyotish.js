@@ -299,6 +299,10 @@ function sphutaName(index) { return addon.sphutaName(index); }
 function specialLagnaName(index) { return addon.specialLagnaName(index); }
 function arudhaPadaName(index) { return addon.arudhaPadaName(index); }
 function upagrahaName(index) { return addon.upagrahaName(index); }
+// Tara bala names 0..8 (Janma .. Parama Mitra), or null out of range.
+function taraName(index) { return addon.taraName(index); }
+// Samvatsara office names 0..8 (Raja .. Durgesha), or null out of range.
+function samvatsaraOfficeName(index) { return addon.samvatsaraOfficeName(index); }
 
 function vaarFromJd(jd) { return addon.vaarFromJd(jd); }
 function masaFromRashiIndex(rashiIndex) { return addon.masaFromRashiIndex(rashiIndex); }
@@ -356,6 +360,8 @@ module.exports = {
   specialLagnaName,
   arudhaPadaName,
   upagrahaName,
+  taraName,
+  samvatsaraOfficeName,
   vaarFromJd,
   masaFromRashiIndex,
   ayanaFromSiderealLongitude,

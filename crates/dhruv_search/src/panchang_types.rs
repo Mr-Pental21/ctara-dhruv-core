@@ -16,6 +16,10 @@ pub struct MasaInfo {
     pub start: UtcTime,
     /// End of the masa (next new moon).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Ayana (solstice period) classification result.
@@ -27,6 +31,10 @@ pub struct AyanaInfo {
     pub start: UtcTime,
     /// End of this ayana period (next Sankranti).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Varsha (year in 60-year cycle) classification result.
@@ -40,6 +48,10 @@ pub struct VarshaInfo {
     pub start: UtcTime,
     /// End of the Vedic year (next Chaitra Pratipada).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Tithi (lunar day) classification result with start/end times.
@@ -57,6 +69,10 @@ pub struct TithiInfo {
     pub start: UtcTime,
     /// End of this tithi (UTC).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Karana (half-tithi) classification result with start/end times.
@@ -70,6 +86,10 @@ pub struct KaranaInfo {
     pub start: UtcTime,
     /// End of this karana (UTC).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Yoga (luni-solar yoga) classification result with start/end times.
@@ -83,6 +103,10 @@ pub struct YogaInfo {
     pub start: UtcTime,
     /// End of this yoga (UTC).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Vaar (weekday) classification result with sunrise boundaries.
@@ -94,6 +118,10 @@ pub struct VaarInfo {
     pub start: UtcTime,
     /// End of this Vedic day (next sunrise).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Hora (planetary hour) classification result with start/end times.
@@ -107,6 +135,10 @@ pub struct HoraInfo {
     pub start: UtcTime,
     /// End of this hora (UTC).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Ghatika classification result with start/end times.
@@ -118,6 +150,10 @@ pub struct GhatikaInfo {
     pub start: UtcTime,
     /// End of this ghatika (UTC).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Moon's nakshatra classification result with start/end times.
@@ -133,6 +169,10 @@ pub struct PanchangNakshatraInfo {
     pub start: UtcTime,
     /// End of this nakshatra (UTC).
     pub end: UtcTime,
+    /// Elapsed fraction of this interval at the query moment, in [0, 1].
+    /// `0.0` in range listings (`panchang_events`) and in results built
+    /// without a query moment (e.g. `vaar_from_sunrises`).
+    pub progress: f64,
 }
 
 /// Caller-supplied precomputed calendar elements.

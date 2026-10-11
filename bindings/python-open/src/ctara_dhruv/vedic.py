@@ -11,10 +11,13 @@ from dataclasses import dataclass
 from typing import Optional
 
 from ._ffi import ffi, lib
-from ._check import check
+from ._check import InvalidInputError, check
+from .panchang import _varsha_from_c
 from .types import (
+    TARA_BALA_REFERENCE_CHART_MOON,
     ArudhaResult,
     AllUpagrahas,
+    AshtakavargaReference,
     AshtakavargaResult,
     BhavaEntry,
     BhavaResult,
@@ -30,11 +33,18 @@ from .types import (
     PanchangNakshatraInfo,
     RashiInfo,
     RiseSetResult,
+    SamvatsaraOfficer,
+    SamvatsaraOfficers,
     SamvatsaraResult,
     SarvaAshtakavarga,
     SpecialLagnas,
     SphutalResult,
+    TaraBala,
+    TaraBalaEntry,
+    TaraBalaResult,
     TithiPosition,
+    TransitAshtakavargaEntry,
+    TransitAshtakavargaResult,
     UtcTime,
     YogaPosition,
 )
@@ -1350,6 +1360,254 @@ def ashtakavarga_for_date(engine, eop, utc: UtcTime,
         after_ekadhipatya=[out.sav.after_ekadhipatya[i] for i in range(12)],
     )
     return AshtakavargaResult(bavs=bavs, sav=sav)
+
+
+# ---------------------------------------------------------------------------
+# 10a. Tara bala, kakshya, transit ashtakavarga, samvatsara officers
+# ---------------------------------------------------------------------------
+
+
+def _fill_bav(dst, bav: BhinnaAshtakavarga) -> None:
+    """Copy a Python BhinnaAshtakavarga into a C DhruvBhinnaAshtakavarga."""
+    dst.graha_index = bav.graha_index
+    for j in range(12):
+        dst.points[j] = bav.points[j]
+        for k in range(8):
+            dst.contributors[j][k] = bav.contributors[j][k]
+
+
+def _fill_ashtakavarga_result(dst, natal: AshtakavargaResult) -> None:
+    """Copy a Python AshtakavargaResult into a C DhruvAshtakavargaResult."""
+    for i in range(7):
+        _fill_bav(dst.bavs[i], natal.bavs[i])
+    for j in range(12):
+        dst.sav.total_points[j] = natal.sav.total_points[j]
+        dst.sav.after_trikona[j] = natal.sav.after_trikona[j]
+        dst.sav.after_ekadhipatya[j] = natal.sav.after_ekadhipatya[j]
+
+
+def _fill_ashtakavarga_reference(dst, reference) -> None:
+    """Copy natal ashtakavarga inputs into a C DhruvAshtakavargaReference.
+
+    ``reference`` is an ``AshtakavargaReference``, a dict with
+    ``graha_rashis`` (7 rashi indices, Sun..Saturn) and ``lagna_rashi``, or a
+    ``(graha_rashis, lagna_rashi)`` tuple.
+    """
+    if isinstance(reference, AshtakavargaReference):
+        graha_rashis, lagna_rashi = reference.graha_rashis, reference.lagna_rashi
+    elif isinstance(reference, dict):
+        graha_rashis, lagna_rashi = reference["graha_rashis"], reference["lagna_rashi"]
+    else:
+        graha_rashis, lagna_rashi = reference
+    graha_rashis = list(graha_rashis)
+    if len(graha_rashis) != 7:
+        raise ValueError("graha_rashis must hold 7 rashi indices (Sun..Saturn)")
+    for i in range(7):
+        dst.graha_rashis[i] = int(graha_rashis[i])
+    dst.lagna_rashi = int(lagna_rashi)
+
+
+def _tara_bala_from_c(t) -> TaraBala:
+    return TaraBala(
+        tara_index=t.tara_index,
+        count=t.count,
+        cycle=t.cycle,
+        favorable=bool(t.favorable),
+    )
+
+
+def _tara_bala_entry_from_c(e) -> TaraBalaEntry:
+    return TaraBalaEntry(
+        nakshatra_index=e.nakshatra_index,
+        tara_bala=_tara_bala_from_c(e.tara_bala),
+    )
+
+
+def _tara_bala_result_from_c(r) -> TaraBalaResult:
+    return TaraBalaResult(
+        reference_nakshatra_index=r.reference_nakshatra_index,
+        reference_is_chart_moon=bool(r.reference_is_chart_moon),
+        grahas=[_tara_bala_entry_from_c(r.grahas[i]) for i in range(9)],
+        lagna=_tara_bala_entry_from_c(r.lagna),
+    )
+
+
+def _ashtakavarga_reference_from_c(r) -> AshtakavargaReference:
+    return AshtakavargaReference(
+        graha_rashis=[r.graha_rashis[i] for i in range(7)],
+        lagna_rashi=r.lagna_rashi,
+    )
+
+
+def _transit_ashtakavarga_entry_from_c(e) -> TransitAshtakavargaEntry:
+    return TransitAshtakavargaEntry(
+        graha_index=e.graha_index,
+        rashi_index=e.rashi_index,
+        bav_bindus=e.bav_bindus,
+        sav_total=e.sav_total,
+        sav_after_trikona=e.sav_after_trikona,
+        sav_after_ekadhipatya=e.sav_after_ekadhipatya,
+        kakshya_index=e.kakshya_index,
+        kakshya_lord=e.kakshya_lord,
+        kakshya_bindu=bool(e.kakshya_bindu),
+    )
+
+
+def _transit_ashtakavarga_result_from_c(r) -> TransitAshtakavargaResult:
+    return TransitAshtakavargaResult(
+        reference=_ashtakavarga_reference_from_c(r.reference),
+        entries=[_transit_ashtakavarga_entry_from_c(r.entries[i]) for i in range(7)],
+    )
+
+
+def _samvatsara_officer_from_c(o) -> SamvatsaraOfficer:
+    return SamvatsaraOfficer(
+        office_index=o.office_index,
+        vaar_index=o.vaar_index,
+        lord_index=o.lord_index,
+        event_utc=_read_utc(o.event_utc),
+        vedic_day_start=_read_utc(o.vedic_day_start),
+    )
+
+
+def _samvatsara_officers_from_c(r) -> SamvatsaraOfficers:
+    return SamvatsaraOfficers(
+        varsha=_varsha_from_c(r.varsha),
+        officers=[_samvatsara_officer_from_c(r.officers[i]) for i in range(9)],
+    )
+
+
+def tara_name(index: int) -> Optional[str]:
+    """Return the tara name by 0-based index (0=Janma .. 8=Parama Mitra), or None."""
+    return _str_or_none(lib.dhruv_tara_name(index))
+
+
+def tara_bala(reference_nakshatra_index: int, target_nakshatra_index: int) -> TaraBala:
+    """Tara bala of a nakshatra counted from a reference nakshatra (pure math).
+
+    Counting inclusively from the reference, the 27 nakshatras fall into
+    three cycles of nine taras (Janma, Sampat, Vipat, Kshema, Pratyak,
+    Sadhaka, Vadha, Mitra, Parama Mitra). Both indices are 0-based (0-26).
+    """
+    out = ffi.new("DhruvTaraBala *")
+    status = lib.dhruv_tara_bala(reference_nakshatra_index, target_nakshatra_index, out)
+    check(status, "dhruv_tara_bala")
+    return _tara_bala_from_c(out)
+
+
+def tara_bala_for_date(engine, eop, utc: UtcTime, location: GeoLocation,
+                       ayanamsha_system: int = 0, use_nutation: int = 1,
+                       reference_nakshatra_index: int = TARA_BALA_REFERENCE_CHART_MOON,
+                       ) -> TaraBalaResult:
+    """Tara bala of the nine grahas and the lagna at a moment (orchestration).
+
+    ``reference_nakshatra_index`` is 0-26, or ``TARA_BALA_REFERENCE_CHART_MOON``
+    (255, the default) to count from this chart's own Moon nakshatra.
+    """
+    t = _make_utc(utc)
+    geo = _make_geo(location)
+    out = ffi.new("DhruvTaraBalaResult *")
+    status = lib.dhruv_tara_bala_for_date(
+        engine, eop, t, geo, ayanamsha_system, use_nutation,
+        reference_nakshatra_index, out,
+    )
+    check(status, "dhruv_tara_bala_for_date")
+    return _tara_bala_result_from_c(out)
+
+
+def kakshya_index(sidereal_longitude_deg: float) -> int:
+    """Return the 0-based kakshya (0-7, each 3 deg 45') within the rashi, or ``-1`` for non-finite input."""
+    return lib.dhruv_kakshya_index(sidereal_longitude_deg)
+
+
+def kakshya_lord(kakshya_index: int) -> int:
+    """Return the kakshya lord as a BAV contributor index, or ``-1`` for invalid input.
+
+    Lords in kakshya order: Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon,
+    Lagna (contributor indices 6, 4, 2, 0, 5, 3, 1, 7).
+    """
+    return lib.dhruv_kakshya_lord(kakshya_index)
+
+
+def kakshya_bindu(bav: BhinnaAshtakavarga, sidereal_longitude_deg: float) -> bool:
+    """Whether the kakshya at a sidereal longitude carries a bindu in ``bav`` (pure math).
+
+    True when the kakshya lord contributed a point to that rashi in the
+    graha's Bhinna Ashtakavarga.
+    """
+    bav_c = ffi.new("DhruvBhinnaAshtakavarga *")
+    _fill_bav(bav_c, bav)
+    result = lib.dhruv_kakshya_bindu(bav_c, sidereal_longitude_deg)
+    if result < 0:
+        raise InvalidInputError(13, "InvalidInputError (code 13): dhruv_kakshya_bindu")
+    return bool(result)
+
+
+def transit_ashtakavarga(natal: AshtakavargaResult,
+                         transit_sidereal_lons: list[float],
+                         ) -> list[TransitAshtakavargaEntry]:
+    """Score seven transiting sapta grahas against a natal ashtakavarga (pure math).
+
+    ``transit_sidereal_lons`` holds 7 sidereal longitudes (Sun .. Saturn);
+    the returned entries are in the same order.
+    """
+    lons = list(transit_sidereal_lons)
+    if len(lons) != 7:
+        raise ValueError("transit_sidereal_lons must hold 7 longitudes (Sun..Saturn)")
+    natal_c = ffi.new("DhruvAshtakavargaResult *")
+    _fill_ashtakavarga_result(natal_c, natal)
+    lons_buf = ffi.new("double[7]", [float(x) for x in lons])
+    out = ffi.new("DhruvTransitAshtakavargaEntry[7]")
+    status = lib.dhruv_transit_ashtakavarga(natal_c, lons_buf, out)
+    check(status, "dhruv_transit_ashtakavarga")
+    return [_transit_ashtakavarga_entry_from_c(out[i]) for i in range(7)]
+
+
+def transit_ashtakavarga_for_date(engine, eop, utc: UtcTime, reference,
+                                  ayanamsha_system: int = 0,
+                                  use_nutation: int = 1,
+                                  ) -> TransitAshtakavargaResult:
+    """Score the transiting sapta grahas at a moment against natal inputs (orchestration).
+
+    ``reference`` is an ``AshtakavargaReference``, a dict with
+    ``graha_rashis`` / ``lagna_rashi``, or a ``(graha_rashis, lagna_rashi)``
+    tuple. Geocentric; no location is needed.
+    """
+    t = _make_utc(utc)
+    ref_c = ffi.new("DhruvAshtakavargaReference *")
+    _fill_ashtakavarga_reference(ref_c, reference)
+    out = ffi.new("DhruvTransitAshtakavargaResult *")
+    status = lib.dhruv_transit_ashtakavarga_for_date(
+        engine, eop, t, ayanamsha_system, use_nutation, ref_c, out
+    )
+    check(status, "dhruv_transit_ashtakavarga_for_date")
+    return _transit_ashtakavarga_result_from_c(out)
+
+
+def samvatsara_office_name(index: int) -> Optional[str]:
+    """Return the samvatsara office name by 0-based index (0=Raja .. 8=Durgesha), or None."""
+    return _str_or_none(lib.dhruv_samvatsara_office_name(index))
+
+
+def samvatsara_officers(engine, eop, utc: UtcTime, location: GeoLocation,
+                        riseset_config=None,
+                        ayanamsha_system: int = 0,
+                        use_nutation: int = 1) -> SamvatsaraOfficers:
+    """Samvatsara office-bearers of the lunar year containing ``utc`` (orchestration).
+
+    Each office is the vaar lord of the Vedic day (sunrise-to-sunrise at
+    ``location``) containing its defining event; ``riseset_config`` is an
+    optional ``DhruvRiseSetConfig`` pointer (library defaults when ``None``).
+    """
+    t = _make_utc(utc)
+    geo = _make_geo(location)
+    cfg = riseset_config if riseset_config is not None else ffi.NULL
+    out = ffi.new("DhruvSamvatsaraOfficers *")
+    status = lib.dhruv_samvatsara_officers(
+        engine, eop, t, geo, cfg, ayanamsha_system, use_nutation, out
+    )
+    check(status, "dhruv_samvatsara_officers")
+    return _samvatsara_officers_from_c(out)
 
 
 # ---------------------------------------------------------------------------

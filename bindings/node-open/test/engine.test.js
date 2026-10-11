@@ -10,7 +10,7 @@ const dhruv = require('..');
 const { hasKernels, hasEop, kernelPaths } = require('./helpers');
 
 test('api version matches expected ABI', () => {
-  assert.equal(dhruv.EXPECTED_API_VERSION, 88);
+  assert.equal(dhruv.EXPECTED_API_VERSION, 91);
   assert.equal(dhruv.apiVersion(), dhruv.EXPECTED_API_VERSION);
   assert.doesNotThrow(() => dhruv.verifyAbi());
 });
@@ -467,9 +467,15 @@ test('search and panchang smoke', { skip: !(hasKernels() && hasEop()) }, () => {
     knownAyana: firstCalendar.ayana,
     knownVarsha: firstCalendar.varsha,
   });
-  assert.deepEqual(reusedCalendar.masa, firstCalendar.masa);
-  assert.deepEqual(reusedCalendar.ayana, firstCalendar.ayana);
-  assert.deepEqual(reusedCalendar.varsha, firstCalendar.varsha);
+  // The known window is reused verbatim; only `progress` is re-evaluated at
+  // the (later) query moment.
+  const sansProgress = ({ progress, ...rest }) => rest;
+  assert.deepEqual(sansProgress(reusedCalendar.masa), sansProgress(firstCalendar.masa));
+  assert.deepEqual(sansProgress(reusedCalendar.ayana), sansProgress(firstCalendar.ayana));
+  assert.deepEqual(sansProgress(reusedCalendar.varsha), sansProgress(firstCalendar.varsha));
+  assert.ok(reusedCalendar.masa.progress > firstCalendar.masa.progress);
+  assert.ok(reusedCalendar.ayana.progress > firstCalendar.ayana.progress);
+  assert.ok(reusedCalendar.varsha.progress > firstCalendar.varsha.progress);
 
   const recomputedCalendar = dhruv.panchangComputeEx(engine, eop, lsk, {
     ...calendarReq,

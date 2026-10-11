@@ -163,6 +163,32 @@ fn varsha_2024() {
     );
 }
 
+/// Chaitra Shukla Pratipada is the new moon before Mesha Sankranti:
+/// 2024-04-08 (18:21 UTC) and 2026-03-19 (01:23 UTC).
+#[test]
+fn varsha_starts_at_chaitra_shukla_pratipada() {
+    let Some(engine) = load_engine() else { return };
+    let config = default_config();
+    let v2024 = varsha_for_date(&engine, &UtcTime::new(2024, 6, 15, 0, 0, 0.0), &config).unwrap();
+    assert_eq!(
+        (v2024.start.year, v2024.start.month, v2024.start.day),
+        (2024, 4, 8)
+    );
+    let v2026 = varsha_for_date(&engine, &UtcTime::new(2026, 10, 12, 0, 0, 0.0), &config).unwrap();
+    assert_eq!(
+        (v2026.start.year, v2026.start.month, v2026.start.day),
+        (2026, 3, 19)
+    );
+    // A moment just before the 2026 pratipada belongs to the previous year.
+    let before = varsha_for_date(&engine, &UtcTime::new(2026, 3, 18, 0, 0, 0.0), &config).unwrap();
+    assert_eq!(
+        (before.end.year, before.end.month, before.end.day),
+        (2026, 3, 19)
+    );
+    assert!(before.progress > 0.95 && before.progress < 1.0);
+    assert!(v2026.progress > 0.0 && v2026.progress < 1.0);
+}
+
 /// Varsha boundaries should form a continuous sequence
 #[test]
 fn varsha_consecutive_years() {
@@ -247,7 +273,12 @@ fn vaar_from_sunrises_matches_for_date() {
     let rs = RiseSetConfig::default();
     let direct = vaar_for_date(&engine, &eop, &utc, &loc, &rs).unwrap();
     let (sr, nsr) = vedic_day_sunrises(&engine, &eop, &utc, &loc, &rs).unwrap();
-    let via_sr = vaar_from_sunrises(sr, nsr, engine.lsk());
+    let mut via_sr = vaar_from_sunrises(sr, nsr, engine.lsk());
+    // `_from_sunrises` carries no query moment, so its progress is 0 by
+    // contract; `_for_date` fills it from the moment.
+    assert_eq!(via_sr.progress, 0.0);
+    assert!(direct.progress > 0.0 && direct.progress < 1.0);
+    via_sr.progress = direct.progress;
     assert_eq!(direct, via_sr);
 }
 
@@ -493,9 +524,30 @@ fn panchang_known_calendar_reuse() {
         &known,
     )
     .unwrap();
-    assert_eq!(reused.masa, first.masa, "masa should be reused verbatim");
-    assert_eq!(reused.ayana, first.ayana, "ayana should be reused verbatim");
-    assert_eq!(reused.varsha, first.varsha, "varsha should be reused");
+    // Reused elements keep their boundaries; only `progress` is re-derived
+    // for the new moment.
+    let strip = |m: MasaInfo| MasaInfo { progress: 0.0, ..m };
+    let strip_a = |a: AyanaInfo| AyanaInfo { progress: 0.0, ..a };
+    let strip_v = |v: VarshaInfo| VarshaInfo { progress: 0.0, ..v };
+    assert_eq!(
+        reused.masa.map(strip),
+        first.masa.map(strip),
+        "masa should be reused verbatim"
+    );
+    assert_eq!(
+        reused.ayana.map(strip_a),
+        first.ayana.map(strip_a),
+        "ayana should be reused verbatim"
+    );
+    assert_eq!(
+        reused.varsha.map(strip_v),
+        first.varsha.map(strip_v),
+        "varsha should be reused"
+    );
+    assert!(
+        reused.masa.unwrap().progress > first.masa.unwrap().progress,
+        "progress must advance with the later moment"
+    );
 
     // Past the masa window: the stale masa is recomputed, not echoed.
     let recomputed = panchang_for_date(

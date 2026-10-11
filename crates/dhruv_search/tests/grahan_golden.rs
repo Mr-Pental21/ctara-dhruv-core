@@ -162,7 +162,8 @@ fn chandra_grahan_2024_mar_penumbral() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2024, 3, 1.0);
     let config = GrahanConfig::default();
-    let result = next_chandra_grahan(&engine, None, jd_start, None, &config).expect("search should succeed");
+    let result =
+        next_chandra_grahan(&engine, None, jd_start, None, &config).expect("search should succeed");
     let grahan = result.expect("should find a chandra grahan");
 
     // Should be in March 2024
@@ -184,7 +185,8 @@ fn chandra_grahan_2025_mar_total() {
     let Some(engine) = load_engine() else { return };
     let jd_start = jd_from_date(2025, 3, 1.0);
     let config = GrahanConfig::default();
-    let result = next_chandra_grahan(&engine, None, jd_start, None, &config).expect("search should succeed");
+    let result =
+        next_chandra_grahan(&engine, None, jd_start, None, &config).expect("search should succeed");
     let grahan = result.expect("should find a chandra grahan");
 
     let expected_jd = jd_from_date(2025, 3, 14.29); // ~06:59 UTC
@@ -228,8 +230,8 @@ fn chandra_grahan_2024_count() {
     let jd_start = jd_from_date(2024, 1, 1.0);
     let jd_end = jd_from_date(2025, 1, 1.0);
     let config = GrahanConfig::default();
-    let results =
-        search_chandra_grahan(&engine, None, jd_start, jd_end, None, &config).expect("search should succeed");
+    let results = search_chandra_grahan(&engine, None, jd_start, jd_end, None, &config)
+        .expect("search should succeed");
 
     // 2024 has 2 chandra grahan: Mar 25 (penumbral) and Sep 18 (partial)
     assert!(
@@ -249,8 +251,8 @@ fn penumbral_filter() {
         include_penumbral: false,
         ..Default::default()
     };
-    let results =
-        search_chandra_grahan(&engine, None, jd_start, jd_end, None, &config).expect("search should succeed");
+    let results = search_chandra_grahan(&engine, None, jd_start, jd_end, None, &config)
+        .expect("search should succeed");
 
     // With penumbral excluded, should have fewer grahan
     for e in &results {
@@ -268,7 +270,8 @@ fn prev_chandra_grahan_from_2024() {
     let Some(engine) = load_engine() else { return };
     let jd = jd_from_date(2024, 3, 1.0);
     let config = GrahanConfig::default();
-    let result = prev_chandra_grahan(&engine, None, jd, None, &config).expect("search should succeed");
+    let result =
+        prev_chandra_grahan(&engine, None, jd, None, &config).expect("search should succeed");
     let grahan = result.expect("should find previous chandra grahan");
 
     // Previous chandra grahan should be before our search date
@@ -484,7 +487,13 @@ fn chandra_local_below_horizon_new_delhi_2025() {
     assert_eq!(global.u4_jd, grahan.u4_jd);
     assert_eq!(global.p4_jd, grahan.p4_jd);
     assert_eq!(global.magnitude, grahan.magnitude);
-    assert_eq!(ChandraGrahan { local: None, ..grahan }, global);
+    assert_eq!(
+        ChandraGrahan {
+            local: None,
+            ..grahan
+        },
+        global
+    );
 }
 
 /// Moon sets mid-eclipse: the 2025-Mar-14 eclipse from London begins with the
@@ -516,7 +525,10 @@ fn chandra_local_moonset_mid_eclipse_london_2025() {
     // Starts at P1 (Moon already up), ends at moonset well before P4.
     let start_jd = local.visible_start_jd.expect("start");
     let end_jd = local.visible_end_jd.expect("end");
-    assert!((start_jd - grahan.p1_jd).abs() < 1.0e-9, "should start at P1");
+    assert!(
+        (start_jd - grahan.p1_jd).abs() < 1.0e-9,
+        "should start at P1"
+    );
     assert!(
         end_jd < grahan.p4_jd - 1.0 / 1440.0,
         "visible end must precede P4"
@@ -661,7 +673,9 @@ fn chandra_local_applies_across_range_search() {
 
     assert!(!results.is_empty(), "2025 has lunar eclipses");
     for grahan in &results {
-        let local = grahan.local.expect("every event carries local circumstances");
+        let local = grahan
+            .local
+            .expect("every event carries local circumstances");
         assert_eq!(local.location.longitude_deg, 72.8777);
         if local.visible {
             assert!(local.visible_duration_seconds > 0.0);

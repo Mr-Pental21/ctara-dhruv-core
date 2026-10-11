@@ -107,6 +107,8 @@ Configuration and classifiers:
 - `masa-from-rashi`
 - `ayana-from-lon`
 - `samvatsara-compute`
+- `tara-bala`
+- `kakshya`
 - `nth-rashi-from`
 - `rashi-lord`
 - `normalize360`
@@ -142,6 +144,7 @@ Panchang:
 - `masa`
 - `ayana`
 - `varsha`
+- `samvatsara-officers`
 - `tithi-at`
 - `karana-at`
 - `yoga-at`
@@ -196,6 +199,7 @@ Jyotish and chart building:
 - `core-bindus`
 - `drishti`
 - `ashtakavarga`
+- `transit-ashtakavarga`
 - `charakaraka`
 - `charakaraka-events`
 - `osculating-apogee`
@@ -492,6 +496,51 @@ plus Greenwich mean/apparent sidereal time (`GMST`/`GAST`) for the request
 instant. Positions are geometric (no light-time or aberration). Point-like
 entries — lagna, Rahu, Ketu — lie on the ecliptic, so their ecliptic
 latitude is exactly 0.
+
+## Speeds
+
+`graha-positions --speeds` (and `kundali --include-speeds`) adds, per
+entry, the rate of the reported sidereal longitude and of the ecliptic
+latitude in degrees per day (central finite difference over ±1 minute of
+exactly the quantity printed, so ayanamsha drift and the reference plane
+are included). A negative longitude rate means retrograde. Lagna, Rahu and
+Ketu have latitude rate 0. Independently, `--basic-states` now reports a
+real `retrograde` state for Uranus, Neptune and Pluto.
+
+## Tara Bala, Samvatsara Officers, Transit Ashtakavarga, Kakshya
+
+- `tara-bala --reference <0-26> --target <0-26>` (pure math): the
+  nine-fold tara of the target nakshatra counted inclusively from the
+  reference (Janma, Sampat, Vipat, Kshema, Pratyak, Sadhaka, Vadha, Mitra,
+  Parama Mitra), the count, the cycle (1-3) and the classical favourability.
+- `kundali --include-tara-bala [--tara-reference-nakshatra <0-26>]`: tara
+  bala of every graha and the lagna; without a reference the chart's own
+  Moon nakshatra is used.
+- `samvatsara-officers --date ... --lat --lon --eop ...`: office-bearers of
+  the lunar year containing the date: Raja (Chaitra Shukla Pratipada),
+  Mantri (Mesha sankranti), Sasyesha (Karka), Dhanyesha (Dhanu), Meghesha
+  (Sun entering Ardra), Rasesha (Tula), Nirasesha (Makara), Phalesha
+  (Meena), Durgesha (Simha). Each is the lord of the Vedic day (sunrise to
+  sunrise at the location) of its event; the Raja day follows the udaya
+  rule. Also `kundali --include-samvatsara-officers`.
+- `transit-ashtakavarga --date ... --natal-graha-rashis 3,7,0,11,5,9,2
+  --natal-lagna-rashi 1 --eop ...`: for each transiting sapta graha, the
+  natal BAV bindus in its transit rashi, the natal SAV (raw, after trikona
+  and after ekadhipatya sodhana), its kakshya, the kakshya lord and whether
+  that kakshya carries a bindu. Also `kundali --include-transit-ashtakavarga`
+  with the same two natal flags.
+- `kakshya --longitude <deg>` (pure math): the kakshya (1-8, 3°45' each)
+  and its lord (Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna in
+  order).
+- Amsha charts mark entries whose varga rashi equals the D1 rashi with
+  `[vargottama]` (never on D1 itself). Panchang elements print a
+  `Progress` fraction (elapsed share of the element at the query moment)
+  and dasha snapshots an elapsed fraction per active period.
+
+The Vedic year reported by `varsha` and the panchang `varsha` element now
+starts at Chaitra Shukla Pratipada (the new moon before Mesha sankranti,
+or the adhika Chaitra pratipada when Chaitra is intercalated); it used to
+start one lunation late.
 
 ## Positions Series
 

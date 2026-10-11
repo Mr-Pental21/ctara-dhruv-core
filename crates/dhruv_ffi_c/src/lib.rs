@@ -68,7 +68,7 @@ use dhruv_vedic_ops::{
 };
 
 /// ABI version for downstream bindings.
-pub const DHRUV_API_VERSION: u32 = 90;
+pub const DHRUV_API_VERSION: u32 = 91;
 
 /// Fixed UTF-8 buffer size for path fields in C-compatible structs.
 pub const DHRUV_PATH_CAPACITY: usize = 512;
@@ -988,6 +988,7 @@ fn graha_positions_config_from_ffi(
                 != 0,
         },
         include_equatorial: cfg.include_equatorial != 0,
+        include_speeds: cfg.include_speeds != 0,
     }
 }
 
@@ -1053,6 +1054,7 @@ fn resolve_graha_positions_config_ptr(
         include_bhava: false,
         basic_states_config: dhruv_search::BasicStatesConfig::default(),
         include_equatorial: false,
+        include_speeds: false,
     })
 }
 
@@ -1164,6 +1166,12 @@ fn full_kundali_config_from_ffi(
         panchang_include_mask,
         include_dasha: cfg.include_dasha != 0,
         dasha_config: dasha_selection_from_ffi(&cfg.dasha_config)?,
+        include_tara_bala: cfg.include_tara_bala != 0,
+        tara_bala_reference_nakshatra_index: cfg.tara_bala_reference_nakshatra_index,
+        include_samvatsara_officers: cfg.include_samvatsara_officers != 0,
+        include_transit_ashtakavarga: cfg.include_transit_ashtakavarga != 0,
+        transit_ashtakavarga_reference: (cfg.include_transit_ashtakavarga != 0)
+            .then(|| ashtakavarga_reference_from_ffi(&cfg.transit_ashtakavarga_reference)),
     })
 }
 
@@ -6366,6 +6374,9 @@ pub struct DhruvMasaInfo {
     pub adhika: u8,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible Ayana info.
@@ -6376,6 +6387,9 @@ pub struct DhruvAyanaInfo {
     pub ayana: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible Varsha info.
@@ -6388,6 +6402,9 @@ pub struct DhruvVarshaInfo {
     pub order: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible request for unified panchang computation.
@@ -7746,6 +7763,7 @@ pub unsafe extern "C" fn dhruv_masa_for_date(
                         adhika: u8::from(info.adhika),
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -7783,6 +7801,7 @@ pub unsafe extern "C" fn dhruv_ayana_for_date(
                         ayana: info.ayana.index() as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -7821,6 +7840,7 @@ pub unsafe extern "C" fn dhruv_varsha_for_date(
                         order: info.order as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9009,6 +9029,9 @@ pub struct DhruvTithiInfo {
     pub tithi_in_paksha: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible Karana info.
@@ -9021,6 +9044,9 @@ pub struct DhruvKaranaInfo {
     pub karana_name_index: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible Yoga info.
@@ -9031,6 +9057,9 @@ pub struct DhruvYogaInfo {
     pub yoga_index: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible Vaar info.
@@ -9041,6 +9070,9 @@ pub struct DhruvVaarInfo {
     pub vaar_index: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible Hora info.
@@ -9053,6 +9085,9 @@ pub struct DhruvHoraInfo {
     pub hora_position: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// C-compatible Ghatika info.
@@ -9063,6 +9098,9 @@ pub struct DhruvGhatikaInfo {
     pub value: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// Determine the Tithi for a given UTC date.
@@ -9090,6 +9128,7 @@ pub unsafe extern "C" fn dhruv_tithi_for_date(
                         tithi_in_paksha: info.tithi_in_paksha as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9123,6 +9162,7 @@ pub unsafe extern "C" fn dhruv_karana_for_date(
                         karana_name_index: info.karana.index() as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9162,6 +9202,7 @@ pub unsafe extern "C" fn dhruv_yoga_for_date(
                         yoga_index: info.yoga_index as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9202,6 +9243,7 @@ pub unsafe extern "C" fn dhruv_nakshatra_for_date(
                         pada: info.pada as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9249,6 +9291,7 @@ pub unsafe extern "C" fn dhruv_vaar_for_date(
                         vaar_index: info.vaar.index() as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9297,6 +9340,7 @@ pub unsafe extern "C" fn dhruv_hora_for_date(
                         hora_position: info.hora_index as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9344,6 +9388,7 @@ pub unsafe extern "C" fn dhruv_ghatika_for_date(
                         value: info.value as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -9363,6 +9408,9 @@ pub struct DhruvPanchangNakshatraInfo {
     pub pada: i32,
     pub start: DhruvUtcTime,
     pub end: DhruvUtcTime,
+    /// Elapsed fraction of the interval at the query moment, in [0, 1]
+    /// (0 in range listings and in results built without a query moment).
+    pub progress: f64,
 }
 
 /// Unified panchang compute entrypoint with include-mask control.
@@ -9461,6 +9509,7 @@ fn zeroed_tithi_info() -> DhruvTithiInfo {
         tithi_in_paksha: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9471,6 +9520,7 @@ fn zeroed_karana_info() -> DhruvKaranaInfo {
         karana_name_index: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9480,6 +9530,7 @@ fn zeroed_yoga_info() -> DhruvYogaInfo {
         yoga_index: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9489,6 +9540,7 @@ fn zeroed_vaar_info() -> DhruvVaarInfo {
         vaar_index: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9499,6 +9551,7 @@ fn zeroed_hora_info() -> DhruvHoraInfo {
         hora_position: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9508,6 +9561,7 @@ fn zeroed_ghatika_info() -> DhruvGhatikaInfo {
         value: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9518,6 +9572,7 @@ fn zeroed_panchang_nakshatra_info() -> DhruvPanchangNakshatraInfo {
         pada: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9528,6 +9583,7 @@ fn zeroed_masa_info() -> DhruvMasaInfo {
         adhika: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9537,6 +9593,7 @@ fn zeroed_ayana_info() -> DhruvAyanaInfo {
         ayana: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9547,6 +9604,7 @@ fn zeroed_varsha_info() -> DhruvVarshaInfo {
         order: 0,
         start: z,
         end: z,
+        progress: 0.0,
     }
 }
 
@@ -9557,6 +9615,7 @@ fn tithi_info_to_ffi(info: &dhruv_search::TithiInfo) -> DhruvTithiInfo {
         tithi_in_paksha: info.tithi_in_paksha as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9566,6 +9625,7 @@ fn karana_info_to_ffi(info: &dhruv_search::KaranaInfo) -> DhruvKaranaInfo {
         karana_name_index: info.karana.index() as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9574,6 +9634,7 @@ fn yoga_info_to_ffi(info: &dhruv_search::YogaInfo) -> DhruvYogaInfo {
         yoga_index: info.yoga_index as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9582,6 +9643,7 @@ fn vaar_info_to_ffi(info: &dhruv_search::VaarInfo) -> DhruvVaarInfo {
         vaar_index: info.vaar.index() as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9591,6 +9653,7 @@ fn hora_info_to_ffi(info: &dhruv_search::HoraInfo) -> DhruvHoraInfo {
         hora_position: info.hora_index as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9599,6 +9662,7 @@ fn ghatika_info_to_ffi(info: &dhruv_search::GhatikaInfo) -> DhruvGhatikaInfo {
         value: info.value as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9610,6 +9674,7 @@ fn panchang_nakshatra_info_to_ffi(
         pada: info.pada as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9619,6 +9684,7 @@ fn masa_info_to_ffi(info: &dhruv_search::MasaInfo) -> DhruvMasaInfo {
         adhika: u8::from(info.adhika),
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9627,6 +9693,7 @@ fn ayana_info_to_ffi(info: &dhruv_search::AyanaInfo) -> DhruvAyanaInfo {
         ayana: info.ayana.index() as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9636,6 +9703,7 @@ fn varsha_info_to_ffi(info: &dhruv_search::VarshaInfo) -> DhruvVarshaInfo {
         order: info.order as i32,
         start: utc_time_to_ffi(&info.start),
         end: utc_time_to_ffi(&info.end),
+        progress: info.progress,
     }
 }
 
@@ -9662,6 +9730,7 @@ fn known_from_ffi(req: &DhruvPanchangComputeRequest) -> dhruv_search::PanchangPr
                 adhika: k.adhika != 0,
                 start: utc_time_from_ffi(&k.start),
                 end: utc_time_from_ffi(&k.end),
+                progress: 0.0,
             })
         })
         .flatten();
@@ -9675,6 +9744,7 @@ fn known_from_ffi(req: &DhruvPanchangComputeRequest) -> dhruv_search::PanchangPr
                 ayana: *ayana,
                 start: utc_time_from_ffi(&k.start),
                 end: utc_time_from_ffi(&k.end),
+                progress: 0.0,
             })
         })
         .flatten();
@@ -9692,6 +9762,7 @@ fn known_from_ffi(req: &DhruvPanchangComputeRequest) -> dhruv_search::PanchangPr
                 order,
                 start: utc_time_from_ffi(&k.start),
                 end: utc_time_from_ffi(&k.end),
+                progress: 0.0,
             })
         })
         .flatten();
@@ -10746,6 +10817,7 @@ pub unsafe extern "C" fn dhruv_tithi_at(
                         tithi_in_paksha: info.tithi_in_paksha as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -10779,6 +10851,7 @@ pub unsafe extern "C" fn dhruv_karana_at(
                         karana_name_index: info.karana.index() as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -10816,6 +10889,7 @@ pub unsafe extern "C" fn dhruv_yoga_at(
                         yoga_index: info.yoga_index as i32,
                         start: utc_time_to_ffi(&info.start),
                         end: utc_time_to_ffi(&info.end),
+                        progress: info.progress,
                     };
                 }
                 DhruvStatus::Ok
@@ -10847,6 +10921,7 @@ pub unsafe extern "C" fn dhruv_vaar_from_sunrises(
                 vaar_index: info.vaar.index() as i32,
                 start: utc_time_to_ffi(&info.start),
                 end: utc_time_to_ffi(&info.end),
+                progress: info.progress,
             };
         }
         DhruvStatus::Ok
@@ -10877,6 +10952,7 @@ pub unsafe extern "C" fn dhruv_hora_from_sunrises(
                 hora_position: info.hora_index as i32,
                 start: utc_time_to_ffi(&info.start),
                 end: utc_time_to_ffi(&info.end),
+                progress: info.progress,
             };
         }
         DhruvStatus::Ok
@@ -10906,6 +10982,7 @@ pub unsafe extern "C" fn dhruv_ghatika_from_sunrises(
                 value: info.value as i32,
                 start: utc_time_to_ffi(&info.start),
                 end: utc_time_to_ffi(&info.end),
+                progress: info.progress,
             };
         }
         DhruvStatus::Ok
@@ -12832,6 +12909,9 @@ pub struct DhruvGrahaPositionsConfig {
     /// Compute geocentric equatorial coordinates per entry plus Greenwich
     /// sidereal time on the result (1 = yes, 0 = no).
     pub include_equatorial: u8,
+    /// Compute sidereal longitude / latitude rates (deg/day) per entry
+    /// (1 = yes, 0 = no).
+    pub include_speeds: u8,
 }
 
 /// C-compatible single graha entry.
@@ -12861,6 +12941,13 @@ pub struct DhruvGrahaEntry {
     pub declination_deg: f64,
     /// Geocentric ecliptic latitude in degrees (0 for point-like entries).
     pub ecliptic_latitude_deg: f64,
+    /// Whether the speed fields were computed (1 = yes).
+    pub speed_valid: u8,
+    /// Rate of the reported sidereal longitude in degrees per day.
+    pub longitude_speed_deg_per_day: f64,
+    /// Rate of the ecliptic latitude in degrees per day (0 for point-like
+    /// entries).
+    pub latitude_speed_deg_per_day: f64,
 }
 
 /// C-compatible graha positions result.
@@ -12926,6 +13013,9 @@ fn graha_entry_to_ffi(entry: &dhruv_search::GrahaEntry) -> DhruvGrahaEntry {
         right_ascension_deg: entry.right_ascension_deg,
         declination_deg: entry.declination_deg,
         ecliptic_latitude_deg: entry.ecliptic_latitude_deg,
+        speed_valid: if entry.speed_valid { 1 } else { 0 },
+        longitude_speed_deg_per_day: entry.longitude_speed_deg_per_day,
+        latitude_speed_deg_per_day: entry.latitude_speed_deg_per_day,
     }
 }
 
@@ -13829,6 +13919,8 @@ pub struct DhruvAmshaEntry {
     pub sidereal_longitude: f64,
     /// 0-based rashi index (0-11).
     pub rashi_index: u8,
+    /// Vargottama (1 = varga rashi equals the D1 rashi; always 0 on D1).
+    pub vargottama: u8,
     /// Degrees component of DMS within rashi.
     pub dms_degrees: u16,
     /// Minutes component of DMS within rashi.
@@ -13855,6 +13947,7 @@ impl DhruvAmshaEntry {
         Self {
             sidereal_longitude: 0.0,
             rashi_index: 0,
+            vargottama: 0,
             dms_degrees: 0,
             dms_minutes: 0,
             nakshatra_index: 0,
@@ -13868,13 +13961,16 @@ impl DhruvAmshaEntry {
 
 // `nakshatra_index`, `pada` and `rashi_bhava_number` were added into the three
 // padding bytes that already sat between `dms_minutes` and the 8-aligned
-// `dms_seconds`. The struct size and every pre-existing field offset are
-// therefore unchanged; if that ever stops holding, this is a layout break for
-// every `DhruvAmshaChart` consumer and must be treated as such.
+// `dms_seconds`, and `vargottama` (v91) into the padding byte between
+// `rashi_index` and the 2-aligned `dms_degrees`. The struct size and every
+// pre-existing field offset are therefore unchanged; if that ever stops
+// holding, this is a layout break for every `DhruvAmshaChart` consumer and
+// must be treated as such.
 const _: () = {
     assert!(std::mem::size_of::<DhruvAmshaEntry>() == 32);
     assert!(std::mem::offset_of!(DhruvAmshaEntry, sidereal_longitude) == 0);
     assert!(std::mem::offset_of!(DhruvAmshaEntry, rashi_index) == 8);
+    assert!(std::mem::offset_of!(DhruvAmshaEntry, vargottama) == 9);
     assert!(std::mem::offset_of!(DhruvAmshaEntry, dms_degrees) == 10);
     assert!(std::mem::offset_of!(DhruvAmshaEntry, dms_minutes) == 12);
     assert!(std::mem::offset_of!(DhruvAmshaEntry, nakshatra_index) == 13);
@@ -14075,6 +14171,7 @@ fn amsha_entry_to_ffi(entry: &dhruv_search::AmshaEntry) -> DhruvAmshaEntry {
     DhruvAmshaEntry {
         sidereal_longitude: entry.sidereal_longitude,
         rashi_index: entry.rashi_index,
+        vargottama: if entry.vargottama { 1 } else { 0 },
         dms_degrees: entry.dms.degrees,
         dms_minutes: entry.dms.minutes,
         nakshatra_index: entry.nakshatra_index,
@@ -14461,6 +14558,18 @@ pub struct DhruvFullKundaliConfig {
     pub include_dasha: u8,
     /// Dasha configuration.
     pub dasha_config: DhruvDashaSelectionConfig,
+    /// Include the tara bala section (1 = yes).
+    pub include_tara_bala: u8,
+    /// 0-based reference nakshatra for tara bala, or
+    /// `DHRUV_TARA_BALA_REFERENCE_CHART_MOON` (255) for this chart's Moon.
+    pub tara_bala_reference_nakshatra_index: u8,
+    /// Include the samvatsara office-bearers section (1 = yes).
+    pub include_samvatsara_officers: u8,
+    /// Include the transit-versus-natal ashtakavarga section (1 = yes);
+    /// `transit_ashtakavarga_reference` must then hold the natal inputs.
+    pub include_transit_ashtakavarga: u8,
+    /// Natal ashtakavarga inputs for the transit section.
+    pub transit_ashtakavarga_reference: DhruvAshtakavargaReference,
 }
 
 /// Maximum number of amsha charts in a single FFI batch.
@@ -14540,6 +14649,15 @@ pub struct DhruvFullKundaliResult {
     pub dasha_snapshot_count: u8,
     /// Inline snapshots matched by `.system` field, not by index.
     pub dasha_snapshots: [DhruvDashaSnapshot; DHRUV_MAX_DASHA_SYSTEMS],
+    /// 1 when `include_tara_bala` was set and computation succeeded.
+    pub tara_bala_valid: u8,
+    pub tara_bala: DhruvTaraBalaResult,
+    /// 1 when `include_samvatsara_officers` was set and computation succeeded.
+    pub samvatsara_officers_valid: u8,
+    pub samvatsara_officers: DhruvSamvatsaraOfficers,
+    /// 1 when `include_transit_ashtakavarga` was set and computation succeeded.
+    pub transit_ashtakavarga_valid: u8,
+    pub transit_ashtakavarga: DhruvTransitAshtakavargaResult,
 }
 
 /// Free resources owned by a `DhruvFullKundaliResult`.
@@ -14612,6 +14730,7 @@ pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig 
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         },
         bindus_config: DhruvBindusConfig {
             include_nakshatra: 0,
@@ -14639,6 +14758,14 @@ pub extern "C" fn dhruv_full_kundali_config_default() -> DhruvFullKundaliConfig 
         panchang_include_mask: 0,
         include_dasha: 0,
         dasha_config: dhruv_dasha_selection_config_default(),
+        include_tara_bala: 0,
+        tara_bala_reference_nakshatra_index: DHRUV_TARA_BALA_REFERENCE_CHART_MOON as u8,
+        include_samvatsara_officers: 0,
+        include_transit_ashtakavarga: 0,
+        transit_ashtakavarga_reference: DhruvAshtakavargaReference {
+            graha_rashis: [0; 7],
+            lagna_rashi: 0,
+        },
     }
 }
 
@@ -14863,11 +14990,26 @@ fn populate_full_kundali_result(
                 out.dasha_snapshots[i].query_jd = s.query_jd;
                 let count = s.periods.len().min(5);
                 out.dasha_snapshots[i].count = count as u8;
+                out.dasha_snapshots[i].progress = [0.0; 5];
                 for j in 0..count {
                     out.dasha_snapshots[i].periods[j] = dasha_period_to_ffi(&s.periods[j]);
+                    out.dasha_snapshots[i].progress[j] = s.periods[j].progress_at(s.query_jd);
                 }
             }
         }
+    }
+
+    if let Some(t) = result.tara_bala.as_ref() {
+        out.tara_bala_valid = 1;
+        out.tara_bala = tara_bala_result_to_ffi(t);
+    }
+    if let Some(o) = result.samvatsara_officers.as_ref() {
+        out.samvatsara_officers_valid = 1;
+        out.samvatsara_officers = samvatsara_officers_to_ffi(o);
+    }
+    if let Some(t) = result.transit_ashtakavarga.as_ref() {
+        out.transit_ashtakavarga_valid = 1;
+        out.transit_ashtakavarga = transit_ashtakavarga_result_to_ffi(t);
     }
 
     DhruvStatus::Ok
@@ -16861,6 +17003,7 @@ pub unsafe extern "C" fn dhruv_nakshatra_at(
                     pada: info.pada as i32,
                     start: utc_time_to_ffi(&info.start),
                     end: utc_time_to_ffi(&info.end),
+                    progress: info.progress,
                 };
             }
             DhruvStatus::Ok
@@ -17038,6 +17181,9 @@ pub struct DhruvDashaSnapshot {
     pub count: u8,
     /// One period per level.
     pub periods: [DhruvDashaPeriod; 5],
+    /// Elapsed fraction of each active period at `query_jd`, in [0, 1];
+    /// parallel to `periods` (0 beyond `count`).
+    pub progress: [f64; 5],
 }
 
 /// Opaque handle for DashaHierarchy (heap-allocated, caller frees).
@@ -17714,8 +17860,10 @@ pub unsafe extern "C" fn dhruv_dasha_snapshot(
                 order: 0,
                 parent_idx: 0,
             }; 5];
+            out.progress = [0.0; 5];
             for i in 0..count {
                 out.periods[i] = dasha_period_to_ffi(&snapshot.periods[i]);
+                out.progress[i] = snapshot.periods[i].progress_at(snapshot.query_jd);
             }
             DhruvStatus::Ok
         }
@@ -18377,6 +18525,534 @@ pub unsafe extern "C" fn dhruv_tara_galactic_anticenter_icrs(
         out.copy_from_slice(&direction);
         DhruvStatus::Ok
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tara bala, kakshya, transit ashtakavarga, samvatsara officers (v91)
+// ---------------------------------------------------------------------------
+
+/// Sentinel reference nakshatra selecting the chart's own Moon nakshatra.
+pub const DHRUV_TARA_BALA_REFERENCE_CHART_MOON: u32 = 255;
+
+/// C-compatible tara bala of one nakshatra relative to a reference nakshatra.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DhruvTaraBala {
+    /// 0-based tara index (0=Janma, 1=Sampat, 2=Vipat, 3=Kshema, 4=Pratyak,
+    /// 5=Sadhaka, 6=Vadha, 7=Mitra, 8=Parama Mitra).
+    pub tara_index: u8,
+    /// Inclusive count from the reference nakshatra to the target (1-27).
+    pub count: u8,
+    /// Pass through the nine-fold sequence (1-3).
+    pub cycle: u8,
+    /// 1 when the tara is classically favourable.
+    pub favorable: u8,
+}
+
+/// C-compatible tara bala of one chart point.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DhruvTaraBalaEntry {
+    /// 0-based nakshatra of the point (0-26).
+    pub nakshatra_index: u8,
+    pub tara_bala: DhruvTaraBala,
+}
+
+/// C-compatible tara bala section.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DhruvTaraBalaResult {
+    /// 0-based reference nakshatra actually used.
+    pub reference_nakshatra_index: u8,
+    /// 1 when the reference was the chart's own Moon nakshatra.
+    pub reference_is_chart_moon: u8,
+    /// One entry per graha (index 0-8).
+    pub grahas: [DhruvTaraBalaEntry; 9],
+    pub lagna: DhruvTaraBalaEntry,
+}
+
+/// C-compatible natal ashtakavarga inputs (same inputs as
+/// `dhruv_calculate_ashtakavarga`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DhruvAshtakavargaReference {
+    /// 0-based natal rashi of Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn.
+    pub graha_rashis: [u8; 7],
+    /// 0-based natal lagna rashi.
+    pub lagna_rashi: u8,
+}
+
+/// C-compatible transit score of one sapta graha against a natal
+/// ashtakavarga.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DhruvTransitAshtakavargaEntry {
+    /// Transiting graha (0=Sun .. 6=Saturn).
+    pub graha_index: u8,
+    /// 0-based transit rashi.
+    pub rashi_index: u8,
+    /// Natal BAV bindus of this graha in the transit rashi (0-8).
+    pub bav_bindus: u8,
+    /// Natal SAV total of the transit rashi.
+    pub sav_total: u8,
+    /// Natal SAV after trikona sodhana.
+    pub sav_after_trikona: u8,
+    /// Natal SAV after ekadhipatya sodhana.
+    pub sav_after_ekadhipatya: u8,
+    /// 0-based kakshya (0-7) within the transit rashi.
+    pub kakshya_index: u8,
+    /// Kakshya lord as a BAV contributor index (0=Sun .. 6=Saturn, 7=Lagna).
+    pub kakshya_lord: u8,
+    /// 1 when the kakshya lord contributed a bindu to the transit rashi.
+    pub kakshya_bindu: u8,
+}
+
+/// C-compatible transit-versus-natal ashtakavarga section.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DhruvTransitAshtakavargaResult {
+    pub reference: DhruvAshtakavargaReference,
+    /// One entry per transiting sapta graha (Sun through Saturn).
+    pub entries: [DhruvTransitAshtakavargaEntry; 7],
+}
+
+/// C-compatible samvatsara office-bearer.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSamvatsaraOfficer {
+    /// Office index (0=Raja, 1=Mantri, 2=Sasyesha, 3=Dhanyesha, 4=Meghesha,
+    /// 5=Rasesha, 6=Nirasesha, 7=Phalesha, 8=Durgesha).
+    pub office_index: u8,
+    /// Vaar index of the defining Vedic day (0=Ravivaar .. 6=Shanivaar).
+    pub vaar_index: u8,
+    /// Graha index of the office-bearer (vaar lord, 0=Surya .. 6=Shani).
+    pub lord_index: u8,
+    /// Instant of the defining event (UTC).
+    pub event_utc: DhruvUtcTime,
+    /// Sunrise (UTC) starting the Vedic day whose lord holds the office.
+    pub vedic_day_start: DhruvUtcTime,
+}
+
+/// C-compatible samvatsara office-bearers of one lunar year.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhruvSamvatsaraOfficers {
+    pub varsha: DhruvVarshaInfo,
+    /// Office-bearers in office-index order.
+    pub officers: [DhruvSamvatsaraOfficer; 9],
+}
+
+fn tara_bala_to_ffi(tb: &dhruv_vedic_base::TaraBala) -> DhruvTaraBala {
+    DhruvTaraBala {
+        tara_index: tb.tara_index,
+        count: tb.count,
+        cycle: tb.cycle,
+        favorable: if tb.favorable { 1 } else { 0 },
+    }
+}
+
+fn tara_bala_entry_to_ffi(entry: &dhruv_search::TaraBalaEntry) -> DhruvTaraBalaEntry {
+    DhruvTaraBalaEntry {
+        nakshatra_index: entry.nakshatra_index,
+        tara_bala: tara_bala_to_ffi(&entry.tara_bala),
+    }
+}
+
+fn tara_bala_result_to_ffi(result: &dhruv_search::TaraBalaResult) -> DhruvTaraBalaResult {
+    let mut out = DhruvTaraBalaResult {
+        reference_nakshatra_index: result.reference_nakshatra_index,
+        reference_is_chart_moon: if result.reference_is_chart_moon { 1 } else { 0 },
+        grahas: [DhruvTaraBalaEntry::default(); 9],
+        lagna: tara_bala_entry_to_ffi(&result.lagna),
+    };
+    for (i, entry) in result.grahas.iter().enumerate() {
+        out.grahas[i] = tara_bala_entry_to_ffi(entry);
+    }
+    out
+}
+
+fn ashtakavarga_reference_from_ffi(
+    reference: &DhruvAshtakavargaReference,
+) -> dhruv_search::AshtakavargaReference {
+    dhruv_search::AshtakavargaReference {
+        graha_rashis: reference.graha_rashis,
+        lagna_rashi: reference.lagna_rashi,
+    }
+}
+
+fn ashtakavarga_reference_to_ffi(
+    reference: &dhruv_search::AshtakavargaReference,
+) -> DhruvAshtakavargaReference {
+    DhruvAshtakavargaReference {
+        graha_rashis: reference.graha_rashis,
+        lagna_rashi: reference.lagna_rashi,
+    }
+}
+
+fn ashtakavarga_result_from_ffi(
+    result: &DhruvAshtakavargaResult,
+) -> dhruv_vedic_base::AshtakavargaResult {
+    let mut bavs = [dhruv_vedic_base::BhinnaAshtakavarga {
+        graha_index: 0,
+        points: [0; 12],
+        contributors: [[0; 8]; 12],
+    }; 7];
+    for (i, bav) in result.bavs.iter().enumerate() {
+        bavs[i] = dhruv_vedic_base::BhinnaAshtakavarga {
+            graha_index: bav.graha_index,
+            points: bav.points,
+            contributors: bav.contributors,
+        };
+    }
+    dhruv_vedic_base::AshtakavargaResult {
+        bavs,
+        sav: dhruv_vedic_base::SarvaAshtakavarga {
+            total_points: result.sav.total_points,
+            after_trikona: result.sav.after_trikona,
+            after_ekadhipatya: result.sav.after_ekadhipatya,
+        },
+    }
+}
+
+fn transit_ashtakavarga_entry_to_ffi(
+    entry: &dhruv_vedic_base::TransitAshtakavargaEntry,
+) -> DhruvTransitAshtakavargaEntry {
+    DhruvTransitAshtakavargaEntry {
+        graha_index: entry.graha_index,
+        rashi_index: entry.rashi_index,
+        bav_bindus: entry.bav_bindus,
+        sav_total: entry.sav_total,
+        sav_after_trikona: entry.sav_after_trikona,
+        sav_after_ekadhipatya: entry.sav_after_ekadhipatya,
+        kakshya_index: entry.kakshya_index,
+        kakshya_lord: entry.kakshya_lord,
+        kakshya_bindu: if entry.kakshya_bindu { 1 } else { 0 },
+    }
+}
+
+fn transit_ashtakavarga_result_to_ffi(
+    result: &dhruv_search::TransitAshtakavargaResult,
+) -> DhruvTransitAshtakavargaResult {
+    let mut out = DhruvTransitAshtakavargaResult {
+        reference: ashtakavarga_reference_to_ffi(&result.reference),
+        entries: [DhruvTransitAshtakavargaEntry::default(); 7],
+    };
+    for (i, entry) in result.entries.iter().enumerate() {
+        out.entries[i] = transit_ashtakavarga_entry_to_ffi(entry);
+    }
+    out
+}
+
+fn samvatsara_officer_to_ffi(officer: &dhruv_search::SamvatsaraOfficer) -> DhruvSamvatsaraOfficer {
+    DhruvSamvatsaraOfficer {
+        office_index: officer.office.index(),
+        vaar_index: officer.vaar.index(),
+        lord_index: officer.lord.index(),
+        event_utc: utc_time_to_ffi(&officer.event_utc),
+        vedic_day_start: utc_time_to_ffi(&officer.vedic_day_start),
+    }
+}
+
+fn samvatsara_officers_to_ffi(
+    result: &dhruv_search::SamvatsaraOfficers,
+) -> DhruvSamvatsaraOfficers {
+    let first = samvatsara_officer_to_ffi(&result.officers[0]);
+    let mut out = DhruvSamvatsaraOfficers {
+        varsha: varsha_info_to_ffi(&result.varsha),
+        officers: [first; 9],
+    };
+    for (i, officer) in result.officers.iter().enumerate() {
+        out.officers[i] = samvatsara_officer_to_ffi(officer);
+    }
+    out
+}
+
+/// Return the name of a tara by index (0-8).
+///
+/// Returns a NUL-terminated static string, or null for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_tara_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 9] = [
+        "Janma\0",
+        "Sampat\0",
+        "Vipat\0",
+        "Kshema\0",
+        "Pratyak\0",
+        "Sadhaka\0",
+        "Vadha\0",
+        "Mitra\0",
+        "Parama Mitra\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Tara bala of `target_nakshatra_index` counted from
+/// `reference_nakshatra_index` (both 0-based, 0-26). Pure math.
+///
+/// # Safety
+/// `out` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_bala(
+    reference_nakshatra_index: u32,
+    target_nakshatra_index: u32,
+    out: *mut DhruvTaraBala,
+) -> DhruvStatus {
+    if out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    if reference_nakshatra_index >= 27 || target_nakshatra_index >= 27 {
+        return DhruvStatus::InvalidInput;
+    }
+    let tb = dhruv_vedic_base::tara_bala(
+        reference_nakshatra_index as u8,
+        target_nakshatra_index as u8,
+    );
+    unsafe { *out = tara_bala_to_ffi(&tb) };
+    DhruvStatus::Ok
+}
+
+/// Tara bala of the nine grahas and the lagna at `utc`/`location`, counted
+/// from `reference_nakshatra_index` (0-26) or from this chart's Moon when
+/// `DHRUV_TARA_BALA_REFERENCE_CHART_MOON` (255) is passed.
+///
+/// # Safety
+/// All pointers must be valid and non-null.
+#[allow(clippy::too_many_arguments)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_tara_bala_for_date(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    reference_nakshatra_index: u32,
+    out: *mut DhruvTaraBalaResult,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    if reference_nakshatra_index >= 27
+        && reference_nakshatra_index != DHRUV_TARA_BALA_REFERENCE_CHART_MOON
+    {
+        return DhruvStatus::InvalidInput;
+    }
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_time = utc_time_from_ffi(unsafe { &*utc });
+    let loc_c = unsafe { &*location };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+    match dhruv_search::tara_bala_for_date(
+        engine,
+        eop,
+        &utc_time,
+        &location,
+        &aya_config,
+        reference_nakshatra_index as u8,
+    ) {
+        Ok(result) => {
+            unsafe { *out = tara_bala_result_to_ffi(&result) };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// 0-based kakshya (0-7, each 3°45') of a sidereal longitude within its
+/// rashi, or -1 for a non-finite input. Pure math.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_kakshya_index(sidereal_longitude_deg: f64) -> i32 {
+    if !sidereal_longitude_deg.is_finite() {
+        return -1;
+    }
+    dhruv_vedic_base::kakshya_index(sidereal_longitude_deg) as i32
+}
+
+/// Lord of kakshya `kakshya_index` (0-7) as a BAV contributor index
+/// (0=Sun .. 6=Saturn, 7=Lagna), or -1 for an invalid index. Pure math.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_kakshya_lord(kakshya_index: u32) -> i32 {
+    if kakshya_index >= 8 {
+        return -1;
+    }
+    dhruv_vedic_base::kakshya_lord_contributor(kakshya_index as u8) as i32
+}
+
+/// Whether the kakshya at `sidereal_longitude_deg` carries a bindu in `bav`
+/// (1 = yes, 0 = no, -1 = null pointer or non-finite longitude). Pure math.
+///
+/// # Safety
+/// `bav` must be null or a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_kakshya_bindu(
+    bav: *const DhruvBhinnaAshtakavarga,
+    sidereal_longitude_deg: f64,
+) -> i32 {
+    if bav.is_null() || !sidereal_longitude_deg.is_finite() {
+        return -1;
+    }
+    let bav_c = unsafe { &*bav };
+    let bav = dhruv_vedic_base::BhinnaAshtakavarga {
+        graha_index: bav_c.graha_index,
+        points: bav_c.points,
+        contributors: bav_c.contributors,
+    };
+    if dhruv_vedic_base::kakshya_bindu(&bav, sidereal_longitude_deg) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Score seven transiting sapta grahas against a natal ashtakavarga. Pure
+/// math: `transit_sidereal_lons` holds 7 longitudes (Sun .. Saturn) and
+/// `out` receives 7 entries in the same order.
+///
+/// # Safety
+/// `natal` must be valid; `transit_sidereal_lons` must point to 7 doubles and
+/// `out` to 7 entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_transit_ashtakavarga(
+    natal: *const DhruvAshtakavargaResult,
+    transit_sidereal_lons: *const f64,
+    out: *mut DhruvTransitAshtakavargaEntry,
+) -> DhruvStatus {
+    if natal.is_null() || transit_sidereal_lons.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let natal = ashtakavarga_result_from_ffi(unsafe { &*natal });
+    let lons: [f64; 7] = unsafe { *(transit_sidereal_lons as *const [f64; 7]) };
+    if lons.iter().any(|l| !l.is_finite()) {
+        return DhruvStatus::InvalidInput;
+    }
+    let entries = dhruv_vedic_base::transit_ashtakavarga(&natal, &lons);
+    let out = unsafe { std::slice::from_raw_parts_mut(out, 7) };
+    for (i, entry) in entries.iter().enumerate() {
+        out[i] = transit_ashtakavarga_entry_to_ffi(entry);
+    }
+    DhruvStatus::Ok
+}
+
+/// Score the transiting sapta grahas at `utc` against natal ashtakavarga
+/// inputs. Geocentric; no location is needed.
+///
+/// # Safety
+/// All pointers must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_transit_ashtakavarga_for_date(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    reference: *const DhruvAshtakavargaReference,
+    out: *mut DhruvTransitAshtakavargaResult,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || reference.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_time = utc_time_from_ffi(unsafe { &*utc });
+    let reference = ashtakavarga_reference_from_ffi(unsafe { &*reference });
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+    match dhruv_search::transit_ashtakavarga_for_date(
+        engine,
+        eop,
+        &utc_time,
+        &aya_config,
+        &reference,
+    ) {
+        Ok(result) => {
+            unsafe { *out = transit_ashtakavarga_result_to_ffi(&result) };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
+}
+
+/// Return the name of a samvatsara office by index (0-8).
+///
+/// Returns a NUL-terminated static string, or null for invalid index.
+#[unsafe(no_mangle)]
+pub extern "C" fn dhruv_samvatsara_office_name(index: u32) -> *const std::ffi::c_char {
+    static NAMES: [&str; 9] = [
+        "Raja\0",
+        "Mantri\0",
+        "Sasyesha\0",
+        "Dhanyesha\0",
+        "Meghesha\0",
+        "Rasesha\0",
+        "Nirasesha\0",
+        "Phalesha\0",
+        "Durgesha\0",
+    ];
+    match NAMES.get(index as usize) {
+        Some(s) => s.as_ptr().cast(),
+        None => ptr::null(),
+    }
+}
+
+/// Samvatsara office-bearers of the lunar year containing `utc`, with Vedic
+/// days evaluated at `location`. `riseset_config` may be null for defaults.
+///
+/// # Safety
+/// `engine`, `eop`, `utc`, `location` and `out` must be valid and non-null.
+#[allow(clippy::too_many_arguments)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dhruv_samvatsara_officers(
+    engine: *const Engine,
+    eop: *const dhruv_time::EopKernel,
+    utc: *const DhruvUtcTime,
+    location: *const DhruvGeoLocation,
+    riseset_config: *const DhruvRiseSetConfig,
+    ayanamsha_system: u32,
+    use_nutation: u8,
+    out: *mut DhruvSamvatsaraOfficers,
+) -> DhruvStatus {
+    if engine.is_null() || eop.is_null() || utc.is_null() || location.is_null() || out.is_null() {
+        return DhruvStatus::NullPointer;
+    }
+    let engine = unsafe { &*engine };
+    let eop = unsafe { &*eop };
+    let utc_time = utc_time_from_ffi(unsafe { &*utc });
+    let loc_c = unsafe { &*location };
+    let location = GeoLocation::new(loc_c.latitude_deg, loc_c.longitude_deg, loc_c.altitude_m);
+    let rs_config = match resolve_riseset_config_ptr(riseset_config) {
+        Ok(c) => c,
+        Err(status) => return status,
+    };
+    let system = match ayanamsha_system_from_code(ayanamsha_system as i32) {
+        Some(s) => s,
+        None => return DhruvStatus::InvalidQuery,
+    };
+    let aya_config = SankrantiConfig::new(system, use_nutation != 0);
+    match dhruv_search::samvatsara_officers(
+        engine,
+        eop,
+        &utc_time,
+        &location,
+        &rs_config,
+        &aya_config,
+    ) {
+        Ok(result) => {
+            unsafe { *out = samvatsara_officers_to_ffi(&result) };
+            DhruvStatus::Ok
+        }
+        Err(e) => DhruvStatus::from(&e),
+    }
 }
 
 #[cfg(test)]
@@ -21673,6 +22349,7 @@ mod tests {
                 include_sensitive_point_distances: 0,
             },
             include_equatorial: 0,
+            include_speeds: 0,
         };
         let bhava_cfg = dhruv_bhava_config_default();
         let s = unsafe {
@@ -21846,6 +22523,7 @@ mod tests {
                 order: 0,
                 parent_idx: 0,
             }; 5],
+            progress: [0.0; 5],
         };
         assert_eq!(snapshot.query_utc.year, 2000);
         assert_eq!(snapshot.query_utc.month, 1);

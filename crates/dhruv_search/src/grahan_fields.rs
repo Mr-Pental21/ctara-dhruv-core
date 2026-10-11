@@ -1425,10 +1425,7 @@ fn great_circle_deviation_deg(point: [f64; 3], anchor_a: [f64; 3], anchor_b: [f6
     let normal = cross3(anchor_a, anchor_b);
     let normal_len = norm(normal);
     if normal_len < 1.0e-12 {
-        return dot(point, anchor_a)
-            .clamp(-1.0, 1.0)
-            .acos()
-            .to_degrees();
+        return dot(point, anchor_a).clamp(-1.0, 1.0).acos().to_degrees();
     }
     (dot(point, scale(normal, 1.0 / normal_len)).abs())
         .clamp(0.0, 1.0)
@@ -1449,10 +1446,7 @@ fn great_circle_deviation_deg(point: [f64; 3], anchor_a: [f64; 3], anchor_b: [f6
 ///   of each other (original vertices are reinserted otherwise), so the
 ///   winding-based pole containment and the renderers' "jump greater than
 ///   180 degrees marks a seam crossing" convention keep working.
-pub(crate) fn simplify_closed_boundary(
-    boundary: &mut Vec<EclipseGeoPoint>,
-    tolerance_deg: f64,
-) {
+pub(crate) fn simplify_closed_boundary(boundary: &mut Vec<EclipseGeoPoint>, tolerance_deg: f64) {
     if tolerance_deg <= 0.0 || boundary.len() < 6 {
         return;
     }
@@ -1507,10 +1501,8 @@ pub(crate) fn simplify_closed_boundary(
             if last <= first + 1 {
                 continue;
             }
-            let gap = wrap_delta(
-                boundary[last].longitude_deg - boundary[first].longitude_deg,
-            )
-            .abs();
+            let gap =
+                wrap_delta(boundary[last].longitude_deg - boundary[first].longitude_deg).abs();
             if gap > 90.0 {
                 keep[first + (last - first) / 2] = true;
                 inserted = true;
@@ -1530,7 +1522,6 @@ pub(crate) fn simplify_closed_boundary(
         *boundary = simplified;
     }
 }
-
 
 /// Densified, extended central track with a left-normal frame per node.
 struct TrackFrame {

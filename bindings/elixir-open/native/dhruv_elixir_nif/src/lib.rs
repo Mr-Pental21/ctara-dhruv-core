@@ -20,10 +20,12 @@ use dhruv_search::operations::{
     SankrantiQuery, SankrantiResult, SankrantiTarget, TaraOperation, TaraOutputKind, TaraResult,
 };
 use dhruv_search::{
-    GocharEventsConfig, GocharEventsOperation, GocharEventsResult, GocharReference,
-    NatalTargetKind, NatalTargetLongitude, PANCHANG_INCLUDE_ALL_CORE,
-    PANCHANG_INCLUDE_LOCATION_INDEPENDENT, SankrantiConfig, StationaryConfig, TajakaReturnBasis,
-    TajakaReturnEvent, TithiPraveshaEvent, TransitAspectKind, TransitAspectOwner, TransitBody,
+    ALL_SAMVATSARA_OFFICES, AshtakavargaReference, GocharEventsConfig, GocharEventsOperation,
+    GocharEventsResult, GocharReference, NatalTargetKind, NatalTargetLongitude,
+    PANCHANG_INCLUDE_ALL_CORE, PANCHANG_INCLUDE_LOCATION_INDEPENDENT, SamvatsaraOfficer,
+    SamvatsaraOfficers, SankrantiConfig, StationaryConfig, TARA_BALA_REFERENCE_CHART_MOON,
+    TajakaReturnBasis, TajakaReturnEvent, TaraBalaEntry, TaraBalaResult, TithiPraveshaEvent,
+    TransitAshtakavargaResult, TransitAspectKind, TransitAspectOwner, TransitBody,
     TransitToNatalAspectEvent, amsha_lagna_events, ayanamsha, body_ecliptic_lon_lat,
     charakaraka_events, conjunction, dasha_child_period_for_birth, dasha_child_period_with_inputs,
     dasha_children_for_birth, dasha_children_with_inputs, dasha_complete_level_for_birth,
@@ -33,8 +35,9 @@ use dhruv_search::{
     fixed_longitude, full_kundali_for_date, ghatika_from_sunrises, gochar_events, graha_longitudes,
     hora_from_sunrises, karana_at, lunar_node, motion, nakshatra_at, next_charakaraka_event,
     panchang, panchang_events, panchang_include_bits, prev_charakaraka_event,
-    set_time_conversion_policy, sidereal_sum_at, tara as tara_op, tithi_at, vaar_from_sunrises,
-    vedic_day_sunrises, yoga_at,
+    samvatsara_officers as samvatsara_officers_fn, set_time_conversion_policy, sidereal_sum_at,
+    tara as tara_op, tara_bala_for_date, tithi_at, transit_ashtakavarga_for_date,
+    vaar_from_sunrises, vedic_day_sunrises, yoga_at,
 };
 use dhruv_search::{
     GrahaLongitudeKind, GrahaLongitudesConfig, all_upagrahas_for_date,
@@ -93,8 +96,10 @@ use dhruv_vedic_base::{
     rashi_from_longitude, rashi_from_tropical, sun_based_upagrahas, time_upagraha_jd,
 };
 use dhruv_vedic_base::{
-    calculate_all_bav, calculate_ashtakavarga, calculate_bav, calculate_sav, ekadhipatya_sodhana,
-    trikona_sodhana,
+    ALL_TARAS, AshtakavargaResult, BhinnaAshtakavarga, SarvaAshtakavarga, TaraBala,
+    TransitAshtakavargaEntry, calculate_all_bav, calculate_ashtakavarga, calculate_bav,
+    calculate_sav, ekadhipatya_sodhana, kakshya_bindu, kakshya_index, kakshya_lord_contributor,
+    tara_bala as tara_bala_fn, transit_ashtakavarga as transit_ashtakavarga_fn, trikona_sodhana,
 };
 use rustler::{Encoder, Env, ResourceArc, Term};
 use serde::Deserialize;
@@ -395,6 +400,17 @@ struct JyotishRequest {
     amsha_selection: Option<Vec<AmshaRequestInput>>,
     amsha_requests: Option<Vec<AmshaRequestInput>>,
     amsha_scope: Option<AmshaChartScopeInput>,
+    reference_nakshatra_index: Option<u8>,
+    ashtakavarga_reference: Option<AshtakavargaReferenceInput>,
+}
+
+/// Natal ashtakavarga inputs for transit scoring: the natal rashi of Sun
+/// through Saturn plus the natal lagna rashi (same inputs as
+/// `calculate_ashtakavarga`).
+#[derive(Debug, Clone, Deserialize)]
+struct AshtakavargaReferenceInput {
+    graha_rashis: [u8; 7],
+    lagna_rashi: u8,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -517,6 +533,7 @@ struct GrahaPositionsConfigInput {
     include_outer_planets: Option<bool>,
     include_bhava: Option<bool>,
     include_equatorial: Option<bool>,
+    include_speeds: Option<bool>,
     basic_states_config: Option<BasicStatesConfigInput>,
 }
 
@@ -570,6 +587,11 @@ struct FullKundaliConfigInput {
     amsha_scope: Option<AmshaChartScopeInput>,
     amsha_selection: Option<Vec<AmshaRequestInput>>,
     dasha_config: Option<DashaSelectionConfigInput>,
+    include_tara_bala: Option<bool>,
+    tara_bala_reference_nakshatra_index: Option<u8>,
+    include_samvatsara_officers: Option<bool>,
+    include_transit_ashtakavarga: Option<bool>,
+    transit_ashtakavarga_reference: Option<AshtakavargaReferenceInput>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -741,6 +763,7 @@ const ENUM_VALUE_KEYS: &[&str] = &[
     "nakshatra",
     "nature",
     "node",
+    "office",
     "output",
     "paksha",
     "phase",
@@ -753,6 +776,7 @@ const ENUM_VALUE_KEYS: &[&str] = &[
     "station_type",
     "status",
     "system",
+    "tara",
     "type",
     "vaar",
     "yoga",
@@ -1506,6 +1530,7 @@ fn to_panchang_precomputed(
                 adhika: input.adhika,
                 start: parse_utc(input.start)?,
                 end: parse_utc(input.end)?,
+                progress: 0.0,
             })
         })
         .transpose()?;
@@ -1517,6 +1542,7 @@ fn to_panchang_precomputed(
                 ayana: parse_ayana(&input.ayana)?,
                 start: parse_utc(input.start)?,
                 end: parse_utc(input.end)?,
+                progress: 0.0,
             })
         })
         .transpose()?;
@@ -1535,6 +1561,7 @@ fn to_panchang_precomputed(
                 order: input.order,
                 start: parse_utc(input.start)?,
                 end: parse_utc(input.end)?,
+                progress: 0.0,
             })
         })
         .transpose()?;
@@ -2193,6 +2220,9 @@ fn to_graha_positions_config(
         if let Some(include_equatorial) = input.include_equatorial {
             config.include_equatorial = include_equatorial;
         }
+        if let Some(include_speeds) = input.include_speeds {
+            config.include_speeds = include_speeds;
+        }
         if let Some(basic_states_config) = input.basic_states_config.as_ref() {
             if let Some(include_basic_states) = basic_states_config.include_basic_states {
                 config.basic_states_config.include_basic_states = include_basic_states;
@@ -2341,6 +2371,21 @@ fn to_amsha_requests(input: Option<&[AmshaRequestInput]>) -> Result<Vec<AmshaReq
         .collect()
 }
 
+fn parse_ashtakavarga_reference(
+    input: &AshtakavargaReferenceInput,
+) -> Result<AshtakavargaReference, Value> {
+    if input.graha_rashis.iter().any(|rashi| *rashi > 11) || input.lagna_rashi > 11 {
+        return Err(error_payload(
+            "invalid_request",
+            "ashtakavarga reference rashi indices must be in 0..=11",
+        ));
+    }
+    Ok(AshtakavargaReference {
+        graha_rashis: input.graha_rashis,
+        lagna_rashi: input.lagna_rashi,
+    })
+}
+
 fn to_full_kundali_config(
     state: &EngineState,
     input: Option<&FullKundaliConfigInput>,
@@ -2403,6 +2448,27 @@ fn to_full_kundali_config(
         }
         if let Some(value) = input.include_dasha {
             config.include_dasha = value;
+        }
+        if let Some(value) = input.include_tara_bala {
+            config.include_tara_bala = value;
+        }
+        if let Some(value) = input.tara_bala_reference_nakshatra_index {
+            if value != TARA_BALA_REFERENCE_CHART_MOON && value > 26 {
+                return Err(error_payload(
+                    "invalid_request",
+                    "tara_bala_reference_nakshatra_index must be in 0..=26 or 255",
+                ));
+            }
+            config.tara_bala_reference_nakshatra_index = value;
+        }
+        if let Some(value) = input.include_samvatsara_officers {
+            config.include_samvatsara_officers = value;
+        }
+        if let Some(value) = input.include_transit_ashtakavarga {
+            config.include_transit_ashtakavarga = value;
+        }
+        if let Some(reference) = input.transit_ashtakavarga_reference.as_ref() {
+            config.transit_ashtakavarga_reference = Some(parse_ashtakavarga_reference(reference)?);
         }
         if input.charakaraka_scheme.is_some() {
             config.charakaraka_scheme =
@@ -2956,7 +3022,8 @@ fn tithi_json(info: dhruv_search::TithiInfo) -> Value {
         "paksha": debug_name(info.paksha),
         "tithi_in_paksha": info.tithi_in_paksha,
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -2965,7 +3032,8 @@ fn karana_json(info: dhruv_search::KaranaInfo) -> Value {
         "karana_index": info.karana_index,
         "karana": debug_name(info.karana),
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -2974,7 +3042,8 @@ fn yoga_json(info: dhruv_search::YogaInfo) -> Value {
         "yoga_index": info.yoga_index,
         "yoga": debug_name(info.yoga),
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -2982,7 +3051,8 @@ fn vaar_json(info: dhruv_search::VaarInfo) -> Value {
     json!({
         "vaar": debug_name(info.vaar),
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -2991,7 +3061,8 @@ fn hora_json(info: dhruv_search::HoraInfo) -> Value {
         "hora_index": info.hora_index,
         "hora": debug_name(info.hora),
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -2999,7 +3070,8 @@ fn ghatika_json(info: dhruv_search::GhatikaInfo) -> Value {
     json!({
         "value": info.value,
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -3009,7 +3081,8 @@ fn nakshatra_json(info: dhruv_search::PanchangNakshatraInfo) -> Value {
         "nakshatra": debug_name(info.nakshatra),
         "pada": info.pada,
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -3018,7 +3091,8 @@ fn masa_json(info: dhruv_search::MasaInfo) -> Value {
         "masa": debug_name(info.masa),
         "adhika": info.adhika,
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -3026,7 +3100,8 @@ fn ayana_json(info: dhruv_search::AyanaInfo) -> Value {
     json!({
         "ayana": debug_name(info.ayana),
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -3035,7 +3110,8 @@ fn varsha_json(info: dhruv_search::VarshaInfo) -> Value {
         "samvatsara": debug_name(info.samvatsara),
         "order": info.order,
         "start": utc_json(info.start),
-        "end": utc_json(info.end)
+        "end": utc_json(info.end),
+        "progress": info.progress
     })
 }
 
@@ -3437,6 +3513,9 @@ fn graha_entry_json(entry: dhruv_search::GrahaEntry, graha: Option<Graha>) -> Va
         "right_ascension_deg": entry.right_ascension_deg,
         "declination_deg": entry.declination_deg,
         "ecliptic_latitude_deg": entry.ecliptic_latitude_deg,
+        "speed_valid": entry.speed_valid,
+        "longitude_speed_deg_per_day": entry.longitude_speed_deg_per_day,
+        "latitude_speed_deg_per_day": entry.latitude_speed_deg_per_day,
         "basic_states": entry.basic_states_valid.then_some(json!({
             "exalted": entry.basic_states.exalted,
             "debilitated": entry.basic_states.debilitated,
@@ -3897,7 +3976,156 @@ fn amsha_entry_json(entry: dhruv_search::AmshaEntry) -> Value {
         "nakshatra": debug_name(entry.nakshatra),
         "nakshatra_index": entry.nakshatra_index,
         "pada": entry.pada,
-        "rashi_bhava_number": entry.rashi_bhava_number
+        "rashi_bhava_number": entry.rashi_bhava_number,
+        "vargottama": entry.vargottama
+    })
+}
+
+fn tara_bala_json(tara_bala: TaraBala) -> Value {
+    json!({
+        "tara": debug_name(tara_bala.tara),
+        "tara_name": tara_bala.tara.name(),
+        "tara_index": tara_bala.tara_index,
+        "count": tara_bala.count,
+        "cycle": tara_bala.cycle,
+        "favorable": tara_bala.favorable
+    })
+}
+
+fn tara_bala_entry_json(entry: TaraBalaEntry) -> Value {
+    let mut value = tara_bala_json(entry.tara_bala);
+    value["nakshatra_index"] = json!(entry.nakshatra_index);
+    value
+}
+
+fn tara_bala_result_json(result: TaraBalaResult) -> Value {
+    json!({
+        "reference_nakshatra_index": result.reference_nakshatra_index,
+        "reference_is_chart_moon": result.reference_is_chart_moon,
+        "grahas": ALL_GRAHAS.iter().enumerate().map(|(idx, graha)| {
+            let mut value = tara_bala_entry_json(result.grahas[idx]);
+            value["graha"] = json!(debug_name(*graha));
+            value
+        }).collect::<Vec<_>>(),
+        "lagna": tara_bala_entry_json(result.lagna)
+    })
+}
+
+fn ashtakavarga_reference_json(reference: AshtakavargaReference) -> Value {
+    json!({
+        "graha_rashis": reference.graha_rashis,
+        "lagna_rashi": reference.lagna_rashi
+    })
+}
+
+fn transit_ashtakavarga_entry_json(entry: TransitAshtakavargaEntry) -> Value {
+    json!({
+        "graha_index": entry.graha_index,
+        "graha": ALL_GRAHAS.get(entry.graha_index as usize).map(|graha| debug_name(*graha)),
+        "rashi_index": entry.rashi_index,
+        "bav_bindus": entry.bav_bindus,
+        "sav_total": entry.sav_total,
+        "sav_after_trikona": entry.sav_after_trikona,
+        "sav_after_ekadhipatya": entry.sav_after_ekadhipatya,
+        "kakshya_index": entry.kakshya_index,
+        "kakshya_lord": entry.kakshya_lord,
+        "kakshya_bindu": entry.kakshya_bindu
+    })
+}
+
+fn transit_ashtakavarga_entries_json(entries: [TransitAshtakavargaEntry; 7]) -> Value {
+    json!({
+        "entries": entries.into_iter().map(transit_ashtakavarga_entry_json).collect::<Vec<_>>()
+    })
+}
+
+fn transit_ashtakavarga_result_json(result: TransitAshtakavargaResult) -> Value {
+    let mut value = transit_ashtakavarga_entries_json(result.entries);
+    value["reference"] = ashtakavarga_reference_json(result.reference);
+    value
+}
+
+fn samvatsara_officer_json(officer: SamvatsaraOfficer) -> Value {
+    json!({
+        "office": debug_name(officer.office),
+        "office_index": officer.office.index(),
+        "office_name": officer.office.name(),
+        "event_name": officer.office.event_name(),
+        "event_utc": utc_json(officer.event_utc),
+        "vedic_day_start": utc_json(officer.vedic_day_start),
+        "vaar": debug_name(officer.vaar),
+        "lord": debug_name(officer.lord),
+        "lord_index": officer.lord.index(),
+        "lord_name": officer.lord.name()
+    })
+}
+
+fn samvatsara_officers_json(result: SamvatsaraOfficers) -> Value {
+    json!({
+        "varsha": varsha_json(result.varsha),
+        "officers": result.officers.into_iter().map(samvatsara_officer_json).collect::<Vec<_>>()
+    })
+}
+
+/// Parse a natal ashtakavarga from either the `ashtakavarga_json` result
+/// shape (`natal: %{bhinna: [...], sarva: %{...}}`) or the raw
+/// `graha_rashis` / `lagna_rashi` inputs of `calculate_ashtakavarga`.
+fn parse_natal_ashtakavarga(raw: &Value) -> Result<AshtakavargaResult, rustler::Error> {
+    if let Some(natal) = raw.get("natal") {
+        let bhinna = natal
+            .get("bhinna")
+            .and_then(Value::as_array)
+            .ok_or(rustler::Error::BadArg)?;
+        if bhinna.len() != 7 {
+            return Err(rustler::Error::BadArg);
+        }
+        let mut bavs = [BhinnaAshtakavarga {
+            graha_index: 0,
+            points: [0; 12],
+            contributors: [[0; 8]; 12],
+        }; 7];
+        for (idx, bav) in bhinna.iter().enumerate() {
+            bavs[idx] = parse_bhinna_ashtakavarga(bav)?;
+        }
+        let sarva = natal.get("sarva").ok_or(rustler::Error::BadArg)?;
+        let sav = SarvaAshtakavarga {
+            total_points: raw_u8_array::<12>(sarva, "total_points")?,
+            after_trikona: raw_u8_array::<12>(sarva, "after_trikona")?,
+            after_ekadhipatya: raw_u8_array::<12>(sarva, "after_ekadhipatya")?,
+        };
+        return Ok(AshtakavargaResult { bavs, sav });
+    }
+    Ok(calculate_ashtakavarga(
+        &raw_u8_array::<7>(raw, "graha_rashis")?,
+        raw_required_u8(raw, "lagna_rashi")?,
+    ))
+}
+
+fn parse_bhinna_ashtakavarga(raw: &Value) -> Result<BhinnaAshtakavarga, rustler::Error> {
+    let rows = raw
+        .get("contributors")
+        .and_then(Value::as_array)
+        .ok_or(rustler::Error::BadArg)?;
+    if rows.len() != 12 {
+        return Err(rustler::Error::BadArg);
+    }
+    let mut contributors = [[0u8; 8]; 12];
+    for (rashi, row) in rows.iter().enumerate() {
+        let cells = row.as_array().ok_or(rustler::Error::BadArg)?;
+        if cells.len() != 8 {
+            return Err(rustler::Error::BadArg);
+        }
+        for (contributor, cell) in cells.iter().enumerate() {
+            contributors[rashi][contributor] = cell
+                .as_u64()
+                .and_then(|value| u8::try_from(value).ok())
+                .ok_or(rustler::Error::BadArg)?;
+        }
+    }
+    Ok(BhinnaAshtakavarga {
+        graha_index: raw_required_u8(raw, "graha_index")?,
+        points: raw_u8_array::<12>(raw, "points")?,
+        contributors,
     })
 }
 
@@ -3947,7 +4175,10 @@ fn full_kundali_json(result: dhruv_search::FullKundaliResult) -> Value {
         "charakaraka": result.charakaraka.map(charakaraka_json),
         "panchang": result.panchang.as_ref().map(panchang_value_json),
         "dasha": result.dasha.map(|items| items.into_iter().map(dasha_hierarchy_json).collect::<Vec<_>>()),
-        "dasha_snapshots": result.dasha_snapshots.map(|items| items.into_iter().map(dasha_snapshot_json).collect::<Vec<_>>())
+        "dasha_snapshots": result.dasha_snapshots.map(|items| items.into_iter().map(dasha_snapshot_json).collect::<Vec<_>>()),
+        "tara_bala": result.tara_bala.map(tara_bala_result_json),
+        "samvatsara_officers": result.samvatsara_officers.map(samvatsara_officers_json),
+        "transit_ashtakavarga": result.transit_ashtakavarga.map(transit_ashtakavarga_result_json)
     })
 }
 
@@ -4059,11 +4290,13 @@ fn dasha_hierarchy_json(result: DashaHierarchy) -> Value {
 }
 
 fn dasha_snapshot_json(result: DashaSnapshot) -> Value {
+    let progress = result.progress();
     json!({
         "system": debug_name(result.system),
         "query_utc": utc_json_from_jd_utc(result.query_jd),
         "query_jd": result.query_jd,
-        "periods": result.periods.into_iter().map(dasha_period_json).collect::<Vec<_>>()
+        "periods": result.periods.into_iter().map(dasha_period_json).collect::<Vec<_>>(),
+        "progress": progress
     })
 }
 
@@ -5154,6 +5387,34 @@ fn handle_panchang_events(
     Ok(panchang_events_json(result))
 }
 
+/// Stack budget for the heaviest chart paths.
+///
+/// `full_kundali_for_date` returns the ~26 KB `FullKundaliResult` by value
+/// (its `DrishtiResult` alone is ~15 KB) and the JSON conversion moves it
+/// again, so the debug-mode NIF materialises several copies on the way out.
+/// Dirty CPU scheduler threads default to a 40-kiloword (~320 KB) stack,
+/// which that path overflows (a plain SIGSEGV, since Rust's guard-page
+/// handler is not installed on BEAM-created threads). Running the call on a
+/// dedicated thread with a generous stack keeps the NIF independent of
+/// `+sssdcpu` VM flags.
+const LARGE_STACK_BYTES: usize = 16 * 1024 * 1024;
+
+/// Run `f` on a scoped thread with [`LARGE_STACK_BYTES`] of stack, joining
+/// before returning so borrowed engine state stays valid.
+fn with_large_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|scope| {
+        let handle = std::thread::Builder::new()
+            .name("dhruv_nif_large_stack".into())
+            .stack_size(LARGE_STACK_BYTES)
+            .spawn_scoped(scope, f)
+            .expect("spawn large-stack worker thread");
+        match handle.join() {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    })
+}
+
 fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishRequest) -> JsonResult {
     read_state(resource, |state| {
         let engine = require_engine(state)?;
@@ -5449,18 +5710,74 @@ fn handle_jyotish(resource: &ResourceArc<EngineResource>, request: JyotishReques
             )
             .map(avastha_json)
             .map_err(|err| map_error("search_error", err)),
-            "full_kundali" => full_kundali_for_date(
+            "full_kundali" => {
+                let utc = utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?;
+                let location = location
+                    .ok_or_else(|| error_payload("invalid_request", "location is required"))?;
+                let riseset_config = to_riseset_config(state, request.riseset_config.as_ref())?;
+                let full_kundali_config =
+                    to_full_kundali_config(state, request.full_kundali_config.as_ref())?;
+                with_large_stack(|| {
+                    full_kundali_for_date(
+                        engine,
+                        eop,
+                        &utc,
+                        &location,
+                        &bhava_config,
+                        &riseset_config,
+                        &sankranti_config,
+                        &full_kundali_config,
+                    )
+                    .map(full_kundali_json)
+                    .map_err(|err| map_error("search_error", err))
+                })
+            }
+            "tara_bala" => {
+                let reference = request
+                    .reference_nakshatra_index
+                    .unwrap_or(TARA_BALA_REFERENCE_CHART_MOON);
+                if reference != TARA_BALA_REFERENCE_CHART_MOON && reference > 26 {
+                    return Err(error_payload(
+                        "invalid_request",
+                        "reference_nakshatra_index must be in 0..=26 or 255",
+                    ));
+                }
+                tara_bala_for_date(
+                    engine,
+                    eop,
+                    &utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?,
+                    &location
+                        .ok_or_else(|| error_payload("invalid_request", "location is required"))?,
+                    &sankranti_config,
+                    reference,
+                )
+                .map(tara_bala_result_json)
+                .map_err(|err| map_error("search_error", err))
+            }
+            "transit_ashtakavarga" => {
+                let reference = request.ashtakavarga_reference.as_ref().ok_or_else(|| {
+                    error_payload("invalid_request", "ashtakavarga_reference is required")
+                })?;
+                transit_ashtakavarga_for_date(
+                    engine,
+                    eop,
+                    &utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?,
+                    &sankranti_config,
+                    &parse_ashtakavarga_reference(reference)?,
+                )
+                .map(transit_ashtakavarga_result_json)
+                .map_err(|err| map_error("search_error", err))
+            }
+            "samvatsara_officers" => samvatsara_officers_fn(
                 engine,
                 eop,
                 &utc.ok_or_else(|| error_payload("invalid_request", "utc is required"))?,
                 &location
                     .ok_or_else(|| error_payload("invalid_request", "location is required"))?,
-                &bhava_config,
                 &to_riseset_config(state, request.riseset_config.as_ref())?,
                 &sankranti_config,
-                &to_full_kundali_config(state, request.full_kundali_config.as_ref())?,
             )
-            .map(full_kundali_json)
+            .map(samvatsara_officers_json)
             .map_err(|err| map_error("search_error", err)),
             "amsha_series" => {
                 handle_amsha_series(engine, eop, &request, location, &sankranti_config)
@@ -6583,6 +6900,70 @@ fn util_run<'a>(env: Env<'a>, request: Term<'a>) -> Result<Term<'a>, rustler::Er
         "ekadhipatya_sodhana" => Ok(json!({
             "totals": ekadhipatya_sodhana(&raw_u8_array::<12>(&raw, "totals")?)
         })),
+        "tara_bala" => Ok(tara_bala_json(tara_bala_fn(
+            raw_required_u8(&raw, "reference_nakshatra_index")?,
+            raw_required_u8(&raw, "target_nakshatra_index")?,
+        ))),
+        "tara_name" => match ALL_TARAS.get(raw_required_u8(&raw, "index")? as usize) {
+            Some(tara) => Ok(json!({ "name": tara.name() })),
+            None => Err(error_payload(
+                "invalid_request",
+                "tara index must be in 0..=8",
+            )),
+        },
+        "kakshya_index" => {
+            let longitude = raw_required_f64(&raw, "sidereal_longitude_deg")?;
+            if longitude.is_finite() {
+                Ok(json!({ "kakshya_index": kakshya_index(longitude) }))
+            } else {
+                Err(error_payload(
+                    "invalid_request",
+                    "sidereal_longitude_deg must be finite",
+                ))
+            }
+        }
+        "kakshya_lord" => {
+            let idx = raw_required_u8(&raw, "kakshya_index")?;
+            if idx > 7 {
+                Err(error_payload(
+                    "invalid_request",
+                    "kakshya_index must be in 0..=7",
+                ))
+            } else {
+                Ok(json!({ "kakshya_lord": kakshya_lord_contributor(idx) }))
+            }
+        }
+        "kakshya_bindu" => {
+            let bav = parse_bhinna_ashtakavarga(raw.get("bav").ok_or(rustler::Error::BadArg)?)?;
+            let longitude = raw_required_f64(&raw, "sidereal_longitude_deg")?;
+            if longitude.is_finite() {
+                Ok(json!({ "kakshya_bindu": kakshya_bindu(&bav, longitude) }))
+            } else {
+                Err(error_payload(
+                    "invalid_request",
+                    "sidereal_longitude_deg must be finite",
+                ))
+            }
+        }
+        "transit_ashtakavarga" => {
+            let natal = parse_natal_ashtakavarga(&raw)?;
+            let transit_lons = raw_f64_array::<7>(&raw, "transit_sidereal_lons")?;
+            Ok(transit_ashtakavarga_entries_json(transit_ashtakavarga_fn(
+                &natal,
+                &transit_lons,
+            )))
+        }
+        "samvatsara_office_name" => {
+            match ALL_SAMVATSARA_OFFICES.get(raw_required_u8(&raw, "index")? as usize) {
+                Some(office) => {
+                    Ok(json!({ "name": office.name(), "event_name": office.event_name() }))
+                }
+                None => Err(error_payload(
+                    "invalid_request",
+                    "samvatsara office index must be in 0..=8",
+                )),
+            }
+        }
         "ghatika_from_elapsed" => {
             let position = ghatika_from_elapsed(
                 raw_required_f64(&raw, "seconds_since_sunrise")?,
@@ -7010,6 +7391,11 @@ mod tests {
                     variation: None,
                 }]),
                 dasha_config: None,
+                include_tara_bala: None,
+                tara_bala_reference_nakshatra_index: None,
+                include_samvatsara_officers: None,
+                include_transit_ashtakavarga: None,
+                transit_ashtakavarga_reference: None,
             }),
         )
         .expect("full kundali config should parse");
@@ -7070,6 +7456,11 @@ mod tests {
                     min_span_years: None,
                     snapshot_utc: None,
                 }),
+                include_tara_bala: None,
+                tara_bala_reference_nakshatra_index: None,
+                include_samvatsara_officers: None,
+                include_transit_ashtakavarga: None,
+                transit_ashtakavarga_reference: None,
             }),
         )
         .expect_err("oversized systems list should be rejected");
@@ -7122,6 +7513,11 @@ mod tests {
                     min_span_years: None,
                     snapshot_utc: None,
                 }),
+                include_tara_bala: None,
+                tara_bala_reference_nakshatra_index: None,
+                include_samvatsara_officers: None,
+                include_transit_ashtakavarga: None,
+                transit_ashtakavarga_reference: None,
             }),
         )
         .expect_err("oversized max_levels list should be rejected");

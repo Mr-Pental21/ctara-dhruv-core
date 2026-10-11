@@ -516,6 +516,7 @@ def dasha_snapshot(
         query_utc=_utc_from_c(out.query_utc),
         query_jd=out.query_jd,
         periods=periods,
+        progress=[out.progress[i] for i in range(out.count)],
     )
 
 

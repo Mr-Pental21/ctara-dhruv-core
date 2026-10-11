@@ -261,3 +261,25 @@ class TestRashiDasha:
         names = [period.entity_name for period in result.levels[0].periods]
         assert all(name for name in names)
         assert any(name == "Mangala" for name in names)
+
+
+@skip_no_kernels
+@skip_no_eop
+class TestDashaSnapshotProgress:
+    def test_progress_parallel_to_periods(self, engine_handles):
+        """Each active period reports its elapsed fraction at query_jd (ABI v91)."""
+        from ctara_dhruv.dasha import dasha_snapshot
+        from ctara_dhruv.engine import engine, lsk, eop
+        snap = dasha_snapshot(
+            engine(), lsk(), eop(),
+            jd_utc_birth=BIRTH_UTC,
+            jd_utc_query=(2025, 1, 1, 0, 0, 0.0),
+            location=BIRTH_LOC,
+            system=0,
+            max_level=2,
+        )
+        assert len(snap.progress) == len(snap.periods) >= 1
+        for p, frac in zip(snap.periods, snap.progress):
+            assert 0.0 <= frac <= 1.0
+            expected = (snap.query_jd - p.start_jd) / (p.end_jd - p.start_jd)
+            assert abs(frac - expected) < 1e-9

@@ -2,7 +2,7 @@
 
 Complete reference for the `dhruv_ffi_c` C-compatible API surface.
 
-**ABI version:** `DHRUV_API_VERSION = 90`
+**ABI version:** `DHRUV_API_VERSION = 91`
 
 **Library:** `libdhruv_ffi_c` (compiled as `cdylib` + `staticlib`)
 
@@ -2078,6 +2078,111 @@ Apply Ekadhipatya Sodhana: subtract the minimum from same-lord pairs (Mercury: M
 
 ---
 
+### Tara Bala, Kakshya, Transit Ashtakavarga, Samvatsara Officers (v91)
+
+```c
+#define DHRUV_TARA_BALA_REFERENCE_CHART_MOON 255
+
+typedef struct {
+    uint8_t tara_index;   // 0=Janma,1=Sampat,2=Vipat,3=Kshema,4=Pratyak,5=Sadhaka,6=Vadha,7=Mitra,8=Parama Mitra
+    uint8_t count;        // inclusive count from the reference nakshatra, 1-27
+    uint8_t cycle;        // pass through the nine-fold sequence, 1-3
+    uint8_t favorable;    // 1 for Sampat, Kshema, Sadhaka, Mitra, Parama Mitra
+} DhruvTaraBala;
+
+typedef struct {
+    uint8_t       nakshatra_index;   // 0-26
+    DhruvTaraBala tara_bala;
+} DhruvTaraBalaEntry;
+
+typedef struct {
+    uint8_t            reference_nakshatra_index;
+    uint8_t            reference_is_chart_moon;
+    DhruvTaraBalaEntry grahas[9];    // Graha index order (Sun .. Ketu)
+    DhruvTaraBalaEntry lagna;
+} DhruvTaraBalaResult;
+
+typedef struct {
+    uint8_t graha_rashis[7];   // natal rashi (0-11) of Sun .. Saturn
+    uint8_t lagna_rashi;       // natal lagna rashi (0-11)
+} DhruvAshtakavargaReference;
+
+typedef struct {
+    uint8_t graha_index;           // 0=Sun .. 6=Saturn
+    uint8_t rashi_index;           // transit rashi
+    uint8_t bav_bindus;            // natal BAV bindus in the transit rashi (0-8)
+    uint8_t sav_total;             // natal SAV of the transit rashi
+    uint8_t sav_after_trikona;
+    uint8_t sav_after_ekadhipatya;
+    uint8_t kakshya_index;         // 0-7 (3°45' each)
+    uint8_t kakshya_lord;          // BAV contributor index: 0=Sun .. 6=Saturn, 7=Lagna
+    uint8_t kakshya_bindu;         // 1 when the kakshya lord contributed a bindu to that rashi
+} DhruvTransitAshtakavargaEntry;
+
+typedef struct {
+    DhruvAshtakavargaReference    reference;
+    DhruvTransitAshtakavargaEntry entries[7];
+} DhruvTransitAshtakavargaResult;
+
+typedef struct {
+    uint8_t      office_index;     // 0=Raja,1=Mantri,2=Sasyesha,3=Dhanyesha,4=Meghesha,5=Rasesha,6=Nirasesha,7=Phalesha,8=Durgesha
+    uint8_t      vaar_index;       // 0=Ravivaar .. 6=Shanivaar
+    uint8_t      lord_index;       // graha index of the office-bearer (vaar lord)
+    DhruvUtcTime event_utc;        // defining event instant
+    DhruvUtcTime vedic_day_start;  // sunrise starting the defining Vedic day
+} DhruvSamvatsaraOfficer;
+
+typedef struct {
+    DhruvVarshaInfo        varsha;
+    DhruvSamvatsaraOfficer officers[9];
+} DhruvSamvatsaraOfficers;
+
+const char *dhruv_tara_name(uint32_t index);                    // 0-8, NULL otherwise
+DhruvStatus dhruv_tara_bala(uint32_t reference_nakshatra_index, uint32_t target_nakshatra_index, DhruvTaraBala *out);
+DhruvStatus dhruv_tara_bala_for_date(
+    const DhruvEngineHandle *engine, const DhruvEopHandle *eop,
+    const DhruvUtcTime *utc, const DhruvGeoLocation *location,
+    uint32_t ayanamsha_system, uint8_t use_nutation,
+    uint32_t reference_nakshatra_index,                          // 0-26 or DHRUV_TARA_BALA_REFERENCE_CHART_MOON
+    DhruvTaraBalaResult *out);
+int32_t dhruv_kakshya_index(double sidereal_longitude_deg);     // 0-7, -1 non-finite
+int32_t dhruv_kakshya_lord(uint32_t kakshya_index);             // contributor index, -1 invalid
+int32_t dhruv_kakshya_bindu(const DhruvBhinnaAshtakavarga *bav, double sidereal_longitude_deg); // 1/0, -1 error
+DhruvStatus dhruv_transit_ashtakavarga(
+    const DhruvAshtakavargaResult *natal,
+    const double *transit_sidereal_lons,                         // 7 values, Sun .. Saturn
+    DhruvTransitAshtakavargaEntry *out);                         // 7 entries
+DhruvStatus dhruv_transit_ashtakavarga_for_date(
+    const DhruvEngineHandle *engine, const DhruvEopHandle *eop, const DhruvUtcTime *utc,
+    uint32_t ayanamsha_system, uint8_t use_nutation,
+    const DhruvAshtakavargaReference *reference, DhruvTransitAshtakavargaResult *out);
+const char *dhruv_samvatsara_office_name(uint32_t index);       // 0-8, NULL otherwise
+DhruvStatus dhruv_samvatsara_officers(
+    const DhruvEngineHandle *engine, const DhruvEopHandle *eop,
+    const DhruvUtcTime *utc, const DhruvGeoLocation *location,
+    const DhruvRiseSetConfig *riseset_config,                    // nullable: defaults resolved
+    uint32_t ayanamsha_system, uint8_t use_nutation,
+    DhruvSamvatsaraOfficers *out);
+```
+
+Tara bala counts inclusively from the reference nakshatra (normally the
+natal Moon's) to the target; the count modulo nine gives the tara and
+`cycle` the pass through the sequence. Kakshya helpers are pure math over
+an existing BAV's contributor matrix (kakshya lords in order: Saturn,
+Jupiter, Mars, Sun, Venus, Mercury, Moon, Lagna). Transit ashtakavarga
+scores only the seven sapta grahas against the natal BAV/SAV built from
+`reference`; Rahu, Ketu and the outer planets are not scored. Samvatsara
+officers are the vaar lords of the Vedic day (sunrise to sunrise at
+`location`) of: Chaitra Shukla Pratipada (Raja, udaya rule), Mesha
+sankranti (Mantri), Karka (Sasyesha), Dhanu (Dhanyesha), the Sun's Ardra
+entry (Meghesha), Tula (Rasesha), Makara (Nirasesha), Meena (Phalesha),
+Simha (Durgesha); each is the first occurrence at or after the lunar year
+start. The same three results are available as full-kundali sections via
+`DhruvFullKundaliConfig.include_tara_bala` /
+`include_samvatsara_officers` / `include_transit_ashtakavarga`.
+
+---
+
 ### Pure-Math Drishti
 
 ```c
@@ -2963,6 +3068,43 @@ no proper motion). Equivalent to requesting ecliptic output for
 ---
 
 ## Changelog
+
+**v91**: Positions speeds, vargottama, tara bala, kakshya, transit
+ashtakavarga, samvatsara officers, progress fields. Additive, opt-in where
+it costs anything. `DhruvGrahaPositionsConfig` gains `include_speeds`;
+`DhruvGrahaEntry` gains `speed_valid`, `longitude_speed_deg_per_day`,
+`latitude_speed_deg_per_day` (central finite difference of the exact
+sidereal longitude the entry reports, so ayanamsha drift and reference
+plane are included; lagna and nodes have latitude rate 0). With
+`include_basic_states`, outer planets now carry a real
+`basic_states.retrograde` (previously always 0). `DhruvAmshaEntry` gains
+`vargottama` in its padding byte after `rashi_index` (struct size and all
+offsets unchanged; always 0 on the D1 chart). Every panchang info struct
+(`DhruvTithiInfo` .. `DhruvVarshaInfo`) gains a trailing `double progress`
+(elapsed fraction at the query moment in [0, 1]; 0 in `panchang_events`
+listings and from `dhruv_vaar_from_sunrises`). `DhruvDashaSnapshot` gains
+`double progress[5]` parallel to `periods`. `DhruvFullKundaliConfig` gains
+`include_tara_bala`, `tara_bala_reference_nakshatra_index` (255 =
+`DHRUV_TARA_BALA_REFERENCE_CHART_MOON`, the chart's own Moon),
+`include_samvatsara_officers`, `include_transit_ashtakavarga` and
+`transit_ashtakavarga_reference` (natal rashis of Sun..Saturn + lagna;
+required when the flag is set, else `DHRUV_STATUS_INVALID_SEARCH_CONFIG`);
+`DhruvFullKundaliResult` gains the matching `tara_bala`,
+`samvatsara_officers` and `transit_ashtakavarga` sections with `*_valid`
+flags. New typedefs `DhruvTaraBala`, `DhruvTaraBalaEntry`,
+`DhruvTaraBalaResult`, `DhruvAshtakavargaReference`,
+`DhruvTransitAshtakavargaEntry`, `DhruvTransitAshtakavargaResult`,
+`DhruvSamvatsaraOfficer`, `DhruvSamvatsaraOfficers`. New functions
+`dhruv_tara_name`, `dhruv_tara_bala`, `dhruv_tara_bala_for_date`,
+`dhruv_kakshya_index`, `dhruv_kakshya_lord`, `dhruv_kakshya_bindu`,
+`dhruv_transit_ashtakavarga`, `dhruv_transit_ashtakavarga_for_date`,
+`dhruv_samvatsara_office_name`, `dhruv_samvatsara_officers` (see the
+section of that name). Behaviour fix with no shape change: the Vedic year
+(`DhruvVarshaInfo`, `dhruv_varsha_for_date`, panchang varsha element)
+now starts at Chaitra Shukla Pratipada — the new moon immediately before
+Mesha sankranti, or the adhika Chaitra pratipada one lunation earlier —
+instead of the new moon after Mesha sankranti (which is Vaishakha
+pratipada). Provenance: `docs/clean_room_tara_bala_officers.md`.
 
 **v90**: Grahan performance knobs. `DhruvGrahanConfig` gains
 `footprint_step_minutes` (0 = follow `path_step_minutes`; a coarser

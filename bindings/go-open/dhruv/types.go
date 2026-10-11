@@ -2,7 +2,7 @@ package dhruv
 
 import "ctara-dhruv-core/bindings/go-open/internal/cabi"
 
-const ExpectedAPIVersion = 90
+const ExpectedAPIVersion = 91
 
 const (
 	PathCapacity          = cabi.PathCapacity
@@ -197,6 +197,43 @@ const (
 	QueryOutputBoth      = cabi.QueryOutputBoth
 )
 
+// TaraBalaReferenceChartMoon selects a chart's own Moon nakshatra as the
+// tara bala reference (TaraBalaForDate and
+// FullKundaliConfig.TaraBalaReferenceNakshatraIndex).
+const TaraBalaReferenceChartMoon = cabi.TaraBalaReferenceChartMoon
+
+// TaraIndex* name the nine-fold tara sequence (see TaraName).
+const (
+	TaraIndexJanma       = cabi.TaraIndexJanma
+	TaraIndexSampat      = cabi.TaraIndexSampat
+	TaraIndexVipat       = cabi.TaraIndexVipat
+	TaraIndexKshema      = cabi.TaraIndexKshema
+	TaraIndexPratyak     = cabi.TaraIndexPratyak
+	TaraIndexSadhaka     = cabi.TaraIndexSadhaka
+	TaraIndexVadha       = cabi.TaraIndexVadha
+	TaraIndexMitra       = cabi.TaraIndexMitra
+	TaraIndexParamaMitra = cabi.TaraIndexParamaMitra
+)
+
+// KakshyaLordLagna is the BAV contributor index of the lagna among the
+// kakshya lords (0=Sun .. 6=Saturn, 7=Lagna).
+const KakshyaLordLagna = cabi.KakshyaLordLagna
+
+// SamvatsaraOffice* identify the nine offices of a lunar year (see
+// SamvatsaraOfficeName).
+const (
+	SamvatsaraOfficeRaja      = cabi.SamvatsaraOfficeRaja
+	SamvatsaraOfficeMantri    = cabi.SamvatsaraOfficeMantri
+	SamvatsaraOfficeSasyesha  = cabi.SamvatsaraOfficeSasyesha
+	SamvatsaraOfficeDhanyesha = cabi.SamvatsaraOfficeDhanyesha
+	SamvatsaraOfficeMeghesha  = cabi.SamvatsaraOfficeMeghesha
+	SamvatsaraOfficeRasesha   = cabi.SamvatsaraOfficeRasesha
+	SamvatsaraOfficeNirasesha = cabi.SamvatsaraOfficeNirasesha
+	SamvatsaraOfficePhalesha  = cabi.SamvatsaraOfficePhalesha
+	SamvatsaraOfficeDurgesha  = cabi.SamvatsaraOfficeDurgesha
+	SamvatsaraOfficeCount     = cabi.SamvatsaraOfficeCount
+)
+
 const (
 	PrecessionModelNewcomb1895 = cabi.PrecessionModelNewcomb1895
 	PrecessionModelLieske1977  = cabi.PrecessionModelLieske1977
@@ -329,6 +366,9 @@ type (
 	TimeUpagrahaConfig          = cabi.TimeUpagrahaConfig
 	DrishtiConfig               = cabi.DrishtiConfig
 	GrahaPositionsConfig        = cabi.GrahaPositionsConfig
+	BasicStatesConfig           = cabi.BasicStatesConfig
+	BasicStates                 = cabi.BasicStates
+	SensitivePointDistances     = cabi.SensitivePointDistances
 	BindusConfig                = cabi.BindusConfig
 	DashaSnapshotTime           = cabi.DashaSnapshotTime
 	DashaSelectionConfig        = cabi.DashaSelectionConfig
@@ -408,6 +448,15 @@ type (
 	BhinnaAshtakavarga = cabi.BhinnaAshtakavarga
 	SarvaAshtakavarga  = cabi.SarvaAshtakavarga
 	AshtakavargaResult = cabi.AshtakavargaResult
+
+	TaraBalaInfo              = cabi.TaraBalaInfo
+	TaraBalaEntry             = cabi.TaraBalaEntry
+	TaraBalaResult            = cabi.TaraBalaResult
+	AshtakavargaReference     = cabi.AshtakavargaReference
+	TransitAshtakavargaEntry  = cabi.TransitAshtakavargaEntry
+	TransitAshtakavargaResult = cabi.TransitAshtakavargaResult
+	SamvatsaraOfficer         = cabi.SamvatsaraOfficer
+	SamvatsaraOfficers        = cabi.SamvatsaraOfficers
 
 	AmshaEntry            = cabi.AmshaEntry
 	AmshaChartScope       = cabi.AmshaChartScope
