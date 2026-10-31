@@ -163,7 +163,10 @@ class TestLowTierDasha:
                 "use_abhijit": bool(variation.use_abhijit),
             },
         )
-        assert len(children) == 9
+        # The first mahadasha is clipped at birth: antardashas that ended
+        # before birth are dropped, so 1..9 remain.
+        assert 1 <= len(children) <= 9
+        assert children[0].start_jd == first.start_jd
 
         child = dasha_child_period(
             engine(), lsk(), eop(),
@@ -184,7 +187,7 @@ class TestLowTierDasha:
             child_level=1,
             system=0,
         )
-        assert len(complete) == len(level0) * len(children)
+        assert len(complete) == (len(level0) - 1) * 9 + len(children)
 
     def test_level0_cycle_repetition(self, engine_handles):
         """cycles=2 should repeat the Vimshottari level-0 sequence twice."""

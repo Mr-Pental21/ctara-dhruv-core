@@ -10,10 +10,13 @@
 
 use crate::error::VedicError;
 
-use super::balance::nakshatra_birth_balance;
+use super::balance::group_birth_balance;
 use super::nakshatra_data::NakshatraDashaConfig;
 use super::query::find_active_period;
-use super::subperiod::generate_children;
+use super::subperiod::{
+    BirthChainLink, JD_MATCH_EPS, birth_chain, complete_level_anchored,
+    generate_children_maybe_anchored,
+};
 use super::types::{
     DashaEntity, DashaHierarchy, DashaLevel, DashaPeriod, DashaSnapshot, MAX_DASHA_LEVEL,
     MAX_PERIODS_PER_LEVEL,
@@ -35,15 +38,15 @@ pub fn nakshatra_level0(
     config: &NakshatraDashaConfig,
     variation: &DashaVariationConfig,
 ) -> Vec<DashaPeriod> {
-    let nak_idx = {
-        let lon = crate::util::normalize_360(moon_sidereal_lon);
-        (lon / crate::nakshatra::NAKSHATRA_SPAN_27).floor() as u8
-    }
-    .min(26);
-
-    let start_graha_idx = config.starting_graha_idx(nak_idx) as usize;
-    let entry_period = config.entry_period_days(nak_idx);
-    let (_nak, balance_days, _frac) = nakshatra_birth_balance(moon_sidereal_lon, entry_period);
+    let (nak_idx, elapsed_fraction, map) =
+        birth_nakshatra_position(moon_sidereal_lon, config, variation);
+    let start_graha_idx = map[nak_idx] as usize;
+    let balance_days = group_birth_balance(
+        nak_idx,
+        elapsed_fraction,
+        map,
+        config.periods_days[start_graha_idx],
+    );
 
     let n = config.graha_sequence.len();
     // First cycle covers the birth balance plus the remaining n-1 full periods.
@@ -99,14 +102,29 @@ pub fn nakshatra_level0_entity(
 // ── Tier 1: Single child period ──────────────────────────────────────
 
 /// Calculate one specific entity's sub-period within a parent period.
+///
+/// `birth_jd` / `moon_sidereal_lon` identify the chart so that the
+/// birth-clipped period at each level gets children anchored on its full
+/// span (see [`nakshatra_children`]).
+#[allow(clippy::too_many_arguments)]
 pub fn nakshatra_child_period(
+    birth_jd: f64,
+    moon_sidereal_lon: f64,
     parent: &DashaPeriod,
     child_entity: DashaEntity,
     config: &NakshatraDashaConfig,
     method: SubPeriodMethod,
+    variation: &DashaVariationConfig,
 ) -> Option<DashaPeriod> {
     let child_level = parent.level.child_level()?;
-    let children = nakshatra_children(parent, config, method);
+    let children = nakshatra_children(
+        birth_jd,
+        moon_sidereal_lon,
+        parent,
+        config,
+        method,
+        variation,
+    );
     children
         .into_iter()
         .find(|c| c.entity == child_entity && c.level == child_level)
@@ -115,59 +133,84 @@ pub fn nakshatra_child_period(
 // ── Tier 2: All children of one parent ───────────────────────────────
 
 /// Calculate all child periods for a single parent period.
+///
+/// When `parent` is the birth-clipped period of its level (it starts at
+/// `birth_jd`), its children are laid out over the parent's full span,
+/// children that ended before birth are dropped and the straddling one is
+/// clipped to start at birth. Any other parent is split normally.
 pub fn nakshatra_children(
+    birth_jd: f64,
+    moon_sidereal_lon: f64,
     parent: &DashaPeriod,
     config: &NakshatraDashaConfig,
     method: SubPeriodMethod,
+    variation: &DashaVariationConfig,
 ) -> Vec<DashaPeriod> {
     let child_level = match parent.level.child_level() {
         Some(l) => l,
         None => return Vec::new(),
     };
+    let anchor = anchor_for(birth_jd, moon_sidereal_lon, parent, config, variation);
     let seq = config.entity_sequence();
-    generate_children(
+    generate_children_maybe_anchored(
         parent,
         &seq,
         config.total_period_days,
         child_level,
         0,
         method,
+        anchor.as_ref(),
     )
+    .0
 }
 
 // ── Tier 3: Complete level from parent level ─────────────────────────
 
 /// Calculate complete level N given all periods at level N-1.
+///
+/// The birth-clipped parent (if present in `parent_level`) is expanded on
+/// its full span, as in [`nakshatra_children`].
 pub fn nakshatra_complete_level(
+    birth_jd: f64,
+    moon_sidereal_lon: f64,
     parent_level: &[DashaPeriod],
     config: &NakshatraDashaConfig,
     child_level: DashaLevel,
     method: SubPeriodMethod,
+    variation: &DashaVariationConfig,
 ) -> Result<Vec<DashaPeriod>, VedicError> {
+    let parent_depth = (child_level as u8)
+        .checked_sub(1)
+        .ok_or(VedicError::InvalidInput(
+            "child_level must be deeper than Mahadasha",
+        ))?;
+    let chain = nakshatra_birth_chain(birth_jd, moon_sidereal_lon, config, variation, parent_depth);
+    let anchor = chain.get(parent_depth as usize);
+    complete_level_inner(parent_level, config, child_level, method, anchor).map(|(v, _)| v)
+}
+
+fn complete_level_inner(
+    parent_level: &[DashaPeriod],
+    config: &NakshatraDashaConfig,
+    child_level: DashaLevel,
+    method: SubPeriodMethod,
+    anchor: Option<&BirthChainLink>,
+) -> Result<(Vec<DashaPeriod>, Option<BirthChainLink>), VedicError> {
     let n = config.graha_sequence.len();
-    let estimated = parent_level.len() * n;
-    if estimated > MAX_PERIODS_PER_LEVEL {
+    if parent_level.len() * n > MAX_PERIODS_PER_LEVEL {
         return Err(VedicError::InvalidInput(
             "dasha level would exceed MAX_PERIODS_PER_LEVEL",
         ));
     }
-
     let seq = config.entity_sequence();
-    let mut result = Vec::with_capacity(estimated);
-
-    for (pidx, parent) in parent_level.iter().enumerate() {
-        let children = generate_children(
-            parent,
-            &seq,
-            config.total_period_days,
-            child_level,
-            pidx as u32,
-            method,
-        );
-        result.extend(children);
-    }
-
-    Ok(result)
+    Ok(complete_level_anchored(
+        parent_level,
+        &seq,
+        config.total_period_days,
+        child_level,
+        method,
+        anchor,
+    ))
 }
 
 // ── Tier 4: Full hierarchy (levels 0..N) ─────────────────────────────
@@ -182,6 +225,7 @@ pub fn nakshatra_hierarchy(
 ) -> Result<DashaHierarchy, VedicError> {
     let max_level = max_level.min(MAX_DASHA_LEVEL);
     let level0 = nakshatra_level0(birth_jd, moon_sidereal_lon, config, variation);
+    let mut anchor = level0_link(&level0, config);
     let mut levels: Vec<Vec<DashaPeriod>> = vec![level0];
 
     for depth in 1..=max_level {
@@ -191,7 +235,9 @@ pub fn nakshatra_hierarchy(
         };
         let method = variation.method_for_level(depth - 1, config.default_method);
         let parent = &levels[(depth - 1) as usize];
-        let children = nakshatra_complete_level(parent, config, child_level, method)?;
+        let (children, next) =
+            complete_level_inner(parent, config, child_level, method, anchor.as_ref())?;
+        anchor = next;
         levels.push(children);
     }
 
@@ -233,15 +279,31 @@ pub fn nakshatra_snapshot(
     };
     active_periods.push(level0[active_idx]);
 
-    // Drill down through levels
+    // Drill down through levels, following the birth chain while the active
+    // period is the birth-clipped one.
+    let seq = config.entity_sequence();
     let mut current_parent = level0[active_idx];
+    let mut anchor = level0_link(&level0, config).filter(|l| l.matches(&current_parent));
     for depth in 1..=max_level {
+        let child_level = match current_parent.level.child_level() {
+            Some(l) => l,
+            None => break,
+        };
         let method = variation.method_for_level(depth - 1, config.default_method);
-        let children = nakshatra_children(&current_parent, config, method);
+        let (children, next) = generate_children_maybe_anchored(
+            &current_parent,
+            &seq,
+            config.total_period_days,
+            child_level,
+            0,
+            method,
+            anchor.as_ref(),
+        );
         match find_active_period(&children, query_jd) {
             Some(idx) => {
                 active_periods.push(children[idx]);
                 current_parent = children[idx];
+                anchor = next.filter(|l| l.matches(&current_parent));
             }
             None => break,
         }
@@ -252,6 +314,92 @@ pub fn nakshatra_snapshot(
         query_jd,
         periods: active_periods,
     }
+}
+
+// ── Birth position and birth chain ───────────────────────────────────
+
+/// Moon's nakshatra index, fraction elapsed within it, and the applicable
+/// nakshatra→graha map: the 28-scheme (unequal arcs around Abhijit) when the
+/// system supports it and `variation.use_abhijit` is set, else the 27-scheme.
+fn birth_nakshatra_position<'a>(
+    moon_sidereal_lon: f64,
+    config: &'a NakshatraDashaConfig,
+    variation: &DashaVariationConfig,
+) -> (usize, f64, &'a [u8]) {
+    let lon = crate::util::normalize_360(moon_sidereal_lon);
+    match (&config.nakshatra28_to_graha_idx, variation.use_abhijit) {
+        (Some(map28), true) => {
+            let info = crate::nakshatra::nakshatra28_from_longitude(lon);
+            let idx = (info.nakshatra_index as usize).min(27);
+            let (start, end) = crate::nakshatra::nakshatra_28_boundaries()[idx];
+            let frac = ((lon - start) / (end - start)).clamp(0.0, 1.0);
+            (idx, frac, &map28[..])
+        }
+        _ => {
+            let span = crate::nakshatra::NAKSHATRA_SPAN_27;
+            let idx = ((lon / span).floor() as usize).min(26);
+            let frac = ((lon - idx as f64 * span) / span).clamp(0.0, 1.0);
+            (idx, frac, &config.nakshatra_to_graha_idx[..])
+        }
+    }
+}
+
+/// Chain link for the first mahadasha: the balance period and its full length.
+fn level0_link(level0: &[DashaPeriod], config: &NakshatraDashaConfig) -> Option<BirthChainLink> {
+    let first = *level0.first()?;
+    let pos = config
+        .graha_sequence
+        .iter()
+        .position(|&g| DashaEntity::Graha(g) == first.entity)?;
+    Some(BirthChainLink {
+        period: first,
+        full_duration_days: config.periods_days[pos],
+    })
+}
+
+/// Birth chain (clipped period per level with its full length) down to
+/// `upto_level` inclusive.
+fn nakshatra_birth_chain(
+    birth_jd: f64,
+    moon_sidereal_lon: f64,
+    config: &NakshatraDashaConfig,
+    variation: &DashaVariationConfig,
+    upto_level: u8,
+) -> Vec<BirthChainLink> {
+    let level0 = nakshatra_level0(birth_jd, moon_sidereal_lon, config, variation);
+    let Some(link0) = level0_link(&level0, config) else {
+        return Vec::new();
+    };
+    let seq = config.entity_sequence();
+    birth_chain(
+        link0,
+        &seq,
+        config.total_period_days,
+        upto_level,
+        &|depth| variation.method_for_level(depth, config.default_method),
+    )
+}
+
+/// The chain link for `parent` when it is the birth-clipped period of its
+/// level, else None.
+fn anchor_for(
+    birth_jd: f64,
+    moon_sidereal_lon: f64,
+    parent: &DashaPeriod,
+    config: &NakshatraDashaConfig,
+    variation: &DashaVariationConfig,
+) -> Option<BirthChainLink> {
+    if (parent.start_jd - birth_jd).abs() >= JD_MATCH_EPS {
+        return None;
+    }
+    let chain = nakshatra_birth_chain(
+        birth_jd,
+        moon_sidereal_lon,
+        config,
+        variation,
+        parent.level as u8,
+    );
+    chain.into_iter().find(|l| l.matches(parent))
 }
 
 #[cfg(test)]
@@ -320,12 +468,14 @@ mod tests {
         }
     }
 
+    const PROP: SubPeriodMethod = SubPeriodMethod::ProportionalFromParent;
+
     #[test]
     fn vimshottari_children_count() {
         let cfg = vimshottari_config();
-        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &DashaVariationConfig::default());
-        let children =
-            nakshatra_children(&periods[0], &cfg, SubPeriodMethod::ProportionalFromParent);
+        let var = DashaVariationConfig::default();
+        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &var);
+        let children = nakshatra_children(2451545.0, 0.0, &periods[0], &cfg, PROP, &var);
         assert_eq!(children.len(), 9);
         // First child should be same entity as parent (Ketu)
         assert_eq!(children[0].entity, DashaEntity::Graha(Graha::Ketu));
@@ -334,14 +484,169 @@ mod tests {
     #[test]
     fn vimshottari_children_sum_to_parent() {
         let cfg = vimshottari_config();
-        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &DashaVariationConfig::default());
+        let var = DashaVariationConfig::default();
+        let periods = nakshatra_level0(2451545.0, 0.0, &cfg, &var);
         let parent = &periods[0];
-        let children = nakshatra_children(parent, &cfg, SubPeriodMethod::ProportionalFromParent);
+        let children = nakshatra_children(2451545.0, 0.0, parent, &cfg, PROP, &var);
 
         // Last child end == parent end
         assert!((children.last().unwrap().end_jd - parent.end_jd).abs() < 1e-10);
         // First child start == parent start
         assert!((children[0].start_jd - parent.start_jd).abs() < 1e-10);
+    }
+
+    #[test]
+    fn balance_period_children_are_anchored_on_full_span() {
+        // Moon mid-Rohini: Chandra mahadasha, 5y of 10y remain. Antardashas on
+        // the full 10y: Chandra .833, Mangal .583, Rahu 1.5, Guru 1.333,
+        // Shani 1.583 (4.25..5.833y) -> birth falls inside Shani.
+        let cfg = vimshottari_config();
+        let var = DashaVariationConfig::default();
+        let birth_jd = 2451545.0;
+        let moon = 40.0 + crate::nakshatra::NAKSHATRA_SPAN_27 / 2.0;
+        let periods = nakshatra_level0(birth_jd, moon, &cfg, &var);
+        let parent = &periods[0];
+        let children = nakshatra_children(birth_jd, moon, parent, &cfg, PROP, &var);
+
+        assert_eq!(
+            children.len(),
+            5,
+            "Shani, Buddh, Ketu, Shukra, Surya remain"
+        );
+        assert_eq!(children[0].entity, DashaEntity::Graha(Graha::Shani));
+        assert_eq!(
+            children[0].order, 5,
+            "order keeps the full-sequence position"
+        );
+        assert!((children[0].start_jd - parent.start_jd).abs() < 1e-10);
+        let shani_years = children[0].duration_days() / DAYS_PER_YEAR;
+        assert!(
+            (shani_years - (5.8333333 - 5.0)).abs() < 1e-4,
+            "{shani_years}"
+        );
+        // Buddh gets its full share of the 10y mahadasha.
+        let buddh_years = children[1].duration_days() / DAYS_PER_YEAR;
+        assert!((buddh_years - 17.0 / 120.0 * 10.0).abs() < 1e-9);
+        assert!((children.last().unwrap().end_jd - parent.end_jd).abs() < 1e-10);
+        // Children off the birth chain are untouched.
+        let next = nakshatra_children(birth_jd, moon, &periods[1], &cfg, PROP, &var);
+        assert_eq!(next.len(), 9);
+        assert_eq!(next[0].entity, periods[1].entity);
+    }
+
+    #[test]
+    fn anchoring_is_consistent_across_tiers() {
+        let cfg = vimshottari_config();
+        let var = DashaVariationConfig::default();
+        let birth_jd = 2451545.0;
+        let moon = 40.0 + crate::nakshatra::NAKSHATRA_SPAN_27 / 2.0;
+        let h = nakshatra_hierarchy(birth_jd, moon, &cfg, 2, &var).unwrap();
+        // 4 antardashas elapsed before birth.
+        assert_eq!(h.levels[1].len(), 81 - 4);
+        // Level 1 == children of each mahadasha.
+        let mut expected = Vec::new();
+        for p in &h.levels[0] {
+            expected.extend(nakshatra_children(birth_jd, moon, p, &cfg, PROP, &var));
+        }
+        assert_eq!(h.levels[1].len(), expected.len());
+        for (a, b) in h.levels[1].iter().zip(&expected) {
+            assert_eq!(a.entity, b.entity);
+            assert!((a.start_jd - b.start_jd).abs() < 1e-9);
+            assert!((a.end_jd - b.end_jd).abs() < 1e-9);
+        }
+        // Complete level reproduces hierarchy level 2.
+        let l2 = nakshatra_complete_level(
+            birth_jd,
+            moon,
+            &h.levels[1],
+            &cfg,
+            DashaLevel::Pratyantardasha,
+            PROP,
+            &var,
+        )
+        .unwrap();
+        assert_eq!(l2.len(), h.levels[2].len());
+        // The clipped pratyantardasha at birth is itself anchored: its first
+        // child starts at birth and does not necessarily carry order 1.
+        assert!((h.levels[2][0].start_jd - birth_jd).abs() < 1e-9);
+        // Snapshot at and just after birth matches the hierarchy.
+        for q in [birth_jd, birth_jd + 10.0, birth_jd + 3000.0] {
+            let snap = nakshatra_snapshot(birth_jd, moon, &cfg, q, 2, &var);
+            assert_eq!(snap.periods.len(), 3);
+            for (level, sp) in snap.periods.iter().enumerate() {
+                let hp = h.levels[level]
+                    .iter()
+                    .find(|p| p.start_jd <= q && q < p.end_jd)
+                    .unwrap();
+                assert_eq!(sp.entity, hp.entity);
+                assert!((sp.start_jd - hp.start_jd).abs() < 1e-9);
+                assert!((sp.end_jd - hp.end_jd).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn ashtottari_group_balance() {
+        use crate::dasha::nakshatra_data::ashtottari_config;
+        let cfg = ashtottari_config();
+        let span = crate::nakshatra::NAKSHATRA_SPAN_27;
+        let no_abhijit = DashaVariationConfig {
+            use_abhijit: false,
+            ..DashaVariationConfig::default()
+        };
+        let years = |moon: f64, var: &DashaVariationConfig| {
+            let p = nakshatra_level0(2451545.0, moon, &cfg, var);
+            (p[0].entity, p[0].duration_days() / DAYS_PER_YEAR)
+        };
+        // Ardra start: Surya owns Ardra..Ashlesha (4 x 1.5y) -> full 6y.
+        let (e, y) = years(5.0 * span, &no_abhijit);
+        assert_eq!(e, DashaEntity::Graha(Graha::Surya));
+        assert!((y - 6.0).abs() < 1e-9, "{y}");
+        // Pushya start: Pushya + Ashlesha remain -> 3y.
+        let (_, y) = years(7.0 * span, &no_abhijit);
+        assert!((y - 3.0).abs() < 1e-9, "{y}");
+        // Mid-Ashlesha: half a share -> 0.75y.
+        let (_, y) = years(8.5 * span, &no_abhijit);
+        assert!((y - 0.75).abs() < 1e-9, "{y}");
+        // Ashlesha now belongs to Surya (was Chandra in the old map).
+        let (e, _) = years(8.5 * span, &no_abhijit);
+        assert_eq!(e, DashaEntity::Graha(Graha::Surya));
+    }
+
+    #[test]
+    fn ashtottari_abhijit_uses_28_arcs_and_4_shares() {
+        use crate::dasha::nakshatra_data::ashtottari_config;
+        let cfg = ashtottari_config();
+        let with = DashaVariationConfig::default(); // use_abhijit = true
+        let without = DashaVariationConfig {
+            use_abhijit: false,
+            ..DashaVariationConfig::default()
+        };
+        let moon = 278.0; // inside Abhijit [276.667, 280.889)
+        let p28 = nakshatra_level0(2451545.0, moon, &cfg, &with);
+        let p27 = nakshatra_level0(2451545.0, moon, &cfg, &without);
+        assert_eq!(p28[0].entity, DashaEntity::Graha(Graha::Shani));
+        assert_eq!(p27[0].entity, DashaEntity::Graha(Graha::Shani));
+        // 28-scheme: share 2.5y, Abhijit arc 4deg13'20", Shravana still ahead.
+        let abhijit_span = (280.0 + 53.0 / 60.0 + 20.0 / 3600.0) - (276.0 + 40.0 / 60.0);
+        let frac28 = (moon - (276.0 + 40.0 / 60.0)) / abhijit_span;
+        let want28 = 2.5 * (1.0 - frac28) + 2.5;
+        let got28 = p28[0].duration_days() / DAYS_PER_YEAR;
+        assert!((got28 - want28).abs() < 1e-9, "{got28} vs {want28}");
+        // 27-scheme: U.Ashadha (266.667..280), share 10/3, Shravana ahead.
+        let span = crate::nakshatra::NAKSHATRA_SPAN_27;
+        let frac27 = (moon - 20.0 * span) / span;
+        let want27 = (10.0 / 3.0) * (1.0 - frac27) + 10.0 / 3.0;
+        let got27 = p27[0].duration_days() / DAYS_PER_YEAR;
+        assert!((got27 - want27).abs() < 1e-9, "{got27} vs {want27}");
+        // Totals still 108y from the group start.
+        let total: f64 = p28.iter().map(|p| p.duration_days()).sum::<f64>() / DAYS_PER_YEAR;
+        assert!(total < 108.0 && total > 100.0);
+        // Abhijit flag is ignored by systems without a 28-scheme map.
+        let v = vimshottari_config();
+        let a = nakshatra_level0(2451545.0, moon, &v, &with);
+        let b = nakshatra_level0(2451545.0, moon, &v, &without);
+        assert!((a[0].end_jd - b[0].end_jd).abs() < 1e-12);
     }
 
     #[test]
@@ -355,7 +660,15 @@ mod tests {
             order: 1,
             parent_idx: 0,
         };
-        let children = nakshatra_children(&parent, &cfg, SubPeriodMethod::ProportionalFromParent);
+        // Birth is elsewhere, so this parent is not on the birth chain.
+        let children = nakshatra_children(
+            2440000.0,
+            0.0,
+            &parent,
+            &cfg,
+            PROP,
+            &DashaVariationConfig::default(),
+        );
 
         assert_eq!(children.len(), 9);
         assert_eq!(children[0].entity, DashaEntity::Graha(Graha::Rahu));

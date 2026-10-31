@@ -534,6 +534,20 @@ elapsed fraction at `query_jd`, clamped to [0, 1].
 Python dasha calls can use either UTC/location birth context or `birth_jd` plus
 precomputed `inputs` on the same main functions.
 
+Birth balance and sub-periods: in every nakshatra-based system other than
+Vimshottari a graha's years belong to a group of 3–4 consecutive nakshatras,
+so the first mahadasha is the remainder of the Moon's nakshatra plus the
+group's later nakshatras (each `years / group_size`). The first period at every
+level is clipped at birth and its children are laid out over the full span of
+that period: children that ended before birth are omitted and the one running
+at birth starts at birth, keeping its sequence `order`. `dasha_children` on the
+first mahadasha therefore returns fewer than the full sequence, and
+`dasha_complete_level` holds fewer than `len(parents) × sequence_len` periods.
+`use_abhijit` in `variation_config` applies to Ashtottari only: `1` (default)
+places the Moon with the 28-nakshatra scheme's unequal arcs and gives Shani's
+group four nakshatras (P.Ashadha, U.Ashadha, Abhijit, Shravana) at 2.5 years
+each; `0` uses 27 equal arcs and three nakshatras at 10/3 years each.
+
 `variation_config` dicts accept `cycles` and `min_span_years` for level-0
 cycle repetition. `cycles` is an explicit whole-cycle repetition count
 (`0` = system default; wins over `min_span_years`). `min_span_years` repeats

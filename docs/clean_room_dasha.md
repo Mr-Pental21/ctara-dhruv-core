@@ -48,18 +48,28 @@ Every 3rd nakshatra shares the same lord (9 grahas × 3 = 27):
 
 ### Birth Balance Algorithm
 
-The birth balance determines how much of the first mahadasha remains at birth:
+The birth balance determines how much of the first mahadasha remains at birth.
+A graha's period belongs to the *group* of consecutive nakshatras mapped to it
+(the maximal run of equal entries in the nakshatra→graha map, wrapping past
+Revati). Each nakshatra of the group owns an equal share:
 
 ```
 nakshatra_span = 360° / 27 = 13.3333°
 nakshatra_index = floor(moon_sidereal_lon / nakshatra_span)
 position_in_nakshatra = moon_sidereal_lon mod nakshatra_span
 elapsed_fraction = position_in_nakshatra / nakshatra_span
-balance_days = graha_period_days × (1 - elapsed_fraction)
+share_days = graha_period_days / group_size
+balance_days = share_days × (1 - elapsed_fraction) + share_days × nakshatras_after_in_group
 ```
 
-The remaining 8 mahadashas follow in sequence after the partial first period,
-each at their full duration.
+For Vimshottari every group has one nakshatra, so this is simply
+`graha_period_days × (1 - elapsed_fraction)`. For the other nine systems
+(Phase 18b) the groups hold 3–4 nakshatras; e.g. in Ashtottari the Moon at the
+start of Pushya (third of Surya's Ardra–Ashlesha group) leaves Pushya and
+Ashlesha, i.e. 2 × 6/4 = 3 years of Surya.
+
+The remaining mahadashas follow in sequence after the partial first period,
+each at their full duration. Implementation: `balance::group_birth_balance`.
 
 ### Sub-Period (Antardasha) Calculation
 
@@ -76,6 +86,21 @@ For each child_graha in cyclic_sequence(starting_from=parent_graha):
 
 The last child's end_jd is snapped to the parent's end_jd to absorb
 floating-point drift.
+
+**Birth-clipped parents.** The first period of every level is the tail of a
+period that began before birth. Its children are laid out over the *full*
+parent span anchored at `end_jd − full_duration`; children that ended before
+birth are dropped and the one straddling birth is clipped to start at birth
+(keeping its sequence `order`, so callers can see which siblings elapsed
+before birth). That clipped child is in turn the birth-clipped parent of the
+next level. Consequently a level holds fewer than `sequence_len × parents`
+periods, the first period of every level starts at birth, and all tiers
+(children, complete level, hierarchy, snapshot) agree. The children/complete
+level APIs therefore take the birth instant and Moon longitude, from which the
+"birth chain" (clipped period per level with its full length) is rebuilt.
+Implementation: `subperiod::generate_children_anchored`, `birth_chain`.
+Applies to all nakshatra-based systems and Yogini; rashi-based, Kala and Kaal
+Chakra engines split the visible period as before.
 
 ### Hierarchical Levels
 
@@ -134,14 +159,14 @@ Same BPHS sources as Phase 18a, plus:
 | System | Total Years | Grahas | Cycles | Starting Nakshatra | Special |
 |--------|-------------|--------|--------|--------------------|---------|
 | Vimshottari | 120 | 9 | 1 | Ashwini (0) | Phase 18a |
-| Ashtottari | 108 | 8 (no Ketu) | 1 | Ardra (5) | Abhijit detection TBD |
+| Ashtottari | 108 | 8 (no Ketu) | 1 | Ardra (5) | 4/3 groups; optional Abhijit (28-scheme) |
 | Shodsottari | 116 | 8 | 1 | Pushya (7) | Arithmetic 11-18y |
 | Dwadashottari | 112 | 8 | 1 | Bharani (1) | Odd 7-21y |
 | Panchottari | 105 | 7 | 1 | Anuradha (16) | Arithmetic 12-18y |
 | Shatabdika | 100 | 7 | 1 | Revati (26) | Paired 5,5,10,10,20,20,30 |
 | Chaturashiti | 84 | 7 | 2 | Swati (14) | Equal 12y each |
 | Dwisaptati Sama | 72 | 8 | 2 | Mula (18) | Equal 9y each |
-| Shashtihayani | 60 | 8 | 2 | Ashwini (0) | Period ÷ nakshatra count |
+| Shashtihayani | 60 | 8 | 2 | Ashwini (0) | Groups of 3/4 |
 | Shat-Trimsha Sama | 36 | 8 | 3 | Shravana (21) | Arithmetic 1-8y |
 
 ### Cycle Count Logic
@@ -162,16 +187,40 @@ every entry uses its full period (only cycle 1's first entry carries the
 birth balance), and `order` runs globally so
 `cycle = (order - 1) / sequence_len + 1`.
 
-### Shashtihayani Special Balance
+### Group Balance (all Phase 18b systems)
 
-Unlike other systems where `entry_period = graha_full_period`, Shashtihayani divides
-each graha's total period among the nakshatras assigned to that graha:
+Every Phase 18b system assigns each graha a contiguous group of 3–4
+nakshatras, so the group balance rule of Phase 18a applies: the graha's years
+are split equally among the group's nakshatras and the balance is the
+remainder of the Moon's nakshatra plus every later nakshatra of the group.
+The earlier Shashtihayani-only `divide_period_by_nakshatra_count` flag (which
+divided but did not add the later nakshatras) is removed.
 
-```
-entry_period = graha_period / count_of_nakshatras_for_that_graha
-```
+### Ashtottari Nakshatra Groups and Abhijit
 
-This ensures the birth balance is proportional to the per-nakshatra share.
+BPHS Ch.47 counts Ashtottari from Ardra in the 28-nakshatra scheme with
+groups of 4, 3, 4, 3, 4, 3, 4, 3:
+
+| Graha | Years | Nakshatras |
+|-------|-------|------------|
+| Surya | 6 | Ardra, Punarvasu, Pushya, Ashlesha |
+| Chandra | 15 | Magha, P.Phalguni, U.Phalguni |
+| Mangal | 8 | Hasta, Chitra, Swati, Vishakha |
+| Buddh | 17 | Anuradha, Jyeshtha, Mula |
+| Shani | 10 | P.Ashadha, U.Ashadha, Abhijit, Shravana |
+| Guru | 19 | Dhanishta, Shatabhisha, P.Bhadrapada |
+| Rahu | 12 | U.Bhadrapada, Revati, Ashwini, Bharani |
+| Shukra | 21 | Krittika, Rohini, Mrigashira |
+
+`DashaVariationConfig::use_abhijit` (default on) selects the 28-scheme: the
+Moon's nakshatra and elapsed fraction come from the unequal 28 arcs of
+`nakshatra::nakshatra_28_boundaries` (U.Ashadha 266°40′–276°40′, Abhijit
+276°40′–280°53′20″, Shravana 280°53′20″–293°20′) while the years are still
+shared equally, so Shani's four nakshatras get 2.5 years each. With
+`use_abhijit = false` the 27 equal arcs are used and Shani's group is
+P.Ashadha, U.Ashadha, Shravana at 10/3 years each. Only Ashtottari carries a
+28-scheme map (`NakshatraDashaConfig::nakshatra28_to_graha_idx`); the flag
+has no effect on the other systems.
 
 ### Yogini Dasha System
 

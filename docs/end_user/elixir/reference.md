@@ -560,6 +560,20 @@ which binary produced a stored computation.
 - `child_period/2`
 - `complete_level/2`
 
+Birth balance and sub-periods: in every nakshatra-based system other than
+Vimshottari a graha's years belong to a group of 3–4 consecutive nakshatras,
+so the first mahadasha is the remainder of the Moon's nakshatra plus the
+group's later nakshatras (each `years / group_size`). The first period at
+every level is clipped at birth and its children are laid out over that
+period's full span: children that ended before birth are omitted and the one
+running at birth starts at birth, keeping its sequence `order`. `children/2`
+on the first mahadasha therefore returns fewer than the full sequence, and
+`complete_level/2` holds fewer than `parents × sequence_len` periods.
+`:use_abhijit` applies to Ashtottari only: `true` (default) places the Moon
+with the 28-nakshatra scheme's unequal arcs and gives Shani's group four
+nakshatras (P.Ashadha, U.Ashadha, Abhijit, Shravana) at 2.5 years each;
+`false` uses 27 equal arcs and three nakshatras at 10/3 years each.
+
 Dasha request maps accept an optional `:variation` map with `:level_methods`,
 `:yogini_scheme`, `:use_abhijit`, `:cycles`, and `:min_span_years`.
 `:cycles` (integer >= 1) sets an explicit level-0 whole-cycle repetition count

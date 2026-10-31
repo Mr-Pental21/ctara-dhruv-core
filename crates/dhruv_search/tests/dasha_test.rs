@@ -129,11 +129,25 @@ fn vimshottari_hierarchy_valid() {
         );
     }
 
-    // Level 1: should have 9*9 = 81 antardasha periods
-    assert_eq!(hierarchy.levels[1].len(), 81);
+    // Level 1: 9 antardashas per mahadasha, except the birth-clipped first
+    // mahadasha which drops the antardashas that ended before birth.
+    let first_children = hierarchy.levels[1]
+        .iter()
+        .filter(|p| p.parent_idx == 0)
+        .count();
+    assert!((1..=9).contains(&first_children));
+    assert_eq!(hierarchy.levels[1].len(), 8 * 9 + first_children);
 
-    // Level 2: should have 81*9 = 729 pratyantardasha periods
-    assert_eq!(hierarchy.levels[2].len(), 729);
+    // Level 2: likewise, only the clipped antardasha at index 0 is short.
+    let first_grandchildren = hierarchy.levels[2]
+        .iter()
+        .filter(|p| p.parent_idx == 0)
+        .count();
+    assert!((1..=9).contains(&first_grandchildren));
+    assert_eq!(
+        hierarchy.levels[2].len(),
+        (hierarchy.levels[1].len() - 1) * 9 + first_grandchildren
+    );
 
     // Total time span should be <= 120 years (first period is partial due to balance)
     let total_days =

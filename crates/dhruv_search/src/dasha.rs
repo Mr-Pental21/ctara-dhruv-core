@@ -394,20 +394,36 @@ fn dispatch_level0(
 
 fn dispatch_children(
     system: DashaSystem,
+    birth_jd: f64,
+    moon_sid_lon: f64,
     parent: &DashaPeriod,
     rashi_inputs: Option<&RashiDashaInputs>,
     variation: &DashaVariationConfig,
 ) -> Result<Vec<DashaPeriod>, SearchError> {
     if let Some(cfg) = nakshatra_config_for_system(system) {
         let method = method_for_parent_level(parent.level, cfg.default_method, variation);
-        return Ok(nakshatra_children(parent, &cfg, method));
+        return Ok(nakshatra_children(
+            birth_jd,
+            moon_sid_lon,
+            parent,
+            &cfg,
+            method,
+            variation,
+        ));
     }
 
     match system {
         DashaSystem::Yogini => {
             let cfg = yogini_config();
             let method = method_for_parent_level(parent.level, cfg.default_method, variation);
-            Ok(yogini_children(parent, &cfg, method))
+            Ok(yogini_children(
+                birth_jd,
+                moon_sid_lon,
+                parent,
+                &cfg,
+                method,
+                variation,
+            ))
         }
         DashaSystem::Chara => {
             let ri = rashi_inputs.ok_or(SearchError::InvalidConfig("rashi inputs required"))?;
@@ -572,6 +588,8 @@ fn dispatch_children(
 
 fn dispatch_complete_level(
     system: DashaSystem,
+    birth_jd: f64,
+    moon_sid_lon: f64,
     parent_level: &[DashaPeriod],
     rashi_inputs: Option<&RashiDashaInputs>,
     child_level: DashaLevel,
@@ -581,16 +599,32 @@ fn dispatch_complete_level(
 
     if let Some(cfg) = nakshatra_config_for_system(system) {
         let method = method_for_parent_level(parent_depth, cfg.default_method, variation);
-        return nakshatra_complete_level(parent_level, &cfg, child_level, method)
-            .map_err(SearchError::from);
+        return nakshatra_complete_level(
+            birth_jd,
+            moon_sid_lon,
+            parent_level,
+            &cfg,
+            child_level,
+            method,
+            variation,
+        )
+        .map_err(SearchError::from);
     }
 
     match system {
         DashaSystem::Yogini => {
             let cfg = yogini_config();
             let method = method_for_parent_level(parent_depth, cfg.default_method, variation);
-            yogini_complete_level(parent_level, &cfg, child_level, method)
-                .map_err(SearchError::from)
+            yogini_complete_level(
+                birth_jd,
+                moon_sid_lon,
+                parent_level,
+                &cfg,
+                child_level,
+                method,
+                variation,
+            )
+            .map_err(SearchError::from)
         }
         DashaSystem::Chara => {
             let ri = rashi_inputs.ok_or(SearchError::InvalidConfig("rashi inputs required"))?;
@@ -1135,7 +1169,14 @@ pub fn dasha_children_for_birth(
         riseset_config,
         aya_config,
     )?;
-    dispatch_children(system, parent, inputs.rashi_inputs.as_ref(), variation)
+    dispatch_children(
+        system,
+        utc_to_jd_utc(birth_utc),
+        inputs.moon_sid_lon.unwrap_or(0.0),
+        parent,
+        inputs.rashi_inputs.as_ref(),
+        variation,
+    )
 }
 
 /// Compute one specific child period for a parent period.
@@ -1200,6 +1241,8 @@ pub fn dasha_complete_level_for_birth(
     )?;
     dispatch_complete_level(
         system,
+        utc_to_jd_utc(birth_utc),
+        inputs.moon_sid_lon.unwrap_or(0.0),
         parent_level,
         inputs.rashi_inputs.as_ref(),
         child_level,
@@ -1297,24 +1340,37 @@ pub fn dasha_level0_entity_with_inputs(
 }
 
 /// Context-sharing child-period expansion using pre-computed inputs.
+///
+/// `birth_jd` identifies the chart so that the birth-clipped period at each
+/// level is expanded on its full span (children that ended before birth are
+/// dropped, the straddling one is clipped to start at birth).
 pub fn dasha_children_with_inputs(
+    birth_jd: f64,
     system: DashaSystem,
     parent: &DashaPeriod,
     variation: &DashaVariationConfig,
     inputs: &DashaInputs<'_>,
 ) -> Result<Vec<DashaPeriod>, SearchError> {
-    dispatch_children(system, parent, inputs.rashi_inputs, variation)
+    dispatch_children(
+        system,
+        birth_jd,
+        inputs.moon_sid_lon.unwrap_or(0.0),
+        parent,
+        inputs.rashi_inputs,
+        variation,
+    )
 }
 
 /// Context-sharing single child-period lookup using pre-computed inputs.
 pub fn dasha_child_period_with_inputs(
+    birth_jd: f64,
     system: DashaSystem,
     parent: &DashaPeriod,
     child_entity: DashaEntity,
     variation: &DashaVariationConfig,
     inputs: &DashaInputs<'_>,
 ) -> Result<Option<DashaPeriod>, SearchError> {
-    let children = dasha_children_with_inputs(system, parent, variation, inputs)?;
+    let children = dasha_children_with_inputs(birth_jd, system, parent, variation, inputs)?;
     let child_level = match parent.level.child_level() {
         Some(level) => level,
         None => return Ok(None),
@@ -1326,6 +1382,7 @@ pub fn dasha_child_period_with_inputs(
 
 /// Context-sharing complete-level expansion using pre-computed inputs.
 pub fn dasha_complete_level_with_inputs(
+    birth_jd: f64,
     system: DashaSystem,
     parent_level: &[DashaPeriod],
     child_level: DashaLevel,
@@ -1334,6 +1391,8 @@ pub fn dasha_complete_level_with_inputs(
 ) -> Result<Vec<DashaPeriod>, SearchError> {
     dispatch_complete_level(
         system,
+        birth_jd,
+        inputs.moon_sid_lon.unwrap_or(0.0),
         parent_level,
         inputs.rashi_inputs,
         child_level,

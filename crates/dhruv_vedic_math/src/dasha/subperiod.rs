@@ -141,6 +141,214 @@ pub fn generate_children(
     }
 }
 
+// ── Birth-anchored sub-periods ───────────────────────────────────────
+//
+// The first period at every level is clipped at its start by the birth
+// instant (the birth balance). Its children must be laid out over the FULL
+// period, anchored at `end − full_duration`, not squeezed into the visible
+// remainder. Children that end before birth are dropped and the one
+// straddling birth is clipped, which in turn makes it a clipped parent for
+// the next level. The "birth chain" is this clipped period at each level
+// together with its unclipped length.
+
+/// Tolerance (days) when matching period boundaries. ~86 µs.
+pub const JD_MATCH_EPS: f64 = 1e-9;
+
+/// A period on the birth chain and the length it would have had without
+/// the birth clip.
+#[derive(Debug, Clone, Copy)]
+pub struct BirthChainLink {
+    /// The clipped period as it appears in its level.
+    pub period: DashaPeriod,
+    /// Unclipped duration in days.
+    pub full_duration_days: f64,
+}
+
+impl BirthChainLink {
+    /// True when `parent` is this link's period (same level, entity, bounds).
+    pub fn matches(&self, parent: &DashaPeriod) -> bool {
+        self.period.level == parent.level
+            && self.period.entity == parent.entity
+            && (self.period.start_jd - parent.start_jd).abs() < JD_MATCH_EPS
+            && (self.period.end_jd - parent.end_jd).abs() < JD_MATCH_EPS
+    }
+}
+
+/// Generate children for a parent whose start was clipped by birth.
+///
+/// `full_duration_days` is the parent's unclipped length. Children are laid
+/// out over the virtual parent `[end − full, end)`; those ending at or before
+/// `parent.start_jd` are dropped and the one straddling it is clipped to start
+/// there. `order` keeps the position in the full sequence so callers can see
+/// which siblings elapsed before birth.
+///
+/// Returns the retained children and the link for the clipped first child
+/// (None when nothing is retained).
+pub fn generate_children_anchored(
+    parent: &DashaPeriod,
+    graha_sequence: &[(DashaEntity, f64)],
+    total_period_days: f64,
+    child_level: DashaLevel,
+    parent_idx: u32,
+    method: SubPeriodMethod,
+    full_duration_days: f64,
+) -> (Vec<DashaPeriod>, Option<BirthChainLink>) {
+    let actual = parent.end_jd - parent.start_jd;
+    if full_duration_days <= actual + JD_MATCH_EPS {
+        // Not actually clipped: plain layout, first child is the next link.
+        let children = generate_children(
+            parent,
+            graha_sequence,
+            total_period_days,
+            child_level,
+            parent_idx,
+            method,
+        );
+        let link = children.first().map(|c| BirthChainLink {
+            period: *c,
+            full_duration_days: c.end_jd - c.start_jd,
+        });
+        return (children, link);
+    }
+
+    let virtual_parent = DashaPeriod {
+        start_jd: parent.end_jd - full_duration_days,
+        ..*parent
+    };
+    let all = generate_children(
+        &virtual_parent,
+        graha_sequence,
+        total_period_days,
+        child_level,
+        parent_idx,
+        method,
+    );
+
+    let mut children = Vec::with_capacity(all.len());
+    let mut link = None;
+    for child in all {
+        if child.end_jd <= parent.start_jd + JD_MATCH_EPS {
+            continue;
+        }
+        if link.is_none() {
+            let full = child.end_jd - child.start_jd;
+            let clipped = DashaPeriod {
+                start_jd: parent.start_jd,
+                ..child
+            };
+            link = Some(BirthChainLink {
+                period: clipped,
+                full_duration_days: full,
+            });
+            children.push(clipped);
+        } else {
+            children.push(child);
+        }
+    }
+    (children, link)
+}
+
+/// Children of `parent`, anchored when `anchor` is the parent's chain link.
+///
+/// Returns the children and the next chain link (the clipped first child)
+/// when the parent was on the chain, else None.
+pub fn generate_children_maybe_anchored(
+    parent: &DashaPeriod,
+    graha_sequence: &[(DashaEntity, f64)],
+    total_period_days: f64,
+    child_level: DashaLevel,
+    parent_idx: u32,
+    method: SubPeriodMethod,
+    anchor: Option<&BirthChainLink>,
+) -> (Vec<DashaPeriod>, Option<BirthChainLink>) {
+    match anchor {
+        Some(link) if link.matches(parent) => generate_children_anchored(
+            parent,
+            graha_sequence,
+            total_period_days,
+            child_level,
+            parent_idx,
+            method,
+            link.full_duration_days,
+        ),
+        _ => (
+            generate_children(
+                parent,
+                graha_sequence,
+                total_period_days,
+                child_level,
+                parent_idx,
+                method,
+            ),
+            None,
+        ),
+    }
+}
+
+/// Build the birth chain from the level-0 link down to `upto_level`
+/// (inclusive). `method_for_parent_depth(d)` gives the sub-period method used
+/// to split level `d` into level `d + 1`.
+pub fn birth_chain(
+    level0: BirthChainLink,
+    graha_sequence: &[(DashaEntity, f64)],
+    total_period_days: f64,
+    upto_level: u8,
+    method_for_parent_depth: &dyn Fn(u8) -> SubPeriodMethod,
+) -> Vec<BirthChainLink> {
+    let mut chain = vec![level0];
+    for depth in 0..upto_level {
+        let parent = chain[depth as usize];
+        let child_level = match parent.period.level.child_level() {
+            Some(l) => l,
+            None => break,
+        };
+        let (_, next) = generate_children_anchored(
+            &parent.period,
+            graha_sequence,
+            total_period_days,
+            child_level,
+            0,
+            method_for_parent_depth(depth),
+            parent.full_duration_days,
+        );
+        match next {
+            Some(link) => chain.push(link),
+            None => break,
+        }
+    }
+    chain
+}
+
+/// Generate a complete child level, anchoring the parent that matches
+/// `anchor`. Returns the children and the next chain link.
+pub fn complete_level_anchored(
+    parent_level: &[DashaPeriod],
+    graha_sequence: &[(DashaEntity, f64)],
+    total_period_days: f64,
+    child_level: DashaLevel,
+    method: SubPeriodMethod,
+    anchor: Option<&BirthChainLink>,
+) -> (Vec<DashaPeriod>, Option<BirthChainLink>) {
+    let mut result = Vec::with_capacity(parent_level.len() * graha_sequence.len());
+    let mut next = None;
+    for (pidx, parent) in parent_level.iter().enumerate() {
+        let (children, link) = generate_children_maybe_anchored(
+            parent,
+            graha_sequence,
+            total_period_days,
+            child_level,
+            pidx as u32,
+            method,
+            anchor,
+        );
+        if link.is_some() {
+            next = link;
+        }
+        result.extend(children);
+    }
+    (result, next)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

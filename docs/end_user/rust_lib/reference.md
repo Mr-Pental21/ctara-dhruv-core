@@ -269,6 +269,21 @@ same knobs live on `DashaSelectionConfig` (`cycles: u8`, 0 = system
 default; `min_span_years: f64`, 0.0 = disabled). A period's cycle number
 is `(order - 1) / sequence_len + 1` — `order` is global across cycles.
 
+Birth balance and sub-periods. In every nakshatra-based system other than
+Vimshottari a graha's years belong to a group of 3–4 consecutive nakshatras:
+the first mahadasha is the remainder of the Moon's nakshatra plus the group's
+later nakshatras, each worth `years / group_size`. The first period at every
+level is clipped at birth, and its children are laid out over that period's
+full span: children that ended before birth are omitted and the one running
+at birth starts at birth, keeping its sequence `order`. A level therefore
+holds fewer periods than `sequence_len × parents`, and the children /
+child-period / complete-level entrypoints take the birth context
+(`birth_jd` on the `_with_inputs` variants). `use_abhijit` applies to
+Ashtottari only: on (default) the Moon is placed with the 28-nakshatra
+scheme's unequal arcs and Shani's group is P.Ashadha, U.Ashadha, Abhijit,
+Shravana at 2.5 years each; off uses 27 equal arcs and three nakshatras at
+10/3 years each.
+
 ## Panchang Element Selection
 
 `PanchangRequest.include_mask` carries `PANCHANG_INCLUDE_*` bits that gate

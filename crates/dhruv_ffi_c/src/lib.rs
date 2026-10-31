@@ -17999,7 +17999,7 @@ pub unsafe extern "C" fn dhruv_dasha_children(
     };
     let inputs = birth.inputs.borrowed();
 
-    match dasha_children_with_inputs(system, &parent, &variation, &inputs) {
+    match dasha_children_with_inputs(birth.birth_jd, system, &parent, &variation, &inputs) {
         Ok(periods) => {
             let boxed = Box::new(periods);
             unsafe { *out = Box::into_raw(boxed) as DhruvDashaPeriodListHandle };
@@ -18050,7 +18050,14 @@ pub unsafe extern "C" fn dhruv_dasha_child_period(
     };
     let inputs = birth.inputs.borrowed();
 
-    match dasha_child_period_with_inputs(system, &parent, child_entity, &variation, &inputs) {
+    match dasha_child_period_with_inputs(
+        birth.birth_jd,
+        system,
+        &parent,
+        child_entity,
+        &variation,
+        &inputs,
+    ) {
         Ok(Some(period)) => {
             unsafe {
                 *out_found = 1;
@@ -18115,6 +18122,7 @@ pub unsafe extern "C" fn dhruv_dasha_complete_level(
     let inputs = birth.inputs.borrowed();
 
     match dasha_complete_level_with_inputs(
+        birth.birth_jd,
         system,
         &rust_parent_periods,
         child_level,

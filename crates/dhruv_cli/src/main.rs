@@ -1068,6 +1068,10 @@ struct KundaliArgs {
     /// many years. Applies to nakshatra-based and Yogini systems.
     #[arg(long)]
     dasha_min_span_years: Option<f64>,
+    /// Ashtottari only: place the Moon with the 28-nakshatra (Abhijit)
+    /// scheme (default true); false uses the 27 equal nakshatras.
+    #[arg(long)]
+    dasha_use_abhijit: Option<bool>,
     /// UTC datetime for dasha snapshot query
     #[arg(long)]
     dasha_snapshot_date: Option<String>,
@@ -2611,6 +2615,10 @@ struct DashaArgs {
     /// many years. Applies to nakshatra-based and Yogini systems.
     #[arg(long)]
     min_span_years: Option<f64>,
+    /// Ashtottari only: place the Moon with the 28-nakshatra (Abhijit)
+    /// scheme (default true); false uses the 27 equal nakshatras.
+    #[arg(long)]
+    use_abhijit: Option<bool>,
     /// Parent level index for children/child-period/complete-level (0-4)
     #[arg(long)]
     parent_level: Option<u8>,
@@ -6155,6 +6163,9 @@ fn main() {
                     std::process::exit(1);
                 }
                 full_config.dasha_config.min_span_years = min_span_years;
+            }
+            if let Some(use_abhijit) = args.dasha_use_abhijit {
+                full_config.dasha_config.use_abhijit = u8::from(use_abhijit);
             }
             if args.include_equatorial {
                 full_config.graha_positions_config.include_equatorial = true;
@@ -10237,6 +10248,9 @@ fn main() {
                 }
                 variation.min_span_years = Some(min_span_years);
             }
+            if let Some(use_abhijit) = args.use_abhijit {
+                variation.use_abhijit = use_abhijit;
+            }
             let clamped_level = args.max_level.min(dhruv_vedic_base::dasha::MAX_DASHA_LEVEL);
             let mode = args.mode.as_deref().unwrap_or(
                 if args.query_date.is_some() || args.query_jd.is_some() {
@@ -10592,6 +10606,7 @@ fn main() {
                         });
                         let periods = if raw_inputs_requested {
                             dhruv_search::dasha_complete_level_with_inputs(
+                                birth_jd,
                                 dasha_system,
                                 parent_periods,
                                 child_level,
@@ -10644,6 +10659,7 @@ fn main() {
                         if mode == "children" {
                             let children = if raw_inputs_requested {
                                 dhruv_search::dasha_children_with_inputs(
+                                    birth_jd,
                                     dasha_system,
                                     parent,
                                     &variation,
@@ -10691,6 +10707,7 @@ fn main() {
                             );
                             let child = if raw_inputs_requested {
                                 dhruv_search::dasha_child_period_with_inputs(
+                                    birth_jd,
                                     dasha_system,
                                     parent,
                                     entity,

@@ -27,9 +27,10 @@ pub struct NakshatraDashaConfig {
     pub cycle_count: u8,
     /// Default sub-period method.
     pub default_method: SubPeriodMethod,
-    /// If true, the birth-balance entry period is the graha's full period
-    /// divided by how many nakshatras map to that graha. Used by Shashtihayani.
-    pub divide_period_by_nakshatra_count: bool,
+    /// Nakshatra (0-27, 28-scheme with Abhijit at 21) to graha_sequence index
+    /// mapping, for systems that honour `DashaVariationConfig::use_abhijit`.
+    /// None = the system always uses the 27-scheme map.
+    pub nakshatra28_to_graha_idx: Option<[u8; 28]>,
 }
 
 impl NakshatraDashaConfig {
@@ -42,33 +43,31 @@ impl NakshatraDashaConfig {
             .collect()
     }
 
-    /// Get the starting graha index for a given nakshatra.
+    /// Get the starting graha index for a given nakshatra (27-scheme).
     pub fn starting_graha_idx(&self, nakshatra_index: u8) -> u8 {
         self.nakshatra_to_graha_idx[nakshatra_index.min(26) as usize]
     }
 
-    /// Get the entry period in days for the starting graha of a nakshatra.
-    ///
-    /// For most systems, this is the full graha period. For Shashtihayani,
-    /// it is the graha period divided by the number of nakshatras assigned
-    /// to that graha (since the period is shared among its nakshatras).
-    pub fn entry_period_days(&self, nakshatra_index: u8) -> f64 {
-        let gi = self.starting_graha_idx(nakshatra_index) as usize;
-        let full_period = self.periods_days[gi];
-        if self.divide_period_by_nakshatra_count {
-            let count = self
-                .nakshatra_to_graha_idx
-                .iter()
-                .filter(|&&idx| idx as usize == gi)
-                .count();
-            if count > 0 {
-                full_period / count as f64
-            } else {
-                full_period
+    /// Get the starting graha index for a given nakshatra in the 28-scheme
+    /// (Abhijit at index 21). Falls back to the 27-scheme map, collapsing
+    /// Abhijit onto Uttara Ashadha, for systems without a 28-scheme map.
+    pub fn starting_graha_idx_28(&self, nakshatra28_index: u8) -> u8 {
+        let idx = nakshatra28_index.min(27) as usize;
+        match &self.nakshatra28_to_graha_idx {
+            Some(map) => map[idx],
+            None => {
+                let idx27 = match idx {
+                    0..=20 => idx,
+                    _ => idx - 1,
+                };
+                self.nakshatra_to_graha_idx[idx27]
             }
-        } else {
-            full_period
         }
+    }
+
+    /// Whether this system honours the 28-nakshatra (Abhijit) scheme.
+    pub fn supports_abhijit(&self) -> bool {
+        self.nakshatra28_to_graha_idx.is_some()
     }
 }
 
@@ -114,14 +113,17 @@ pub fn vimshottari_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: VIMSHOTTARI_NAK_MAP,
         cycle_count: 1,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
 // ---------------------------------------------------------------------------
 // Ashtottari Dasha (108 years, 8 grahas — no Ketu)
 // BPHS Ch.47. Applicable when Rahu is in Kendra/Trikona from lagna lord.
-// Starting nakshatra: Ardra (index 5).
+// Starting nakshatra: Ardra (index 5). Counting from Ardra, the grahas own
+// groups of 4, 3, 4, 3, 4, 3, 4, 3 nakshatras in the 28-scheme (Abhijit sits
+// in Shani's group between Uttara Ashadha and Shravana). Dropping Abhijit
+// leaves Shani with 3 nakshatras in the 27-scheme.
 // ---------------------------------------------------------------------------
 
 const ASHTOTTARI_GRAHAS: [Graha; 8] = [
@@ -137,9 +139,33 @@ const ASHTOTTARI_GRAHAS: [Graha; 8] = [
 
 const ASHTOTTARI_YEARS: [f64; 8] = [6.0, 15.0, 8.0, 17.0, 10.0, 19.0, 12.0, 21.0];
 
-/// Nakshatra-to-graha mapping (starting from Ardra, groups of 3/4).
+/// 27-scheme nakshatra-to-graha mapping (no Abhijit).
+/// Surya: Ardra..Ashlesha (4) · Chandra: Magha..U.Phalguni (3) ·
+/// Mangal: Hasta..Vishakha (4) · Buddh: Anuradha..Mula (3) ·
+/// Shani: P.Ashadha..Shravana (3) · Guru: Dhanishta..P.Bhadra (3) ·
+/// Rahu: U.Bhadra..Bharani (4, wraps) · Shukra: Krittika..Mrigashira (3).
 const ASHTOTTARI_NAK_MAP: [u8; 27] = [
-    6, 6, 7, 7, 7, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 6,
+    6, 6, 7, 7, 7, // Ashwini, Bharani → Rahu; Krittika..Mrigashira → Shukra
+    0, 0, 0, 0, // Ardra..Ashlesha → Surya
+    1, 1, 1, // Magha..U.Phalguni → Chandra
+    2, 2, 2, 2, // Hasta..Vishakha → Mangal
+    3, 3, 3, // Anuradha..Mula → Buddh
+    4, 4, 4, // P.Ashadha, U.Ashadha, Shravana → Shani
+    5, 5, 5, // Dhanishta..P.Bhadra → Guru
+    6, 6, // U.Bhadra, Revati → Rahu
+];
+
+/// 28-scheme nakshatra-to-graha mapping (Abhijit at index 21 joins Shani's
+/// group, giving every graha 4/3 alternation).
+const ASHTOTTARI_NAK_MAP_28: [u8; 28] = [
+    6, 6, 7, 7, 7, // Ashwini, Bharani → Rahu; Krittika..Mrigashira → Shukra
+    0, 0, 0, 0, // Ardra..Ashlesha → Surya
+    1, 1, 1, // Magha..U.Phalguni → Chandra
+    2, 2, 2, 2, // Hasta..Vishakha → Mangal
+    3, 3, 3, // Anuradha..Mula → Buddh
+    4, 4, 4, 4, // P.Ashadha, U.Ashadha, Abhijit, Shravana → Shani
+    5, 5, 5, // Dhanishta..P.Bhadra → Guru
+    6, 6, // U.Bhadra, Revati → Rahu
 ];
 
 pub fn ashtottari_config() -> NakshatraDashaConfig {
@@ -156,7 +182,7 @@ pub fn ashtottari_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: ASHTOTTARI_NAK_MAP,
         cycle_count: 1,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: Some(ASHTOTTARI_NAK_MAP_28),
     }
 }
 
@@ -197,7 +223,7 @@ pub fn shodsottari_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: SHODSOTTARI_NAK_MAP,
         cycle_count: 1,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -238,7 +264,7 @@ pub fn dwadashottari_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: DWADASHOTTARI_NAK_MAP,
         cycle_count: 1,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -278,7 +304,7 @@ pub fn panchottari_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: PANCHOTTARI_NAK_MAP,
         cycle_count: 1,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -318,7 +344,7 @@ pub fn shatabdika_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: SHATABDIKA_NAK_MAP,
         cycle_count: 1,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -358,7 +384,7 @@ pub fn chaturashiti_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: CHATURASHITI_NAK_MAP,
         cycle_count: 2,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -399,7 +425,7 @@ pub fn dwisaptati_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: DWISAPTATI_NAK_MAP,
         cycle_count: 2,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -441,7 +467,7 @@ pub fn shashtihayani_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: SHASHTIHAYANI_NAK_MAP,
         cycle_count: 2,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: true,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -483,7 +509,7 @@ pub fn shat_trimsha_config() -> NakshatraDashaConfig {
         nakshatra_to_graha_idx: SHAT_TRIMSHA_NAK_MAP,
         cycle_count: 3,
         default_method: SubPeriodMethod::ProportionalFromParent,
-        divide_period_by_nakshatra_count: false,
+        nakshatra28_to_graha_idx: None,
     }
 }
 
@@ -570,6 +596,54 @@ mod tests {
     }
 
     #[test]
+    fn ashtottari_27_groups_follow_bphs() {
+        // Counting from Ardra: 4,3,4,3,3,3,4,3 (Shani loses Abhijit).
+        let cfg = ashtottari_config();
+        let expect = |naks: &[u8], g: Graha| {
+            for &n in naks {
+                let gi = cfg.starting_graha_idx(n) as usize;
+                assert_eq!(cfg.graha_sequence[gi], g, "nakshatra {n}");
+            }
+        };
+        expect(&[5, 6, 7, 8], Graha::Surya); // Ardra..Ashlesha
+        expect(&[9, 10, 11], Graha::Chandra); // Magha..U.Phalguni
+        expect(&[12, 13, 14, 15], Graha::Mangal); // Hasta..Vishakha
+        expect(&[16, 17, 18], Graha::Buddh); // Anuradha..Mula
+        expect(&[19, 20, 21], Graha::Shani); // P.Ashadha..Shravana
+        expect(&[22, 23, 24], Graha::Guru); // Dhanishta..P.Bhadra
+        expect(&[25, 26, 0, 1], Graha::Rahu); // U.Bhadra..Bharani
+        expect(&[2, 3, 4], Graha::Shukra); // Krittika..Mrigashira
+    }
+
+    #[test]
+    fn ashtottari_28_groups_alternate_4_3() {
+        let cfg = ashtottari_config();
+        assert!(cfg.supports_abhijit());
+        let map = cfg.nakshatra28_to_graha_idx.unwrap();
+        // Abhijit (21) belongs to Shani with P.Ashadha, U.Ashadha, Shravana.
+        for n in 19..=22u8 {
+            assert_eq!(cfg.graha_sequence[map[n as usize] as usize], Graha::Shani);
+        }
+        // Every graha owns 4 or 3 nakshatras, alternating from Surya.
+        let counts: Vec<usize> = (0..8u8)
+            .map(|g| map.iter().filter(|&&m| m == g).count())
+            .collect();
+        assert_eq!(counts, vec![4, 3, 4, 3, 4, 3, 4, 3]);
+        // Indices past Abhijit are the 27-scheme indices shifted by one.
+        for n in 22..28u8 {
+            assert_eq!(cfg.starting_graha_idx_28(n), cfg.starting_graha_idx(n - 1));
+        }
+    }
+
+    #[test]
+    fn systems_without_28_map_collapse_abhijit_onto_uttara_ashadha() {
+        let cfg = vimshottari_config();
+        assert_eq!(cfg.starting_graha_idx_28(21), cfg.starting_graha_idx(20));
+        assert_eq!(cfg.starting_graha_idx_28(22), cfg.starting_graha_idx(21));
+        assert_eq!(cfg.starting_graha_idx_28(27), cfg.starting_graha_idx(26));
+    }
+
+    #[test]
     fn shodsottari_116_years_8_grahas() {
         verify_config(&shodsottari_config(), 116.0, 8);
     }
@@ -616,18 +690,7 @@ mod tests {
         let cfg = shashtihayani_config();
         verify_config(&cfg, 60.0, 8);
         assert_eq!(cfg.cycle_count, 2);
-        assert!(cfg.divide_period_by_nakshatra_count);
-    }
-
-    #[test]
-    fn shashtihayani_entry_period_divided() {
-        let cfg = shashtihayani_config();
-        // Guru (index 0) has 10y, 3 nakshatras → entry = 10/3 years
-        let entry_years = cfg.entry_period_days(0) / DAYS_PER_YEAR;
-        assert!((entry_years - 10.0 / 3.0).abs() < 1e-6);
-        // Surya (index 1) has 10y, 4 nakshatras → entry = 10/4 years
-        let entry_years = cfg.entry_period_days(3) / DAYS_PER_YEAR;
-        assert!((entry_years - 10.0 / 4.0).abs() < 1e-6);
+        assert!(!cfg.supports_abhijit());
     }
 
     #[test]

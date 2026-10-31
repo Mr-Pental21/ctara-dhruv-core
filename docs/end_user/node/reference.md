@@ -494,6 +494,20 @@ default) and wins over `minSpanYears`. `minSpanYears` repeats whole level-0
 cycles until coverage from birth reaches at least that many years, with the
 final cycle completing past the target (`0` or negative = disabled). Both
 apply to nakshatra-based and Yogini systems only; other systems ignore them.
+
+Birth balance and sub-periods: in every nakshatra-based system other than
+Vimshottari a graha's years belong to a group of 3–4 consecutive nakshatras,
+so the first mahadasha is the remainder of the Moon's nakshatra plus the
+group's later nakshatras (each `years / groupSize`). The first period at every
+level is clipped at birth and its children are laid out over that period's
+full span: children that ended before birth are omitted and the one running at
+birth starts at birth, keeping its sequence `order`. `dashaChildren` on the
+first mahadasha therefore returns fewer than the full sequence, and
+`dashaCompleteLevel` holds fewer than `parents × sequenceLen` periods.
+`useAbhijit` applies to Ashtottari only: `true` (default) places the Moon with
+the 28-nakshatra scheme's unequal arcs and gives Shani's group four nakshatras
+(P.Ashadha, U.Ashadha, Abhijit, Shravana) at 2.5 years each; `false` uses 27
+equal arcs and three nakshatras at 10/3 years each.
 With repeated cycles, a period's cycle number is
 `floor((order - 1) / sequenceLength) + 1`.
 

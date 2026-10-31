@@ -2802,7 +2802,7 @@ struct DhruvDashaSelectionConfig {
     uint8_t max_level;       // hierarchy depth (0-4, default 2)
     uint8_t level_methods[5]; // per-level sub-period method (0xFF = default)
     uint8_t yogini_scheme;   // 0 = default
-    uint8_t use_abhijit;     // 1 = yes, 0 = no
+    uint8_t use_abhijit;     // 1 = Ashtottari uses the 28-nakshatra (Abhijit) scheme, 0 = 27
     uint8_t cycles;          // level-0 whole-cycle repetitions (0 = system default)
     double  min_span_years;  // repeat whole cycles until >= N years covered (<= 0 = off)
     DhruvDashaSnapshotTime snapshot_time;

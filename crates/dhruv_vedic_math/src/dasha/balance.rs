@@ -22,6 +22,50 @@ pub fn nakshatra_birth_balance(moon_sidereal_lon: f64, entry_period_days: f64) -
     (nak_idx, balance_days, elapsed_fraction)
 }
 
+/// Group-aware birth balance for nakshatra-based systems whose graha years
+/// are shared by a contiguous run of nakshatras (Ashtottari, Shodsottari, ...).
+///
+/// - `nak_idx`: the Moon's nakshatra index in the scheme `map` describes
+///   (27 or 28 entries).
+/// - `elapsed_fraction`: fraction of that nakshatra already traversed [0, 1).
+/// - `map`: nakshatra → graha-sequence index. The group is the maximal run of
+///   consecutive entries (wrapping past the last index) equal to `map[nak_idx]`.
+/// - `full_period_days`: the graha's full period.
+///
+/// Each nakshatra of the group owns `share = full / group_size`. The balance is
+/// the remainder of the Moon's nakshatra plus every later nakshatra of the group:
+/// `share × (1 − elapsed) + share × remaining_after`. For maps where no two
+/// consecutive nakshatras share a graha (Vimshottari) this reduces to
+/// `full × (1 − elapsed)`.
+pub fn group_birth_balance(
+    nak_idx: usize,
+    elapsed_fraction: f64,
+    map: &[u8],
+    full_period_days: f64,
+) -> f64 {
+    let n = map.len();
+    if n == 0 {
+        return full_period_days * (1.0 - elapsed_fraction);
+    }
+    let nak_idx = nak_idx.min(n - 1);
+    let graha = map[nak_idx];
+
+    // Walk backwards to count group members before the Moon's nakshatra.
+    let mut before = 0usize;
+    while before < n - 1 && map[(nak_idx + n - before - 1) % n] == graha {
+        before += 1;
+    }
+    // Walk forwards to count group members after it.
+    let mut after = 0usize;
+    while before + after < n - 1 && map[(nak_idx + after + 1) % n] == graha {
+        after += 1;
+    }
+
+    let group_size = (before + after + 1) as f64;
+    let share = full_period_days / group_size;
+    share * (1.0 - elapsed_fraction) + share * after as f64
+}
+
 /// Compute rashi birth balance for a rashi-based dasha system.
 ///
 /// Returns `(balance_days, elapsed_fraction)`:
@@ -70,6 +114,34 @@ mod tests {
         let (idx, balance, _frac) = nakshatra_birth_balance(near_end, 2555.75);
         assert_eq!(idx, 0);
         assert!(balance < 1.0); // very small remaining balance
+    }
+
+    #[test]
+    fn group_balance_single_member_groups_match_plain_balance() {
+        // Vimshottari-style map: no two consecutive nakshatras share a graha.
+        let map: Vec<u8> = (0..27).map(|i| (i % 9) as u8).collect();
+        let full = 3652.5;
+        let got = group_birth_balance(3, 0.25, &map, full);
+        assert!((got - full * 0.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn group_balance_adds_remaining_group_members() {
+        // Groups of 4,3 from index 5; Rahu (6) wraps 25,26,0,1.
+        let map: [u8; 27] = [
+            6, 6, 7, 7, 7, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6,
+        ];
+        let full = 6.0; // years, Surya
+        // First of 4 at its start: whole period.
+        assert!((group_birth_balance(5, 0.0, &map, full) - 6.0).abs() < 1e-12);
+        // Third of 4, halfway: 0.5 share + 1 share.
+        assert!((group_birth_balance(7, 0.5, &map, full) - 2.25).abs() < 1e-12);
+        // Last of 4, at its end: nothing left.
+        assert!(group_birth_balance(8, 1.0, &map, full).abs() < 1e-12);
+        // Wrapping group: Revati (26) is 2nd of Rahu's 4 -> 2 shares + remainder.
+        let rahu = 12.0;
+        assert!((group_birth_balance(26, 0.0, &map, rahu) - 9.0).abs() < 1e-12);
+        assert!((group_birth_balance(1, 0.5, &map, rahu) - 1.5).abs() < 1e-12);
     }
 
     #[test]

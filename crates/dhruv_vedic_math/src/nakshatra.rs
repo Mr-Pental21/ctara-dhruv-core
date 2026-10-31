@@ -378,7 +378,7 @@ const ABHIJIT_END: f64 = 280.0 + 53.0 / 60.0 + 20.0 / 3600.0;
 /// Note: Uttara Ashadha's 27-scheme span is [266deg40', 280deg00']. In the
 /// 28-scheme, the portion [276deg40', 280deg00'] is given to Abhijit, and
 /// [280deg00', 280deg53'20"] is taken from Shravana's start.
-fn nakshatra_28_boundaries() -> [(f64, f64); 28] {
+pub(crate) fn nakshatra_28_boundaries() -> [(f64, f64); 28] {
     let span = NAKSHATRA_SPAN_27; // 13.3333...
     let mut bounds = [(0.0_f64, 0.0_f64); 28];
 

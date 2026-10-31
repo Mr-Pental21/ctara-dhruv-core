@@ -124,8 +124,23 @@ fn vimshottari_hierarchy_depth_2() {
     assert_eq!(hierarchy.system, DashaSystem::Vimshottari);
     assert_eq!(hierarchy.levels.len(), 3);
     assert_eq!(hierarchy.levels[0].len(), 9); // 9 mahadashas
-    assert_eq!(hierarchy.levels[1].len(), 81); // 9*9 antardashas
-    assert_eq!(hierarchy.levels[2].len(), 729); // 81*9 pratyantardashas
+    // 9 antardashas per mahadasha except the birth-clipped first one, which
+    // drops the antardashas that ended before birth.
+    let first_children = hierarchy.levels[1]
+        .iter()
+        .filter(|p| p.parent_idx == 0)
+        .count();
+    assert!((1..=9).contains(&first_children));
+    assert_eq!(hierarchy.levels[1].len(), 8 * 9 + first_children);
+    let first_grandchildren = hierarchy.levels[2]
+        .iter()
+        .filter(|p| p.parent_idx == 0)
+        .count();
+    assert!((1..=9).contains(&first_grandchildren));
+    assert_eq!(
+        hierarchy.levels[2].len(),
+        (hierarchy.levels[1].len() - 1) * 9 + first_grandchildren
+    );
 }
 
 /// Hierarchy at depth 0 should produce only mahadashas.
@@ -226,10 +241,21 @@ fn vimshottari_hierarchy_depth_4() {
     let hierarchy = result.unwrap();
     assert_eq!(hierarchy.levels.len(), 5);
     assert_eq!(hierarchy.levels[0].len(), 9);
-    assert_eq!(hierarchy.levels[1].len(), 81);
-    assert_eq!(hierarchy.levels[2].len(), 729);
-    assert_eq!(hierarchy.levels[3].len(), 6561);
-    assert_eq!(hierarchy.levels[4].len(), 59049);
+    // Every parent has 9 children except the birth-clipped one at index 0 of
+    // each level, which drops the children that ended before birth.
+    for k in 1..5 {
+        let clipped = hierarchy.levels[k]
+            .iter()
+            .filter(|p| p.parent_idx == 0)
+            .count();
+        assert!(clipped >= 1 && clipped <= 9, "level {k}: {clipped}");
+        assert_eq!(
+            hierarchy.levels[k].len(),
+            (hierarchy.levels[k - 1].len() - 1) * 9 + clipped,
+            "level {k}"
+        );
+        assert!((hierarchy.levels[k][0].start_jd - birth_jd).abs() < 1e-9);
+    }
 }
 
 /// Contiguity: all levels should have no gaps between adjacent periods.
@@ -313,37 +339,38 @@ fn verify_nakshatra_system(
         system
     );
 
-    // At nakshatra start, first period balance = full entry period
-    // For most systems: entry_period = graha_period, so total = full cycle * cycle_count
-    // For Shashtihayani: entry_period = graha_period / nak_count, so total < full
-    let nak_start = 5.0 * (360.0 / 27.0); // Ardra start
+    // At the start of a graha's nakshatra group the first period carries the
+    // graha's full period, so the level-0 total equals the full cycle span.
+    let map = &cfg.nakshatra_to_graha_idx;
+    let group_start = (0..27usize)
+        .find(|&i| map[i] != map[(i + 26) % 27])
+        .unwrap_or(0);
+    let nak_start = group_start as f64 * (360.0 / 27.0);
     let level0_full = nakshatra_level0(birth_jd, nak_start, &cfg, &DashaVariationConfig::default());
     let total_full_days: f64 = level0_full.iter().map(|p| p.duration_days()).sum();
-    if !cfg.divide_period_by_nakshatra_count {
-        let expected_full_years = expected_total_years * cycle_count as f64;
-        let total_full_years = total_full_days / DAYS_PER_YEAR;
-        assert!(
-            (total_full_years - expected_full_years).abs() < 0.01,
-            "{:?}: at nak start, total should be {}y, got {}y",
-            system,
-            expected_full_years,
-            total_full_years
-        );
-    } else {
-        // Shashtihayani: just verify it's positive and bounded
-        assert!(
-            total_full_days > 0.0,
-            "{:?}: total should be positive",
-            system
-        );
-    }
+    let expected_full_years = expected_total_years * cycle_count as f64;
+    let total_full_years = total_full_days / DAYS_PER_YEAR;
+    assert!(
+        (total_full_years - expected_full_years).abs() < 0.01,
+        "{:?}: at group start, total should be {}y, got {}y",
+        system,
+        expected_full_years,
+        total_full_years
+    );
 
     // Hierarchy depth 1 (depth 2 can exceed MAX_PERIODS_PER_LEVEL for multi-cycle systems)
     let h = nakshatra_hierarchy(birth_jd, moon_lon, &cfg, 1, &variation).unwrap();
     assert_eq!(h.system, system);
     assert_eq!(h.levels.len(), 2);
     assert_eq!(h.levels[0].len(), expected_count);
-    assert_eq!(h.levels[1].len(), expected_count * expected_grahas);
+    // The birth-clipped mahadasha drops its pre-birth antardashas; every
+    // other mahadasha has the full sequence.
+    let first_children = h.levels[1].iter().filter(|p| p.parent_idx == 0).count();
+    assert!(first_children >= 1 && first_children <= expected_grahas);
+    assert_eq!(
+        h.levels[1].len(),
+        (expected_count - 1) * expected_grahas + first_children
+    );
 
     // Snapshot matches hierarchy
     let query_jd = birth_jd + 1000.0;
@@ -447,7 +474,8 @@ fn yogini_contiguous() {
     }
 }
 
-/// Yogini: hierarchy depth 2 gives 8/64/512.
+/// Yogini: hierarchy depth 2 gives 8 mahadashas, 8 children per parent
+/// except the birth-clipped first period of each level.
 #[test]
 fn yogini_hierarchy_depth_2() {
     let cfg = yogini_config();
@@ -457,8 +485,11 @@ fn yogini_hierarchy_depth_2() {
     assert_eq!(h.system, DashaSystem::Yogini);
     assert_eq!(h.levels.len(), 3);
     assert_eq!(h.levels[0].len(), 8);
-    assert_eq!(h.levels[1].len(), 64);
-    assert_eq!(h.levels[2].len(), 512);
+    for k in 1..3 {
+        let clipped = h.levels[k].iter().filter(|p| p.parent_idx == 0).count();
+        assert!((1..=8).contains(&clipped), "level {k}: {clipped}");
+        assert_eq!(h.levels[k].len(), (h.levels[k - 1].len() - 1) * 8 + clipped);
+    }
 }
 
 /// Yogini: snapshot matches hierarchy.

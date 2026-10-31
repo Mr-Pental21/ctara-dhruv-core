@@ -6023,7 +6023,7 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                 )?;
                 if let Some(inputs) = raw_inputs.as_ref() {
                     let inputs = inputs.borrowed();
-                    dasha_children_with_inputs(system, &parent, &variation, &inputs)
+                    dasha_children_with_inputs(birth_jd, system, &parent, &variation, &inputs)
                         .map(|periods| {
                             json!(
                                 periods
@@ -6082,6 +6082,7 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                 if let Some(inputs) = raw_inputs.as_ref() {
                     let inputs = inputs.borrowed();
                     dasha_child_period_with_inputs(
+                        birth_jd,
                         system,
                         &parent,
                         child_entity,
@@ -6134,6 +6135,7 @@ fn handle_dasha(resource: &ResourceArc<EngineResource>, request: DashaRequest) -
                 if let Some(inputs) = raw_inputs.as_ref() {
                     let inputs = inputs.borrowed();
                     dasha_complete_level_with_inputs(
+                        birth_jd,
                         system,
                         &parent_periods,
                         child_level,

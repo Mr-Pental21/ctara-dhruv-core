@@ -487,6 +487,21 @@ On `kundali`, the same knobs are `--dasha-cycles` and
 `--dasha-min-span-years`. A period's cycle number can be derived from its
 global `order`: `cycle = (order - 1) / sequence_len + 1`.
 
+Birth balance and sub-periods: in every nakshatra-based system other than
+Vimshottari a graha's years belong to a group of 3–4 consecutive nakshatras,
+so the first mahadasha is the remainder of the Moon's nakshatra plus the
+group's later nakshatras (each `years / group_size`). The first period at
+every level is clipped at birth and its children are laid out over that
+period's full span: children that ended before birth are omitted and the one
+running at birth starts at birth, keeping its sequence `order`. `--mode
+children` on the first mahadasha therefore prints fewer than the full
+sequence, and `--mode complete-level` fewer than `parents × sequence_len`
+periods. `--use-abhijit true|false` (`--dasha-use-abhijit` on `kundali`)
+applies to Ashtottari only: `true` (default) places the Moon with the
+28-nakshatra scheme's unequal arcs and Shani's group is P.Ashadha, U.Ashadha,
+Abhijit, Shravana at 2.5 years each; `false` uses 27 equal arcs and three
+nakshatras at 10/3 years each.
+
 ## Equatorial Output
 
 `graha-positions --equatorial` (and `kundali --include-equatorial`) adds,
